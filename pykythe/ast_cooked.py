@@ -16,6 +16,7 @@ from . import kythe, pod
 
 # pylint: disable=too-few-public-methods
 # pylint: disable-msg=too-many-arguments
+# pylint: disable=too-many-lines
 
 
 class FqnCtx(pod.PlainOldData):

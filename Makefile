@@ -87,3 +87,14 @@ ls_uris:
 
 ls_decor:
 	$(KYTHE_EXE) -api $(TESTOUTDIR)/tables decor kythe://test-corpus?path=$(TEST_GRAMMAR_DIR)/$(TEST_GRAMMAR_FILE).py
+
+push_to_github:
+	mkdir -p /tmp/test-github
+	rm -rf /tmp/test-github/*
+	cd /tmp/test-github && git clone https://github.com/kamahen/pykythe.git
+	-# git remote add origin https://github.com/kamahen/pykythe.git
+	rsync -aAHX --exclude .git --exclude snippets.py ./ /tmp/test-github/pykythe/
+	rsync -aAHX ../kythe /tmp/test-github/
+	-cd /tmp/test-github/pykythe && git status
+	@echo '# cd /tmp/test-github && git commit -mCOMMIT-MSG'
+	@echo '# cd /tmp/test-github && git push -u origin master'

@@ -50,9 +50,12 @@ out (on Linux):
 * Does not process the generated facts into a form that Kythe's `http_server`
   can properly display, so `http_server` cannot be used to interactively
   validate the generated facts. (The documentation at kythe.io seems to be
-  out of date on how to do post-process the facts for use by `http_server`.)
+  out of date on how to post-process the facts for use by `http_server`.)
 
 * Does not handle Python `import` statements.
+
+* Doesn't know anything about builtins (`typeshed/stdlib` should be
+  processed as a kind of preamble).
 
 * Analysis and output is limited to `ref` and `defines/binding` facts
   for local and global variables.
@@ -66,7 +69,10 @@ out (on Linux):
 * Only works with UTF-8 files (actually, only ASCII), with Unix
   newline conventions.
 
-* Only tested with Python 3 source (probably works with Python 2).
+* Only tested with Python 3 source (probably works with Python 2, with
+  a bit of fiddling for things like `print` statements and (when
+  implemented) some details of name scope, such as for list
+  comprehensions).
 
 * Requires Python 3.6
 

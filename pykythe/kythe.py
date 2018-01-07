@@ -46,11 +46,7 @@ def _add_variable(fqn, fqn_vname, kythe_facts) -> Iterator[Text]:
     """Add a single variable to kythe_facts."""
     if fqn not in kythe_facts.variables:
         kythe_facts.variables.add(fqn)
-        yield json_fact(
-            node=fqn_vname,
-            fact_name='node/kind',
-            fact_value=b'variable',
-        )
+        yield json_fact(fqn_vname, 'node/kind', b'variable')
 
 
 class BindingAnchor(Anchor):
@@ -64,11 +60,7 @@ class BindingAnchor(Anchor):
     def output(self, kythe_facts, anchor_vname: Vname) -> Iterator[Text]:
         fqn_vname = kythe_facts.vname(self.fqn)
         yield from _add_variable(self.fqn, fqn_vname, kythe_facts)
-        yield json_edge(
-            source=anchor_vname,
-            edge_name='defines/binding',
-            target=fqn_vname,
-        )
+        yield json_edge(anchor_vname, 'defines/binding', fqn_vname)
 
 
 class RefAnchor(Anchor):
@@ -82,10 +74,7 @@ class RefAnchor(Anchor):
     def output(self, kythe_facts, anchor_vname: Vname) -> Iterator[Text]:
         fqn_vname = kythe_facts.vname(self.fqn)
         yield from _add_variable(self.fqn, fqn_vname, kythe_facts)
-        yield json_edge(
-            source=anchor_vname,
-            edge_name='ref',
-            target=kythe_facts.vname(self.fqn))
+        yield json_edge(anchor_vname, 'ref', kythe_facts.vname(self.fqn))
 
 
 class File(pod.PlainOldData):
@@ -118,6 +107,8 @@ class File(pod.PlainOldData):
 class KytheFacts:
     """Encapsulates all the Kythe facts."""
 
+    # pylint: disable=too-many-instance-attributes
+
     def __init__(self,
                  *,
                  anchor_file: File,
@@ -144,12 +135,8 @@ class KytheFacts:
 
     def output_preamble(self) -> Iterator[Text]:
         """Generate file-level Kythe facts."""
-        yield json_fact(
-            node=self.file_vname, fact_name='node/kind', fact_value=b'file')
-        yield json_fact(
-            node=self.file_vname,
-            fact_name='text',
-            fact_value=self.anchor_file.content)
+        yield json_fact(self.file_vname, 'node/kind', b'file')
+        yield json_fact(self.file_vname, 'text', self.anchor_file.content)
 
     def output(self, anchor_item: Anchor) -> Iterator[Text]:
         """Generate fact(s) for a single anchor item."""
@@ -164,21 +151,12 @@ class KytheFacts:
                 corpus=self.corpus,
                 path=self.path)
             self.anchors[(start, end)] = anchor_vname
-            yield json_fact(
-                node=anchor_vname, fact_name='node/kind', fact_value=b'anchor')
-            yield json_fact(
-                node=anchor_vname,
-                fact_name='loc/start',
-                fact_value=str(start).encode('ascii'))
-            yield json_fact(
-                node=anchor_vname,
-                fact_name='loc/end',
-                fact_value=str(end).encode('ascii'))
+            yield json_fact(anchor_vname, 'node/kind', b'anchor')
+            yield json_fact(anchor_vname, 'loc/start',
+                            str(start).encode('ascii'))
+            yield json_fact(anchor_vname, 'loc/end', str(end).encode('ascii'))
             # TODO: Remove the following when it's not needed (e.g., by http_server):
-            # yield json_edge(
-            #     source=anchor_vname,
-            #     edge_name='childof',
-            #     target=self.file_vname)
+            # yield json_edge(anchor_vname, 'childof', self.file_vname)
         yield from anchor_item.output(
             kythe_facts=self, anchor_vname=anchor_vname)
 

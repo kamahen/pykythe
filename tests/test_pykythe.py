@@ -144,15 +144,15 @@ class TestJson(unittest.TestCase):
     """Unit tests for emitting kythe facts as Json."""
 
     def test_json_1(self):
-        """Example from https://kythe.io/docs/schema/writing-an-indexer.html#_bootstrapping_kythe_support"""
-        # TODO: Fix the documentation at kythe.io for examples of JSON, which seem to be wrong
+        """Example from 
+        https://kythe.io/docs/schema/writing-an-indexer.html#_bootstrapping_kythe_support"""
+        # TODO: Fix the documentation at kythe.io for examples of
+        #       JSON, which seem to be wrong
+
+        node_vname = kythe.Vname(corpus='example', path='hello')
 
         self.assertEqual(
-            json.loads(
-                kythe.json_fact(
-                    node=kythe.Vname(corpus='example', path='hello'),
-                    fact_name='node/kind',
-                    fact_value=b'file')),
+            json.loads(kythe.json_fact(node_vname, 'node/kind', b'file')),
             {
                 "source": {
                     "corpus": "example",
@@ -163,11 +163,7 @@ class TestJson(unittest.TestCase):
             },
         )
         self.assertEqual(
-            json.loads(
-                kythe.json_fact(
-                    node=kythe.Vname(corpus='example', path='hello'),
-                    fact_name='text',
-                    fact_value=b'Hello, world!')),
+            json.loads(kythe.json_fact(node_vname, 'text', b'Hello, world!')),
             {
                 "source": {
                     "corpus": "example",
@@ -179,13 +175,8 @@ class TestJson(unittest.TestCase):
         )
 
     def test_json_2(self):
-        """Example from https://kythe.io/docs/schema/writing-an-indexer.html#_specifying_spans_of_text"""
-
-        # TODO: Fix the documentation at kythe.io for examples of JSON, which seem to be wrong
-
-        # TODO: either the example is wrong of the code in
-        #       https://kythe.io/docs/schema/writing-an-indexer.html#_modeling_kythe_entries
-        #       is wrong
+        """Example from 
+        https://kythe.io/docs/schema/writing-an-indexer.html#_specifying_spans_of_text"""
 
         def make_anchor_vname(file_vname, begin, end):
             return kythe.Vname(
@@ -200,11 +191,7 @@ class TestJson(unittest.TestCase):
         anchor_vname = make_anchor_vname(
             file_vname=file_vname, begin=begin, end=end)
         self.assertEqual(
-            json.loads(
-                kythe.json_fact(
-                    node=anchor_vname,
-                    fact_name='node/kind',
-                    fact_value=b'anchor')),
+            json.loads(kythe.json_fact(anchor_vname, 'node/kind', b'anchor')),
             {
                 "source": {
                     "signature": "@4:7",
@@ -218,10 +205,8 @@ class TestJson(unittest.TestCase):
         )
         self.assertEqual(
             json.loads(
-                kythe.json_fact(
-                    node=anchor_vname,
-                    fact_name='loc/start',
-                    fact_value=str(begin).encode('ascii'))),
+                kythe.json_fact(anchor_vname, 'loc/start',
+                                str(begin).encode('ascii'))),
             {
                 "source": {
                     "signature": "@4:7",
@@ -235,10 +220,8 @@ class TestJson(unittest.TestCase):
         )
         self.assertEqual(
             json.loads(
-                kythe.json_fact(
-                    node=anchor_vname,
-                    fact_name='loc/end',
-                    fact_value=str(end).encode('ascii'))),
+                kythe.json_fact(anchor_vname, 'loc/end',
+                                str(end).encode('ascii'))),
             {
                 "source": {
                     "signature": "@4:7",
@@ -251,11 +234,7 @@ class TestJson(unittest.TestCase):
             },
         )
         self.assertEqual(
-            json.loads(
-                kythe.json_edge(
-                    source=anchor_vname,
-                    edge_name='childof',
-                    target=file_vname)),
+            json.loads(kythe.json_edge(anchor_vname, 'childof', file_vname)),
             {
                 "source": {
                     "signature": "@4:7",
