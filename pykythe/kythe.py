@@ -220,8 +220,6 @@ class ClassDefAnchor(Anchor):
 class FuncDefAnchor(Anchor):
     """An anchor that defines a function."""
 
-    # TODO: add bases
-
     __slots__ = ('astn', 'fqn')
 
     def __init__(self, astn: pytree.Leaf, fqn: Text) -> None:

@@ -271,10 +271,6 @@ class ClassDefStmt(AstNode):
                  bases: Union['ArgListNode', 'OmittedNode'],
                  suite: 'GenericNode', bindings: Dict[Text, Text]) -> None:
         # pylint: disable=super-init-not-called
-        # TODO: https://github.com/kamahen/pykythe/issues/1
-        #       - document that `bindings` are for this level
-        #         and above
-        #       - do a pass over suite, collecting its bindings
         self.name = name
         self.bases = bases
         self.suite = suite
@@ -294,8 +290,8 @@ class ClassDefStmt(AstNode):
             bindings=self.bindings)
 
     def anchors(self) -> Iterator[kythe.Anchor]:
-        assert self.name.binds
         # TODO: add bases to ClassDefAnchor
+        assert self.name.binds
         yield kythe.ClassDefAnchor(astn=self.name.astn, fqn=self.name.fqn)
         yield from self.bases.anchors()
         yield from self.suite.anchors()
