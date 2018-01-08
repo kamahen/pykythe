@@ -270,7 +270,7 @@ def cvt_break_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
 def cvt_classdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     """classdef: 'class' NAME ['(' [arglist] ')'] ':' suite"""
     assert not ctx.lhs_binds, [node]
-    # The bindings for ClassDefNode are built up in the calls to
+    # The bindings for ClassDefStmt are built up in the calls to
     # parameters and suite.
     # TODO: what happens with `def foo(): global Bar; class Bar: ...` ?
     name = cvt_lhs_binds(True, node.children[1], ctx)
@@ -283,7 +283,7 @@ def cvt_classdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     else:
         bases = ast_cooked.OMITTED_NODE
     suite = cvt(node.children[-1], ctx_class)
-    return ast_cooked.ClassDefNode(
+    return ast_cooked.ClassDefStmt(
         name=name, bases=bases, suite=suite, bindings=ctx_class.bindings)
 
 
@@ -556,7 +556,7 @@ def cvt_for_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
 def cvt_funcdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     """funcdef: 'def' NAME parameters ['->' test] ':' suite"""
     assert not ctx.lhs_binds, [node]
-    # The bindings for FuncDefNode are built up in the calls to
+    # The bindings for FuncDefStmt are built up in the calls to
     # parameters and suite.
     name = cvt_lhs_binds(True, node.children[1], ctx)
     ctx.bindings[name.astn.value] = None
@@ -568,7 +568,7 @@ def cvt_funcdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     else:
         return_type = ast_cooked.OMITTED_NODE
     suite = cvt(node.children[-1], ctx_func)
-    return ast_cooked.FuncDefNode(
+    return ast_cooked.FuncDefStmt(
         name=name,
         parameters=parameters,
         return_type=return_type,

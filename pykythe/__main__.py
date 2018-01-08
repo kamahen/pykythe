@@ -8,6 +8,7 @@ TODO: The code here is temporary scaffolding, and will change
 """
 
 import argparse
+import collections
 import logging
 import os.path
 import sys
@@ -32,7 +33,8 @@ def main() -> int:
         cooked_nodes = ast_raw.cvt_tree(parse_tree)
         logging.debug('cooked_nodes: %r', cooked_nodes)
         cooked_nodes = cooked_nodes.fqns(
-            ctx=ast_cooked.FqnCtx(fqn=file_to_module(src)))
+            ctx=ast_cooked.FqnCtx(
+                fqn=file_to_module(src), bindings=collections.ChainMap()))
         anchor_file = kythe.File(
             content=src_content,
             encoding='utf-8')  # TODO: get encoding from parse

@@ -5,6 +5,7 @@ import base64
 import codecs
 import collections
 import json
+import logging
 from lib2to3 import pytree
 from typing import Iterator, Optional, Text
 
@@ -36,47 +37,6 @@ class Vname(pod.PlainOldData):
         self.language = language
 
 
-class Anchor(pod.PlainOldData):
-    """A single anchor."""
-
-    # vname(Signature?, Corpus?, Root?, Path?, Language?)
-
-
-def _add_variable(fqn, fqn_vname, kythe_facts) -> Iterator[Text]:
-    """Add a single variable to kythe_facts."""
-    if fqn not in kythe_facts.variables:
-        kythe_facts.variables.add(fqn)
-        yield json_fact(fqn_vname, 'node/kind', b'variable')
-
-
-class BindingAnchor(Anchor):
-    """An anchor that binds a name."""
-
-    __slots__ = ('astn', 'fqn')
-
-    def __init__(self, astn: pytree.Leaf, fqn: Text) -> None:
-        super().__init__(astn=astn, fqn=fqn)
-
-    def output(self, kythe_facts, anchor_vname: Vname) -> Iterator[Text]:
-        fqn_vname = kythe_facts.vname(self.fqn)
-        yield from _add_variable(self.fqn, fqn_vname, kythe_facts)
-        yield json_edge(anchor_vname, 'defines/binding', fqn_vname)
-
-
-class RefAnchor(Anchor):
-    """An anchor that refers to a name."""
-
-    __slots__ = ('astn', 'fqn')
-
-    def __init__(self, astn: pytree.Leaf, fqn: Text) -> None:
-        super().__init__(astn=astn, fqn=fqn)
-
-    def output(self, kythe_facts, anchor_vname: Vname) -> Iterator[Text]:
-        fqn_vname = kythe_facts.vname(self.fqn)
-        yield from _add_variable(self.fqn, fqn_vname, kythe_facts)
-        yield json_edge(anchor_vname, 'ref', kythe_facts.vname(self.fqn))
-
-
 class File(pod.PlainOldData):
     """Encapsulate a file for offsets, etc."""
 
@@ -105,7 +65,18 @@ class File(pod.PlainOldData):
 
 
 class KytheFacts:
-    """Encapsulates all the Kythe facts."""
+    """Encapsulates all the Kythe facts.
+
+    Attributes:
+      anchor_file: The file from which anchors are derived
+      path: (vname) path to the file
+      corpus: vname corpus
+      root: vname corpus
+      language: vname language
+      anchors: mapping of (start, end) to anchor vname
+      fqns: set of FQNs that have been defined (to prevent duplicates)
+      file_vname: vname of `anchor_file`
+    """
 
     # pylint: disable=too-many-instance-attributes
 
@@ -121,8 +92,8 @@ class KytheFacts:
         self.corpus = corpus
         self.root = root
         self.language = language
-        self.anchors = {}
-        self.variables = set()
+        self.anchors = {}  # type: Dict[Tuple[Int, Int], Vname]
+        self.fqns = set()  # type: Set[Text]
         self.file_vname = Vname(
             root=self.root, corpus=self.corpus, path=self.path)
 
@@ -138,7 +109,7 @@ class KytheFacts:
         yield json_fact(self.file_vname, 'node/kind', b'file')
         yield json_fact(self.file_vname, 'text', self.anchor_file.content)
 
-    def output(self, anchor_item: Anchor) -> Iterator[Text]:
+    def output(self, anchor_item: 'Anchor') -> Iterator[Text]:
         """Generate fact(s) for a single anchor item."""
         start, end = self.anchor_file.astn_to_range(anchor_item.astn)
         if (start, end) in self.anchors:
@@ -159,6 +130,16 @@ class KytheFacts:
             # yield json_edge(anchor_vname, 'childof', self.file_vname)
         yield from anchor_item.output(
             kythe_facts=self, anchor_vname=anchor_vname)
+
+    def add_variable(self, fqn, fqn_vname, kind: bytes,
+                     subkind: bytes = None) -> Iterator[Text]:
+        """Add a single variable to self."""
+        if fqn not in self.fqns:
+            self.fqns.add(fqn)
+            if kind:
+                yield json_fact(fqn_vname, 'node/kind', kind)
+            if subkind:
+                yield json_fact(fqn_vname, 'subkind', subkind)
 
 
 # The following functions are based on the javascript code in
@@ -197,3 +178,70 @@ def json_edge(source: Vname, edge_name: str, target: Vname) -> Text:
 def json_ordinal_edge(source: Vname, edge_name: str, ordinal: int,
                       target: Vname) -> Text:
     return json_edge(source, edge_name + '.' + str(ordinal), target)
+
+
+class Anchor(pod.PlainOldData):
+    """A single anchor."""
+
+    # vname(Signature?, Corpus?, Root?, Path?, Language?)
+
+
+class BindingAnchor(Anchor):
+    """An anchor that binds a name."""
+
+    __slots__ = ('astn', 'fqn')
+
+    def __init__(self, astn: pytree.Leaf, fqn: Text) -> None:
+        super().__init__(astn=astn, fqn=fqn)
+
+    def output(self, kythe_facts, anchor_vname: Vname) -> Iterator[Text]:
+        fqn_vname = kythe_facts.vname(self.fqn)
+        yield from kythe_facts.add_variable(self.fqn, fqn_vname, b'variable')
+        yield json_edge(anchor_vname, 'defines/binding', fqn_vname)
+
+
+class ClassDefAnchor(Anchor):
+    """An anchor that defines a class."""
+
+    # TODO: add bases
+
+    __slots__ = ('astn', 'fqn')
+
+    def __init__(self, astn: pytree.Leaf, fqn: Text) -> None:
+        super().__init__(astn=astn, fqn=fqn)
+
+    def output(self, kythe_facts, anchor_vname: Vname) -> Iterator[Text]:
+        fqn_vname = kythe_facts.vname(self.fqn)
+        yield from kythe_facts.add_variable(self.fqn, fqn_vname, b'record',
+                                            b'class')
+        yield json_edge(anchor_vname, 'defines/binding', fqn_vname)
+
+
+class FuncDefAnchor(Anchor):
+    """An anchor that defines a function."""
+
+    # TODO: add bases
+
+    __slots__ = ('astn', 'fqn')
+
+    def __init__(self, astn: pytree.Leaf, fqn: Text) -> None:
+        super().__init__(astn=astn, fqn=fqn)
+
+    def output(self, kythe_facts, anchor_vname: Vname) -> Iterator[Text]:
+        fqn_vname = kythe_facts.vname(self.fqn)
+        yield from kythe_facts.add_variable(self.fqn, fqn_vname, b'function')
+        yield json_edge(anchor_vname, 'defines/binding', fqn_vname)
+
+
+class RefAnchor(Anchor):
+    """An anchor that refers to a name."""
+
+    __slots__ = ('astn', 'fqn')
+
+    def __init__(self, astn: pytree.Leaf, fqn: Text) -> None:
+        super().__init__(astn=astn, fqn=fqn)
+
+    def output(self, kythe_facts, anchor_vname: Vname) -> Iterator[Text]:
+        fqn_vname = kythe_facts.vname(self.fqn)
+        yield from kythe_facts.add_variable(self.fqn, fqn_vname, b'variable')
+        yield json_edge(anchor_vname, 'ref', kythe_facts.vname(self.fqn))

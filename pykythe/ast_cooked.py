@@ -8,9 +8,10 @@ names that were marked "global" or "nonlocal").
 Each node is a subclass of AstNode.
 """
 
+import collections
 import logging
 from lib2to3 import pytree
-from typing import Iterator, List, Text, Union
+from typing import Dict, Iterator, List, Text, Union
 
 from . import kythe, pod
 
@@ -21,13 +22,18 @@ from . import kythe, pod
 
 class FqnCtx(pod.PlainOldData):
     """Context for computing FQNs (fully qualified names).
+
+    Attributes:
+      fqn: The Fully Qualifed Name of this scope (module/function/class)
+      bindings: mappings of names to FQNs at this scope
     """
 
-    __slots__ = ('fqn', )
+    __slots__ = ('fqn', 'bindings')
 
-    def __init__(self, *, fqn: Text) -> None:
+    def __init__(self, *, fqn: Text, bindings: collections.ChainMap) -> None:
         # pylint: disable=super-init-not-called
         self.fqn = fqn
+        self.bindings = bindings
 
 
 class AstNode(pod.PlainOldData):
@@ -71,7 +77,7 @@ class AstNode(pod.PlainOldData):
         Returns:
           The same node, but with FQN information. See GenericNode for
           the canonical implementation.  A few nodes are special, such
-          as FuncDefNode and NameNode.
+          as FuncDefStmt and NameNode.
         """
         raise NotImplementedError(self)
 
@@ -81,7 +87,7 @@ class AstNode(pod.PlainOldData):
         A Kythe "anchor" is a pointer to a piece of source code
         (typically, a "name" of some kind in Python) to which semantic
         information is attached. See GenericNode for the canonical
-        implementation.  A few nodes are special, such as FuncDefNode
+        implementation.  A few nodes are special, such as FuncDefStmt
         and NameNode.
         """
         raise NotImplementedError(self)
@@ -256,32 +262,41 @@ class AugAssignNode(AstNode):
         yield from ()
 
 
-class ClassDefNode(AstNode):
+class ClassDefStmt(AstNode):
     """Corresponds to `classdef`."""
 
     __slots__ = ('name', 'bases', 'suite', 'bindings')
 
     def __init__(self, *, name: 'NameNode',
                  bases: Union['ArgListNode', 'OmittedNode'],
-                 suite: 'GenericNode', bindings: 'OrderedDict') -> None:
+                 suite: 'GenericNode', bindings: Dict[Text, Text]) -> None:
         # pylint: disable=super-init-not-called
+        # TODO: https://github.com/kamahen/pykythe/issues/1
+        #       - document that `bindings` are for this level
+        #         and above
+        #       - do a pass over suite, collecting its bindings
         self.name = name
         self.bases = bases
         self.suite = suite
         self.bindings = bindings
 
-    def fqns(self, ctx: FqnCtx) -> 'ClassDefNode':
-        class_ctx = ctx._replace(fqn=ctx.fqn + '.' + self.name.astn.value)
-        return ClassDefNode(
+    def fqns(self, ctx: FqnCtx) -> 'ClassDefStmt':
+        class_fqn = ctx.fqn + '.' + self.name.astn.value
+        class_ctx = ctx._replace(
+            fqn=class_fqn,
+            bindings=ctx.bindings.new_child(
+                {name: class_fqn + '.' + name
+                 for name in self.bindings}))
+        return ClassDefStmt(
             name=self.name.fqns(ctx),
             bases=self.bases.fqns(ctx),
             suite=self.suite.fqns(class_ctx),
             bindings=self.bindings)
 
     def anchors(self) -> Iterator[kythe.Anchor]:
-        # TODO: handle self.name here (e.g., node/type record)
-        #       and don't call self.name.anchors()
-        yield from self.name.anchors()
+        assert self.name.binds
+        # TODO: add bases to ClassDefAnchor
+        yield kythe.ClassDefAnchor(astn=self.name.astn, fqn=self.name.fqn)
         yield from self.bases.anchors()
         yield from self.suite.anchors()
 
@@ -553,7 +568,7 @@ class ForStmt(AstNode):
         yield from self.else_suite.anchors()
 
 
-class FuncDefNode(AstNode):
+class FuncDefStmt(AstNode):
     """Corresponds to `funcdef` / `async_funcdef`."""
 
     __slots__ = ('name', 'parameters', 'return_type', 'suite', 'bindings')
@@ -563,7 +578,7 @@ class FuncDefNode(AstNode):
                  return_type: Union['NameNode', 'NumberNode', 'OmittedNode'],
                  suite: Union['AtomTrailerNode', 'ExprStmt', 'GenericNode',
                               'NameNode', 'NumberNode', 'OmittedNode'],
-                 bindings: 'OrderedDict') -> None:
+                 bindings: Dict[Text, Text]) -> None:
         # pylint: disable=super-init-not-called
         self.name = name
         self.parameters = parameters
@@ -571,13 +586,17 @@ class FuncDefNode(AstNode):
         self.suite = suite
         self.bindings = bindings
 
-    def fqns(self, ctx: FqnCtx) -> 'FuncDefNode':
+    def fqns(self, ctx: FqnCtx) -> 'FuncDefStmt':
         # '.<local>.' is needed to distinguish `x` in following:
         #    def foo(x): pass
         #    foo.x = 'a string'
+        func_fqn = ctx.fqn + '.' + self.name.astn.value + '.<local>'
         func_ctx = ctx._replace(
-            fqn=ctx.fqn + '.' + self.name.astn.value + '.<local>')
-        return FuncDefNode(
+            fqn=func_fqn,
+            bindings=ctx.bindings.new_child(
+                {name: func_fqn + '.' + name
+                 for name in self.bindings}))
+        return FuncDefStmt(
             name=self.name.fqns(ctx),
             parameters=self.parameters.fqns(func_ctx),
             return_type=self.return_type.fqns(ctx),
@@ -585,9 +604,8 @@ class FuncDefNode(AstNode):
             bindings=self.bindings)
 
     def anchors(self) -> Iterator[kythe.Anchor]:
-        # TODO: handle self.name here (e.g., node/type record)
-        #       and don't call self.name.anchors()
-        yield from self.name.anchors()
+        assert self.name.binds
+        yield kythe.FuncDefAnchor(astn=self.name.astn, fqn=self.name.fqn)
         yield from self.parameters.anchors()
         yield from self.return_type.anchors()
         yield from self.suite.anchors()
@@ -708,10 +726,13 @@ class NameNode(AstNode):
         self.fqn = fqn
 
     def fqns(self, ctx: FqnCtx) -> 'NameNode':
-        return NameNode(
-            astn=self.astn,
-            binds=self.binds,
-            fqn=ctx.fqn + '.' + self.astn.value)
+        name = self.astn.value
+        if name in ctx.bindings:
+            fqn = ctx.bindings[name]
+        else:
+            fqn = ctx.fqn + '.' + self.astn.value
+            ctx.bindings[name] = fqn
+        return NameNode(astn=self.astn, binds=self.binds, fqn=fqn)
 
     def anchors(self) -> Iterator[kythe.Anchor]:
         if self.binds:

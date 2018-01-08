@@ -90,11 +90,12 @@ ls_decor:
 
 push_to_github:
 	mkdir -p /tmp/test-github
-	rm -rf /tmp/test-github/*
+	rm -rf /tmp/test-github/pykythe
 	cd /tmp/test-github && git clone https://github.com/kamahen/pykythe.git
 	-# git remote add origin https://github.com/kamahen/pykythe.git
 	rsync -aAHX --exclude .git --exclude snippets.py ./ /tmp/test-github/pykythe/
 	rsync -aAHX ../kythe /tmp/test-github/
 	-cd /tmp/test-github/pykythe && git status
+	-cd /tmp/test-github/pykythe && git difftool --no-prompt --tool=tkdiff
 	@echo '# cd /tmp/test-github && git commit -mCOMMIT-MSG'
 	@echo '# cd /tmp/test-github && git push -u origin master'

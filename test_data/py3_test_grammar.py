@@ -38,10 +38,13 @@ import sys
 # testing import *
 from sys import *
 
-#- @TokenTests defines/binding vname("test_data.py3_test_grammar.TokenTests", _, _, _, python)
+#- @TokenTests defines/binding TokenTests=vname("test_data.py3_test_grammar.TokenTests", _, _, _, python)
+#- TokenTests.node/kind record
+#- TokenTests.subkind class
 class TokenTests(unittest.TestCase):
 
-    #- @testBackslash defines/binding vname("test_data.py3_test_grammar.TokenTests.testBackslash", _, _, _, python)
+    #- @testBackslash defines/binding TestBackslash=vname("test_data.py3_test_grammar.TokenTests.testBackslash", _, _, _, python)
+    #- TestBackslash.node/kind function
     #- @self defines/binding vname("test_data.py3_test_grammar.TokenTests.testBackslash.<local>.self", _, _, _, python)
     def testBackslash(self):
         # Backslash means line continuation:
@@ -338,6 +341,7 @@ class GrammarTests(unittest.TestCase):
         pos2key2dict(1,2,tokwarg1=100,tokwarg2=200, k2=100)
 
         # keyword arguments after *arglist
+        #- @#1f defines/binding F
         def f(*args, **kwargs):
             return args, kwargs
         self.assertEquals(f(1, x=2, *[3, 4], y=5), ((1, 3, 4),
@@ -346,8 +350,10 @@ class GrammarTests(unittest.TestCase):
         self.assertRaises(SyntaxError, eval, "f(1, x=2, *(3,4), x=5)")
 
         # argument annotation tests
+        #- @#1f defines/binding F
         def f(x) -> list: pass
         self.assertEquals(f.__annotations__, {'return': list})
+        #- @#1f defines/binding F
         def f(x:int): pass
         self.assertEquals(f.__annotations__, {'x': int})
         def f(*x:str): pass
@@ -596,7 +602,11 @@ class GrammarTests(unittest.TestCase):
         for i in 1, 2, 3: pass
         for i, j, k in (): pass
         else: pass
+        #- @Squares defines/binding Squares=vname("test_data.py3_test_grammar.GrammarTests.testFor.<local>.Squares", _, _, _, python)
+        #- Squares.node/kind record
+        #- Squares.subkind class
         class Squares:
+            #- @__init__ defines/binding vname("test_data.py3_test_grammar.GrammarTests.testFor.<local>.Squares.__init__", _, _, _, python)
             def __init__(self, max):
                 self.max = max
                 self.sofar = []
@@ -970,6 +980,7 @@ class GrammarTests(unittest.TestCase):
 
 
 def test_main():
+    #- @TokenTests ref TokenTests
     run_unittest(TokenTests, GrammarTests)
 
 if __name__ == '__main__':
