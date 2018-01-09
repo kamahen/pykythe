@@ -11,7 +11,7 @@ Each node is a subclass of AstNode.
 import collections
 import logging
 from lib2to3 import pytree
-from typing import Dict, Iterator, List, Text, Union
+from typing import cast, Dict, Iterator, List, Text, Union
 
 from . import kythe, pod
 
@@ -159,9 +159,9 @@ class ArgListNode(AstNode):
 
     __slots__ = ('arguments', )
 
-    def __init__(self, *, arguments: List['ArgNode']) -> None:
+    def __init__(self, *, arguments: List[AstNode]) -> None:
         # pylint: disable=super-init-not-called
-        self.arguments = arguments
+        self.arguments = cast(List[ArgNode], arguments)
 
     def fqns(self, ctx: FqnCtx) -> 'ArgListNode':
         return ArgListNode(arguments=[
@@ -178,16 +178,12 @@ class ArgNode(AstNode):
 
     __slots__ = ('name', 'arg', 'comp_for')
 
-    def __init__(
-            self, *, name: Union['NameNode', 'OmittedNode'],
-            arg: Union['AtomTrailerNode', 'ComparisonOpNode', 'GenericNode',
-                       'LambdaNode', 'NameNode', 'NumberNode', 'OpNode',
-                       'StarExprNode', 'StarStarExprNode', 'StringNode'],
-            comp_for: Union['CompForNode', 'OmittedNode']) -> None:
+    def __init__(self, *, name: AstNode, arg: AstNode,
+                 comp_for: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        self.name = name
+        self.name = cast(Union[NameNode, OmittedNode], name)
         self.arg = arg
-        self.comp_for = comp_for
+        self.comp_for = cast(Union[CompForNode, OmittedNode], comp_for)
 
     def fqns(self, ctx: FqnCtx) -> 'ArgNode':
         return ArgNode(
@@ -206,10 +202,10 @@ class AsNameNode(AstNode):
 
     __slots__ = ('name', 'as_name')
 
-    def __init__(self, *, name: 'NameNode', as_name: 'NameNode') -> None:
+    def __init__(self, *, name: AstNode, as_name: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        self.name = name
-        self.as_name = as_name
+        self.name = cast(NameNode, name)
+        self.as_name = cast(NameNode, as_name)
 
     def fqns(self, ctx: FqnCtx) -> 'AsNameNode':
         return AsNameNode(
@@ -225,10 +221,7 @@ class AtomTrailerNode(AstNode):
 
     __slots__ = ('atom', 'trailers')
 
-    def __init__(
-            self, *, atom: Union['LambdaNode', 'NameNode'],
-            trailers: List[Union['ArgListNode', 'DotNameTrailerNode',
-                                 'GenericNode', 'SubscriptListNode']]) -> None:
+    def __init__(self, *, atom: AstNode, trailers: List[AstNode]) -> None:
         # pylint: disable=super-init-not-called
         self.atom = atom
         self.trailers = trailers
@@ -251,15 +244,15 @@ class AugAssignNode(AstNode):
 
     __slots__ = ('op_astn', )
 
-    def __init__(self, *, op_astn: 'Leaf') -> None:
+    def __init__(self, *, op_astn: pytree.Base) -> None:
         # pylint: disable=super-init-not-called
-        self.op_astn = op_astn
+        self.op_astn = cast(pytree.Leaf, op_astn)
 
     def fqns(self, ctx: FqnCtx) -> 'AugAssignNode':
         return self
 
     def anchors(self) -> Iterator[kythe.Anchor]:
-        yield from ()
+        yield from []
 
 
 class ClassDefStmt(AstNode):
@@ -267,12 +260,11 @@ class ClassDefStmt(AstNode):
 
     __slots__ = ('name', 'bases', 'suite', 'bindings')
 
-    def __init__(self, *, name: 'NameNode',
-                 bases: Union['ArgListNode', 'OmittedNode'],
-                 suite: 'GenericNode', bindings: Dict[Text, Text]) -> None:
+    def __init__(self, *, name: AstNode, bases: AstNode, suite: AstNode,
+                 bindings: Dict[Text, None]) -> None:
         # pylint: disable=super-init-not-called
-        self.name = name
-        self.bases = bases
+        self.name = cast(NameNode, name)
+        self.bases = cast(Union[ArgListNode, OmittedNode], bases)
         self.suite = suite
         self.bindings = bindings
 
@@ -302,11 +294,8 @@ class CompForNode(AstNode):
 
     __slots__ = ('for_exprlist', 'in_testlist', 'comp_iter')
 
-    def __init__(self, *, for_exprlist: Union['GenericNode', 'NameNode'],
-                 in_testlist: Union['AtomTrailerNode', 'GenericNode',
-                                    'NameNode', 'StringNode'],
-                 comp_iter: Union['AtomTrailerNode', 'GenericNode', 'NameNode',
-                                  'OmittedNode']) -> None:
+    def __init__(self, *, for_exprlist: AstNode, in_testlist: AstNode,
+                 comp_iter: AstNode) -> None:
         # pylint: disable=super-init-not-called
         self.for_exprlist = for_exprlist
         self.in_testlist = in_testlist
@@ -329,7 +318,8 @@ class CompOpNode(AstNode):
 
     __slots__ = ('op_astns', )
 
-    def __init__(self, *, op_astns: List[Text]) -> None:
+    def __init__(self, *,
+                 op_astns: List[Union[pytree.Node, pytree.Leaf]]) -> None:
         # pylint: disable=super-init-not-called
         self.op_astns = op_astns
 
@@ -337,7 +327,7 @@ class CompOpNode(AstNode):
         return self
 
     def anchors(self) -> Iterator[kythe.Anchor]:
-        yield from ()
+        yield from []
 
 
 class ComparisonOpNode(AstNode):
@@ -345,11 +335,9 @@ class ComparisonOpNode(AstNode):
 
     __slots__ = ('op', 'args')
 
-    def __init__(self, *, op: 'CompOpNode',
-                 args: List[Union['AtomTrailerNode', 'ComparisonOpNode',
-                                  'NameNode', 'NumberNode']]) -> None:
+    def __init__(self, *, op: AstNode, args: List[AstNode]) -> None:
         # pylint: disable=super-init-not-called
-        self.op = op
+        self.op = cast(CompOpNode, op)
         self.args = args
 
     def fqns(self, ctx: FqnCtx) -> 'ComparisonOpNode':
@@ -367,10 +355,9 @@ class DecoratorNode(AstNode):
 
     __slots__ = ('name', 'arglist')
 
-    def __init__(self, *, name: 'DottedNameNode',
-                 arglist: 'OmittedNode') -> None:
+    def __init__(self, *, name: AstNode, arglist: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        self.name = name
+        self.name = cast(DottedNameNode, name)
         self.arglist = arglist
 
     def fqns(self, ctx: FqnCtx) -> 'DecoratorNode':
@@ -387,7 +374,7 @@ class DelStmt(AstNode):
 
     __slots__ = ('exprs', )
 
-    def __init__(self, *, exprs: Union['GenericNode', 'NameNode']) -> None:
+    def __init__(self, *, exprs: AstNode) -> None:
         # pylint: disable=super-init-not-called
         self.exprs = exprs
 
@@ -431,7 +418,7 @@ class DotNode(AstNode):
         return self
 
     def anchors(self) -> Iterator[kythe.Anchor]:
-        yield from ()
+        yield from []
 
 
 class DotNameTrailerNode(AstNode):
@@ -439,9 +426,9 @@ class DotNameTrailerNode(AstNode):
 
     __slots__ = ('name', )
 
-    def __init__(self, *, name: 'NameNode') -> None:
+    def __init__(self, *, name: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        self.name = name
+        self.name = cast(NameNode, name)
 
     def fqns(self, ctx: FqnCtx) -> 'DotNameTrailerNode':
         return DotNameTrailerNode(name=self.name.fqns(ctx))
@@ -455,11 +442,10 @@ class DottedAsNameNode(AstNode):
 
     __slots__ = ('dotted_name', 'as_name')
 
-    def __init__(self, *, dotted_name: 'DottedNameNode',
-                 as_name: 'NameNode') -> None:
+    def __init__(self, *, dotted_name: AstNode, as_name: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        self.dotted_name = dotted_name
-        self.as_name = as_name
+        self.dotted_name = cast(DottedNameNode, dotted_name)
+        self.as_name = cast(NameNode, as_name)
 
     def fqns(self, ctx: FqnCtx) -> 'DottedAsNameNode':
         return DottedAsNameNode(
@@ -476,9 +462,9 @@ class DottedAsNamesNode(AstNode):
 
     __slots__ = ('names', )
 
-    def __init__(self, *, names: List['DottedAsNameNode']) -> None:
+    def __init__(self, *, names: List[AstNode]) -> None:
         # pylint: disable=super-init-not-called
-        self.names = names
+        self.names = cast(List[DottedAsNameNode], names)
 
     def fqns(self, ctx: FqnCtx) -> 'DottedAsNamesNode':
         return DottedAsNamesNode(
@@ -494,9 +480,9 @@ class DottedNameNode(AstNode):
 
     __slots__ = ('names', )
 
-    def __init__(self, *, names: List['NameNode']) -> None:
+    def __init__(self, *, names: List[AstNode]) -> None:
         # pylint: disable=super-init-not-called
-        self.names = names
+        self.names = cast(List[NameNode], names)
 
     def fqns(self, ctx: FqnCtx) -> 'DottedNameNode':
         return DottedNameNode(
@@ -512,14 +498,11 @@ class ExprStmt(AstNode):
 
     __slots__ = ('lhs', 'augassign', 'exprs')
 
-    def __init__(self, *,
-                 lhs: Union['AtomTrailerNode', 'GenericNode', 'NameNode'],
-                 augassign: Union['AugAssignNode', 'OmittedNode'],
-                 exprs: List[Union['AtomTrailerNode', 'GenericNode',
-                                   'NameNode', 'NumberNode']]) -> None:
+    def __init__(self, *, lhs: AstNode, augassign: AstNode,
+                 exprs: List[AstNode]) -> None:
         # pylint: disable=super-init-not-called
         self.lhs = lhs
-        self.augassign = augassign
+        self.augassign = cast(Union[AugAssignNode, OmittedNode], augassign)
         self.exprs = exprs
 
     def fqns(self, ctx: FqnCtx) -> 'ExprStmt':
@@ -540,10 +523,8 @@ class ForStmt(AstNode):
 
     __slots__ = ('exprlist', 'testlist', 'suite', 'else_suite')
 
-    def __init__(self, *, exprlist: Union['GenericNode', 'NameNode'],
-                 testlist: Union['AtomTrailerNode', 'GenericNode'],
-                 suite: Union['AtomTrailerNode', 'ExprStmt', 'GenericNode'],
-                 else_suite: Union['GenericNode', 'OmittedNode']) -> None:
+    def __init__(self, *, exprlist: AstNode, testlist: AstNode, suite: AstNode,
+                 else_suite: AstNode) -> None:
         # pylint: disable=super-init-not-called
         self.exprlist = exprlist
         self.testlist = testlist
@@ -569,14 +550,11 @@ class FuncDefStmt(AstNode):
 
     __slots__ = ('name', 'parameters', 'return_type', 'suite', 'bindings')
 
-    def __init__(self, *, name: 'NameNode',
-                 parameters: Union['GenericNode', 'TypedArgsList'],
-                 return_type: Union['NameNode', 'NumberNode', 'OmittedNode'],
-                 suite: Union['AtomTrailerNode', 'ExprStmt', 'GenericNode',
-                              'NameNode', 'NumberNode', 'OmittedNode'],
-                 bindings: Dict[Text, Text]) -> None:
+    def __init__(self, *, name: AstNode, parameters: AstNode,
+                 return_type: AstNode, suite: AstNode,
+                 bindings: Dict[Text, None]) -> None:
         # pylint: disable=super-init-not-called
-        self.name = name
+        self.name = cast(NameNode, name)
         self.parameters = parameters
         self.return_type = return_type
         self.suite = suite
@@ -612,9 +590,9 @@ class GlobalStmt(AstNode):
 
     __slots__ = ('names', )
 
-    def __init__(self, *, names: List['NameNode']) -> None:
+    def __init__(self, *, names: List[AstNode]) -> None:
         # pylint: disable=super-init-not-called
-        self.names = names
+        self.names = cast(List[NameNode], names)
 
     def fqns(self, ctx: FqnCtx) -> 'GlobalStmt':
         return GlobalStmt(
@@ -630,9 +608,9 @@ class ImportAsNamesNode(AstNode):
 
     __slots__ = ('names', )
 
-    def __init__(self, *, names: List['AsNameNode']) -> None:
+    def __init__(self, *, names: List[AstNode]) -> None:
         # pylint: disable=super-init-not-called
-        self.names = names
+        self.names = cast(List[AsNameNode], names)
 
     def fqns(self, ctx: FqnCtx) -> 'ImportAsNamesNode':
         return ImportAsNamesNode(
@@ -648,11 +626,12 @@ class ImportFromStmt(AstNode):
 
     __slots__ = ('from_name', 'import_part')
 
-    def __init__(self, *, from_name: List['DottedNameNode'],
-                 import_part: Union['ImportAsNamesNode', 'StarNode']) -> None:
+    def __init__(self, *, from_name: List[AstNode],
+                 import_part: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        self.from_name = from_name
-        self.import_part = import_part
+        self.from_name = cast(List[DottedNameNode], from_name)
+        self.import_part = cast(Union[ImportAsNamesNode, StarNode],
+                                import_part)
 
     def fqns(self, ctx: FqnCtx) -> 'ImportFromStmt':
         return ImportFromStmt(
@@ -672,9 +651,9 @@ class ImportNameNode(AstNode):
 
     __slots__ = ('dotted_as_names', )
 
-    def __init__(self, *, dotted_as_names: 'DottedAsNamesNode') -> None:
+    def __init__(self, *, dotted_as_names: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        self.dotted_as_names = dotted_as_names
+        self.dotted_as_names = cast(DottedAsNamesNode, dotted_as_names)
 
     def fqns(self, ctx: FqnCtx) -> 'ImportNameNode':
         return ImportNameNode(dotted_as_names=self.dotted_as_names.fqns(ctx))
@@ -684,14 +663,13 @@ class ImportNameNode(AstNode):
 
 
 class LambdaNode(AstNode):
+    """Corresponds to `lambda_name`."""
 
     __slots__ = ('args', 'expr')
 
-    def __init__(self, *, args: Union['OmittedNode', 'TypedArgsList'],
-                 expr: Union['AtomTrailerNode', 'GenericNode', 'NameNode',
-                             'NumberNode', 'OpNode']) -> None:
+    def __init__(self, *, args: AstNode, expr: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        self.args = args
+        self.args = cast(Union[OmittedNode, TypedArgsList], args)
         self.expr = expr
 
     def fqns(self, ctx: FqnCtx) -> 'LambdaNode':
@@ -715,7 +693,7 @@ class NameNode(AstNode):
 
     __slots__ = ('binds', 'astn', 'fqn')
 
-    def __init__(self, *, binds: 'bool', astn: 'Leaf', fqn: Text) -> None:
+    def __init__(self, *, binds: bool, astn: pytree.Leaf, fqn: Text) -> None:
         # pylint: disable=super-init-not-called
         self.binds = binds
         self.astn = astn
@@ -738,12 +716,13 @@ class NameNode(AstNode):
 
 
 class NonLocalStmt(AstNode):
+    """Corresponds to "nonlocal" variant of `global_stmt`."""
 
     __slots__ = ('names', )
 
-    def __init__(self, *, names: List['NameNode']) -> None:
+    def __init__(self, *, names: List[AstNode]) -> None:
         # pylint: disable=super-init-not-called
-        self.names = names
+        self.names = cast(List[NameNode], names)
 
     def fqns(self, ctx: FqnCtx) -> 'NonLocalStmt':
         return NonLocalStmt(
@@ -763,7 +742,7 @@ class NumberNode(AstNode):
 
     __slots__ = ('astn', )
 
-    def __init__(self, *, astn: 'Leaf') -> None:
+    def __init__(self, *, astn: pytree.Leaf) -> None:
         # pylint: disable=super-init-not-called
         self.astn = astn
 
@@ -771,7 +750,7 @@ class NumberNode(AstNode):
         return self
 
     def anchors(self) -> Iterator[kythe.Anchor]:
-        yield from ()
+        yield from []
 
 
 class OpNode(AstNode):
@@ -779,14 +758,9 @@ class OpNode(AstNode):
 
     __slots__ = ('op_astn', 'args')
 
-    def __init__(
-            # pylint: disable=super-init-not-called
-            self,
-            *,
-            op_astn: 'Leaf',
-            args: List[Union['AtomTrailerNode', 'ComparisonOpNode', 'NameNode',
-                             'NumberNode', 'OpNode', 'StringNode']]) -> None:
-        self.op_astn = op_astn
+    def __init__(self, *, op_astn: pytree.Base, args: List[AstNode]) -> None:
+        # pylint: disable=super-init-not-called
+        self.op_astn = cast(pytree.Leaf, op_astn)
         self.args = args
 
     def fqns(self, ctx: FqnCtx) -> 'OpNode':
@@ -804,7 +778,7 @@ class StarExprNode(AstNode):
 
     __slots__ = ('expr', )
 
-    def __init__(self, *, expr: Union['GenericNode', 'NumberNode']) -> None:
+    def __init__(self, *, expr: AstNode) -> None:
         # pylint: disable=super-init-not-called
         self.expr = expr
 
@@ -820,7 +794,7 @@ class StarStarExprNode(AstNode):
 
     __slots__ = ('expr', )
 
-    def __init__(self, *, expr: 'GenericNode') -> None:
+    def __init__(self, *, expr: AstNode) -> None:
         # pylint: disable=super-init-not-called
         self.expr = expr
 
@@ -848,16 +822,17 @@ class StringNode(AstNode):
         return self
 
     def anchors(self) -> Iterator[kythe.Anchor]:
-        yield from ()
+        yield from []
 
 
 class SubscriptListNode(AstNode):
+    """Corresponds to `subscript_list`."""
 
     __slots__ = ('subscripts', )
 
-    def __init__(self, *, subscripts: List['SubscriptNode']) -> None:
+    def __init__(self, *, subscripts: List[AstNode]) -> None:
         # pylint: disable=super-init-not-called
-        self.subscripts = subscripts
+        self.subscripts = cast(List[SubscriptNode], subscripts)
 
     def fqns(self, ctx: FqnCtx) -> 'SubscriptListNode':
         return SubscriptListNode(subscripts=[
@@ -870,13 +845,12 @@ class SubscriptListNode(AstNode):
 
 
 class SubscriptNode(AstNode):
+    """Corresponds to `subscript`."""
 
     __slots__ = ('expr1', 'expr2', 'expr3')
 
-    def __init__(self, *, expr1: Union['NameNode', 'NumberNode', 'OmittedNode',
-                                       'OpNode', 'StringNode'],
-                 expr2: Union['NumberNode', 'OmittedNode', 'OpNode'],
-                 expr3: 'OmittedNode') -> None:
+    def __init__(self, *, expr1: AstNode, expr2: AstNode,
+                 expr3: AstNode) -> None:
         # pylint: disable=super-init-not-called
         self.expr1 = expr1
         self.expr2 = expr2
@@ -895,15 +869,13 @@ class SubscriptNode(AstNode):
 
 
 class TnameNode(AstNode):
+    """Corresponds to `tname`."""
 
     __slots__ = ('name', 'type_expr')
 
-    def __init__(
-            self, *, name: 'NameNode',
-            type_expr: Union['NameNode', 'NumberNode', 'OmittedNode', 'OpNode']
-    ) -> None:
+    def __init__(self, *, name: AstNode, type_expr: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        self.name = name
+        self.name = cast(NameNode, name)
         self.type_expr = type_expr
 
     def fqns(self, ctx: FqnCtx) -> 'TnameNode':
@@ -916,6 +888,7 @@ class TnameNode(AstNode):
 
 
 class TfpListNode(AstNode):
+    """Corresponds to `tfplist`."""
 
     __slots__ = ('items', )
 
@@ -932,16 +905,13 @@ class TfpListNode(AstNode):
 
 
 class TypedArg(AstNode):
+    """Corresponds to `typed_arg`."""
 
     __slots__ = ('name', 'expr')
 
-    def __init__(
-            # pylint: disable=super-init-not-called
-            self,
-            *,
-            name: 'TnameNode',
-            expr: Union['LambdaNode', 'NumberNode', 'OmittedNode']) -> None:
-        self.name = name
+    def __init__(self, *, name: AstNode, expr: AstNode) -> None:
+        # pylint: disable=super-init-not-called
+        self.name = cast(TnameNode, name)
         self.expr = expr
 
     def fqns(self, ctx: FqnCtx) -> 'TypedArg':
@@ -953,10 +923,11 @@ class TypedArg(AstNode):
 
 
 class TypedArgsList(AstNode):
+    """Corresponds to `typedargslist`."""
 
     __slots__ = ('args', )
 
-    def __init__(self, *, args: List['TypedArg']) -> None:
+    def __init__(self, *, args: List[TypedArg]) -> None:
         # pylint: disable=super-init-not-called
         self.args = args
 
@@ -970,16 +941,13 @@ class TypedArgsList(AstNode):
 
 
 class WithItemNode(AstNode):
+    """Corresponds to `with_item`."""
 
     __slots__ = ('item', 'as_item')
 
-    def __init__(
-            # pylint: disable=super-init-not-called
-            self,
-            *,
-            item: 'AtomTrailerNode',
-            as_item: Union['GenericNode', 'NameNode', 'OmittedNode']) -> None:
-        self.item = item
+    def __init__(self, *, item: AstNode, as_item: AstNode) -> None:
+        # pylint: disable=super-init-not-called
+        self.item = cast(AtomTrailerNode, item)
         self.as_item = as_item
 
     def fqns(self, ctx: FqnCtx) -> 'WithItemNode':
@@ -992,13 +960,13 @@ class WithItemNode(AstNode):
 
 
 class WithStmt(AstNode):
+    """Corresponds to `with_stmt`."""
 
     __slots__ = ('items', 'suite')
 
-    def __init__(self, *, items: List['WithItemNode'],
-                 suite: 'GenericNode') -> None:
+    def __init__(self, *, items: List[AstNode], suite: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        self.items = items
+        self.items = cast(List[WithItemNode], items)
         self.suite = suite
 
     def fqns(self, ctx: FqnCtx) -> 'WithStmt':
@@ -1021,7 +989,7 @@ class OmittedNode(AstNode):
         return self
 
     def anchors(self) -> Iterator[kythe.Anchor]:
-        yield from ()
+        yield from []
 
 
 class StarNode(AstNode):
@@ -1033,7 +1001,7 @@ class StarNode(AstNode):
         return self
 
     def anchors(self) -> Iterator[kythe.Anchor]:
-        yield from ()
+        yield from []
 
 
 # Singleton OmittedNode, to avoid creating many of them.

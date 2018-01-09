@@ -7,7 +7,7 @@ import collections
 import json
 import logging
 from lib2to3 import pytree
-from typing import Iterator, Optional, Text
+from typing import Dict, Iterator, Optional, Text, Tuple, Set  # pylint: disable=unused-import
 
 from . import pod
 
@@ -28,7 +28,7 @@ class Vname(pod.PlainOldData):
                  corpus: Optional[Text] = None,
                  root: Optional[Text] = None,
                  path: Optional[Text] = None,
-                 language: Optional[Text] = None):
+                 language: Optional[Text] = None) -> None:
         # pylint: disable=super-init-not-called
         self.signature = signature
         self.corpus = corpus
@@ -42,10 +42,10 @@ class File(pod.PlainOldData):
 
     __slots__ = ('content', 'line_offsets', 'encoding')
 
-    def __init__(self, content: Text, encoding: Text):
+    def __init__(self, content: bytes, encoding: Text) -> None:
         # pylint: disable=super-init-not-called
         self.content = content
-        self.line_offsets = {}
+        self.line_offsets = {}  # type: Dict[int, int]
         self.line_offsets[1] = 0
         self.encoding = encoding
         # TODO: this only works with ASCII right now ... need to instead
@@ -92,7 +92,7 @@ class KytheFacts:
         self.corpus = corpus
         self.root = root
         self.language = language
-        self.anchors = {}  # type: Dict[Tuple[Int, Int], Vname]
+        self.anchors = {}  # type: Dict[Tuple[int, int], Vname]
         self.fqns = set()  # type: Set[Text]
         self.file_vname = Vname(
             root=self.root, corpus=self.corpus, path=self.path)
@@ -183,16 +183,20 @@ def json_ordinal_edge(source: Vname, edge_name: str, ordinal: int,
 class Anchor(pod.PlainOldData):
     """A single anchor."""
 
-    # vname(Signature?, Corpus?, Root?, Path?, Language?)
+    __slots__ = ('astn', 'fqn')
+
+    def __init__(self, astn: pytree.Leaf, fqn: Text) -> None:
+        # pylint: disable=super-init-not-called
+        self.astn = astn
+        self.fqn = fqn
+
+    def output(self, kythe_facts, anchor_vname: Vname) -> Iterator[Text]:
+        """Generate fact(s) for a single anchor item."""
+        raise NotImplementedError(self)
 
 
 class BindingAnchor(Anchor):
     """An anchor that binds a name."""
-
-    __slots__ = ('astn', 'fqn')
-
-    def __init__(self, astn: pytree.Leaf, fqn: Text) -> None:
-        super().__init__(astn=astn, fqn=fqn)
 
     def output(self, kythe_facts, anchor_vname: Vname) -> Iterator[Text]:
         fqn_vname = kythe_facts.vname(self.fqn)
@@ -205,11 +209,6 @@ class ClassDefAnchor(Anchor):
 
     # TODO: add bases
 
-    __slots__ = ('astn', 'fqn')
-
-    def __init__(self, astn: pytree.Leaf, fqn: Text) -> None:
-        super().__init__(astn=astn, fqn=fqn)
-
     def output(self, kythe_facts, anchor_vname: Vname) -> Iterator[Text]:
         fqn_vname = kythe_facts.vname(self.fqn)
         yield from kythe_facts.add_variable(self.fqn, fqn_vname, b'record',
@@ -220,11 +219,6 @@ class ClassDefAnchor(Anchor):
 class FuncDefAnchor(Anchor):
     """An anchor that defines a function."""
 
-    __slots__ = ('astn', 'fqn')
-
-    def __init__(self, astn: pytree.Leaf, fqn: Text) -> None:
-        super().__init__(astn=astn, fqn=fqn)
-
     def output(self, kythe_facts, anchor_vname: Vname) -> Iterator[Text]:
         fqn_vname = kythe_facts.vname(self.fqn)
         yield from kythe_facts.add_variable(self.fqn, fqn_vname, b'function')
@@ -233,11 +227,6 @@ class FuncDefAnchor(Anchor):
 
 class RefAnchor(Anchor):
     """An anchor that refers to a name."""
-
-    __slots__ = ('astn', 'fqn')
-
-    def __init__(self, astn: pytree.Leaf, fqn: Text) -> None:
-        super().__init__(astn=astn, fqn=fqn)
 
     def output(self, kythe_facts, anchor_vname: Vname) -> Iterator[Text]:
         fqn_vname = kythe_facts.vname(self.fqn)

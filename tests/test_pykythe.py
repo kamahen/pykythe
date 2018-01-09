@@ -24,7 +24,7 @@ class SomeData(pod.PlainOldData):
 
     __slots__ = ('a', 'b', 'c')
 
-    def __init__(self, a: int, b: int, c: int):
+    def __init__(self, a: int, b: int, c: int) -> None:
         super().__init__(a=a, b=b, c=c)
 
 
@@ -144,10 +144,10 @@ class TestJson(unittest.TestCase):
     """Unit tests for emitting kythe facts as Json."""
 
     def test_json_1(self):
-        """Example from 
-        https://kythe.io/docs/schema/writing-an-indexer.html#_bootstrapping_kythe_support"""
-        # TODO: Fix the documentation at kythe.io for examples of
-        #       JSON, which seem to be wrong
+        """
+        Example from
+        https://kythe.io/docs/schema/writing-an-indexer.html#_bootstrapping_kythe_support
+        """
 
         node_vname = kythe.Vname(corpus='example', path='hello')
 
@@ -175,8 +175,10 @@ class TestJson(unittest.TestCase):
         )
 
     def test_json_2(self):
-        """Example from 
-        https://kythe.io/docs/schema/writing-an-indexer.html#_specifying_spans_of_text"""
+        """
+        Example from
+        https://kythe.io/docs/schema/writing-an-indexer.html#_specifying_spans_of_text
+        """
 
         def make_anchor_vname(file_vname, begin, end):
             return kythe.Vname(

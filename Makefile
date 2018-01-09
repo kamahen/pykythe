@@ -38,8 +38,13 @@ pylint:
 	find . -type f -name '*.py' | grep -v $(TEST_GRAMMAR_DIR) | xargs -L1 pylint --disable=missing-docstring
 
 # pytype doesn't work on this source, but if it did:
-# 	pytype -V3.6 __main__.py
-# 	pytype -V3.6 pykythe_test.py
+pytype: 
+	pytype -V3.6 pykythe/__main__.py
+	pytype -V3.6 tests/test_pykythe.py
+
+mypy:
+	mypy pykythe/__main__.py
+	mypy tests/test_pykythe.py
 
 lint: pylint
 

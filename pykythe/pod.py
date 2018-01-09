@@ -31,12 +31,11 @@ class PlainOldData:
 
     __slots__ = ()
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, **kwargs) -> None:
         """Create object with attrs defined by a dict."""
-        if args:
-            raise ValueError('POD takes only kwargs')
+        # *args aren't allowed (Python will raise TypeError
         try:
-            for attr in self.__slots__:
+            for attr in self.__slots__:  # type: str
                 # Will raise KeyError if a kwargs item isn't in __slots__
                 setattr(self, attr, kwargs.pop(attr))
         except KeyError as exc:
