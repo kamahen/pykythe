@@ -45,12 +45,13 @@ class TokenTests(unittest.TestCase):
 
     #- @testBackslash defines/binding TestBackslash=vname("test_data.py3_test_grammar.TokenTests.testBackslash", _, _, _, python)
     #- TestBackslash.node/kind function
-    #- @self defines/binding vname("test_data.py3_test_grammar.TokenTests.testBackslash.<local>.self", _, _, _, python)
+    #- @self defines/binding TestBackslash_self=vname("test_data.py3_test_grammar.TokenTests.testBackslash.<local>.self", _, _, _, python)
     def testBackslash(self):
         # Backslash means line continuation:
         #- @x defines/binding TokenTest_testBackslash_local_x=vname("test_data.py3_test_grammar.TokenTests.testBackslash.<local>.x", _, _, _, python)
         x = 1 \
         + 1
+        #- @self ref TestBackslash_self
         #- @x ref TokenTest_testBackslash_local_x
         self.assertEquals(x, 2, 'backslash for line continuation')
 
@@ -396,8 +397,13 @@ class GrammarTests(unittest.TestCase):
         l2 = lambda : a[d] # XXX just testing the expression
         l3 = lambda : [2 < x for x in [-1, 3, 0]]
         self.assertEquals(l3(), [0, 1, 0])
+        #- @#0x defines/binding TestLambdaDef_lambda1_x
+        #- @#1x ref TestLambdaDef_lambda1_x
         l4 = lambda x = lambda y = lambda z=1 : z : y() : x()
         self.assertEquals(l4(), 1)
+        #- @#0x defines/binding TestLambdaDef_lambda2_x
+        #- @#1x ref TestLambdaDef_lambda2_x
+        #- !{ @#0x defines/binding TestLambdaDef_lambda1_x } 
         l5 = lambda x, y, z=2: x + y + z
         self.assertEquals(l5(1, 2), 5)
         self.assertEquals(l5(1, 2, 3), 6)

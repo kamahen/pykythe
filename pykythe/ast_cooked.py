@@ -136,7 +136,7 @@ def make_generic_node(descr: Text, items: List[AstNode]) -> AstNode:
 
 
 class AnnAssignNode(AstNode):
-    """Corresponds to `ann_assign`."""
+    """Corresponds to `annassign`."""
 
     __slots__ = ('expr', 'expr_type')
 
@@ -302,6 +302,9 @@ class CompForNode(AstNode):
         self.comp_iter = comp_iter
 
     def fqns(self, ctx: FqnCtx) -> 'CompForNode':
+        # TODO: Add self.for_expr's bindings to comp_iter (and for
+        #       Python2 this "leaks" to current context). See also
+        #       ForStmt.fqns
         return CompForNode(
             for_exprlist=self.for_exprlist.fqns(ctx),
             in_testlist=self.in_testlist.fqns(ctx),
@@ -532,6 +535,8 @@ class ForStmt(AstNode):
         self.else_suite = else_suite
 
     def fqns(self, ctx: FqnCtx) -> 'ForStmt':
+        # TODO: Add self.exprlist's bindings to suite and "leak" to
+        #       outer context.  See also CompForNode.fqns
         return ForStmt(
             exprlist=self.exprlist.fqns(ctx),
             testlist=self.testlist.fqns(ctx),
@@ -546,15 +551,18 @@ class ForStmt(AstNode):
 
 
 class FuncDefStmt(AstNode):
-    """Corresponds to `funcdef` / `async_funcdef`."""
+    """Corresponds to `funcdef` / `async_funcdef` or lambdadef.
+
+    If it's a lambda, the `name` points to the `lambda` keyword.
+    """
 
     __slots__ = ('name', 'parameters', 'return_type', 'suite', 'bindings')
 
-    def __init__(self, *, name: AstNode, parameters: AstNode,
+    def __init__(self, *, name: 'NameNode', parameters: AstNode,
                  return_type: AstNode, suite: AstNode,
                  bindings: Dict[Text, None]) -> None:
         # pylint: disable=super-init-not-called
-        self.name = cast(NameNode, name)
+        self.name = name
         self.parameters = parameters
         self.return_type = return_type
         self.suite = suite
@@ -564,7 +572,13 @@ class FuncDefStmt(AstNode):
         # '.<local>.' is needed to distinguish `x` in following:
         #    def foo(x): pass
         #    foo.x = 'a string'
-        func_fqn = ctx.fqn + '.' + self.name.astn.value + '.<local>'
+        if self.name.astn.value == 'lambda':
+            # Make a unique name for the lambda
+            func_fqn = '{}.lambda[{:d},{:d}].<local>'.format(
+                ctx.fqn, self.name.astn.lineno, self.name.astn.column)
+        else:
+            func_fqn = '{}.{}.<local>'.format(ctx.fqn, self.name.astn.value)
+        # TODO: if inside class, use ctx.bindings.parents.new_child
         func_ctx = ctx._replace(
             fqn=func_fqn,
             bindings=ctx.bindings.new_child(
@@ -660,24 +674,6 @@ class ImportNameNode(AstNode):
 
     def anchors(self) -> Iterator[kythe.Anchor]:
         yield from self.dotted_as_names.anchors()
-
-
-class LambdaNode(AstNode):
-    """Corresponds to `lambda_name`."""
-
-    __slots__ = ('args', 'expr')
-
-    def __init__(self, *, args: AstNode, expr: AstNode) -> None:
-        # pylint: disable=super-init-not-called
-        self.args = cast(Union[OmittedNode, TypedArgsList], args)
-        self.expr = expr
-
-    def fqns(self, ctx: FqnCtx) -> 'LambdaNode':
-        return LambdaNode(args=self.args.fqns(ctx), expr=self.expr.fqns(ctx))
-
-    def anchors(self) -> Iterator[kythe.Anchor]:
-        yield from self.args.anchors()
-        yield from self.expr.anchors()
 
 
 class NameNode(AstNode):
@@ -904,7 +900,7 @@ class TfpListNode(AstNode):
             yield from item.anchors()
 
 
-class TypedArg(AstNode):
+class TypedArgNode(AstNode):
     """Corresponds to `typed_arg`."""
 
     __slots__ = ('name', 'expr')
@@ -914,25 +910,25 @@ class TypedArg(AstNode):
         self.name = cast(TnameNode, name)
         self.expr = expr
 
-    def fqns(self, ctx: FqnCtx) -> 'TypedArg':
-        return TypedArg(name=self.name.fqns(ctx), expr=self.expr.fqns(ctx))
+    def fqns(self, ctx: FqnCtx) -> 'TypedArgNode':
+        return TypedArgNode(name=self.name.fqns(ctx), expr=self.expr.fqns(ctx))
 
     def anchors(self) -> Iterator[kythe.Anchor]:
         yield from self.name.anchors()
         yield from self.expr.anchors()
 
 
-class TypedArgsList(AstNode):
+class TypedArgsListNode(AstNode):
     """Corresponds to `typedargslist`."""
 
     __slots__ = ('args', )
 
-    def __init__(self, *, args: List[TypedArg]) -> None:
+    def __init__(self, *, args: List[TypedArgNode]) -> None:
         # pylint: disable=super-init-not-called
         self.args = args
 
-    def fqns(self, ctx: FqnCtx) -> 'TypedArgsList':
-        return TypedArgsList(
+    def fqns(self, ctx: FqnCtx) -> 'TypedArgsListNode':
+        return TypedArgsListNode(
             args=[args_item.fqns(ctx) for args_item in self.args])
 
     def anchors(self) -> Iterator[kythe.Anchor]:

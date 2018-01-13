@@ -10,7 +10,7 @@ import sys
 import textwrap
 import unittest
 
-# TODO: can we get rid of this hack?
+# TODO: get rid of this hack?
 sys.path.insert(0,
                 os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 

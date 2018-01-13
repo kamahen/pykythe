@@ -140,17 +140,11 @@ def cvt_file_input(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     """file_input: (NEWLINE | stmt)* ENDMARKER"""
     assert not ctx.lhs_binds, [node]
     assert all(
-        ch.type in (
-            syms.stmt,  # pylint: disable=no-member
-            token.NEWLINE,
-            token.ENDMARKER) for ch in node.children)
+        ch.type in (SYMS_STMT, token.NEWLINE, token.ENDMARKER)
+        for ch in node.children)
     return ast_cooked.make_generic_node(
         'file_input',
-        [
-            cvt(ch, ctx)
-            for ch in node.children
-            if ch.type == syms.stmt  # pylint: disable=no-member
-        ])
+        [cvt(ch, ctx) for ch in node.children if ch.type == SYMS_STMT])
 
 
 def cvt_annassign(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
@@ -179,7 +173,7 @@ def cvt_argument(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     assert not ctx.lhs_binds, [node]
     name = ast_cooked.OMITTED_NODE  # type: ast_cooked.AstNode
     comp_for = ast_cooked.OMITTED_NODE  # type: ast_cooked.AstNode
-    if node.children[0].type == syms.test:  # pylint: disable=no-member
+    if node.children[0].type == SYMS_TEST:
         if len(node.children) == 1:
             arg = cvt(node.children[0], ctx)
         else:
@@ -187,14 +181,14 @@ def cvt_argument(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
                 name = cvt(node.children[0], ctx)
                 arg = cvt(node.children[2], ctx)
             else:
-                assert node.children[1].type == syms.comp_for  # pylint: disable=no-member
+                assert node.children[1].type == SYMS_COMP_FOR
                 comp_for = cvt(node.children[1], ctx)
                 # arg is evaluated in the context of comp_for:
                 arg = cvt(node.children[0], ctx)
     elif node.children[0].type == token.DOUBLESTAR:
         arg = ast_cooked.StarStarExprNode(expr=cvt(node.children[1], ctx))
     else:
-        assert node.children[0].type == syms.star_expr  # pylint: disable=no-member
+        assert node.children[0].type == SYMS_STAR_EXPR
         arg = cvt(node.children[0], ctx)
     return ast_cooked.ArgNode(name=name, arg=arg, comp_for=comp_for)
 
@@ -396,7 +390,7 @@ def cvt_dictsetmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     """
     assert not ctx.lhs_binds, [node]
     if (len(node.children) == 4 and node.children[2].type == token.COLON and
-            node.children[3].type == syms.comp_for):  # pylint: disable=no-member
+            node.children[3].type == SYMS_COMP_FOR):
         return ast_cooked.DictSetMakerCompForNode(
             key_value_expr=ast_cooked.make_generic_node(
                 ':', [cvt(node.children[0], ctx),
@@ -404,12 +398,12 @@ def cvt_dictsetmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
             comp_for=cvt(node.children[3], ctx))
     if (len(node.children) == 3 and
             node.children[0].type == token.DOUBLESTAR and
-            node.children[2].type == syms.comp_for):  # pylint: disable=no-member
+            node.children[2].type == SYMS_COMP_FOR):
         return ast_cooked.DictSetMakerCompForNode(
             key_value_expr=ast_cooked.make_generic_node(
                 '**', [cvt(node.children[1], ctx)]),
             comp_for=cvt(node.children[2], ctx))
-    if len(node.children) == 2 and node.children[1] == syms.comp_for:  # pylint: disable=no-member
+    if len(node.children) == 2 and node.children[1] == SYMS_COMP_FOR:
         return ast_cooked.DictSetMakerCompForNode(
             key_value_expr=cvt(node.children[0], ctx),
             comp_for=cvt(node.children[1], ctx))
@@ -509,7 +503,7 @@ def cvt_expr_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     if len(node.children) == 1:
         return cvt(node.children[0], ctx)
     if len(node.children) == 2:
-        assert node.children[1].type == syms.annassign  # pylint: disable=no-member
+        assert node.children[1].type == SYMS_ANNASSIGN
         # Treat as binding even if there's no `=`, because it's
         # sort of a binding (defines the type).
         return ast_cooked.ExprStmt(
@@ -523,7 +517,7 @@ def cvt_expr_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
             exprs=[
                 cvt(ch, ctx) for ch in node.children if ch.type != token.EQUAL
             ])
-    assert node.children[1].type == syms.augassign  # pylint: disable=no-member
+    assert node.children[1].type == SYMS_AUGASSIGN
     return ast_cooked.ExprStmt(
         lhs=cvt(node.children[0], ctx),  # modifies is not binding
         augassign=cvt(node.children[1], ctx),
@@ -571,7 +565,8 @@ def cvt_funcdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     ctx.bindings[name.astn.value] = None
     # start a new set of bindings for the parameters, suite
     ctx_func = new_ctx()
-    parameters = cvt(node.children[2], ctx_func)
+    parameters = ast_cooked.make_generic_node(
+        'parameters', [cvt(node.children[2], ctx_func)])
     if node.children[3].type == token.RARROW:
         return_type = cvt(node.children[4], ctx)
     else:
@@ -681,11 +676,21 @@ def cvt_import_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
 def cvt_lambdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     """lambdef: 'lambda' [varargslist] ':' test"""
     assert not ctx.lhs_binds, [node]
+    name = cast(ast_cooked.NameNode, cvt_lhs_binds(True, node.children[0],
+                                                   ctx))
+    ctx_func = new_ctx()
     if len(node.children) == 4:
-        return ast_cooked.LambdaNode(
-            args=cvt(node.children[1], ctx), expr=cvt(node.children[3], ctx))
-    return ast_cooked.LambdaNode(
-        args=ast_cooked.OMITTED_NODE, expr=cvt(node.children[2], ctx))
+        parameters = cvt(node.children[1], ctx_func)
+        suite = cvt(node.children[3], ctx_func)
+    else:
+        parameters = ast_cooked.make_generic_node('parameters', [])
+        suite = cvt(node.children[2], ctx_func)
+    return ast_cooked.FuncDefStmt(
+        name=name,
+        parameters=parameters,
+        return_type=ast_cooked.OMITTED_NODE,
+        suite=suite,
+        bindings=ctx_func.bindings)
 
 
 def cvt_listmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
@@ -721,12 +726,12 @@ def cvt_power(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         children = node.children
     if len(children) == 1:
         return cvt(children[0], ctx)
-    if children[-1].type == syms.factor:  # pylint: disable=no-member
+    if children[-1].type == SYMS_FACTOR:
         assert children[-2].type == token.DOUBLESTAR
         doublestar_factor = cvt(children[-1], ctx)
         children = children[:-2]
     else:
-        assert len(children) == 1 or children[-1].type == syms.trailer  # pylint: disable=no-member
+        assert len(children) == 1 or children[-1].type == SYMS_TRAILER
         doublestar_factor = None
     # For the trailer, all but the last item are in a non-binding
     # context; the last item is in the current binds context.
@@ -790,20 +795,14 @@ def cvt_return_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
 
 def cvt_simple_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     """simple_stmt: small_stmt (';' small_stmt)* [';'] NEWLINE"""
-    # filter for ch.type == syms.small_stmt
+    # filter for ch.type == SYMS_SMALL_STMT
     assert not ctx.lhs_binds, [node]
     assert all(
-        ch.type in (
-            syms.small_stmt,  # pylint: disable=no-member
-            token.SEMI,
-            token.NEWLINE) for ch in node.children)
+        ch.type in (SYMS_SMALL_STMT, token.SEMI, token.NEWLINE)
+        for ch in node.children)
     return ast_cooked.make_generic_node(
         'simple_stmt',
-        [
-            cvt(ch, ctx)
-            for ch in node.children
-            if ch.type == syms.small_stmt  # pylint: disable=no-member
-        ])
+        [cvt(ch, ctx) for ch in node.children if ch.type == SYMS_SMALL_STMT])
 
 
 def cvt_single_input(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
@@ -856,7 +855,7 @@ def cvt_subscript(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
             expr1 = cvt(node.children[0], ctx)
             i += 2  # skip ':'
         if i < len(node.children):
-            if node.children[i].type == syms.sliceop:  # pylint: disable=no-member
+            if node.children[i].type == SYMS_SLICEOP:
                 expr2 = ast_cooked.OMITTED_NODE
             else:
                 expr2 = cvt(node.children[i], ctx)
@@ -884,12 +883,8 @@ def cvt_suite(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     """suite: simple_stmt | NEWLINE INDENT stmt+ DEDENT"""
     assert not ctx.lhs_binds, [node]
     assert all(
-        ch.type in (
-            syms.simple_stmt,  # pylint: disable=no-member
-            syms.stmt,  # pylint: disable=no-member
-            token.NEWLINE,
-            token.INDENT,
-            token.DEDENT) for ch in node.children)
+        ch.type in (SYMS_SIMPLE_STMT, SYMS_STMT, token.NEWLINE, token.INDENT,
+                    token.DEDENT) for ch in node.children)
 
     return ast_cooked.make_generic_node('suite', [
         cvt(ch, ctx)
@@ -1033,16 +1028,16 @@ def cvt_typedargslist(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         if ch0.type == token.COMMA:
             i += 1
             continue
-        if ch0.type in (syms.tfpdef, syms.vfpdef, syms.tname, syms.vname):  # pylint: disable=no-member
+        if ch0.type in SYMS_TNAMES:  # pylint: disable=no-member
             if i + 1 <= max_i and node.children[i + 1].type == token.EQUAL:
                 args.append(
-                    ast_cooked.TypedArg(
+                    ast_cooked.TypedArgNode(
                         name=cvt_lhs_binds(True, ch0, ctx),
                         expr=cvt(node.children[i + 2], ctx)))
                 i += 3
             else:
                 args.append(
-                    ast_cooked.TypedArg(
+                    ast_cooked.TypedArgNode(
                         name=cvt_lhs_binds(True, ch0, ctx),
                         expr=ast_cooked.OMITTED_NODE))
                 i += 1
@@ -1050,7 +1045,7 @@ def cvt_typedargslist(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
             assert ch0.type in (token.STAR, token.DOUBLESTAR), [i, ch0, node]
             # Don't care about '*' or '**'
             i += 1
-    return ast_cooked.TypedArgsList(args=args)
+    return ast_cooked.TypedArgsListNode(args=args)
 
 
 def cvt_while_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
@@ -1252,6 +1247,22 @@ _DISPATCH = {
     syms.yield_expr: cvt_yield_expr,
     syms.yield_stmt: cvt_yield_stmt
 }
+
+# The following are to prevent pylint complaining about no-member:
+
+SYMS_ANNASSIGN = syms.annassign
+SYMS_AUGASSIGN = syms.augassign
+SYMS_COMP_FOR = syms.comp_for
+SYMS_FACTOR = syms.factor
+SYMS_SIMPLE_stmt = syms.simple_stmt
+SYMS_SLICEOP = syms.sliceop
+SYMS_SMALL_STMT = syms.small_stmt
+SYMS_SIMPLE_STMT = syms.simple_stmt
+SYMS_STAR_EXPR = syms.star_expr
+SYMS_STMT = syms.stmt
+SYMS_TEST = syms.test
+SYMS_TRAILER = syms.trailer
+SYMS_TNAMES = frozenset([syms.tfpdef, syms.vfpdef, syms.tname, syms.vname])
 
 # pylint: enable=no-member
 
