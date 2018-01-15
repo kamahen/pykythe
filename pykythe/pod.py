@@ -55,6 +55,13 @@ class PlainOldData:
         return (self is other or (self.__class__ == other.__class__ and all(
             getattr(self, k) == getattr(other, k) for k in self.__slots__)))
 
+    __hash__ = None  # Because it's not immutuable
+
+    # TODO: def __hash__(self):
+    #           return hash(self.__class__) + sum(
+    #               hash(getattr(self, a) for a in self.__slots__))
+    #   -- but only if the object is immutable
+
     def _replace(self, **kwargs):
         """Make a new object, replacing fields with new values."""
         new_attrs = {

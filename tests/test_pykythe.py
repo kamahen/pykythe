@@ -1,20 +1,20 @@
 """Test pykythe."""
 
 import collections
-from lib2to3 import pytree
-from lib2to3.pgen2 import token
 import json
+import logging
 import os
 import pickle
 import sys
-import textwrap
 import unittest
+from lib2to3 import pytree
+from lib2to3.pgen2 import token
 
 # TODO: get rid of this hack?
 sys.path.insert(0,
                 os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from pykythe import ast_raw, kythe, pod  # pylint: disable=wrong-import-position
+from pykythe import ast_cooked, ast_raw, kythe, pod  # pylint: disable=wrong-import-position
 
 
 class SomeData(pod.PlainOldData):
@@ -113,11 +113,11 @@ class TestAnchor(unittest.TestCase):
 
     def test_leafs(self):
         """Simple-minded test for anchors being computed correctly."""
-        content = textwrap.dedent("""
-            a = 1
-            if a == 234:
-                bcd = "abc"
-        """).encode('utf-8')
+        content = ('# A comment\n'
+                   'a = 1  # Binds `a`\n'
+                   '\n'
+                   'if a == 234:  # Ref `a`\n'
+                   '  bcd = "<br/>"\n').encode('utf-8')
         expected_types = (token.NAME, token.NUMBER, token.STRING)
         expected = [
             b'a',
@@ -126,9 +126,16 @@ class TestAnchor(unittest.TestCase):
             b'a',
             b'234',
             b'bcd',
-            b'"abc"',
+            b'"<br/>"',
         ]
         parse_tree = ast_raw.parse(content)
+
+        self.assertEqual(content.decode('utf-8'), str(parse_tree))
+        self.assertEqual(
+            str(parse_tree), ''.join(
+                str(node)
+                for node in parse_tree.pre_order()
+                if isinstance(node, pytree.Leaf)))
         anchor_file = kythe.File(content, 'utf-8')
         leaf_nodes = [
             node for node in parse_tree.pre_order()
@@ -138,6 +145,46 @@ class TestAnchor(unittest.TestCase):
         for node, expected_str in zip(leaf_nodes, expected):
             start, end = anchor_file.astn_to_range(node)
             self.assertEqual(content[start:end], expected_str)
+        cooked_nodes = ast_raw.cvt_tree(parse_tree)
+        cooked_nodes = cooked_nodes.fqns(
+            ctx=ast_cooked.FqnCtx(
+                fqn='testing', bindings=collections.ChainMap()))
+        anchors = list(cooked_nodes.anchors())
+        self.assertEqual(anchors, [
+            kythe.BindingAnchor(
+                astn=pytree.Leaf(token.NAME, 'a'), fqn='testing.a'),
+            kythe.RefAnchor(
+                astn=pytree.Leaf(token.NAME, 'a'), fqn='testing.a'),
+            kythe.BindingAnchor(
+                astn=pytree.Leaf(token.NAME, 'bcd'), fqn='testing.bcd')
+        ])
+        self.assertEqual(
+            [(kythe._prefix_to_html(anchor.astn.prefix),
+              anchor.value_to_html(anchor_file)) for anchor in anchors],
+            [('<span class="comment">#&nbsp;A&nbsp;comment<br/></span>',
+              '<span class="bind" id="@12-13">a</span>'),
+             ('&nbsp;', '<span class="ref" id="@35-36">a</span>'),
+             ('', '<span class="bind" id="@58-61">bcd</span>')])
+        # self.maxDiff = None
+        self.assertEqual(
+            kythe.html_lines(parse_tree, anchors, kythe.File(content,
+                                                             'utf-8')),
+            '<br/>'.join([
+                '<span class="comment">#&nbsp;A&nbsp;comment</span>',
+                ('<span class="bind" id="@12-13">a</span>'
+                 '&nbsp;=&nbsp;1<span class="comment">'
+                 '&nbsp;&nbsp;#&nbsp;Binds&nbsp;`a`</span>'),
+                '',
+                ('<span class="reserved">if</span>&nbsp;'
+                 '<span class="ref" id="@35-36">a</span>'
+                 '&nbsp;==&nbsp;234<span class="punc">:</span>'
+                 '<span class="comment">&nbsp;&nbsp;#&nbsp;Ref&nbsp;`a`</span>'
+                ),
+                ('&nbsp;&nbsp;<span class="bind" id="@58-61">bcd</span>'
+                 '&nbsp;=&nbsp;<span class="string">&quot;&lt;br/&gt;&quot;</span>'
+                ),
+                '',
+            ]))
 
 
 class TestJson(unittest.TestCase):

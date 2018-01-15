@@ -13,7 +13,9 @@ import logging
 import os.path
 import sys
 
-from . import ast_raw, ast_cooked, kythe
+from . import ast_raw
+from . import ast_cooked
+from . import kythe
 
 
 def main() -> int:
@@ -29,9 +31,7 @@ def main() -> int:
         with open(src, 'rb') as src_file:
             src_content = src_file.read()
             parse_tree = ast_raw.parse(src_content)
-        logging.debug('parse_tree: %r', parse_tree)
         cooked_nodes = ast_raw.cvt_tree(parse_tree)
-        logging.debug('cooked_nodes: %r', cooked_nodes)
         cooked_nodes = cooked_nodes.fqns(
             ctx=ast_cooked.FqnCtx(
                 fqn=file_to_module(src), bindings=collections.ChainMap()))
@@ -44,15 +44,13 @@ def main() -> int:
             anchor_file=anchor_file,
             path=src,
             language='python')
-        for output in kythe_facts.output_preamble():
-            print(output)
-        for anchor_item in cooked_nodes.anchors():
-            for output in kythe_facts.output(anchor_item):
-                print(output)
+        anchors = list(cooked_nodes.anchors())
+        for json_fact in kythe_facts.json_facts(anchors, parse_tree):
+            print(json_fact)
     return 0
 
 
-def file_to_module(file_name):
+def file_to_module(file_name: str) -> str:
     root, _ = os.path.splitext(file_name)
     components = root.split(os.path.sep)
     return '.'.join(components)

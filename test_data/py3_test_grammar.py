@@ -49,6 +49,7 @@ class TokenTests(unittest.TestCase):
     def testBackslash(self):
         # Backslash means line continuation:
         #- @x defines/binding TokenTest_testBackslash_local_x=vname("test_data.py3_test_grammar.TokenTests.testBackslash.<local>.x", _, _, _, python)
+        #- !{ @x ref _ }
         x = 1 \
         + 1
         #- @self ref TestBackslash_self

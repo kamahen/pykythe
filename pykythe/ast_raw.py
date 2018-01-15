@@ -515,7 +515,9 @@ def cvt_expr_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
             lhs=cvt_lhs_binds(True, node.children[0], ctx),
             augassign=ast_cooked.OMITTED_NODE,
             exprs=[
-                cvt(ch, ctx) for ch in node.children if ch.type != token.EQUAL
+                cvt(ch, ctx)
+                for ch in node.children[1:]
+                if ch.type != token.EQUAL
             ])
     assert node.children[1].type == SYMS_AUGASSIGN
     return ast_cooked.ExprStmt(
@@ -649,7 +651,7 @@ def cvt_import_from(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     assert (node.children[i].type == token.NAME and
             node.children[i].value == 'import')  # type: ignore
     i += 1
-    # pylint: enable=undefined-loop-variable)
+    # pylint: enable=undefined-loop-variable
     if node.children[i].type == token.STAR:
         import_part = ast_cooked.StarNode()  # type: ast_cooked.AstNode
     elif node.children[i].type == token.LPAR:
@@ -1254,7 +1256,7 @@ SYMS_ANNASSIGN = syms.annassign
 SYMS_AUGASSIGN = syms.augassign
 SYMS_COMP_FOR = syms.comp_for
 SYMS_FACTOR = syms.factor
-SYMS_SIMPLE_stmt = syms.simple_stmt
+SYMS_SIMPLE_STMT = syms.simple_stmt
 SYMS_SLICEOP = syms.sliceop
 SYMS_SMALL_STMT = syms.small_stmt
 SYMS_SIMPLE_STMT = syms.simple_stmt
