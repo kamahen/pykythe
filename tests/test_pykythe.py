@@ -2,7 +2,7 @@
 
 import collections
 import json
-import logging
+import logging  # pylint: disable=unused-import
 import os
 import pickle
 import sys
@@ -159,28 +159,37 @@ class TestAnchor(unittest.TestCase):
                 astn=pytree.Leaf(token.NAME, 'bcd'), fqn='testing.bcd')
         ])
         self.assertEqual(
-            [(kythe._prefix_to_html(anchor.astn.prefix),
+            [(kythe._prefix_to_html(anchor.astn.prefix),  # pylint: disable=protected-access
               anchor.value_to_html(anchor_file)) for anchor in anchors],
-            [('<span class="comment">#&nbsp;A&nbsp;comment<br/></span>',
-              '<span class="bind" id="@12-13">a</span>'),
-             ('&nbsp;', '<span class="ref" id="@35-36">a</span>'),
-             ('', '<span class="bind" id="@58-61">bcd</span>')])
-        # self.maxDiff = None
+            [
+                ('<span class="comment">#&nbsp;A&nbsp;comment<br/></span>',
+                 '<span class="bind" id="@12-13"><a href="xref?q=%4012-13">a</a></span>'
+                ),
+                ('&nbsp;',
+                 '<span class="ref" id="@35-36"><a href="xref?q=%4035-36">a</a></span>'
+                ),
+                ('',
+                 '<span class="bind" id="@58-61"><a href="xref?q=%4058-61">bcd</a></span>'
+                ),
+            ],
+        )
+        self.maxDiff = None  # pylint: disable=invalid-name
+        # pylint: disable=line-too-long
         self.assertEqual(
             kythe.html_lines(parse_tree, anchors, kythe.File(content,
                                                              'utf-8')),
-            '<br/>'.join([
+            '<br/>\n'.join([
                 '<span class="comment">#&nbsp;A&nbsp;comment</span>',
-                ('<span class="bind" id="@12-13">a</span>'
+                ('<span class="bind" id="@12-13"><a href="xref?q=%4012-13">a</a></span>'
                  '&nbsp;=&nbsp;1<span class="comment">'
                  '&nbsp;&nbsp;#&nbsp;Binds&nbsp;`a`</span>'),
                 '',
                 ('<span class="reserved">if</span>&nbsp;'
-                 '<span class="ref" id="@35-36">a</span>'
+                 '<span class="ref" id="@35-36"><a href="xref?q=%4035-36">a</a></span>'
                  '&nbsp;==&nbsp;234<span class="punc">:</span>'
                  '<span class="comment">&nbsp;&nbsp;#&nbsp;Ref&nbsp;`a`</span>'
                 ),
-                ('&nbsp;&nbsp;<span class="bind" id="@58-61">bcd</span>'
+                ('&nbsp;&nbsp;<span class="bind" id="@58-61"><a href="xref?q=%4058-61">bcd</a></span>'
                  '&nbsp;=&nbsp;<span class="string">&quot;&lt;br/&gt;&quot;</span>'
                 ),
                 '',

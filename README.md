@@ -40,6 +40,7 @@ out (on Linux):
 	* `git clone https://github.com/google/pytype`
 	* `git clone https://github.com/python/mypy.git`
 	* `git clone https://github.com/google/yapf.git`
+	* [SWI-Prolog](http://www.swi-prolog.org/download/stable)
 
 * `make -C <pkgdir> test test_grammar`
 

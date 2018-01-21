@@ -1,4 +1,4 @@
-#!/usr/bin/python3.6
+#!/usr/bin/env python3.6
 """Main program for Python parser that outputs JSON facts.
 
 This uses lib2to3, which supports both Python2 and Python3 syntax.
@@ -9,6 +9,7 @@ TODO: The code here is temporary scaffolding, and will change
 
 import argparse
 import collections
+import json
 import logging
 import os.path
 import sys
@@ -35,6 +36,9 @@ def main() -> int:
         cooked_nodes = cooked_nodes.fqns(
             ctx=ast_cooked.FqnCtx(
                 fqn=file_to_module(src), bindings=collections.ChainMap()))
+        cooked_nodes_json_dict = cooked_nodes.as_json_dict()
+        logging.debug('AS_JSON_DICT: %r', cooked_nodes_json_dict)
+        logging.debug('AS_JSON: %s', json.dumps(cooked_nodes_json_dict))
         anchor_file = kythe.File(
             content=src_content,
             encoding='utf-8')  # TODO: get encoding from parse

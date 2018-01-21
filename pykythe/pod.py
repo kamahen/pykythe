@@ -46,8 +46,11 @@ class PlainOldData:
 
     def __repr__(self):
         """Return a nicely formatted representation string."""
-        args = ', '.join('{}={!r}'.format(attr, getattr(self, attr))
-                         for attr in self.__slots__)
+        try:
+            args = ', '.join('{}={!r}'.format(attr, getattr(self, attr))
+                             for attr in self.__slots__)
+        except AttributeError as exc:
+            return self.__class__.__name__ + ':*ERROR*' + repr(exc)
         return self.__class__.__name__ + '(' + args + ')'
 
     def __eq__(self, other):
@@ -78,7 +81,13 @@ class PlainOldData:
             (k, getattr(self, k)) for k in self.__slots__)
 
     def as_json_dict(self):
-        """Return an OrderedDict for all non-None fields."""
+        """Return an OrderedDict for all non-None fields.
+
+        This doesn't recursively traverse the contents of the object;
+        if that is desired, you'll need to write something like
+        ast_cooked.AstNode.as_json_dict.
+
+        """
         result = collections.OrderedDict()
         for k in self.__slots__:
             value = getattr(self, k)

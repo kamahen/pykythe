@@ -65,7 +65,10 @@ clean:
 		$(TESTOUTDIR)/graphstore/* $(TESTOUTDIR)/tables/*
 	find $(TESTOUTDIR) -type f
 
-$(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).json: $(TEST_GRAMMAR_DIR)/$(TEST_GRAMMAR_FILE).py pykythe/__main__.py \
+$(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).json \
+$(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).json-decoded: \
+		$(TEST_GRAMMAR_DIR)/$(TEST_GRAMMAR_FILE).py pykythe/__main__.py \
+		scripts/decode_json.py \
 		pykythe/ast_cooked.py \
 		pykythe/ast_raw.py \
 		pykythe/kythe.py \
@@ -75,7 +78,7 @@ $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).json: $(TEST_GRAMMAR_DIR)/$(TEST_GRAMMAR_FILE
 		--corpus='test-corpus' \
 		--root='test-root' \
 		$(TEST_GRAMMAR_DIR)/$(TEST_GRAMMAR_FILE).py >"$@"
-	python3.6 -B pykythe/decode_json.py <"$@" >"$@-decoded"
+	python3.6 -B scripts/decode_json.py <"$@" >"$@-decoded"
 
 $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).entries: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).json
 	mkdir -p $(TESTOUTDIR)
@@ -128,3 +131,11 @@ push_to_github:
 	@echo '# cd /tmp/test-github && git push -u origin master'
 
 triples: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).nq.gz
+
+pykythe_http_server: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).json scripts/pykythe_http_server.pl FORCE
+	scripts/pykythe_http_server.pl \
+		--port 8008 \
+		--kythe $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).json
+
+FORCE:
+.PHONY: FORCE

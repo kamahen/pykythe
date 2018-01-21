@@ -6,7 +6,8 @@ import codecs
 import collections
 import html
 import json
-import logging
+import logging  # pylint: disable=unused-import
+import urllib.parse
 from lib2to3 import pytree
 from lib2to3.pgen2 import token
 from typing import Dict, Iterator, List, Optional, Text, Tuple, Sequence, Set  # pylint: disable=unused-import
@@ -115,9 +116,11 @@ class KytheFacts:
         yield json_fact(self.file_vname, 'x-numlines',
                         str(self.anchor_file.numlines).encode('utf-8'))
         if parse_tree:
-            yield json_fact(self.file_vname, 'x-html',
-                            html_lines(parse_tree, anchors,
-                                       self.anchor_file).encode('utf-8'))
+            html_data = html_lines(parse_tree, anchors,
+                                   self.anchor_file).encode('utf-8')
+            # TODO: 'x-htmlgz', zlib.compress(html_data
+            #       (controlled by a flag)
+            yield json_fact(self.file_vname, 'x-html', html_data)
         for anchor_item in anchors:
             yield from self.json_facts_for_anchor(anchor_item)
 
@@ -217,8 +220,11 @@ class Anchor(pod.PlainOldData):
         """Generate HTML for this anchor."""
         assert self.html_class
         start, end = anchor_file.astn_to_range(self.astn)
-        return '<span class="{}" id="@{:d}-{:d}">{}</span>'.format(
-            self.html_class, start, end, _expand_to_html(self.astn.value))
+        anchor_id = '@{:d}-{:d}'.format(start, end)
+        return '<span class="{}" id="{}"><a href="xref?q={}">{}</a></span>'.format(
+            self.html_class, html.escape(anchor_id),
+            urllib.parse.quote_plus(anchor_id), _expand_to_html(
+                self.astn.value))
 
 
 class BindingAnchor(Anchor):
@@ -310,7 +316,8 @@ def _astn_to_html(node: pytree.Leaf,
         result = _html_span('reserved', node.value)
         result = _expand_to_html(node.value)
     result = _prefix_to_html(node.prefix) + result
-    return result.replace('<br/></span>', '</span><br/>')
+    return result.replace('<br/></span>', '</span><br/>').replace(
+        '<br/>', '<br/>\n')
 
 
 def _prefix_to_html(prefix: Text) -> Text:
@@ -327,10 +334,15 @@ def _html_span(html_class: Text, text: Text) -> Text:
 
 
 def _expand_to_html(text: Text) -> Text:
-    # splitlines throws away a final '\n', so we add a character to
-    # the end, then ignore that character
-    text2 = '<br/>'.join(
+    # TODO: is <div>...</div> better than <br/>? The latter is simpler
+    # to implement.
+
+    # splitlines omits final '\n', so add a character to the end, then
+    # ignore that character. (using keepends=True wouldn't fix this)
+    # Don't need to do anything for the beginning.
+    text = '<br/>'.join(
         html.escape(line.expandtabs())
         for line in (text + '-').splitlines())[:-1]
-    # TODO: properly handle Unicode whitespace:
-    return ''.join('&nbsp;' if c.isspace() else c for c in text2)
+    # TODO: Properly handle Unicode whitespace that aren't a single
+    #       blank space
+    return ''.join('&nbsp;' if c.isspace() else c for c in text)

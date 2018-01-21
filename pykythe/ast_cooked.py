@@ -9,7 +9,7 @@ Each node is a subclass of AstNode.
 """
 
 import collections
-import logging
+import logging  # pylint: disable=unused-import
 from lib2to3 import pytree
 from typing import cast, Dict, Iterator, List, Text, Union
 
@@ -58,6 +58,17 @@ class AstNode(pod.PlainOldData):
         for key, value in kwargs.items():
             setattr(self, key, value)
 
+    def as_json_dict(self):
+        """Recursively turn a node into a dict for JSON-ification."""
+        # TODO: this code  is not properly tested and isn't used yet.
+        # TODO: result = collections.OrderedDict()
+        result = {}
+        for k in self.__slots__:
+            value = getattr(self, k)
+            if value is not None:
+                result[k] = _as_json_dict_full(value)
+        return {'type': self.__class__.__name__, 'slots': result}
+
     def fqns(self, ctx: FqnCtx) -> 'AstNode':
         """Make a new node with FQN information.
 
@@ -91,6 +102,39 @@ class AstNode(pod.PlainOldData):
         and NameNode.
         """
         raise NotImplementedError(self)
+
+
+def _as_json_dict_full(value):
+    """Recursively turn an object into a dict for JSON-ification."""
+    # pylint: disable=too-many-return-statements
+    if isinstance(value, pod.PlainOldData):
+        return value.as_json_dict()
+    if isinstance(value, list):
+        return [_as_json_dict_full(v) for v in value]
+    if isinstance(value, pytree.Leaf):
+        return {
+            'type': 'Leaf',
+            'leaf_type': value.type,
+            'value': value.value,
+            'prefix': value.prefix,
+            'lineno': value.lineno,
+            'column': value.column
+        }
+    if isinstance(value, bool):
+        return {'type': 'bool', 'value': str(value)},
+    if isinstance(value, int):
+        return {'type': 'int', 'value': value}
+    if isinstance(value, str):
+        return {'type': 'str', 'value': value},
+    if isinstance(value, dict):
+        return {
+            'type': 'dict',
+            'items': {k: _as_json_dict_full(v)
+                      for k, v in value.items()}
+        }
+    if value is None:
+        return {'type': 'None'}
+    return {'NOT-POD': value.__class__.__name__, 'value': value}
 
 
 class GenericNode(AstNode):
@@ -339,7 +383,7 @@ class ComparisonOpNode(AstNode):
     __slots__ = ('op', 'args')
 
     def __init__(self, *, op: AstNode, args: List[AstNode]) -> None:
-        # pylint: disable=super-init-not-called
+        # pylint: disable=super-init-not-called,invalid-name
         self.op = cast(CompOpNode, op)
         self.args = args
 
@@ -808,7 +852,7 @@ class StringNode(AstNode):
         astns: The AST nodes of the string
     """
 
-    __slots__ = ('values', 'astns')
+    __slots__ = ('astns', )
 
     def __init__(self, *, astns: List[pytree.Leaf]) -> None:
         # pylint: disable=super-init-not-called
