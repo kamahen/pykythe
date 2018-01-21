@@ -9,16 +9,16 @@ KYTHE=../kythe
 KYTHE_BIN=$(KYTHE)/bazel-bin
 VERIFIER_EXE=$(KYTHE_BIN)/kythe/cxx/verifier/verifier
 # VERIFIER_EXE=/opt/kythe/tools/verifier
-ENTRYSTREAM_EXE=$(KYTHE_BIN)/kythe/go/platform/tools/entrystream/entrystream
+ENTRYSTREAM_EXE=$(KYTHE_BIN)/kythe/go/platform/tools/entrystream/linux_amd64_stripped/entrystream
 # ENTRYSTREAM_EXE=/opt/kythe/tools/entrystream
-WRITE_ENTRIES_EXE=$(KYTHE_BIN)/kythe/go/storage/tools/write_entries/write_entries
-WRITE_TABLES_EXE=$(KYTHE_BIN)/kythe/go/serving/tools/write_tables/write_tables
+WRITE_ENTRIES_EXE=$(KYTHE_BIN)/kythe/go/storage/tools/write_entries/linux_amd64_stripped/write_entries
+WRITE_TABLES_EXE=$(KYTHE_BIN)/kythe/go/serving/tools/write_tables/linux_amd64_stripped/write_tables
 # http_server built from source requires some additional post-processing,
 #     so use the old http_server from Kythe v0.0.26
-# HTTP_SERVER_EXE=$(KYTHE_BIN)/kythe/go/serving/tools/http_server/http_server
-TRIPLES_EXE=$(KYTHE_BIN)/kythe/go/storage/tools/triples/triples
+# HTTP_SERVER_EXE=$(KYTHE_BIN)/kythe/go/serving/tools/http_server/linux_amd64_stripped/http_server
+TRIPLES_EXE=$(KYTHE_BIN)/kythe/go/storage/tools/triples/linux_amd64_stripped/triples
 HTTP_SERVER_EXE=/opt/kythe/tools/http_server
-KYTHE_EXE=$(KYTHE_BIN)/kythe/go/serving/tools/kythe/kythe
+KYTHE_EXE=$(KYTHE_BIN)/kythe/go/serving/tools/kythe/linux_amd64_stripped/kythe
 # assume that /opt/kythe has been set up from
 # https://github.com/google/kythe/releases/download/v0.0.26/kythe-v0.0.26.tar.gz
 HTTP_SERVER_RESOURCES=/opt/kythe/web/ui
