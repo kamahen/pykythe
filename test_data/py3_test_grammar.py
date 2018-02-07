@@ -3,6 +3,8 @@
 This is derived from Python-3.6.4/Lib/lib2to3/tests/data/py3_test_grammar.py
 with Kythe verifier rules added.
 
+Additions (besides the "#-" items) are marked with "# ADDITION" ... "# end-ADDITION"
+
 TODO: remove all "#- //" lines (these are "to be implemented" syntactic items).
 """
 
@@ -984,6 +986,22 @@ class GrammarTests(unittest.TestCase):
         self.assertEqual((6 * 2 if 1 else 4), 12)
         self.assertEqual((6 / 2 if 1 else 3), 3)
         self.assertEqual((6 < 4 if 0 else 2), 2)
+
+    # ADDITION
+    def testLhsTrailer(self):
+        #- @i defines/binding TestLhsTrailer_i
+        i = 0
+        #- @d defines/binding TestLhsTrailer_d
+        d = {}
+        d[i] = 1
+        #- @d ref TestLhsTrailer_d
+        #- @i ref TestLhsTrailer_i
+        #- // TODO: generates the following, which is incorrect:
+        #- // test_data.py3_test_grammar.GrammarTests.testLhsTrailer.<local>.x
+        #- @x defines/binding _TestLhsTrailer_x?
+        d[i].x = 2
+        # TODO: add tests for '.', f(i).x = ...
+        # end-ADDITION
 
 
 def test_main():

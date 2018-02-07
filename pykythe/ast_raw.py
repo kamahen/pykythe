@@ -470,6 +470,7 @@ def cvt_except_clause(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         assert len(node.children) == 4, [node]
         exc1 = cvt(node.children[1], ctx)
         exc2 = cvt_lhs_binds(True, node.children[3], ctx)
+    # TODO: ExceptNode
     return ast_cooked.make_generic_node('except_clause', [exc1, exc2])
 
 
@@ -562,8 +563,8 @@ def cvt_funcdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     assert not ctx.lhs_binds, [node]
     # The bindings for FuncDefStmt are built up in the calls to
     # parameters and suite.
-    name = cast(ast_cooked.NameNode, cvt_lhs_binds(True, node.children[1],
-                                                   ctx))
+    name = cast(ast_cooked.NameNode,
+                cvt_lhs_binds(True, node.children[1], ctx))
     ctx.bindings[name.astn.value] = None
     # start a new set of bindings for the parameters, suite
     ctx_func = new_ctx()
@@ -678,8 +679,8 @@ def cvt_import_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
 def cvt_lambdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     """lambdef: 'lambda' [varargslist] ':' test"""
     assert not ctx.lhs_binds, [node]
-    name = cast(ast_cooked.NameNode, cvt_lhs_binds(True, node.children[0],
-                                                   ctx))
+    name = cast(ast_cooked.NameNode,
+                cvt_lhs_binds(True, node.children[0], ctx))
     ctx_func = new_ctx()
     if len(node.children) == 4:
         parameters = cvt(node.children[1], ctx_func)
@@ -736,9 +737,10 @@ def cvt_power(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         assert len(children) == 1 or children[-1].type == SYMS_TRAILER
         doublestar_factor = None
     # For the trailer, all but the last item are in a non-binding
-    # context; the last item is in the current binds context.
-    atom = cvt(children[0], ctx)
+    # context; the last item is in the current binds context (which
+    # only applies for ".".
     trailer_ctx = ctx._replace(lhs_binds=False)
+    atom = cvt(children[0], trailer_ctx)
     trailers = [cvt(ch, trailer_ctx) for ch in children[1:-1]]
     if len(children) > 1:
         trailers.append(cvt(children[-1], ctx))
@@ -984,16 +986,17 @@ def cvt_tname(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
 
 def cvt_trailer(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     """trailer: '(' [arglist] ')' | '[' subscriptlist ']' | '.' NAME"""
-    # Can appear on LHS
+    # Can appear on LHS - cvt_power will set ctx.lhs_binds appropriately
     if node.children[0].type == token.LPAR:
         if node.children[1].type == token.RPAR:
             return ast_cooked.make_generic_node('()', [])
         else:
-            return cvt(node.children[1], ctx)
+            return cvt_lhs_binds(False, node.children[1], ctx)
     if node.children[0].type == token.LSQB:
-        return cvt(node.children[1], ctx)
+        return cvt_lhs_binds(False, node.children[1], ctx)
     assert node.children[0].type == token.DOT
-    return ast_cooked.DotNameTrailerNode(name=cvt(node.children[1], ctx))
+    return ast_cooked.DotNameTrailerNode(
+        name=cvt(node.children[1], ctx))
 
 
 def cvt_try_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:

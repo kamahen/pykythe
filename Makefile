@@ -48,10 +48,15 @@ pyflakes:
 	find . -type f -name '*.py' | grep -v $(TEST_GRAMMAR_DIR) | \
 		grep -v snippets.py | xargs -L1 pyflakes
 
-# pytype doesn't work on this source, but if it did:
+PYTYPE_DIR=/tmp/pykythe_pytype
+PYTYPE_V=3.6
 pytype:
-	pytype -V3.6 pykythe/__main__.py
-	pytype -V3.6 tests/test_pykythe.py
+	mkdir -p $(PYTYPE_DIR)
+	-cd pykythe && pytype -V$(PYTYPE_V) -P $(PYTYPE_DIR) pod.py -o $(PYTYPE_DIR)/pod.pyi
+	-cd pykythe && pytype -V$(PYTYPE_V) -P $(PYTYPE_DIR) kythe.py -o $(PYTYPE_DIR)/kythe.pyi
+	-cd pykythe && pytype -V$(PYTYPE_V) -P $(PYTYPE_DIR) ast_cooked.py -o $(PYTYPE_DIR)/ast_cooked.pyi
+	-cd pykythe && pytype -V$(PYTYPE_V) -P $(PYTYPE_DIR) ast_raw.py -o $(PYTYPE_DIR)/ast_raw.pyi
+	-cd pykythe && pytype -V$(PYTYPE_V) -P $(PYTYPE_DIR) __main__.py -o $(PYTYPE_DIR)/__main__.pyi
 
 mypy:
 	mypy pykythe/__main__.py
