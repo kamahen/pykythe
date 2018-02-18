@@ -34,7 +34,7 @@ test: tests/test_pykythe.py \
 	python3.6 -B tests/test_pykythe.py
 
 # Test that all syntactic forms are processed:
-test_grammar: verify
+test_grammar: verify-bindings verify-$(TEST_GRAMMAR_FILE)
 
 # Reformat all the source code (uses .style.yapf)
 pyformat:
@@ -70,9 +70,10 @@ clean:
 		$(TESTOUTDIR)/graphstore/* $(TESTOUTDIR)/tables/*
 	find $(TESTOUTDIR) -type f
 
-$(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).json \
-$(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).json-decoded: \
-		$(TEST_GRAMMAR_DIR)/$(TEST_GRAMMAR_FILE).py pykythe/__main__.py \
+$(TESTOUTDIR)/%.json \
+$(TESTOUTDIR)/%.json-decoded: \
+		$(TEST_GRAMMAR_DIR)/%.py \
+		pykythe/__main__.py \
 		scripts/decode_json.py \
 		pykythe/ast_cooked.py \
 		pykythe/ast_raw.py \
@@ -82,26 +83,26 @@ $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).json-decoded: \
 	python3.6 -B -m pykythe \
 		--corpus='test-corpus' \
 		--root='test-root' \
-		$(TEST_GRAMMAR_DIR)/$(TEST_GRAMMAR_FILE).py >"$@"
+		$< >"$@"
 	python3.6 -B scripts/decode_json.py <"$@" >"$@-decoded"
 
-$(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).entries: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).json
-	mkdir -p $(TESTOUTDIR)
+%.entries: %.json
+	mkdir -p $(dir $<)
 	$(ENTRYSTREAM_EXE) --read_json <"$<" >"$@"
 
-verify: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).entries
-	$(VERIFIER_EXE) -check_for_singletons -goal_prefix='#-' "$(TEST_GRAMMAR_DIR)/$(TEST_GRAMMAR_FILE).py" <"$<"
+verify-%: $(TESTOUTDIR)/%.entries $(TEST_GRAMMAR_DIR)/%.py
+	$(VERIFIER_EXE) -check_for_singletons -goal_prefix='#-' "$(word 2,$^)" <"$(word 1,$^)"
 
 prep_server: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).nq.gz
 
-$(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).nq.gz: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).entries
+%.nq.gz: %.entries
 	rm -rf $(TESTOUTDIR)/graphstore $(TESTOUTDIR)/tables
 	$(WRITE_ENTRIES_EXE) -graphstore $(TESTOUTDIR)/graphstore \
-		<$(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).entries
+		<"$<"
 	mkdir -p $(TESTOUTDIR)/graphstore $(TESTOUTDIR)/tables
 	$(WRITE_TABLES_EXE) -graphstore=$(TESTOUTDIR)/graphstore -out=$(TESTOUTDIR)/tables
-	$(TRIPLES_EXE) $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).entries | \
-		gzip >$(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).nq.gz
+	$(TRIPLES_EXE) "$<" | \
+		gzip >"$@"
 	# 	$(TRIPLES_EXE) -graphstore $(TESTOUTDIR)/graphstore
 
 
@@ -132,8 +133,8 @@ push_to_github:
 	rsync -aAHX ../kythe /tmp/test-github/
 	-cd /tmp/test-github/pykythe && git status
 	-cd /tmp/test-github/pykythe && git difftool --no-prompt --tool=tkdiff
-	@echo '# cd /tmp/test-github && git commit -mCOMMIT-MSG'
-	@echo '# cd /tmp/test-github && git push -u origin master'
+	@echo '# cd /tmp/test-github/pykythe && git commit -mCOMMIT-MSG' -a
+	@echo '# cd /tmp/test-github/pykythe && git push -u origin master'
 
 triples: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).nq.gz
 

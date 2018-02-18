@@ -3,7 +3,13 @@
 This is derived from Python-3.6.4/Lib/lib2to3/tests/data/py3_test_grammar.py
 with Kythe verifier rules added.
 
-Additions (besides the "#-" items) are marked with "# ADDITION" ... "# end-ADDITION"
+The "{...}"s in verifier goals are to avoid unnecessary backtracking
+in the verifier (it *eventually* terminates without them, but takes a
+very long time). The order of goals might be important for
+performance: the `defines/binding` goals are given before `ref` goals,
+but I haven't verified that this ordering is needed for performance or
+for the "{...}" notations to work. Also, some goals can't have "{...}";
+for example, a `ref` to a forward `defines/binding` can't have "{...}".
 
 TODO: remove all "#- //" lines (these are "to be implemented" syntactic items).
 """
@@ -31,37 +37,37 @@ TODO: remove all "#- //" lines (these are "to be implemented" syntactic items).
 #- // @#0test ref vname("Lib.test", _, _, _, python)
 #- // @support ref vname("Lib.test.support", _, _, _, python)
 #- // @run_unittest ref vname("Lib.test.support.run_unittest", _, _, _, python)
-#- @run_unittest defines/binding vname("test_data.py3_test_grammar.run_unittest", "test-corpus", "test-root", "", python)
+#- { @run_unittest defines/binding vname("test_data.py3_test_grammar.run_unittest", "test-corpus", "test-root", "", python) }
 #- // @check_syntax_error ref vname("Lib.test.support.check_syntax_error", _, _, _, python)
-#- @check_syntax_error defines/binding vname("test_data.py3_test_grammar.check_syntax_error", _, _, _, python)
+#- { @check_syntax_error defines/binding vname("test_data.py3_test_grammar.check_syntax_error", _, _, _, python) }
 from test.support import run_unittest, check_syntax_error
 import unittest
 import sys
 # testing import *
 from sys import *
 
-#- @TokenTests defines/binding TokenTests=vname("test_data.py3_test_grammar.TokenTests", _, _, _, python)
-#- TokenTests.node/kind record
-#- TokenTests.subkind class
+#- { @TokenTests defines/binding TokenTests=vname("test_data.py3_test_grammar.TokenTests", _, _, _, python) }
+#- { TokenTests.node/kind record }
+#- { TokenTests.subkind class }
 class TokenTests(unittest.TestCase):
 
-    #- @testBackslash defines/binding TestBackslash=vname("test_data.py3_test_grammar.TokenTests.testBackslash", _, _, _, python)
-    #- TestBackslash.node/kind function
-    #- @self defines/binding TestBackslash_self=vname("test_data.py3_test_grammar.TokenTests.testBackslash.<local>.self", _, _, _, python)
+    #- { @testBackslash defines/binding TestBackslash=vname("test_data.py3_test_grammar.TokenTests.testBackslash", _, _, _, python) }
+    #- { TestBackslash.node/kind function }
+    #- { @self defines/binding TestBackslash_self=vname("test_data.py3_test_grammar.TokenTests.testBackslash.<local>.self", _, _, _, python) }
     def testBackslash(self):
         # Backslash means line continuation:
-        #- @x defines/binding TokenTest_testBackslash_local_x=vname("test_data.py3_test_grammar.TokenTests.testBackslash.<local>.x", _, _, _, python)
+        #- { @x defines/binding TokenTest_testBackslash_local_x=vname("test_data.py3_test_grammar.TokenTests.testBackslash.<local>.x", _, _, _, python) }
         #- !{ @x ref _ }
         x = 1 \
         + 1
-        #- @self ref TestBackslash_self
-        #- @x ref TokenTest_testBackslash_local_x
+        #- { @self ref TestBackslash_self }
+        #- { @x ref TokenTest_testBackslash_local_x }
         self.assertEquals(x, 2, 'backslash for line continuation')
 
         # Backslash does not means continuation in comments :\
-        #- @x defines/binding TokenTest_testBackslash_local_x
+        #- { @x defines/binding TokenTest_testBackslash_local_x }
         x = 0
-        #- @x ref TokenTest_testBackslash_local_x
+        #- { @x ref TokenTest_testBackslash_local_x }
         self.assertEquals(x, 0, 'backslash ending comment')
 
     def testPlainIntegers(self):
@@ -345,7 +351,7 @@ class GrammarTests(unittest.TestCase):
         pos2key2dict(1,2,tokwarg1=100,tokwarg2=200, k2=100)
 
         # keyword arguments after *arglist
-        #- @#1f defines/binding F
+        #- { @#1f defines/binding F }
         def f(*args, **kwargs):
             return args, kwargs
         self.assertEquals(f(1, x=2, *[3, 4], y=5), ((1, 3, 4),
@@ -354,10 +360,10 @@ class GrammarTests(unittest.TestCase):
         self.assertRaises(SyntaxError, eval, "f(1, x=2, *(3,4), x=5)")
 
         # argument annotation tests
-        #- @#1f defines/binding F
+        #- { @#1f defines/binding F }
         def f(x) -> list: pass
         self.assertEquals(f.__annotations__, {'return': list})
-        #- @#1f defines/binding F
+        #- { @#1f defines/binding F }
         def f(x:int): pass
         self.assertEquals(f.__annotations__, {'x': int})
         def f(*x:str): pass
@@ -400,12 +406,12 @@ class GrammarTests(unittest.TestCase):
         l2 = lambda : a[d] # XXX just testing the expression
         l3 = lambda : [2 < x for x in [-1, 3, 0]]
         self.assertEquals(l3(), [0, 1, 0])
-        #- @#0x defines/binding TestLambdaDef_lambda1_x
-        #- @#1x ref TestLambdaDef_lambda1_x
+        #- { @#0x defines/binding TestLambdaDef_lambda1_x }
+        #- { @#1x ref TestLambdaDef_lambda1_x }
         l4 = lambda x = lambda y = lambda z=1 : z : y() : x()
         self.assertEquals(l4(), 1)
-        #- @#0x defines/binding TestLambdaDef_lambda2_x
-        #- @#1x ref TestLambdaDef_lambda2_x
+        #- { @#0x defines/binding TestLambdaDef_lambda2_x }
+        #- { @#1x ref TestLambdaDef_lambda2_x }
         #- !{ @#0x defines/binding TestLambdaDef_lambda1_x } 
         l5 = lambda x, y, z=2: x + y + z
         self.assertEquals(l5(1, 2), 5)
@@ -549,15 +555,18 @@ class GrammarTests(unittest.TestCase):
 
     def testGlobal(self):
         # 'global' NAME (',' NAME)*
+        #- @#1a ref TestGlobalA?  // TODO: should create a global ref
         global a
         global a, b
         global one, two, three, four, five, six, seven, eight, nine, ten
 
     def testNonlocal(self):
         # 'nonlocal' NAME (',' NAME)*
+        #- @x defines/binding TestNonLocalX
         x = 0
         y = 0
         def f():
+            #- @x ref TestNonLocalX
             nonlocal x
             nonlocal x, y
 
@@ -611,11 +620,11 @@ class GrammarTests(unittest.TestCase):
         for i in 1, 2, 3: pass
         for i, j, k in (): pass
         else: pass
-        #- @Squares defines/binding Squares=vname("test_data.py3_test_grammar.GrammarTests.testFor.<local>.Squares", _, _, _, python)
-        #- Squares.node/kind record
-        #- Squares.subkind class
+        #- { @Squares defines/binding Squares=vname("test_data.py3_test_grammar.GrammarTests.testFor.<local>.Squares", _, _, _, python) }
+        #- { Squares.node/kind record }
+        #- { Squares.subkind class }
         class Squares:
-            #- @__init__ defines/binding vname("test_data.py3_test_grammar.GrammarTests.testFor.<local>.Squares.__init__", _, _, _, python)
+            #- { @__init__ defines/binding vname("test_data.py3_test_grammar.GrammarTests.testFor.<local>.Squares.__init__", _, _, _, python) }
             def __init__(self, max):
                 self.max = max
                 self.sofar = []
@@ -821,6 +830,9 @@ class GrammarTests(unittest.TestCase):
         #                                   (',' test ':' test)* [','])) |
         #                   (test (comp_for | (',' test)* [','])) )
         nums = [1, 2, 3]
+        #- { @#2i defines/binding TestDictComps_for_i }
+        #- { @#0i ref TestDictComps_for_i }
+        #- { @#1i ref TestDictComps_for_i }
         self.assertEqual({i:i+1 for i in nums}, {1: 2, 2: 3, 3: 4})
 
     def testListcomps(self):
@@ -829,9 +841,18 @@ class GrammarTests(unittest.TestCase):
         strs = ["Apple", "Banana", "Coconut"]
         spcs = ["  Apple", " Banana ", "Coco  nut  "]
 
+        #- { @#5s defines/binding TestListComps_for1_s }
+        #- { @#3s ref TestListComps_for1_s }
         self.assertEqual([s.strip() for s in spcs], ['Apple', 'Banana', 'Coco  nut'])
         self.assertEqual([3 * x for x in nums], [3, 6, 9, 12, 15])
+        #- { @#1x defines/binding TestListComps_for2_x }
+        #- { @#0x ref TestListComps_for2_x }
+        #- { @#2x ref TestListComps_for2_x }
         self.assertEqual([x for x in nums if x > 2], [3, 4, 5])
+        #- { @#1i defines/binding TestListComs_for3_i }
+        #- { @#5s defines/binding TestListComs_for3_s }
+        #- { @#0i ref TestListComs_for3_i }
+        #- { @#3s ref TestListComs_for3_s }
         self.assertEqual([(i, s) for i in nums for s in strs],
                          [(1, 'Apple'), (1, 'Banana'), (1, 'Coconut'),
                           (2, 'Apple'), (2, 'Banana'), (2, 'Coconut'),
@@ -933,6 +954,10 @@ class GrammarTests(unittest.TestCase):
 
         # Grammar allows multiple adjacent 'if's in listcomps and genexps,
         # even though it's silly. Make sure it works (ifelse broke this.)
+        #- { @#1x defines/binding TestComprehensionSpecials_for_x }
+        #- { @#0x ref TestComprehensionSpecials_for_x }
+        #- { @#2x ref TestComprehensionSpecials_for_x }
+        #- { @#3x ref TestComprehensionSpecials_for_x }
         self.assertEqual([ x for x in range(10) if x % 2 if x % 3 ], [1, 5, 7])
         self.assertEqual(list(x for x in range(10) if x % 2 if x % 3), [1, 5, 7])
 
@@ -987,25 +1012,9 @@ class GrammarTests(unittest.TestCase):
         self.assertEqual((6 / 2 if 1 else 3), 3)
         self.assertEqual((6 < 4 if 0 else 2), 2)
 
-    # ADDITION
-    def testLhsTrailer(self):
-        #- @i defines/binding TestLhsTrailer_i
-        i = 0
-        #- @d defines/binding TestLhsTrailer_d
-        d = {}
-        d[i] = 1
-        #- @d ref TestLhsTrailer_d
-        #- @i ref TestLhsTrailer_i
-        #- // TODO: generates the following, which is incorrect:
-        #- // test_data.py3_test_grammar.GrammarTests.testLhsTrailer.<local>.x
-        #- @x defines/binding _TestLhsTrailer_x?
-        d[i].x = 2
-        # TODO: add tests for '.', f(i).x = ...
-        # end-ADDITION
-
 
 def test_main():
-    #- @TokenTests ref TokenTests
+    #- { @TokenTests ref TokenTests }
     run_unittest(TokenTests, GrammarTests)
 
 if __name__ == '__main__':

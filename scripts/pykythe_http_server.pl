@@ -123,13 +123,13 @@ load_json(KytheStream) :-
 %%       (source, "", "", string, _)
 process_json_dict(_{source: Source, fact_name: Name, fact_value: ValueBase64}) :-
     base64(Value, ValueBase64),
-    vname(Source),
+    vname(Source, base64_fact{source: Source, fact_name: Name, fact_value: Value}),
     %% format('JSON-fact: ~q~n', [kythe_fact{name: Name, value: Value, source: Source}]),
     assertz(kythe_fact(Name, Source, Value)),
     !.
 process_json_dict(_{source: Source, edge_kind: Kind, fact_name: "/", target: Target}) :-
-    vname(Source),
-    vname(Target),
+    vname(Source, edge_source{source: Source, edge_kind: Kind, fact_name: "/", target: Target}),
+    vname(Target, edge_target{source: Source, edge_kind: Kind, fact_name: "/", target: Target}),
     %% format('JSON-edge: ~q~n', [kythe_edge{kind: Kind, source: Source, target: Target}]),
     assertz(kythe_edge(Kind, Source, Target)),
     !.
@@ -137,11 +137,12 @@ process_json_dict(Fact) :-
     throw(error(bad_json, context(json_dict, Fact))).
 
 %% Verify vname dict is in the form we expect and set tag.
-vname(vname{corpus: _, language: _, root: _, signature: _}) :- !.
-vname(vname_signature{corpus: _, path: _, root: _, signature: _}) :- !.
-vname(vname_path{corpus: _, path: _, root: _}) :- !.
-vname(Dict) :-
-    throw(error(unknown_json_vname, context(fact, Dict))).
+%% TODO: remove the Context param (it's for debugging)
+vname(vname{corpus: _, language: _, root: _, signature: _}, _) :- !.
+vname(vname_signature{corpus: _, path: _, root: _, signature: _}, _) :- !.
+vname(vname_path{corpus: _, path: _, root: _}, _) :- !.
+vname(Dict, Context) :-
+    throw(error(unknown_json_vname, context(fact, Dict-Context))).
 
 %% Debugging: print Kythe facts
 print_all(Pred/N) :-

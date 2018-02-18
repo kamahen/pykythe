@@ -27,15 +27,23 @@ def main() -> int:
         '--corpus', default='', help='Value of "corpus" in Kythe facts')
     parser.add_argument(
         '--root', default='', help='Value of "root" in Kythe facts')
+    parser.add_argument(
+        '--python_version',
+        default=3,
+        choices=[2, 3],
+        type=int,
+        help='Python version (')
     args = parser.parse_args()
     for src in args.src:
         with open(src, 'rb') as src_file:
             src_content = src_file.read()
-            parse_tree = ast_raw.parse(src_content)
-        cooked_nodes = ast_raw.cvt_tree(parse_tree)
+            parse_tree = ast_raw.parse(src_content, args.python_version)
+        cooked_nodes = ast_raw.cvt_parse_tree(parse_tree, args.python_version)
         cooked_nodes = cooked_nodes.fqns(
             ctx=ast_cooked.FqnCtx(
-                fqn=file_to_module(src), bindings=collections.ChainMap()))
+                fqn_dot=file_to_module(src) + '.',
+                bindings=collections.ChainMap(collections.OrderedDict()),
+                python_version=args.python_version))
         cooked_nodes_json_dict = cooked_nodes.as_json_dict()
         logging.debug('AS_JSON_DICT: %r', cooked_nodes_json_dict)
         logging.debug('AS_JSON: %s', json.dumps(cooked_nodes_json_dict))

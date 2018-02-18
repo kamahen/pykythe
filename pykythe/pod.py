@@ -12,6 +12,7 @@ __init__ (that doesn't call super().__init__).
 # pylint: disable=too-few-public-methods
 
 import collections
+from typing import Any, Dict, Sequence, Text, TypeVar  # pylint: disable=unused-import
 
 
 class PlainOldData:
@@ -29,13 +30,14 @@ class PlainOldData:
     isn't immutable; but it's also faster than namedtuple.
     """
 
-    __slots__ = ()
+    # TODO: https://github.com/python/mypy/issues/4547
+    __slots__ = ()  # type: Sequence[str]
 
     def __init__(self, **kwargs) -> None:
         """Create object with attrs defined by a dict."""
-        # *args aren't allowed (Python will raise TypeError
+        # *args aren't allowed (Python will raise TypeError)
         try:
-            for attr in self.__slots__:  # type: str
+            for attr in self.__slots__:  # type: Text
                 # Will raise KeyError if a kwargs item isn't in __slots__
                 setattr(self, attr, kwargs.pop(attr))
         except KeyError as exc:
@@ -44,7 +46,7 @@ class PlainOldData:
         if kwargs:
             raise ValueError('Unknown field names: {!r}'.format(list(kwargs)))
 
-    def __repr__(self):
+    def __repr__(self) -> Text:
         """Return a nicely formatted representation string."""
         try:
             args = ', '.join('{}={!r}'.format(attr, getattr(self, attr))
@@ -53,7 +55,7 @@ class PlainOldData:
             return self.__class__.__name__ + ':*ERROR*' + repr(exc)
         return self.__class__.__name__ + '(' + args + ')'
 
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         """Test for equality."""
         return (self is other or (self.__class__ == other.__class__ and all(
             getattr(self, k) == getattr(other, k) for k in self.__slots__)))
@@ -65,7 +67,9 @@ class PlainOldData:
     #               hash(getattr(self, a) for a in self.__slots__))
     #   -- but only if the object is immutable
 
-    def _replace(self, **kwargs):
+    _SelfType = TypeVar('_SelfType', bound='PlainOldData')
+
+    def _replace(self: _SelfType, **kwargs) -> _SelfType:  # pylint: disable=undefined-variable
         """Make a new object, replacing fields with new values."""
         new_attrs = {
             k: kwargs.pop(k) if k in kwargs else getattr(self, k)
@@ -75,20 +79,19 @@ class PlainOldData:
             raise ValueError('Unknown field names: {!r}'.format(list(kwargs)))
         return self.__class__(**new_attrs)
 
-    def _asdict(self):
+    def _asdict(self) -> Dict[Text, Any]:
         """Return an OrderedDict mapping field names to values."""
         return collections.OrderedDict(
             (k, getattr(self, k)) for k in self.__slots__)
 
-    def as_json_dict(self):
+    def as_json_dict(self) -> Dict[Text, Any]:
         """Return an OrderedDict for all non-None fields.
 
         This doesn't recursively traverse the contents of the object;
         if that is desired, you'll need to write something like
         ast_cooked.AstNode.as_json_dict.
-
         """
-        result = collections.OrderedDict()
+        result = collections.OrderedDict()  # type: Dict[Text, Any]
         for k in self.__slots__:
             value = getattr(self, k)
             if value is not None:

@@ -10,7 +10,7 @@ import logging  # pylint: disable=unused-import
 import urllib.parse
 from lib2to3 import pytree
 from lib2to3.pgen2 import token
-from typing import Dict, Iterator, List, Optional, Text, Tuple, Sequence, Set  # pylint: disable=unused-import
+from typing import Dict, Iterator, Optional, Text, Tuple, Sequence, Set  # pylint: disable=unused-import
 
 from . import pod
 
@@ -61,7 +61,7 @@ class File(pod.PlainOldData):
                 self.line_offsets[lineno] = offset + 1
         self.numlines = lineno - 1
 
-    def astn_to_range(self, astn: pytree.Leaf):
+    def astn_to_range(self, astn: pytree.Leaf) -> Tuple[int, int]:
         """Get the Kythe anchor range from a AST leaf node."""
         offset = self.line_offsets[astn.lineno] + astn.column
         return offset, offset + len(astn.value)
@@ -151,6 +151,7 @@ class KytheFacts:
         """Add a single variable to self."""
         if fqn not in self._fqns:
             self._fqns.add(fqn)
+            assert fqn_vname.signature
             if kind:
                 yield json_fact(fqn_vname, 'node/kind', kind)
             if subkind:
@@ -274,8 +275,9 @@ class RefAnchor(Anchor):
     def facts(self, kythe_facts: KytheFacts,
               anchor_vname: Vname) -> Iterator[Text]:
         fqn_vname = kythe_facts.vname(self.fqn)
+        ref_vname = kythe_facts.vname(self.fqn)
         yield from kythe_facts.add_variable(self.fqn, fqn_vname, b'variable')
-        yield json_edge(anchor_vname, 'ref', kythe_facts.vname(self.fqn))
+        yield json_edge(anchor_vname, 'ref', ref_vname)
 
 
 def html_lines(parse_tree: pytree.Base, anchors: Sequence[Anchor],

@@ -128,72 +128,78 @@ class TestAnchor(unittest.TestCase):
             b'bcd',
             b'"<br/>"',
         ]
-        parse_tree = ast_raw.parse(content)
-
-        self.assertEqual(content.decode('utf-8'), str(parse_tree))
-        self.assertEqual(
-            str(parse_tree), ''.join(
-                str(node)
-                for node in parse_tree.pre_order()
-                if isinstance(node, pytree.Leaf)))
-        anchor_file = kythe.File(content, 'utf-8')
-        leaf_nodes = [
-            node for node in parse_tree.pre_order()
-            if isinstance(node, pytree.Leaf) and node.type in expected_types
-        ]
-        self.assertEqual(len(leaf_nodes), len(expected))
-        for node, expected_str in zip(leaf_nodes, expected):
-            start, end = anchor_file.astn_to_range(node)
-            self.assertEqual(content[start:end], expected_str)
-        cooked_nodes = ast_raw.cvt_tree(parse_tree)
-        cooked_nodes = cooked_nodes.fqns(
-            ctx=ast_cooked.FqnCtx(
-                fqn='testing', bindings=collections.ChainMap()))
-        anchors = list(cooked_nodes.anchors())
-        self.assertEqual(anchors, [
-            kythe.BindingAnchor(
-                astn=pytree.Leaf(token.NAME, 'a'), fqn='testing.a'),
-            kythe.RefAnchor(
-                astn=pytree.Leaf(token.NAME, 'a'), fqn='testing.a'),
-            kythe.BindingAnchor(
-                astn=pytree.Leaf(token.NAME, 'bcd'), fqn='testing.bcd')
-        ])
-        self.assertEqual(
-            [(kythe._prefix_to_html(anchor.astn.prefix),  # pylint: disable=protected-access
-              anchor.value_to_html(anchor_file)) for anchor in anchors],
-            [
-                ('<span class="comment">#&nbsp;A&nbsp;comment<br/></span>',
-                 '<span class="bind" id="@12-13"><a href="xref?q=%4012-13">a</a></span>'
-                ),
-                ('&nbsp;',
-                 '<span class="ref" id="@35-36"><a href="xref?q=%4035-36">a</a></span>'
-                ),
-                ('',
-                 '<span class="bind" id="@58-61"><a href="xref?q=%4058-61">bcd</a></span>'
-                ),
-            ],
-        )
-        self.maxDiff = None  # pylint: disable=invalid-name
-        # pylint: disable=line-too-long
-        self.assertEqual(
-            kythe.html_lines(parse_tree, anchors, kythe.File(content,
-                                                             'utf-8')),
-            '<br/>\n'.join([
-                '<span class="comment">#&nbsp;A&nbsp;comment</span>',
-                ('<span class="bind" id="@12-13"><a href="xref?q=%4012-13">a</a></span>'
-                 '&nbsp;=&nbsp;1<span class="comment">'
-                 '&nbsp;&nbsp;#&nbsp;Binds&nbsp;`a`</span>'),
-                '',
-                ('<span class="reserved">if</span>&nbsp;'
-                 '<span class="ref" id="@35-36"><a href="xref?q=%4035-36">a</a></span>'
-                 '&nbsp;==&nbsp;234<span class="punc">:</span>'
-                 '<span class="comment">&nbsp;&nbsp;#&nbsp;Ref&nbsp;`a`</span>'
-                ),
-                ('&nbsp;&nbsp;<span class="bind" id="@58-61"><a href="xref?q=%4058-61">bcd</a></span>'
-                 '&nbsp;=&nbsp;<span class="string">&quot;&lt;br/&gt;&quot;</span>'
-                ),
-                '',
-            ]))
+        for python_version in 2, 3:
+            parse_tree = ast_raw.parse(content, python_version)
+            self.assertEqual(content.decode('utf-8'), str(parse_tree))
+            self.assertEqual(
+                str(parse_tree), ''.join(
+                    str(node)
+                    for node in parse_tree.pre_order()
+                    if isinstance(node, pytree.Leaf)))
+            anchor_file = kythe.File(content, 'utf-8')
+            leaf_nodes = [
+                node for node in parse_tree.pre_order() if
+                isinstance(node, pytree.Leaf) and node.type in expected_types
+            ]
+            self.assertEqual(len(leaf_nodes), len(expected))
+            for node, expected_str in zip(leaf_nodes, expected):
+                start, end = anchor_file.astn_to_range(node)
+                self.assertEqual(content[start:end], expected_str)
+            cooked_nodes = ast_raw.cvt_parse_tree(parse_tree, python_version)
+            cooked_nodes = cooked_nodes.fqns(
+                ctx=ast_cooked.FqnCtx(
+                    fqn_dot='testing.',
+                    bindings=collections.ChainMap(),
+                    python_version=python_version))
+            anchors = list(cooked_nodes.anchors())
+            self.assertEqual(anchors, [
+                kythe.BindingAnchor(
+                    astn=pytree.Leaf(token.NAME, 'a'), fqn='testing.a'),
+                kythe.RefAnchor(
+                    astn=pytree.Leaf(token.NAME, 'a'), fqn='testing.a'),
+                kythe.BindingAnchor(
+                    astn=pytree.Leaf(token.NAME, 'bcd'), fqn='testing.bcd')
+            ])
+            self.assertEqual(
+                [
+                    (
+                        kythe._prefix_to_html(anchor.astn.prefix),  # pylint: disable=protected-access
+                        anchor.value_to_html(anchor_file))
+                    for anchor in anchors
+                ],
+                [
+                    ('<span class="comment">#&nbsp;A&nbsp;comment<br/></span>',
+                     '<span class="bind" id="@12-13"><a href="xref?q=%4012-13">a</a></span>'
+                    ),
+                    ('&nbsp;',
+                     '<span class="ref" id="@35-36"><a href="xref?q=%4035-36">a</a></span>'
+                    ),
+                    ('',
+                     '<span class="bind" id="@58-61"><a href="xref?q=%4058-61">bcd</a></span>'
+                    ),
+                ],
+            )
+            self.maxDiff = None  # pylint: disable=invalid-name
+            # pylint: disable=line-too-long
+            self.assertEqual(
+                kythe.html_lines(parse_tree, anchors,
+                                 kythe.File(content, 'utf-8')),
+                '<br/>\n'.join([
+                    '<span class="comment">#&nbsp;A&nbsp;comment</span>',
+                    ('<span class="bind" id="@12-13"><a href="xref?q=%4012-13">a</a></span>'
+                     '&nbsp;=&nbsp;1<span class="comment">'
+                     '&nbsp;&nbsp;#&nbsp;Binds&nbsp;`a`</span>'),
+                    '',
+                    ('<span class="reserved">if</span>&nbsp;'
+                     '<span class="ref" id="@35-36"><a href="xref?q=%4035-36">a</a></span>'
+                     '&nbsp;==&nbsp;234<span class="punc">:</span>'
+                     '<span class="comment">&nbsp;&nbsp;#&nbsp;Ref&nbsp;`a`</span>'
+                    ),
+                    ('&nbsp;&nbsp;<span class="bind" id="@58-61"><a href="xref?q=%4058-61">bcd</a></span>'
+                     '&nbsp;=&nbsp;<span class="string">&quot;&lt;br/&gt;&quot;</span>'
+                    ),
+                    '',
+                ]))
 
 
 class TestJson(unittest.TestCase):
