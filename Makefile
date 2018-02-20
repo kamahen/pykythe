@@ -27,6 +27,10 @@ TEST_GRAMMAR_DIR=test_data
 TESTOUTDIR=/tmp/pykythe_test
 BROWSE_PORT=8002
 
+all_tests: test test_grammar test test_grammar pykythe_http_server
+
+all_test_plus: all_tests pyformat mypy 
+
 test: tests/test_pykythe.py \
 		pykythe/ast_raw.py \
 		pykythe/kythe.py \
@@ -58,9 +62,13 @@ pytype:
 	-cd pykythe && pytype -V$(PYTYPE_V) -P $(PYTYPE_DIR) ast_raw.py -o $(PYTYPE_DIR)/ast_raw.pyi
 	-cd pykythe && pytype -V$(PYTYPE_V) -P $(PYTYPE_DIR) __main__.py -o $(PYTYPE_DIR)/__main__.pyi
 
+MYPY=mypy --python-version=3.6 --strict-optional --check-untyped-defs --warn-incomplete-stub --warn-no-return --no-incremental --disallow-any-unimported --show-error-context --implicit-optional --strict
+# TODO: --disallow-incomplete-defs  https://github.com/python/mypy/issues/4603
+# TODO: --disallow-any-generics
+
 mypy:
-	mypy pykythe/__main__.py
-	mypy tests/test_pykythe.py
+	$(MYPY) pykythe/__main__.py
+	$(MYPY) tests/test_pykythe.py
 
 lint: pylint
 

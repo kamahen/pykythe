@@ -12,7 +12,7 @@ __init__ (that doesn't call super().__init__).
 # pylint: disable=too-few-public-methods
 
 import collections
-from typing import Any, Dict, Sequence, Text, TypeVar  # pylint: disable=unused-import
+from typing import Any, Dict, Sequence, Text, TypeVar, cast  # pylint: disable=unused-import
 
 
 class PlainOldData:
@@ -33,7 +33,7 @@ class PlainOldData:
     # TODO: https://github.com/python/mypy/issues/4547
     __slots__ = ()  # type: Sequence[str]
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         """Create object with attrs defined by a dict."""
         # *args aren't allowed (Python will raise TypeError)
         try:
@@ -55,12 +55,13 @@ class PlainOldData:
             return self.__class__.__name__ + ':*ERROR*' + repr(exc)
         return self.__class__.__name__ + '(' + args + ')'
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: Any) -> bool:
         """Test for equality."""
         return (self is other or (self.__class__ == other.__class__ and all(
             getattr(self, k) == getattr(other, k) for k in self.__slots__)))
 
-    __hash__ = None  # Because it's not immutuable
+    def __hash__(self) -> int:
+        raise NotImplementedError(self)  # Because it's not immutuable
 
     # TODO: def __hash__(self):
     #           return hash(self.__class__) + sum(
@@ -69,7 +70,7 @@ class PlainOldData:
 
     _SelfType = TypeVar('_SelfType', bound='PlainOldData')
 
-    def _replace(self: _SelfType, **kwargs) -> _SelfType:  # pylint: disable=undefined-variable
+    def _replace(self: _SelfType, **kwargs: Any) -> _SelfType:  # pylint: disable=undefined-variable
         """Make a new object, replacing fields with new values."""
         new_attrs = {
             k: kwargs.pop(k) if k in kwargs else getattr(self, k)
@@ -77,7 +78,8 @@ class PlainOldData:
         }
         if kwargs:
             raise ValueError('Unknown field names: {!r}'.format(list(kwargs)))
-        return self.__class__(**new_attrs)
+        return self.__class__(  # type: ignore  # TODO: https://github.com/python/mypy/issues/4602
+            **new_attrs)
 
     def _asdict(self) -> Dict[Text, Any]:
         """Return an OrderedDict mapping field names to values."""

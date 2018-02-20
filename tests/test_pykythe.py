@@ -43,7 +43,7 @@ class SomeData2(pod.PlainOldData):
 class TestPlainOldData(unittest.TestCase):
     """Unit tests for PlainOldData."""
 
-    def test_plain_old_data(self):
+    def test_plain_old_data(self) -> None:
         """Test that subclass of PlainOldData works as expected."""
         a_node = SomeData(a=1, b=2, c=3)
         self.assertEqual(a_node, a_node)
@@ -92,7 +92,7 @@ class TestPlainOldData(unittest.TestCase):
 
         with self.assertRaises(TypeError):
             # TypeError: __init__() got an unexpected keyword argument 'x'
-            SomeData(a=1, b=2, c=3, x=666)  # pylint: disable=unexpected-keyword-arg
+            SomeData(a=1, b=2, c=3, x=666)  # type: ignore  # pylint: disable=unexpected-keyword-arg
 
         with self.assertRaises(ValueError):
             # ValueError: Missing field: 'c'
@@ -111,7 +111,7 @@ class TestAnchor(unittest.TestCase):
     # TODO: repeat these for '\r\n' and '\n'.
     # TODO: add tests for non-ASCII.
 
-    def test_leafs(self):
+    def test_leafs(self) -> None:
         """Simple-minded test for anchors being computed correctly."""
         content = ('# A comment\n'
                    'a = 1  # Binds `a`\n'
@@ -205,7 +205,7 @@ class TestAnchor(unittest.TestCase):
 class TestJson(unittest.TestCase):
     """Unit tests for emitting kythe facts as Json."""
 
-    def test_json_1(self):
+    def test_json_1(self) -> None:
         """
         Example from
         https://kythe.io/docs/schema/writing-an-indexer.html#_bootstrapping_kythe_support
@@ -236,13 +236,14 @@ class TestJson(unittest.TestCase):
             },
         )
 
-    def test_json_2(self):
+    def test_json_2(self) -> None:
         """
         Example from
         https://kythe.io/docs/schema/writing-an-indexer.html#_specifying_spans_of_text
         """
 
-        def make_anchor_vname(file_vname, begin, end):
+        def make_anchor_vname(file_vname: kythe.Vname, begin: int,
+                              end: int) -> kythe.Vname:
             return kythe.Vname(
                 signature='@' + str(begin) + ':' + str(end),
                 path=file_vname.path,

@@ -121,6 +121,7 @@ def testGexpFor():
 def testNonLocal():
     #- @x defines/binding TestNonLocalX
     x = 0
+
     def f():
         #- @x ref TestNonLocalX
         nonlocal x

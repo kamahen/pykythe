@@ -11,29 +11,14 @@ Each node is a subclass of AstNode.
 import collections
 import logging  # pylint: disable=unused-import
 from lib2to3 import pytree
-from typing import Any, Dict, Iterator, Optional, Sequence, Text, Type, TypeVar, Union
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Text, TypeVar, Union
 import typing
 
-from . import kythe, pod
+from . import kythe, pod, typing_debug
 
 # pylint: disable=too-few-public-methods
 # pylint: disable-msg=too-many-arguments
 # pylint: disable=too-many-lines
-
-# This definition of `cast` is the same as typing.cast, except it
-# verifies the type:
-# TODO: replace by typing.cast
-
-_T = TypeVar('_T')
-
-
-def cast(typ: Type[_T], val: Any) -> _T:
-    assert isinstance(val, typ), (typ, val)
-    return val
-
-
-def assert_all_isinstance(typ, val):  # TODO: remove this
-    assert all(isinstance(v, typ) for v in val)
 
 
 class FqnCtx(pod.PlainOldData):
@@ -49,7 +34,7 @@ class FqnCtx(pod.PlainOldData):
 
     __slots__ = ('fqn_dot', 'bindings', 'python_version')
 
-    def __init__(self, *, fqn_dot: Text, bindings: collections.ChainMap,
+    def __init__(self, *, fqn_dot: Text, bindings: typing.ChainMap[Text, Text],
                  python_version: int) -> None:
         # pylint: disable=super-init-not-called
         self.fqn_dot = fqn_dot
@@ -71,18 +56,16 @@ class AstNode(pod.PlainOldData):
     # TODO: https://github.com/python/mypy/issues/4547
     __slots__ = ()  # type: Sequence[str]
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         # pylint: disable=super-init-not-called
         # pylint: disable=unidiomatic-typecheck
         assert type(self) is not AstNode, "Must not instantiate AstNode"
-        if args:
-            raise ValueError('POD takes only kwargs')
         for key, value in kwargs.items():
             setattr(self, key, value)
 
-    def as_json_dict(self):
+    def as_json_dict(self) -> Dict[Text, Any]:
         """Recursively turn a node into a dict for JSON-ification."""
-        result = collections.OrderedDict()  # {}
+        result = collections.OrderedDict()  # type: Dict[Text, Any]
         for k in self.__slots__:
             value = getattr(self, k)
             if value is not None:
@@ -143,7 +126,7 @@ class AstListNode(AstNode):
             yield from item.anchors()
 
 
-def _as_json_dict_full(value):
+def _as_json_dict_full(value: Any) -> Any:
     """Recursively turn an object into a dict for JSON-ification."""
     # pylint: disable=too-many-return-statements
     if isinstance(value, pod.PlainOldData):
@@ -215,7 +198,7 @@ class AnnAssignNode(AstNode):
 
     __slots__ = ('expr', 'expr_type')
 
-    def __init__(self, *, expr, expr_type) -> None:
+    def __init__(self, *, expr: AstNode, expr_type: AstNode) -> None:
         # pylint: disable=super-init-not-called
         self.expr = expr
         self.expr_type = expr_type
@@ -236,8 +219,8 @@ class ArgListNode(AstNode):
 
     def __init__(self, *, args: Sequence[AstNode]) -> None:
         # pylint: disable=super-init-not-called
-        assert_all_isinstance((ArgNode, DictGenListSetMakerCompForNode),
-                              args)  # TODO: remove
+        typing_debug.assert_all_isinstance(
+            (ArgNode, DictGenListSetMakerCompForNode), args)  # TODO: remove
         self.args = typing.cast(
             Sequence[Union[ArgNode, DictGenListSetMakerCompForNode]], args)
 
@@ -253,30 +236,30 @@ class ArgListNode(AstNode):
 class ArgNode(AstNode):
     """Corresponds to `argument`."""
 
-    __slots__ = ('name', 'arg', 'comp_for')
+    __slots__ = ('name_astn', 'arg', 'comp_for')
 
-    def __init__(self, *, name: Optional[pytree.Base], arg: AstNode,
+    def __init__(self, *, name_astn: Optional[pytree.Base], arg: AstNode,
                  comp_for: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        assert isinstance(name,
-                          (pytree.Leaf, type(None))), [name]  # TODO: remove
-        self.name = typing.cast(Optional[pytree.Leaf], name)
+        assert isinstance(
+            name_astn, (pytree.Leaf, type(None))), [name_astn]  # TODO: remove
+        self.name_astn = name_astn  # TODO: typing.cast(Optional[pytree.Leaf], name_astn)
         self.arg = arg
         assert isinstance(
             comp_for, (CompForNode, OmittedNode)), [comp_for]  # TODO: remove
-        self.comp_for = typing.cast(Union[CompForNode, OmittedNode], comp_for)
+        self.comp_for = comp_for  # TODO: typing.cast(Union[CompForNode, OmittedNode], comp_for)
 
     def fqns(self, ctx: FqnCtx) -> 'ArgNode':
         comp_for_ctx = self.comp_for.scope_ctx(ctx)
         comp_for = self.comp_for.fqns(comp_for_ctx)
         arg = self.arg.fqns(comp_for_ctx)
         return ArgNode(
-            name=self.name,  # TODO: match to funcdef
+            name_astn=self.name_astn,  # TODO: match to funcdef
             arg=arg,
             comp_for=comp_for)
 
     def anchors(self) -> Iterator[kythe.Anchor]:
-        # TODO: hande self.name
+        # TODO: handle self.name_astn
         yield from self.arg.anchors()
         yield from self.comp_for.anchors()
 
@@ -288,8 +271,8 @@ class AsNameNode(AstNode):
 
     def __init__(self, *, name: AstNode, as_name: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        self.name = cast(NameNode, name)
-        self.as_name = cast(NameNode, as_name)
+        self.name = typing_debug.cast(NameNode, name)
+        self.as_name = typing_debug.cast(NameNode, as_name)
 
     def fqns(self, ctx: FqnCtx) -> 'AsNameNode':
         return AsNameNode(
@@ -330,7 +313,7 @@ class AugAssignNode(AstNode):
 
     def __init__(self, *, op_astn: pytree.Base) -> None:
         # pylint: disable=super-init-not-called
-        self.op_astn = cast(pytree.Leaf, op_astn)
+        self.op_astn = typing_debug.cast(pytree.Leaf, op_astn)
 
     def fqns(self, ctx: FqnCtx) -> 'AugAssignNode':
         return self
@@ -347,9 +330,9 @@ class ClassDefStmt(AstNode):
     def __init__(self, *, name: AstNode, bases: AstNode, suite: AstNode,
                  scope_bindings: Dict[Text, None]) -> None:
         # pylint: disable=super-init-not-called
-        self.name = cast(NameNode, name)
+        self.name = typing_debug.cast(NameNode, name)
         assert isinstance(bases, (ArgListNode, OmittedNode))  # TODO: remove
-        self.bases = typing.cast(Union[ArgListNode, OmittedNode], bases)
+        self.bases = bases  # TODO: typing.cast(Union[ArgListNode, OmittedNode], bases)
         self.suite = suite
         self.scope_bindings = scope_bindings
 
@@ -369,6 +352,7 @@ class ClassDefStmt(AstNode):
     def anchors(self) -> Iterator[kythe.Anchor]:
         # TODO: add bases to ClassDefAnchor
         assert self.name.binds
+        assert self.name.fqn
         yield kythe.ClassDefAnchor(astn=self.name.astn, fqn=self.name.fqn)
         yield from self.bases.anchors()
         yield from self.suite.anchors()
@@ -379,7 +363,7 @@ class CompIfCompIterNode(AstNode):
 
     __slots__ = ('value_expr', 'comp_iter')
 
-    def __init__(self, *, value_expr, comp_iter) -> None:
+    def __init__(self, *, value_expr: AstNode, comp_iter: AstNode) -> None:
         # pylint: disable=super-init-not-called
         self.value_expr = value_expr
         self.comp_iter = comp_iter
@@ -404,7 +388,7 @@ class CompForNode(AstNode):
                  in_testlist: AstNode, comp_iter: AstNode,
                  scope_bindings: Dict[Text, None]) -> None:
         # pylint: disable=super-init-not-called
-        self.astn = cast(pytree.Leaf, astn)
+        self.astn = typing_debug.cast(pytree.Leaf, astn)
         self.for_exprlist = for_exprlist
         self.in_testlist = in_testlist
         self.comp_iter = comp_iter
@@ -474,7 +458,7 @@ class ComparisonOpNode(AstNode):
 
     def __init__(self, *, op: AstNode, args: Sequence[AstNode]) -> None:
         # pylint: disable=super-init-not-called,invalid-name
-        self.op = cast(CompOpNode, op)
+        self.op = typing_debug.cast(CompOpNode, op)
         self.args = args
 
     def fqns(self, ctx: FqnCtx) -> 'ComparisonOpNode':
@@ -494,7 +478,7 @@ class DecoratorNode(AstNode):
 
     def __init__(self, *, name: AstNode, arglist: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        self.name = cast(DottedNameNode, name)
+        self.name = typing_debug.cast(DottedNameNode, name)
         self.arglist = arglist
 
     def fqns(self, ctx: FqnCtx) -> 'DecoratorNode':
@@ -534,10 +518,10 @@ class DictGenListSetMakerCompForNode(AstNode):
 
     __slots__ = ('value_expr', 'comp_for')
 
-    def __init__(self, *, value_expr, comp_for) -> None:
+    def __init__(self, *, value_expr: AstNode, comp_for: AstNode) -> None:
         # pylint: disable=super-init-not-called
         self.value_expr = value_expr
-        self.comp_for = cast(CompForNode, comp_for)
+        self.comp_for = typing_debug.cast(CompForNode, comp_for)
 
     def fqns(self, ctx: FqnCtx) -> 'DictGenListSetMakerCompForNode':
         comp_for_ctx = self.comp_for.scope_ctx(ctx)
@@ -574,7 +558,7 @@ class DotNameTrailerNode(AstNode):
 
     def __init__(self, *, name: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        self.name = cast(NameNode, name)
+        self.name = typing_debug.cast(NameNode, name)
 
     def fqns(self, ctx: FqnCtx) -> 'DotNameTrailerNode':
         return DotNameTrailerNode(name=self.name.fqns(ctx))
@@ -590,8 +574,8 @@ class DottedAsNameNode(AstNode):
 
     def __init__(self, *, dotted_name: AstNode, as_name: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        self.dotted_name = cast(DottedNameNode, dotted_name)
-        self.as_name = cast(NameNode, as_name)
+        self.dotted_name = typing_debug.cast(DottedNameNode, dotted_name)
+        self.as_name = typing_debug.cast(NameNode, as_name)
 
     def fqns(self, ctx: FqnCtx) -> 'DottedAsNameNode':
         return DottedAsNameNode(
@@ -610,7 +594,8 @@ class DottedAsNamesNode(AstNode):
 
     def __init__(self, *, names: Sequence[AstNode]) -> None:
         # pylint: disable=super-init-not-called
-        assert_all_isinstance(DottedAsNameNode, names)  # TODO: remove
+        typing_debug.assert_all_isinstance(DottedAsNameNode,
+                                           names)  # TODO: remove
         self.names = typing.cast(Sequence[DottedAsNameNode], names)
 
     def fqns(self, ctx: FqnCtx) -> 'DottedAsNamesNode':
@@ -629,7 +614,7 @@ class DottedNameNode(AstNode):
 
     def __init__(self, *, names: Sequence[AstNode]) -> None:
         # pylint: disable=super-init-not-called
-        assert_all_isinstance(NameNode, names)  # TODO: remove
+        typing_debug.assert_all_isinstance(NameNode, names)  # TODO: remove
         self.names = typing.cast(Sequence[NameNode], names)
 
     def fqns(self, ctx: FqnCtx) -> 'DottedNameNode':
@@ -689,8 +674,8 @@ class ExprStmt(AstNode):
         self.lhs = lhs
         assert isinstance(augassign,
                           (AugAssignNode, OmittedNode))  # TODO: remove
-        self.augassign = typing.cast(Union[AugAssignNode, OmittedNode],
-                                     augassign)
+        # TODO: self.augassign = typing.cast(Union[AugAssignNode, OmittedNode], augassign)
+        self.augassign = augassign
         self.exprs = exprs
 
     def fqns(self, ctx: FqnCtx) -> 'ExprStmt':
@@ -804,6 +789,7 @@ class FuncDefStmt(AstNode):
 
     def anchors(self) -> Iterator[kythe.Anchor]:
         assert self.name.binds
+        assert self.name.fqn
         yield kythe.FuncDefAnchor(astn=self.name.astn, fqn=self.name.fqn)
         for parameter in self.parameters:
             yield from parameter.anchors()
@@ -818,7 +804,7 @@ class GlobalStmt(AstNode):
 
     def __init__(self, *, names: Sequence[AstNode]) -> None:
         # pylint: disable=super-init-not-called
-        assert_all_isinstance(NameNode, names)  # TODO: remove
+        typing_debug.assert_all_isinstance(NameNode, names)  # TODO: remove
         self.names = typing.cast(Sequence[NameNode], names)
 
     def fqns(self, ctx: FqnCtx) -> 'GlobalStmt':
@@ -837,7 +823,7 @@ class ImportAsNamesNode(AstNode):
 
     def __init__(self, *, names: Sequence[AstNode]) -> None:
         # pylint: disable=super-init-not-called
-        assert_all_isinstance(AsNameNode, names)  # TODO: remove
+        typing_debug.assert_all_isinstance(AsNameNode, names)  # TODO: remove
         self.names = typing.cast(Sequence[AsNameNode], names)
 
     def fqns(self, ctx: FqnCtx) -> 'ImportAsNamesNode':
@@ -857,12 +843,13 @@ class ImportFromStmt(AstNode):
     def __init__(self, *, from_name: Sequence[AstNode],
                  import_part: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        assert_all_isinstance(DottedNameNode, from_name)  # TODO: remove
+        typing_debug.assert_all_isinstance(DottedNameNode,
+                                           from_name)  # TODO: remove
         self.from_name = typing.cast(Sequence[DottedNameNode], from_name)
         assert isinstance(import_part,
                           (ImportAsNamesNode, StarNode))  # TODO: remove
-        self.import_part = typing.cast(Union[ImportAsNamesNode, StarNode],
-                                       import_part)
+        # TODO: self.import_part = typing.cast(Union[ImportAsNamesNode, StarNode], import_part)
+        self.import_part = import_part
 
     def fqns(self, ctx: FqnCtx) -> 'ImportFromStmt':
         return ImportFromStmt(
@@ -884,7 +871,8 @@ class ImportNameNode(AstNode):
 
     def __init__(self, *, dotted_as_names: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        self.dotted_as_names = cast(DottedAsNamesNode, dotted_as_names)
+        self.dotted_as_names = typing_debug.cast(DottedAsNamesNode,
+                                                 dotted_as_names)
 
     def fqns(self, ctx: FqnCtx) -> 'ImportNameNode':
         return ImportNameNode(dotted_as_names=self.dotted_as_names.fqns(ctx))
@@ -910,7 +898,8 @@ class NameNode(AstNode):
 
     __slots__ = ('binds', 'astn', 'fqn')
 
-    def __init__(self, *, binds: bool, astn: pytree.Leaf, fqn: Text) -> None:
+    def __init__(self, *, binds: bool, astn: pytree.Leaf,
+                 fqn: Optional[Text]) -> None:
         # pylint: disable=super-init-not-called
         self.binds = binds
         self.astn = astn
@@ -927,9 +916,15 @@ class NameNode(AstNode):
 
     def anchors(self) -> Iterator[kythe.Anchor]:
         if self.binds:
+            assert self.fqn
             yield kythe.BindingAnchor(astn=self.astn, fqn=self.fqn)
         else:
-            if self.fqn:  # TODO: DO NOT SUBMIT - key=value ??
+            if self.fqn:
+                # There are some obscure cases where self.fqn doesn't
+                # get filled in, typically due to the grammar
+                # accepting an illegal Python program (e.g., the
+                # grammar allows test=test for an arg, but it should
+                # be NAME=test)
                 yield kythe.RefAnchor(astn=self.astn, fqn=self.fqn)
 
 
@@ -940,7 +935,7 @@ class NonLocalStmt(AstNode):
 
     def __init__(self, *, names: Sequence[AstNode]) -> None:
         # pylint: disable=super-init-not-called
-        assert_all_isinstance(NameNode, names)  # TODO: remove
+        typing_debug.assert_all_isinstance(NameNode, names)  # TODO: remove
         self.names = typing.cast(Sequence[NameNode], names)
 
     def fqns(self, ctx: FqnCtx) -> 'NonLocalStmt':
@@ -980,7 +975,7 @@ class OpNode(AstNode):
     def __init__(self, *, op_astn: pytree.Base,
                  args: Sequence[AstNode]) -> None:
         # pylint: disable=super-init-not-called
-        self.op_astn = cast(pytree.Leaf, op_astn)
+        self.op_astn = typing_debug.cast(pytree.Leaf, op_astn)
         self.args = args
 
     def fqns(self, ctx: FqnCtx) -> 'OpNode':
@@ -1052,7 +1047,8 @@ class SubscriptListNode(AstNode):
 
     def __init__(self, *, subscripts: Sequence[AstNode]) -> None:
         # pylint: disable=super-init-not-called
-        assert_all_isinstance(SubscriptNode, subscripts)  # TODO: remove
+        typing_debug.assert_all_isinstance(SubscriptNode,
+                                           subscripts)  # TODO: remove
         self.subscripts = typing.cast(Sequence[SubscriptNode], subscripts)
 
     def fqns(self, ctx: FqnCtx) -> 'SubscriptListNode':
@@ -1101,7 +1097,7 @@ class TnameNode(AstNode):
 
     def __init__(self, *, name: AstNode, type_expr: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        self.name = cast(NameNode, name)
+        self.name = typing_debug.cast(NameNode, name)
         self.type_expr = type_expr
 
     def fqns(self, ctx: FqnCtx) -> 'TnameNode':
@@ -1124,7 +1120,7 @@ class TypedArgNode(AstNode):
 
     def __init__(self, *, name: AstNode, expr: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        self.name = cast(TnameNode, name)
+        self.name = typing_debug.cast(TnameNode, name)
         self.expr = expr
 
     def fqns(self, ctx: FqnCtx) -> 'TypedArgNode':
@@ -1165,7 +1161,7 @@ class WithItemNode(AstNode):
 
     def __init__(self, *, item: AstNode, as_item: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        self.item = cast(AtomTrailerNode, item)
+        self.item = typing_debug.cast(AtomTrailerNode, item)
         self.as_item = as_item
 
     def fqns(self, ctx: FqnCtx) -> 'WithItemNode':
@@ -1184,7 +1180,7 @@ class WithStmt(AstNode):
 
     def __init__(self, *, items: Sequence[AstNode], suite: AstNode) -> None:
         # pylint: disable=super-init-not-called
-        assert_all_isinstance(WithItemNode, items)  # TODO: remove
+        typing_debug.assert_all_isinstance(WithItemNode, items)  # TODO: remove
         self.items = typing.cast(Sequence[WithItemNode], items)
         self.suite = suite
 

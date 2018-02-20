@@ -1,5 +1,4 @@
-"""Encapsulate Kythe facts for output.
-"""
+"""Encapsulate Kythe facts for output."""
 
 import base64
 import codecs
@@ -100,7 +99,7 @@ class KytheFacts:
         self.file_vname = Vname(
             root=self.root, corpus=self.corpus, path=self.path)
 
-    def vname(self, signature: Text) -> Vname:
+    def vname(self, signature: Optional[Text]) -> Vname:
         return Vname(
             signature=signature,
             root=self.root,
@@ -146,7 +145,10 @@ class KytheFacts:
         yield from anchor_item.facts(
             kythe_facts=self, anchor_vname=anchor_vname)
 
-    def add_variable(self, fqn, fqn_vname, kind: bytes,
+    def add_variable(self,
+                     fqn: Text,
+                     fqn_vname: Vname,
+                     kind: bytes,
                      subkind: bytes = None) -> Iterator[Text]:
         """Add a single variable to self."""
         if fqn not in self._fqns:
