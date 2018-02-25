@@ -1182,7 +1182,7 @@ def cvt_token_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         this_binds = True
     else:
         this_binds = False
-    return ast_cooked.NameNode(binds=this_binds, astn=node, fqn=None)
+    return ast_cooked.NameNode(binds=this_binds, astn=node)
 
 
 def cvt_token_number(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:

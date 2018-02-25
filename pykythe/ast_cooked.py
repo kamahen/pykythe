@@ -106,9 +106,6 @@ class AstNode(pod.PlainOldData):
 class AstLeafStmt(AstNode):
     """A convenience class for AST nodes (stmts) that have no children."""
 
-    def __init__(self) -> None:
-        super().__init__()
-
     _SelfType = TypeVar('_SelfType', bound='AstLeafStmt')
 
     def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
@@ -122,8 +119,9 @@ class AstListExpr(AstNode):
 
     def __init__(self, *, items: Sequence[AstNode]) -> None:
         # pylint: disable=super-init-not-called
-        assert type(
-            self) is not AstListExpr, "Must not instantiate AstListExpr"
+        # pylint: disable=unidiomatic-typecheck
+        assert type(self) is not AstListExpr, (
+            "Must not instantiate AstListExpr")
         self.items = items
 
     _SelfType = TypeVar('_SelfType', bound='AstListExpr')
@@ -140,8 +138,9 @@ class AstListStmt(AstNode):
 
     def __init__(self, *, items: Sequence[AstNode]) -> None:
         # pylint: disable=super-init-not-called
-        assert type(
-            self) is not AstListStmt, "Must not instantiate AstListStmt"
+        # pylint: disable=unidiomatic-typecheck
+        assert type(self) is not AstListStmt, (
+            "Must not instantiate AstListStmt")
         self.items = items
 
     _SelfType = TypeVar('_SelfType', bound='AstListStmt')
@@ -555,9 +554,6 @@ class DottedNameNode(AstNode):
 class EllipsisNode(AstNode):
     """Corresponds to `...`."""
 
-    def __init__(self) -> None:
-        super().__init__()
-
     def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
         yield from []
 
@@ -783,18 +779,14 @@ class NameNode(AstNode):
         binds: Whether this name is in a binding context or not.
         astn: The AST node of the name (a Leaf node) - the name
               is self.astn.value
-        fqn: The Fully Qualified Name (FQN) for this name. Initially  # TODO: DO NOT SUBMIT
-             None; it is filled in by calling fqns() on the top node.
     """
 
-    __slots__ = ('binds', 'astn', 'fqn')  # TODO: DO NOT SUBMIT - remove fqn
+    __slots__ = ('binds', 'astn')
 
-    def __init__(self, *, binds: bool, astn: pytree.Leaf,
-                 fqn: Optional[Text]) -> None:
+    def __init__(self, *, binds: bool, astn: pytree.Leaf) -> None:
         # pylint: disable=super-init-not-called
         self.binds = binds
         self.astn = astn
-        self.fqn = fqn
 
     def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
         name = self.astn.value
@@ -804,7 +796,7 @@ class NameNode(AstNode):
             fqn = ctx.fqn_dot + self.astn.value
             ctx.bindings[name] = fqn
         if fqn:
-            # There are some obscure cases where self.fqn doesn't get
+            # There are some obscure cases where fqn doesn't get
             # filled in, typically due to the grammar accepting an
             # illegal Python program (e.g., the grammar allows
             # test=test for an arg, but it should be NAME=test)
