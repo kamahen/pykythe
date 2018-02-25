@@ -39,11 +39,6 @@ def main() -> int:
             src_content = src_file.read()
             parse_tree = ast_raw.parse(src_content, args.python_version)
         cooked_nodes = ast_raw.cvt_parse_tree(parse_tree, args.python_version)
-        cooked_nodes = cooked_nodes.fqns(
-            ctx=ast_cooked.FqnCtx(
-                fqn_dot=file_to_module(src) + '.',
-                bindings=collections.ChainMap(collections.OrderedDict()),
-                python_version=args.python_version))
         cooked_nodes_json_dict = cooked_nodes.as_json_dict()
         logging.debug('AS_JSON_DICT: %r', cooked_nodes_json_dict)
         logging.debug('AS_JSON: %s', json.dumps(cooked_nodes_json_dict))
@@ -56,7 +51,12 @@ def main() -> int:
             anchor_file=anchor_file,
             path=src,
             language='python')
-        anchors = list(cooked_nodes.anchors())
+        anchors = list(
+            cooked_nodes.anchors(
+                ctx=ast_cooked.FqnCtx(
+                    fqn_dot=file_to_module(src) + '.',
+                    bindings=collections.ChainMap(collections.OrderedDict()),
+                    python_version=args.python_version)))
         for json_fact in kythe_facts.json_facts(anchors, parse_tree):
             print(json_fact)
     return 0

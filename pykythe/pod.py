@@ -28,6 +28,8 @@ class PlainOldData:
     (plus as_json_dict), similar in effect to
     collections.namedtuple. Because it uses regular Python classes, it
     isn't immutable; but it's also faster than namedtuple.
+
+    # TODO: enforce immutability.
     """
 
     # TODO: https://github.com/python/mypy/issues/4547
@@ -60,8 +62,8 @@ class PlainOldData:
         return (self is other or (self.__class__ == other.__class__ and all(
             getattr(self, k) == getattr(other, k) for k in self.__slots__)))
 
-    def __hash__(self) -> int:
-        raise NotImplementedError(self)  # Because it's not immutuable
+    # __hash__ is not defined: this will result in a TypeError if
+    # an attempt is made to use this object as the key to a dict.
 
     # TODO: def __hash__(self):
     #           return hash(self.__class__) + sum(
@@ -86,14 +88,17 @@ class PlainOldData:
         return collections.OrderedDict(
             (k, getattr(self, k)) for k in self.__slots__)
 
-    def as_json_dict(self) -> Dict[Text, Any]:
+    def as_json_dict(
+            self
+    ) -> Dict[Text, Any]:  # TODO: -> collections.OrderedDict[Text, Any]
         """Return an OrderedDict for all non-None fields.
 
         This doesn't recursively traverse the contents of the object;
         if that is desired, you'll need to write something like
         ast_cooked.AstNode.as_json_dict.
         """
-        result = collections.OrderedDict()  # type: Dict[Text, Any]
+        result = collections.OrderedDict(
+        )  # type: collections.OrderedDict[Text, Any]
         for k in self.__slots__:
             value = getattr(self, k)
             if value is not None:

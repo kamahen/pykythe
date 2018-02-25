@@ -29,7 +29,7 @@ BROWSE_PORT=8002
 
 all_tests: test test_grammar test test_grammar pykythe_http_server
 
-all_test_plus: all_tests pyformat mypy 
+all_tests_plus: all_tests pyformat mypy 
 
 test: tests/test_pykythe.py \
 		pykythe/ast_raw.py \

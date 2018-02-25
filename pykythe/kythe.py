@@ -127,23 +127,23 @@ class KytheFacts:
         """Generate Kythe fact(s) for a single anchor item."""
         start, end = self.anchor_file.astn_to_range(anchor_item.astn)
         if (start, end) in self._anchors:
-            anchor_vname = self._anchors[(start, end)]
+            source_vname = self._anchors[(start, end)]
         else:
-            anchor_vname = Vname(
+            source_vname = Vname(
                 # TODO: for debugging:  + '[' + anchor_item.astn.value + ']'
                 signature='@' + str(start) + ':' + str(end),
                 root=self.root,
                 corpus=self.corpus,
                 path=self.path)
-            self._anchors[(start, end)] = anchor_vname
-            yield json_fact(anchor_vname, 'node/kind', b'anchor')
-            yield json_fact(anchor_vname, 'loc/start',
+            self._anchors[(start, end)] = source_vname
+            yield json_fact(source_vname, 'node/kind', b'anchor')
+            yield json_fact(source_vname, 'loc/start',
                             str(start).encode('ascii'))
-            yield json_fact(anchor_vname, 'loc/end', str(end).encode('ascii'))
+            yield json_fact(source_vname, 'loc/end', str(end).encode('ascii'))
             # TODO: Remove the following when it's not needed (e.g., by http_server):
-            # yield json_edge(anchor_vname, 'childof', self.file_vname)
+            # yield json_edge(source_vname, 'childof', self.file_vname)
         yield from anchor_item.facts(
-            kythe_facts=self, anchor_vname=anchor_vname)
+            kythe_facts=self, source_vname=source_vname)
 
     def add_variable(self,
                      fqn: Text,
@@ -184,6 +184,8 @@ def json_fact(node: Vname, fact_name: str, fact_value: bytes) -> Text:
 
 
 def json_edge(source: Vname, edge_name: str, target: Vname) -> Text:
+    # TODO: add another method for edges that aren't in the Kythe
+    #       schema that doesn't use '/kythe/edge/'.
     out = collections.OrderedDict([
         ('source', source.as_json_dict()),
         ('edge_kind', '/kythe/edge/' + edge_name),
@@ -215,7 +217,7 @@ class Anchor(pod.PlainOldData):
         assert not any(c.isspace() for c in astn.value), [self]
 
     def facts(self, kythe_facts: KytheFacts,
-              anchor_vname: Vname) -> Iterator[Text]:
+              source_vname: Vname) -> Iterator[Text]:
         """Generate Kythe fact(s) for a single anchor item."""
         raise NotImplementedError(self)
 
@@ -236,10 +238,10 @@ class BindingAnchor(Anchor):
     html_class = 'bind'
 
     def facts(self, kythe_facts: KytheFacts,
-              anchor_vname: Vname) -> Iterator[Text]:
+              source_vname: Vname) -> Iterator[Text]:
         fqn_vname = kythe_facts.vname(self.fqn)
         yield from kythe_facts.add_variable(self.fqn, fqn_vname, b'variable')
-        yield json_edge(anchor_vname, 'defines/binding', fqn_vname)
+        yield json_edge(source_vname, 'defines/binding', fqn_vname)
 
 
 class ClassDefAnchor(Anchor):
@@ -250,11 +252,11 @@ class ClassDefAnchor(Anchor):
     # TODO: add bases
 
     def facts(self, kythe_facts: KytheFacts,
-              anchor_vname: Vname) -> Iterator[Text]:
+              source_vname: Vname) -> Iterator[Text]:
         fqn_vname = kythe_facts.vname(self.fqn)
         yield from kythe_facts.add_variable(self.fqn, fqn_vname, b'record',
                                             b'class')
-        yield json_edge(anchor_vname, 'defines/binding', fqn_vname)
+        yield json_edge(source_vname, 'defines/binding', fqn_vname)
 
 
 class FuncDefAnchor(Anchor):
@@ -263,10 +265,10 @@ class FuncDefAnchor(Anchor):
     html_class = 'func'
 
     def facts(self, kythe_facts: KytheFacts,
-              anchor_vname: Vname) -> Iterator[Text]:
+              source_vname: Vname) -> Iterator[Text]:
         fqn_vname = kythe_facts.vname(self.fqn)
         yield from kythe_facts.add_variable(self.fqn, fqn_vname, b'function')
-        yield json_edge(anchor_vname, 'defines/binding', fqn_vname)
+        yield json_edge(source_vname, 'defines/binding', fqn_vname)
 
 
 class RefAnchor(Anchor):
@@ -275,11 +277,11 @@ class RefAnchor(Anchor):
     html_class = 'ref'
 
     def facts(self, kythe_facts: KytheFacts,
-              anchor_vname: Vname) -> Iterator[Text]:
+              source_vname: Vname) -> Iterator[Text]:
         fqn_vname = kythe_facts.vname(self.fqn)
         ref_vname = kythe_facts.vname(self.fqn)
         yield from kythe_facts.add_variable(self.fqn, fqn_vname, b'variable')
-        yield json_edge(anchor_vname, 'ref', ref_vname)
+        yield json_edge(source_vname, 'ref', ref_vname)
 
 
 def html_lines(parse_tree: pytree.Base, anchors: Sequence[Anchor],

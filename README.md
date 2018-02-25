@@ -34,6 +34,12 @@ out (on Linux):
 
 * Install `python3.6`
 
+* Install (using `pip`, or by cloning the git repository, `cd`-ing
+  into it, then running `sudo -H pip3 install --upgrade .`
+  (`pytype` is special -- see its installation instructions).
+  * You might need to symlink `mypy_extensions` into
+    `o/usr/local/lib/python3.6/dist-packages`.
+
 * Optional for now:
 
 	* `git clone https://github.com/python/typeshed.git`
@@ -45,6 +51,19 @@ out (on Linux):
 * `make -C <pkgdir> test test_grammar`
 
 * You can see the generated facts in `/tmp/pykythe_test/py3_test_grammar.json-decoded`
+
+## Code formatting
+
+All the code is formatted using `yapf` configured with `.style.yapf`.
+You can either install it from [github](https://github.com/google/yapf)
+or using [pip](https://pypi.python.org/pypi/yapf).
+The `Makefile` has a rule `pyformat` that formats everything.
+
+## Type declarations
+
+The code is processed with `mypy` (using the `Makefile` rule `mypy`) and
+`pylint`. It is intended to also be processed by `pytype`.
+
 
 ## Known issues
 
@@ -63,7 +82,7 @@ out (on Linux):
 
 * Needs more documentation.
 
-* Needs many more test cases.
+* Needs *many* more test cases.
 
 * Needs proper code review.
 
@@ -80,5 +99,5 @@ out (on Linux):
 * Outputs JSON and expects `entrystream --read_json` to convert to the
   form that `write_tables` expects (it would be more efficient to
   output protobufs directly).
-  
+
 * Packaging of pykythe is incomplete and possibly wrong.

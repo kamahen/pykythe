@@ -146,12 +146,12 @@ class TestAnchor(unittest.TestCase):
                 start, end = anchor_file.astn_to_range(node)
                 self.assertEqual(content[start:end], expected_str)
             cooked_nodes = ast_raw.cvt_parse_tree(parse_tree, python_version)
-            cooked_nodes = cooked_nodes.fqns(
-                ctx=ast_cooked.FqnCtx(
-                    fqn_dot='testing.',
-                    bindings=collections.ChainMap(),
-                    python_version=python_version))
-            anchors = list(cooked_nodes.anchors())
+            anchors = list(
+                cooked_nodes.anchors(
+                    ctx=ast_cooked.FqnCtx(
+                        fqn_dot='testing.',
+                        bindings=collections.ChainMap(),
+                        python_version=python_version)))
             self.assertEqual(anchors, [
                 kythe.BindingAnchor(
                     astn=pytree.Leaf(token.NAME, 'a'), fqn='testing.a'),

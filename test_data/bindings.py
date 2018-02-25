@@ -16,7 +16,7 @@ def testLhsTrailer():
     #- { @i ref TestLhsTrailer_i }
     #- // TODO: generates the following, which is incorrect:
     #- // test_data.py3_test_grammar.GrammarTests.testLhsTrailer.<local>.x
-    #- { @x defines/binding TestLhsTrailer_x? }
+    #- // { @x defines/binding TestLhsTrailer_x? }
     d[i].x = 2
     # TODO: add tests for '.', f(i).x = ...
     if False:  # Test forward global ref
@@ -24,7 +24,7 @@ def testLhsTrailer():
         testDictFor()
 
 
-#- @testDictFor defines/binding TestDictFor
+#- { @testDictFor defines/binding TestDictFor }
 def testDictFor():
     #- { @x defines/binding TestDictForLocalX=vname("test_data.bindings.testDictFor.<local>.x", _, _, "", python) }
     #- { TestDictForLocalX.node/kind variable }
@@ -45,7 +45,7 @@ def testDictFor():
     assert y == {2: 3, 100: 101}, y
 
 
-#- @testListFor defines/binding TestListFor
+#- { @testListFor defines/binding TestListFor }
 def testListFor():
     #- { @x defines/binding TestListForLocalX }
     #- { TestListForLocalX.node/kind variable }
@@ -119,7 +119,7 @@ def testGexpFor():
 
 
 def testNonLocal():
-    #- @x defines/binding TestNonLocalX
+    #- { @x defines/binding TestNonLocalX }
     x = 0
 
     def f():
@@ -131,8 +131,8 @@ def testNonLocal():
         return x
 
 
-#- @foo defines/binding Foo
-#- @x defines/binding FooParamX
+#- { @foo defines/binding Foo }
+#- { @x defines/binding FooParamX }
 def foo(x):
     #- { @#1x defines/binding FooLocalX }
     #- { @#0x ref FooLocalX }
