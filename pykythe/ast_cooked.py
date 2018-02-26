@@ -11,7 +11,7 @@ Each node is a subclass of AstNode.
 import collections
 import logging  # pylint: disable=unused-import
 from lib2to3 import pytree
-from typing import Any, Dict, Iterator, List, Optional, Sequence, Text, TypeVar, Union
+from typing import Any, Dict, List, Optional, Sequence, Text, TypeVar, Union
 import typing
 
 from . import kythe, pod, typing_debug
@@ -73,7 +73,7 @@ class AstNode(pod.PlainOldData):
                 result[k] = _as_json_dict_full(value)
         return {'type': self.__class__.__name__, 'slots': result}
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         """Generate "anchor" nodes for Kythe facts.
 
         A Kythe "anchor" is a pointer to a piece of source code
@@ -95,9 +95,11 @@ class AstNode(pod.PlainOldData):
         Arguments:
           ctx: The context for generating the FQN information (mainly
                the FQN of the enclosing scope).
-        Returns:
-          an iterator of kythe.Anchor items that will be further
-          processed to generate Kythe facts.
+          anchors: A list that is appeneded with kythe.Anchor items
+               that will be further processed to generate Kythe facts.
+               In effect, this is a return value (it could be done with
+               "yield" statements, but that precludes returning multiple
+               values).
         """
         raise NotImplementedError(self)
 
@@ -107,8 +109,8 @@ class AstLeafStmt(AstNode):
 
     _SelfType = TypeVar('_SelfType', bound='AstLeafStmt')
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from []
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        return None
 
 
 class AstListExpr(AstNode):
@@ -125,9 +127,9 @@ class AstListExpr(AstNode):
 
     _SelfType = TypeVar('_SelfType', bound='AstListExpr')
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for item in self.items:
-            yield from item.anchors(ctx)
+            item.anchors(ctx, anchors)
 
 
 class AstListStmt(AstNode):
@@ -144,9 +146,9 @@ class AstListStmt(AstNode):
 
     _SelfType = TypeVar('_SelfType', bound='AstListStmt')
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for item in self.items:
-            yield from item.anchors(ctx)
+            item.anchors(ctx, anchors)
 
 
 def _as_json_dict_full(value: Any) -> Any:
@@ -199,9 +201,9 @@ class AnnAssignNode(AstNode):
         self.expr = expr
         self.expr_type = expr_type
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from self.expr.anchors(ctx)
-        yield from self.expr_type.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.expr.anchors(ctx, anchors)
+        self.expr_type.anchors(ctx, anchors)
 
 
 class ArgListNode(AstNode):
@@ -216,9 +218,9 @@ class ArgListNode(AstNode):
         self.args = typing.cast(
             Sequence[Union[ArgNode, DictGenListSetMakerCompForNode]], args)
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for args_item in self.args:
-            yield from args_item.anchors(ctx)
+            args_item.anchors(ctx, anchors)
 
 
 class ArgNode(AstNode):
@@ -237,11 +239,11 @@ class ArgNode(AstNode):
             comp_for, (CompForNode, OmittedNode)), [comp_for]  # TODO: remove
         self.comp_for = comp_for  # TODO: typing.cast(Union[CompForNode, OmittedNode], comp_for)
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         # TODO: handle self.name_astn (ref to the funcdef)
         comp_for_ctx = self.comp_for.scope_ctx(ctx)
-        yield from self.comp_for.anchors(comp_for_ctx)
-        yield from self.arg.anchors(comp_for_ctx)
+        self.comp_for.anchors(comp_for_ctx, anchors)
+        self.arg.anchors(comp_for_ctx, anchors)
 
 
 class AsNameNode(AstNode):
@@ -254,9 +256,9 @@ class AsNameNode(AstNode):
         self.name = typing_debug.cast(NameNode, name)
         self.as_name = typing_debug.cast(NameNode, as_name)
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from self.name.anchors(ctx)
-        yield from self.as_name.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.name.anchors(ctx, anchors)
+        self.as_name.anchors(ctx, anchors)
 
 
 class AtomTrailerNode(AstNode):
@@ -269,10 +271,10 @@ class AtomTrailerNode(AstNode):
         self.atom = atom
         self.trailers = trailers
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from self.atom.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.atom.anchors(ctx, anchors)
         for trailers_item in self.trailers:
-            yield from trailers_item.anchors(ctx)
+            trailers_item.anchors(ctx, anchors)
 
 
 class AugAssignNode(AstNode):
@@ -284,8 +286,8 @@ class AugAssignNode(AstNode):
         # pylint: disable=super-init-not-called
         self.op_astn = typing_debug.cast(pytree.Leaf, op_astn)
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from []
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        return None
 
 
 class ClassDefStmt(AstNode):
@@ -302,7 +304,7 @@ class ClassDefStmt(AstNode):
         self.suite = suite
         self.scope_bindings = scope_bindings
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         # TODO: add bases to ClassDefAnchor
         assert self.name.binds
         class_fqn = ctx.fqn_dot + self.name.astn.value
@@ -312,9 +314,10 @@ class ClassDefStmt(AstNode):
             bindings=ctx.bindings.new_child(
                 collections.OrderedDict((name, class_fqn_dot + name)
                                         for name in self.scope_bindings)))
-        yield kythe.ClassDefAnchor(astn=self.name.astn, fqn=class_fqn)
-        yield from self.bases.anchors(ctx)
-        yield from self.suite.anchors(class_ctx)
+        anchors.append(
+            kythe.ClassDefAnchor(astn=self.name.astn, fqn=class_fqn))
+        self.bases.anchors(ctx, anchors)
+        self.suite.anchors(class_ctx, anchors)
 
 
 class BreakStmt(AstLeafStmt):
@@ -335,9 +338,9 @@ class CompIfCompIterNode(AstNode):
         self.value_expr = value_expr
         self.comp_iter = comp_iter
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from self.value_expr.anchors(ctx)
-        yield from self.comp_iter.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.value_expr.anchors(ctx, anchors)
+        self.comp_iter.anchors(ctx, anchors)
 
 
 class CompForNode(AstNode):
@@ -369,7 +372,7 @@ class CompForNode(AstNode):
             fqn_dot=for_fqn_dot,
             bindings=ctx.bindings.new_child(collections.OrderedDict()))
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         # Assume that the caller has created a new child in the
         # bindings, if needed.  This is done at the outermost level of
         # a comp_for (for Python 3), but not for any of the inner
@@ -378,11 +381,11 @@ class CompForNode(AstNode):
         #    x for x in [1,x]  # `x` in `[1,x]` is outer scope
         #    (x, y) for x in [1,2] for y in range(x)  # `x` in `range(x)` is from `for x`
         # [(x, y) for x in [1,2,x] for y in range(x)]  # error: y undefined
-        yield from self.in_testlist.anchors(ctx)
+        self.in_testlist.anchors(ctx, anchors)
         ctx.bindings.update(
             (name, ctx.fqn_dot + name) for name in self.scope_bindings)
-        yield from self.for_exprlist.anchors(ctx)
-        yield from self.comp_iter.anchors(ctx)
+        self.for_exprlist.anchors(ctx, anchors)
+        self.comp_iter.anchors(ctx, anchors)
 
 
 class CompOpNode(AstNode):
@@ -395,8 +398,8 @@ class CompOpNode(AstNode):
         # pylint: disable=super-init-not-called
         self.op_astns = op_astns
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from []
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        return None
 
 
 class ComparisonOpNode(AstNode):
@@ -409,10 +412,10 @@ class ComparisonOpNode(AstNode):
         self.op = typing_debug.cast(CompOpNode, op)
         self.args = args
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from self.op.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.op.anchors(ctx, anchors)
         for args_item in self.args:
-            yield from args_item.anchors(ctx)
+            args_item.anchors(ctx, anchors)
 
 
 class ContinueStmt(AstLeafStmt):
@@ -437,9 +440,9 @@ class DecoratorNode(AstNode):
         self.name = typing_debug.cast(DottedNameNode, name)
         self.arglist = arglist
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from self.name.anchors(ctx)
-        yield from self.arglist.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.name.anchors(ctx, anchors)
+        self.arglist.anchors(ctx, anchors)
 
 
 class DelStmt(AstNode):
@@ -451,8 +454,8 @@ class DelStmt(AstNode):
         # pylint: disable=super-init-not-called
         self.exprs = exprs
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from self.exprs.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.exprs.anchors(ctx, anchors)
 
 
 class DictSetMakerNode(AstListExpr):
@@ -472,10 +475,10 @@ class DictGenListSetMakerCompForNode(AstNode):
         self.value_expr = value_expr
         self.comp_for = typing_debug.cast(CompForNode, comp_for)
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         comp_for_ctx = self.comp_for.scope_ctx(ctx)
-        yield from self.comp_for.anchors(comp_for_ctx)
-        yield from self.value_expr.anchors(comp_for_ctx)
+        self.comp_for.anchors(comp_for_ctx, anchors)
+        self.value_expr.anchors(comp_for_ctx, anchors)
 
 
 class DotNode(AstNode):
@@ -487,8 +490,8 @@ class DotNode(AstNode):
         # pylint: disable=super-init-not-called
         pass
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from []
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        return None
 
 
 class DotNameTrailerNode(AstNode):
@@ -500,8 +503,8 @@ class DotNameTrailerNode(AstNode):
         # pylint: disable=super-init-not-called
         self.name = typing_debug.cast(pytree.Leaf, name)
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from []  # TODO: Handled by the atom
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        return None  # TODO: Handled by the atom
 
 
 class DottedAsNameNode(AstNode):
@@ -514,9 +517,9 @@ class DottedAsNameNode(AstNode):
         self.dotted_name = typing_debug.cast(DottedNameNode, dotted_name)
         self.as_name = typing_debug.cast(NameNode, as_name)
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from self.dotted_name.anchors(ctx)
-        yield from self.as_name.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.dotted_name.anchors(ctx, anchors)
+        self.as_name.anchors(ctx, anchors)
 
 
 class DottedAsNamesNode(AstNode):
@@ -530,9 +533,9 @@ class DottedAsNamesNode(AstNode):
                                            names)  # TODO: remove
         self.names = typing.cast(Sequence[DottedAsNameNode], names)
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for names_item in self.names:
-            yield from names_item.anchors(ctx)
+            names_item.anchors(ctx, anchors)
 
 
 class DottedNameNode(AstNode):
@@ -545,16 +548,16 @@ class DottedNameNode(AstNode):
         typing_debug.assert_all_isinstance(NameNode, names)  # TODO: remove
         self.names = typing.cast(Sequence[NameNode], names)
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for names_item in self.names:
-            yield from names_item.anchors(ctx)
+            names_item.anchors(ctx, anchors)
 
 
 class EllipsisNode(AstNode):
     """Corresponds to `...`."""
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from []
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        return None
 
 
 class ExecStmt(AstListStmt):
@@ -570,9 +573,9 @@ class ExprListNode(AstNode):
         # pylint: disable=super-init-not-called
         self.exprs = exprs
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for exprs_item in self.exprs:
-            yield from exprs_item.anchors(ctx)
+            exprs_item.anchors(ctx, anchors)
 
 
 class ExceptClauseNode(AstNode):
@@ -585,9 +588,9 @@ class ExceptClauseNode(AstNode):
         self.expr = expr
         self.as_item = as_item
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from self.expr.anchors(ctx)
-        yield from self.as_item.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.expr.anchors(ctx, anchors)
+        self.as_item.anchors(ctx, anchors)
 
 
 class ExprStmt(AstNode):
@@ -605,11 +608,11 @@ class ExprStmt(AstNode):
         self.augassign = augassign
         self.exprs = exprs
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from self.lhs.anchors(ctx)
-        yield from self.augassign.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.lhs.anchors(ctx, anchors)
+        self.augassign.anchors(ctx, anchors)
         for exprs_item in self.exprs:
-            yield from exprs_item.anchors(ctx)
+            exprs_item.anchors(ctx, anchors)
 
 
 class FileInput(AstNode):
@@ -623,13 +626,13 @@ class FileInput(AstNode):
         self.stmts = stmts
         self.scope_bindings = scope_bindings
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         file_ctx = ctx._replace(
             bindings=ctx.bindings.new_child(
                 collections.OrderedDict((name, ctx.fqn_dot + name)
                                         for name in self.scope_bindings)))
         for stmt in self.stmts:
-            yield from stmt.anchors(file_ctx)
+            stmt.anchors(file_ctx, anchors)
 
 
 class ForStmt(AstNode):
@@ -645,13 +648,11 @@ class ForStmt(AstNode):
         self.suite = suite
         self.else_suite = else_suite
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        exprlist_anchors = self.exprlist.anchors(ctx))  # Adds to ctx
-        testlist_anchors = self.testlist.anchors(ctx))
-        yield from exprlist_anchors
-        yield from testlist_anchors
-        yield from self.suite.anchors(ctx)
-        yield from self.else_suite.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.exprlist.anchors(ctx, anchors)  # Adds to ctx
+        self.testlist.anchors(ctx, anchors)
+        self.suite.anchors(ctx, anchors)
+        self.else_suite.anchors(ctx, anchors)
 
 
 class FuncDefStmt(AstNode):
@@ -673,7 +674,7 @@ class FuncDefStmt(AstNode):
         self.suite = suite
         self.scope_bindings = scope_bindings
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         assert self.name.binds
         # '.<local>.' is needed to distinguish `x` in following:
         #    def foo(x): pass
@@ -690,11 +691,11 @@ class FuncDefStmt(AstNode):
             bindings=ctx.bindings.new_child(
                 collections.OrderedDict((name, func_fqn_dot + name)
                                         for name in self.scope_bindings)))
-        yield kythe.FuncDefAnchor(astn=self.name.astn, fqn=func_fqn)
-        yield from self.return_type.anchors(func_ctx)
+        anchors.append(kythe.FuncDefAnchor(astn=self.name.astn, fqn=func_fqn))
+        self.return_type.anchors(func_ctx, anchors)
         for parameter in self.parameters:
-            yield from parameter.anchors(func_ctx)
-        yield from self.suite.anchors(func_ctx)
+            parameter.anchors(func_ctx, anchors)
+        self.suite.anchors(func_ctx, anchors)
 
 
 class GlobalStmt(AstNode):
@@ -707,9 +708,9 @@ class GlobalStmt(AstNode):
         typing_debug.assert_all_isinstance(NameNode, names)  # TODO: remove
         self.names = typing.cast(Sequence[NameNode], names)
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for names_item in self.names:
-            yield from names_item.anchors(ctx)
+            names_item.anchors(ctx, anchors)
 
 
 class IfStmt(AstListStmt):
@@ -726,9 +727,9 @@ class ImportAsNamesNode(AstNode):
         typing_debug.assert_all_isinstance(AsNameNode, names)  # TODO: remove
         self.names = typing.cast(Sequence[AsNameNode], names)
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for names_item in self.names:
-            yield from names_item.anchors(ctx)
+            names_item.anchors(ctx, anchors)
 
 
 class ImportFromStmt(AstNode):
@@ -747,10 +748,10 @@ class ImportFromStmt(AstNode):
         # TODO: self.import_part = typing.cast(Union[ImportAsNamesNode, StarNode], import_part)
         self.import_part = import_part
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for from_name_item in self.from_name:
-            yield from from_name_item.anchors(ctx)
-        yield from self.import_part.anchors(ctx)
+            from_name_item.anchors(ctx, anchors)
+        self.import_part.anchors(ctx, anchors)
 
 
 class ImportNameNode(AstNode):
@@ -763,8 +764,8 @@ class ImportNameNode(AstNode):
         self.dotted_as_names = typing_debug.cast(DottedAsNamesNode,
                                                  dotted_as_names)
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from self.dotted_as_names.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.dotted_as_names.anchors(ctx, anchors)
 
 
 class ListMakerNode(AstListExpr):
@@ -787,7 +788,7 @@ class NameNode(AstNode):
         self.binds = binds
         self.astn = astn
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         name = self.astn.value
         if name in ctx.bindings:
             fqn = ctx.bindings[name]
@@ -799,9 +800,9 @@ class NameNode(AstNode):
             # illegal Python program (e.g., the grammar allows
             # test=test for an arg, but it should be NAME=test)
             if self.binds:
-                yield kythe.BindingAnchor(astn=self.astn, fqn=fqn)
+                anchors.append(kythe.BindingAnchor(astn=self.astn, fqn=fqn))
             else:
-                yield kythe.RefAnchor(astn=self.astn, fqn=fqn)
+                anchors.append(kythe.RefAnchor(astn=self.astn, fqn=fqn))
 
 
 class NonLocalStmt(AstNode):
@@ -814,9 +815,9 @@ class NonLocalStmt(AstNode):
         typing_debug.assert_all_isinstance(NameNode, names)  # TODO: remove
         self.names = typing.cast(Sequence[NameNode], names)
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for names_item in self.names:
-            yield from names_item.anchors(ctx)
+            names_item.anchors(ctx, anchors)
 
 
 class NumberNode(AstNode):
@@ -832,8 +833,8 @@ class NumberNode(AstNode):
         # pylint: disable=super-init-not-called
         self.astn = astn
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from []
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        return None
 
 
 class OpNode(AstNode):
@@ -847,9 +848,9 @@ class OpNode(AstNode):
         self.op_astn = typing_debug.cast(pytree.Leaf, op_astn)
         self.args = args
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for args_item in self.args:
-            yield from args_item.anchors(ctx)
+            args_item.anchors(ctx, anchors)
 
 
 class PassStmt(AstLeafStmt):
@@ -873,8 +874,8 @@ class StarExprNode(AstNode):
         # pylint: disable=super-init-not-called
         self.expr = expr
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from self.expr.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.expr.anchors(ctx, anchors)
 
 
 class StarStarExprNode(AstNode):
@@ -886,8 +887,8 @@ class StarStarExprNode(AstNode):
         # pylint: disable=super-init-not-called
         self.expr = expr
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from self.expr.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.expr.anchors(ctx, anchors)
 
 
 class Stmts(AstListStmt):
@@ -907,8 +908,8 @@ class StringNode(AstNode):
         # pylint: disable=super-init-not-called
         self.astns = astns
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from []
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        return None
 
 
 class SubscriptListNode(AstNode):
@@ -922,9 +923,9 @@ class SubscriptListNode(AstNode):
                                            subscripts)  # TODO: remove
         self.subscripts = typing.cast(Sequence[SubscriptNode], subscripts)
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for subscripts_item in self.subscripts:
-            yield from subscripts_item.anchors(ctx)
+            subscripts_item.anchors(ctx, anchors)
 
 
 class SubscriptNode(AstNode):
@@ -939,10 +940,10 @@ class SubscriptNode(AstNode):
         self.expr2 = expr2
         self.expr3 = expr3
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from self.expr1.anchors(ctx)
-        yield from self.expr2.anchors(ctx)
-        yield from self.expr3.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.expr1.anchors(ctx, anchors)
+        self.expr2.anchors(ctx, anchors)
+        self.expr3.anchors(ctx, anchors)
 
 
 class TestListNode(AstListExpr):
@@ -960,9 +961,9 @@ class TnameNode(AstNode):
         self.name = typing_debug.cast(NameNode, name)
         self.type_expr = type_expr
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from self.name.anchors(ctx)
-        yield from self.type_expr.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.name.anchors(ctx, anchors)
+        self.type_expr.anchors(ctx, anchors)
 
 
 class TfpListNode(AstListExpr):
@@ -983,9 +984,9 @@ class TypedArgNode(AstNode):
         self.name = typing_debug.cast(TnameNode, name)
         self.expr = expr
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from self.name.anchors(ctx)
-        yield from self.expr.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.name.anchors(ctx, anchors)
+        self.expr.anchors(ctx, anchors)
 
 
 class TypedArgsListNode(AstNode):
@@ -1002,7 +1003,7 @@ class TypedArgsListNode(AstNode):
         # pylint: disable=super-init-not-called
         self.args = args
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         # Not used anywhere
         raise NotImplementedError(self)
 
@@ -1019,10 +1020,10 @@ class WhileStmt(AstListStmt):
         self.suite = suite
         self.else_suite = else_suite
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from self.test.anchors(ctx)
-        yield from self.suite.anchors(ctx)
-        yield from self.else_suite.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.test.anchors(ctx, anchors)
+        self.suite.anchors(ctx, anchors)
+        self.else_suite.anchors(ctx, anchors)
 
 
 class WithItemNode(AstNode):
@@ -1035,9 +1036,9 @@ class WithItemNode(AstNode):
         self.item = typing_debug.cast(AtomTrailerNode, item)
         self.as_item = as_item
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from self.item.anchors(ctx)
-        yield from self.as_item.anchors(ctx)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.item.anchors(ctx, anchors)
+        self.as_item.anchors(ctx, anchors)
 
 
 class WithStmt(AstNode):
@@ -1051,10 +1052,10 @@ class WithStmt(AstNode):
         self.items = typing.cast(Sequence[WithItemNode], items)
         self.suite = suite
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for items_item in self.items:
-            yield from items_item.anchors(ctx)
-        yield from self.suite.anchors(ctx)
+            items_item.anchors(ctx, anchors)
+        self.suite.anchors(ctx, anchors)
 
 
 class YieldNode(AstListExpr):
@@ -1070,8 +1071,8 @@ class OmittedNode(AstNode):
         # For nodes that can be Union[CompForNode, OmittedNode]
         return ctx
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from []
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        return None
 
 
 class StarNode(AstNode):
@@ -1079,8 +1080,8 @@ class StarNode(AstNode):
 
     __slots__ = ()
 
-    def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        yield from []
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        return None
 
 
 # Singleton OmittedNode, to avoid creating many of them.

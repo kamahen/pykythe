@@ -13,6 +13,7 @@ import json
 import logging
 import os.path
 import sys
+from typing import List  # pylint: disable=unused-import
 
 from . import ast_raw
 from . import ast_cooked
@@ -51,12 +52,12 @@ def main() -> int:
             anchor_file=anchor_file,
             path=src,
             language='python')
-        anchors = list(
-            cooked_nodes.anchors(
-                ctx=ast_cooked.FqnCtx(
-                    fqn_dot=file_to_module(src) + '.',
-                    bindings=collections.ChainMap(collections.OrderedDict()),
-                    python_version=args.python_version)))
+        anchors = []  # type: List[kythe.Anchor]
+        cooked_nodes.anchors(
+            ast_cooked.FqnCtx(
+                fqn_dot=file_to_module(src) + '.',
+                bindings=collections.ChainMap(collections.OrderedDict()),
+                python_version=args.python_version), anchors)
         for json_fact in kythe_facts.json_facts(anchors, parse_tree):
             print(json_fact)
     return 0

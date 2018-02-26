@@ -6,6 +6,7 @@ import logging  # pylint: disable=unused-import
 import os
 import pickle
 import sys
+from typing import List  # pylint: disable=unused-import
 import unittest
 from lib2to3 import pytree
 from lib2to3.pgen2 import token
@@ -146,12 +147,12 @@ class TestAnchor(unittest.TestCase):
                 start, end = anchor_file.astn_to_range(node)
                 self.assertEqual(content[start:end], expected_str)
             cooked_nodes = ast_raw.cvt_parse_tree(parse_tree, python_version)
-            anchors = list(
-                cooked_nodes.anchors(
-                    ctx=ast_cooked.FqnCtx(
-                        fqn_dot='testing.',
-                        bindings=collections.ChainMap(),
-                        python_version=python_version)))
+            anchors = []  # type: List[kythe.Anchor]
+            cooked_nodes.anchors(
+                ast_cooked.FqnCtx(
+                    fqn_dot='testing.',
+                    bindings=collections.ChainMap(),
+                    python_version=python_version), anchors)
             self.assertEqual(anchors, [
                 kythe.BindingAnchor(
                     astn=pytree.Leaf(token.NAME, 'a'), fqn='testing.a'),
