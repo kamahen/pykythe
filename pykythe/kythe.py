@@ -9,7 +9,7 @@ import logging  # pylint: disable=unused-import
 import urllib.parse
 from lib2to3 import pytree
 from lib2to3.pgen2 import token
-from typing import Dict, Iterator, Optional, Text, Tuple, Sequence, Set  # pylint: disable=unused-import
+from typing import Dict, Iterator, List, Optional, Text, Tuple, Sequence, Set  # pylint: disable=unused-import
 
 from . import pod
 

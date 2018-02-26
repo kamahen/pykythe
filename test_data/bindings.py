@@ -109,13 +109,35 @@ def testGexpFor():
     #- { @y defines/binding TestGexp_y }
     #- @foo ref Foo
     #- { TestGexpForX.node/kind variable }
-    y = foo(x + 1 for x in [1, 2, 3, x] if x % 2 == 0)
-    #       0         1              2     3
+    y = foo(0, x + 1 for x in [1, 2, 3, x] if x % 2 == 0)
+    #          0         1              2     3
     #- { @x ref TestGexpLocalX }
     #- !{ @x ref TestGexpForX }
     assert x == 100
     #- @y ref TestGexp_y
     assert list(y) == [4, 102]
+
+
+def testForLoop():
+    #- { @for_range defines/binding TestForLoopForRange }
+    for_range = [1, 2, 3]
+    #- { @x defines/binding TestForLoopX=vname("test_data.bindings.testForLoop.<local>.x", _, _, "", python) }
+    #- { @i_num defines/binding TestForLoopINum }
+    #- @for_range ref TestForLoopForRange
+    for i_num, x in enumerate(for_range):
+        #- @i_num ref TestForLoopINum
+        #- @i_num ref TestForLoopINum
+        #- @x ref TestForLoopX
+        foo(i_num, x)
+    else:
+        #- @foo ref Foo
+        #- @i_num ref TestForLoopINum
+        #- @x ref TestForLoopX
+        foo(i_num, x)
+    #- @foo ref Foo
+    #- @i_num ref TestForLoopINum
+    #- @x ref TestForLoopX
+    foo(i_num, x)
 
 
 def testNonLocal():
@@ -133,13 +155,15 @@ def testNonLocal():
 
 #- { @foo defines/binding Foo }
 #- { @x defines/binding FooParamX }
-def foo(x):
+#- { @i defines/binding FooParamI }
+def foo(i, x):
+    #- { @#0i ref FooParamI }
     #- { @#1x defines/binding FooLocalX }
     #- { @#0x ref FooLocalX }
     #- { @#2x ref FooParamX }
     #- { @#3x ref FooLocalX }
-    return (x + 1 for x in x if x % 2 == 1)
-    #       0         1    2    3
+    return (i + x + 1 for x in x if x % 2 == 1)
+    #           0         1    2    3
 
 
 #- @testDictFor ref TestDictFor

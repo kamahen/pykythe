@@ -44,6 +44,8 @@ test_grammar: verify-bindings verify-$(TEST_GRAMMAR_FILE)
 pyformat:
 	find . -type f -name '*.py' | grep -v $(TEST_GRAMMAR_DIR) | xargs yapf -i
 
+yapf: pyformat
+
 pylint:
 	find . -type f -name '*.py' | grep -v $(TEST_GRAMMAR_DIR) | \
 		grep -v snippets.py | xargs -L1 pylint --disable=missing-docstring
@@ -135,7 +137,7 @@ ls_decor:
 push_to_github:
 	mkdir -p /tmp/test-github
 	rm -rf /tmp/test-github/pykythe
-	cd /tmp/test-github && git clone https://github.com/kamahen/pykythe.git
+	# cd /tmp/test-github && git clone https://github.com/kamahen/pykythe.git
 	-# git remote add origin https://github.com/kamahen/pykythe.git
 	rsync -aAHX --exclude .git --exclude snippets.py ./ /tmp/test-github/pykythe/
 	rsync -aAHX ../kythe /tmp/test-github/

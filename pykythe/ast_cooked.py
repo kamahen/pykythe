@@ -11,7 +11,7 @@ Each node is a subclass of AstNode.
 import collections
 import logging  # pylint: disable=unused-import
 from lib2to3 import pytree
-from typing import Any, Dict, Iterator, Optional, Sequence, Text, TypeVar, Union
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Text, TypeVar, Union
 import typing
 
 from . import kythe, pod, typing_debug
@@ -29,7 +29,6 @@ class FqnCtx(pod.PlainOldData):
            (module/function/class), followed by a '.'
       bindings: mappings of names to FQNs at this scope
       python_version: 2 or 3
-
     """
 
     __slots__ = ('fqn_dot', 'bindings', 'python_version')
@@ -647,10 +646,10 @@ class ForStmt(AstNode):
         self.else_suite = else_suite
 
     def anchors(self, ctx: FqnCtx) -> Iterator[kythe.Anchor]:
-        # TODO: Add self.exprlist's bindings to suite and "leak" to
-        #       outer context.  See also CompForNode.anchors
-        yield from self.exprlist.anchors(ctx)
-        yield from self.testlist.anchors(ctx)
+        exprlist_anchors = self.exprlist.anchors(ctx))  # Adds to ctx
+        testlist_anchors = self.testlist.anchors(ctx))
+        yield from exprlist_anchors
+        yield from testlist_anchors
         yield from self.suite.anchors(ctx)
         yield from self.else_suite.anchors(ctx)
 
@@ -795,8 +794,7 @@ class NameNode(AstNode):
         else:
             fqn = ctx.fqn_dot + self.astn.value
             ctx.bindings[name] = fqn
-        if fqn:
-            # There are some obscure cases where fqn doesn't get
+        if fqn:  # There are some obscure cases where fqn doesn't get
             # filled in, typically due to the grammar accepting an
             # illegal Python program (e.g., the grammar allows
             # test=test for an arg, but it should be NAME=test)

@@ -1434,8 +1434,9 @@ def _convert(grammar: pgen2_grammar.Grammar, raw_node: Tuple[int, Text, Tuple[
 
     Derived from pytree.convert, by modifying the test for only a
     single child of a node (lib2to3.pytree.convert collapses this to
-    the child). We could remove the test, but it reduces the number of
-    nodes that are created.
+    the child). [The test collapses nodes with a single child to the
+    child; this complicates some of the processing, so instead we only
+    collapse some nodes, as specified by _EXPR_NODES.]
 
     This is passed to the parser driver which calls it whenever a
     reduction of a grammar rule produces a new complete node, so that
