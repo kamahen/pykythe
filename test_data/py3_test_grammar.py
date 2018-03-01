@@ -28,9 +28,9 @@ TODO: remove all "#- //" lines (these are "to be implemented" syntactic items).
 #- //       vname(Signature?, Corpus?, Root?, Path?, Language?)
 
 #- // Pkg=vname("test_data.py3_test_grammar", _, _, _, python).node/kind package
-#- File=vname("", "test-corpus", "test-root", "test_data/py3_test_grammar.py", "").node/kind file
+#- { File=vname("", "test-corpus", "test-root", "test_data/py3_test_grammar.py", "").node/kind file }
 #- // File childof Pkg
-#- File.text _  // The contents of this file
+#- { File.text _ }  // The contents of this file
 #- // File.text/encoding "utf-8"
 
 

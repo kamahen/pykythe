@@ -1,9 +1,8 @@
-"""Variants from the typing module, for debugging.
+"""Variants from the typing module, for debugging."""
 
-TODO: remove this when no longer needed.
-"""
+# TODO: remove this when no longer needed.
 
-from typing import Any, Type, Tuple, TypeVar, Union
+from typing import Any, Sequence, Type, Tuple, TypeVar, Union
 
 # This definition of `cast` is the same as typing.cast, except it
 # verifies the type:
@@ -18,5 +17,5 @@ def cast(typ: Type[_T], val: Any) -> _T:
 
 
 def assert_all_isinstance(typ: Union[Type, Tuple[Type, ...]],
-                          val: Any) -> None:
-    assert all(isinstance(v, typ) for v in val)
+                          val: Sequence[Any]) -> None:
+    assert all(isinstance(v, typ) for v in val), val

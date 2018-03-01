@@ -12,6 +12,8 @@ __init__ (that doesn't call super().__init__).
 # pylint: disable=too-few-public-methods
 
 import collections
+import json
+from lib2to3 import pytree  # For PlainOldDataExtended
 from typing import Any, Dict, Sequence, Text, TypeVar, cast  # pylint: disable=unused-import
 
 
@@ -65,10 +67,9 @@ class PlainOldData:
     # __hash__ is not defined: this will result in a TypeError if
     # an attempt is made to use this object as the key to a dict.
 
-    # TODO: def __hash__(self):
+    # TODO: def __hash__(self):  # Define this only if the object is immutable
     #           return hash(self.__class__) + sum(
     #               hash(getattr(self, a) for a in self.__slots__))
-    #   -- but only if the object is immutable
 
     _SelfType = TypeVar('_SelfType', bound='PlainOldData')
 
@@ -95,7 +96,7 @@ class PlainOldData:
 
         This doesn't recursively traverse the contents of the object;
         if that is desired, you'll need to write something like
-        ast_cooked.AstNode.as_json_dict.
+        PlainOldDataExtended.as_json_dict.
         """
         result = collections.OrderedDict(
         )  # type: collections.OrderedDict[Text, Any]
@@ -104,3 +105,53 @@ class PlainOldData:
             if value is not None:
                 result[k] = value
         return result
+
+    def as_json_str(self) -> Text:
+        return json.dumps(self.as_json_dict())
+
+
+class PlainOldDataExtended(PlainOldData):
+    """PlainOlData that can JSON-ify certain types."""
+
+    def as_json_dict(self) -> Dict[Text, Any]:
+        """Recursively turn a node into a dict for JSON-ification."""
+        result = collections.OrderedDict(
+        )  # type: collections.OrderedDict[Text, Any]
+        for k in self.__slots__:
+            value = getattr(self, k)
+            if value is not None:
+                result[k] = _as_json_dict_full(value)
+        return {'type': self.__class__.__name__, 'slots': result}
+
+
+def _as_json_dict_full(value: Any) -> Any:
+    """Recursively turn an object into a dict for JSON-ification."""
+    # pylint: disable=too-many-return-statements
+    if isinstance(value, PlainOldData):
+        return value.as_json_dict()
+    if isinstance(value, list):
+        return [_as_json_dict_full(v) for v in value]
+    if isinstance(value, pytree.Leaf):
+        return {
+            'type': 'Leaf',
+            'leaf_type': value.type,
+            'value': value.value,
+            'prefix': value.prefix,
+            'lineno': value.lineno,
+            'column': value.column
+        }
+    if isinstance(value, bool):
+        return {'type': 'bool', 'value': str(value)},
+    if isinstance(value, int):
+        return {'type': 'int', 'value': value}
+    if isinstance(value, str):
+        return {'type': 'str', 'value': value},
+    if isinstance(value, dict):
+        return {
+            'type': 'dict',
+            'items': {k: _as_json_dict_full(v)
+                      for k, v in value.items()}
+        }
+    if value is None:
+        return {'type': 'None'}
+    return {'NOT-POD': value.__class__.__name__, 'value': value}

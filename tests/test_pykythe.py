@@ -41,11 +41,17 @@ class SomeData2(pod.PlainOldData):
     __slots__ = ('a', 'b', 'c')
 
 
+class EmptyData(pod.PlainOldData):
+    """Simple example of subclassing PlainOldData, with no contents."""
+
+
 class TestPlainOldData(unittest.TestCase):
     """Unit tests for PlainOldData."""
 
     def test_plain_old_data(self) -> None:
         """Test that subclass of PlainOldData works as expected."""
+        empty_node = EmptyData()
+        self.assertTrue(empty_node)  # would fail with namedtuple
         a_node = SomeData(a=1, b=2, c=3)
         self.assertEqual(a_node, a_node)
         self.assertEqual(repr(a_node), 'SomeData(a=1, b=2, c=3)')
@@ -129,7 +135,7 @@ class TestAnchor(unittest.TestCase):
             b'bcd',
             b'"<br/>"',
         ]
-        for python_version in 2, 3:
+        for python_version in 3, 2:
             parse_tree = ast_raw.parse(content, python_version)
             self.assertEqual(content.decode('utf-8'), str(parse_tree))
             self.assertEqual(
@@ -152,7 +158,9 @@ class TestAnchor(unittest.TestCase):
                 ast_cooked.FqnCtx(
                     fqn_dot='testing.',
                     bindings=collections.ChainMap(),
-                    python_version=python_version), anchors)
+                    python_version=python_version),
+                anchors,
+            )
             self.assertEqual(anchors, [
                 kythe.BindingAnchor(
                     astn=pytree.Leaf(token.NAME, 'a'), fqn='testing.a'),

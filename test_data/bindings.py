@@ -5,6 +5,12 @@
 # TODO: These only test Python 3; need similar tests for Python2
 # (e.g., list comprehensions "leak" in PYthon2)
 
+#- // Pkg=vname("test_data.py3_test_grammar", _, _, _, python).node/kind package
+#- { File=vname("", "test-corpus", "test-root", "test_data/bindings.py", "").node/kind file }
+#- // File childof Pkg
+#- { File.text _ }  // The contents of this file
+#- // File.text/encoding "utf-8"
+
 
 def testLhsTrailer():
     #- { @i defines/binding TestLhsTrailer_i }
@@ -151,6 +157,25 @@ def testNonLocal():
         x = 2
         #- @x ref TestNonLocalX
         return x
+
+
+def testAnnAssign():
+    #- { @ee defines/binding TestAnnAssignEe }
+    #- { @int ref Int }  // TODO: builtins.int
+    ee: int = 0
+
+    #- @ee ref TestAnnAssignEe
+    print(ee)
+
+    #- { @ee2 defines/binding TestAnnAssignEe2 }
+    #- { @int ref Int }
+    ee2: int
+
+    #- @ee2 ref TestAnnAssignEe2
+    print(ee2)
+
+    # TODO: ee3  # type: int
+    # TODO: ee4 = 0  # type: int
 
 
 #- { @foo defines/binding Foo }

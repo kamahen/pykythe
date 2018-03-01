@@ -9,9 +9,9 @@ import logging  # pylint: disable=unused-import
 import urllib.parse
 from lib2to3 import pytree
 from lib2to3.pgen2 import token
-from typing import Dict, Iterator, List, Optional, Text, Tuple, Sequence, Set  # pylint: disable=unused-import
+from typing import Any, Dict, Iterator, List, Optional, Text, Tuple, Sequence, Set  # pylint: disable=unused-import
 
-from . import pod
+from . import ast_fqn, pod
 
 # pylint: disable=too-few-public-methods
 
@@ -137,9 +137,8 @@ class KytheFacts:
                 path=self.path)
             self._anchors[(start, end)] = source_vname
             yield json_fact(source_vname, 'node/kind', b'anchor')
-            yield json_fact(source_vname, 'loc/start',
-                            str(start).encode('ascii'))
-            yield json_fact(source_vname, 'loc/end', str(end).encode('ascii'))
+            yield json_fact_from_str(source_vname, 'loc/start', str(start))
+            yield json_fact_from_str(source_vname, 'loc/end', str(end))
             # TODO: Remove the following when it's not needed (e.g., by http_server):
             # yield json_edge(source_vname, 'childof', self.file_vname)
         yield from anchor_item.facts(
@@ -181,6 +180,24 @@ def json_fact(node: Vname, fact_name: str, fact_value: bytes) -> Text:
         ('fact_value', base64.b64encode(fact_value).decode('ascii')),
     ])
     return json.dumps(out)
+
+
+def json_fact_from_dict(node: Vname, fact_name: str,
+                        fact_dict: Dict[Text, Any]) -> Text:
+    try:  # TODO: remove the try/except (it's for debugging)
+        return json_fact_from_str(node, fact_name, json.dumps(fact_dict))
+    except TypeError as exc:
+        raise RuntimeError(
+            repr(
+                dict(
+                    exc=exc,
+                    node=node,
+                    fact_name=fact_name,
+                    fact_dict=fact_dict)))
+
+
+def json_fact_from_str(node: Vname, fact_name: str, fact_str: Text) -> Text:
+    return json_fact(node, fact_name, fact_str.encode('ascii'))
 
 
 def json_edge(source: Vname, edge_name: str, target: Vname) -> Text:
@@ -249,7 +266,12 @@ class ClassDefAnchor(Anchor):
 
     html_class = 'class'
 
-    # TODO: add bases
+    __slots__ = ('astn', 'fqn', 'bases')
+
+    def __init__(self, astn: pytree.Leaf, fqn: Text,
+                 bases: List[ast_fqn.Base]) -> None:
+        super().__init__(astn, fqn)
+        self.bases = bases
 
     def facts(self, kythe_facts: KytheFacts,
               source_vname: Vname) -> Iterator[Text]:
@@ -257,6 +279,11 @@ class ClassDefAnchor(Anchor):
         yield from kythe_facts.add_variable(self.fqn, fqn_vname, b'record',
                                             b'class')
         yield json_edge(source_vname, 'defines/binding', fqn_vname)
+        yield json_fact_from_dict(
+            source_vname, 'x-class',
+            collections.OrderedDict(
+                [('class', self.fqn),
+                 ('bases', [base.as_json_dict() for base in self.bases])]))
 
 
 class FuncDefAnchor(Anchor):

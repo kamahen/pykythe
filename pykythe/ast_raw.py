@@ -26,11 +26,12 @@ import typing
 from mypy_extensions import Arg
 
 from . import ast_cooked, pod, typing_debug
+from .typing_debug import cast as xcast
 
 
 def cvt_parse_tree(parse_tree: pytree.Base,
-                   python_version: int) -> ast_cooked.AstNode:
-    """Convert a lib2to3.pytree to ast_cooked.AstNode."""
+                   python_version: int) -> ast_cooked.Base:
+    """Convert a lib2to3.pytree to ast_cooked.Base."""
     return cvt(parse_tree, new_ctx(python_version))
 
 
@@ -99,83 +100,24 @@ class Ctx(pod.PlainOldData):
         assert self.python_version in (2, 3)
 
 
-def cvt_unary_op(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
-    """Handles the following rules (as modified by _convert()):
-       factor: ('+'|'-'|'~') factor | power
-       not_test: 'not' not_test | comparison
-    """
-    if len(node.children) == 1:
-        # Can appear on LHS if it's a single item
-        return cvt(node.children[0], ctx)
-    assert not ctx.lhs_binds, [node]
-    return ast_cooked.OpNode(
-        op_astn=node.children[0], args=[cvt(node.children[1], ctx)])
-
-
-def cvt_binary_op(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
-    """Handles the following rules (as modified by _convert()):
-       and_expr: shift_expr ('&' shift_expr)*
-       and_test: not_test ('and' not_test)*
-       arith_expr: term (('+'|'-') term)*
-       expr: xor_expr ('|' xor_expr)*
-       or_test: and_test ('or' and_test)*
-       shift_expr: arith_expr (('<<'|'>>') arith_expr)*
-       term: factor (('*'|'@'|'/'|'%'|'//') factor)*
-       xor_expr: and_expr ('^' and_expr)*
-    """
-    result = cvt(node.children[0], ctx)
-    if len(node.children) == 1:
-        # Can appear on LHS if it's a single item
-        return result
-    assert not ctx.lhs_binds, [node]
-    for i in range(1, len(node.children), 2):
-        result = ast_cooked.OpNode(
-            op_astn=node.children[i],
-            args=[result, cvt(node.children[i + 1], ctx)])
-    return result
-
-
-def cvt_comparison(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
-    """comparison: expr (comp_op expr)*"""
-    # This is similar to cvt_binary_op
-    result = cvt(node.children[0], ctx)
-    if len(node.children) == 1:
-        # Can appear on LHS if it's a single item
-        return result
-    assert not ctx.lhs_binds, [node]
-    for i in range(1, len(node.children), 2):
-        result = ast_cooked.ComparisonOpNode(
-            op=cvt(node.children[i], ctx),
-            args=[result, cvt(node.children[i + 1], ctx)])
-    return result
-
-
-def cvt_file_input(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
-    """file_input: (NEWLINE | stmt)* ENDMARKER"""
-    assert not ctx.lhs_binds, [node]
-    assert all(
-        ch.type in (SYMS_STMT, token.NEWLINE, token.ENDMARKER)
-        for ch in node.children)
-    stmts = [cvt(ch, ctx) for ch in node.children if ch.type == SYMS_STMT]
-    return ast_cooked.FileInput(stmts=stmts, scope_bindings=ctx.scope_bindings)
-
-
-def cvt_annassign(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_annassign(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """annassign: ':' test ['=' test]"""
     assert not ctx.lhs_binds, [node]
-    if len(node.children) == 1:
-        return cvt(node.children[1], ctx)
+    if len(node.children) == 2:
+        expr = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
+    else:
+        expr = cvt(node.children[3], ctx)
     return ast_cooked.AnnAssignNode(
-        expr=cvt(node.children[1], ctx), expr_type=cvt(node.children[3], ctx))
+        lhs_type=cvt(node.children[1], ctx), expr=expr)
 
 
-def cvt_arglist(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_arglist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """arglist: argument (',' argument)* [',']"""
     assert not ctx.lhs_binds, [node]
     return ast_cooked.ArgListNode(args=cvt_children_skip_commas(node, ctx))
 
 
-def cvt_argument(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_argument(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     argument: ( test [comp_for] |
                 test '=' test |
@@ -183,64 +125,57 @@ def cvt_argument(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
                 star_expr )
     """
     assert not ctx.lhs_binds, [node]
-    name_astn = None  # type: Optional[pytree.Base]
-    comp_for = ast_cooked.OMITTED_NODE  # type: ast_cooked.AstNode
     if node.children[0].type == SYMS_TEST:
         if len(node.children) == 1:
-            arg = cvt(node.children[0], ctx)
-        elif node.children[1].type == token.EQUAL:
+            return cvt(node.children[0], ctx)
+        if node.children[1].type == token.EQUAL:
             # The name is a `test`, which should simplify to a single
             # name, so use cvt() to get that name, and then extract
             # the astn:
             name_cvt = cvt(node.children[0], ctx)
             if isinstance(name_cvt, ast_cooked.NameNode):
-                name_astn = name_cvt.astn
-            else:
-                # The grammar allows this but it's not a well-formed
-                # Python program
-                logging.warning('argument not in form name=expr: %r', node)
-            arg = cvt(node.children[2], ctx)
-        else:
-            assert node.children[1].type == SYMS_COMP_FOR
-            assert len(node.children) == 2
-            # the arg is a generator
-            return ast_cooked.DictGenListSetMakerCompForNode(
-                value_expr=cvt(node.children[0], ctx),
-                comp_for=cvt(node.children[1], ctx))
-    elif node.children[0].type == token.DOUBLESTAR:
-        arg = ast_cooked.StarStarExprNode(expr=cvt(node.children[1], ctx))
-    else:
-        assert node.children[0].type == SYMS_STAR_EXPR
-        arg = cvt(node.children[0], ctx)
-    return ast_cooked.ArgNode(name_astn=name_astn, arg=arg, comp_for=comp_for)
+                return ast_cooked.ArgumentNode(
+                    name_astn=name_cvt.astn, arg=cvt(node.children[2], ctx))
+            # The grammar allows this but it's not a well-formed Python program
+            logging.warning('argument not in form name=expr: %r', node)
+            return cvt(node.children[2], ctx)
+        assert node.children[1].type == SYMS_COMP_FOR
+        assert len(node.children) == 2
+        # the arg is a generator
+        return ast_cooked.DictGenListSetMakerCompForNode(
+            value_expr=cvt(node.children[0], ctx),
+            comp_for=cvt(node.children[1], ctx))
+    if node.children[0].type == token.DOUBLESTAR:
+        return cvt(node.children[1], ctx)  # Ignore the `**`
+    assert node.children[0].type == SYMS_STAR_EXPR, dict(
+        ch0=node.children[0], node=node)
+    return cvt(node.children[0], ctx)  # Ignores the `*`
 
 
-def cvt_assert_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_assert_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """assert_stmt: 'assert' test [',' test]"""
     assert not ctx.lhs_binds, [node]
     test = cvt(node.children[1], ctx)
     if len(node.children) == 2:
-        display = ast_cooked.OMITTED_NODE  # type: ast_cooked.AstNode
+        display = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
     else:
         display = cvt(node.children[3], ctx)
     return ast_cooked.AssertStmt(items=[test, display])
 
 
-def cvt_async_funcdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_async_funcdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """async_funcdef: ASYNC funcdef"""
     assert not ctx.lhs_binds, [node]
-    # Don't care about ASYNC
-    return cvt(node.children[1], ctx)
+    return cvt(node.children[1], ctx)  # Ignore the `async`
 
 
-def cvt_async_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_async_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """async_stmt: ASYNC (funcdef | with_stmt | for_stmt)"""
     assert not ctx.lhs_binds, [node]
-    # Don't care about ASYNC
-    return cvt(node.children[1], ctx)
+    return cvt(node.children[1], ctx)  # Ignore the `async`
 
 
-def cvt_atom(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_atom(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     atom: ('(' [yield_expr|testlist_gexp] ')' |
            '[' [listmaker] ']' |
@@ -251,17 +186,17 @@ def cvt_atom(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     # Can appear on LHS
     ch0 = node.children[0]
     if ch0.type in _EMPTY_PAIR:
-        if len(node.children) == 2:
+        if len(node.children) == 3:
+            result = cvt(node.children[1], ctx)
+        else:
+            assert len(node.children) == 2
             if ch0.type == token.LSQB:
-                result = ast_cooked.ListMakerNode(
-                    items=[])  # type: ast_cooked.AstNode
+                result = ast_cooked.ListMakerNode(items=[])
             elif ch0.type == token.LBRACE:
                 result = ast_cooked.DictSetMakerNode(items=[])
             else:
                 result = ast_cooked.TestListNode(items=[])
-        else:
-            result = cvt(node.children[1], ctx)
-    elif ch0.type in (token.NAME, token.NUMBER, token.STRING):
+    elif ch0.type in _CONSTANT:
         result = cvt(ch0, ctx)
     elif (len(node.children) == 3 and node.children[0].type ==
           node.children[1].type == node.children[2].type == token.DOT):
@@ -279,8 +214,10 @@ _EMPTY_PAIR = {
     token.BACKQUOTE: '``'
 }
 
+_CONSTANT = frozenset([token.NAME, token.NUMBER, token.STRING])
 
-def cvt_augassign(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+
+def cvt_augassign(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     augassign: ('+=' | '-=' | '*=' | '@=' | '/=' | '%=' | '&=' | '|=' | '^=' |
                 '<<=' | '>>=' | '**=' | '//=')
@@ -290,13 +227,36 @@ def cvt_augassign(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return ast_cooked.AugAssignNode(op_astn=node.children[0])
 
 
-def cvt_break_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_binary_op(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
+    """Handles the following rules (as modified by _convert()):
+       and_expr: shift_expr ('&' shift_expr)*
+       and_test: not_test ('and' not_test)*
+       arith_expr: term (('+'|'-') term)*
+       expr: xor_expr ('|' xor_expr)*
+       or_test: and_test ('or' and_test)*
+       shift_expr: arith_expr (('<<'|'>>') arith_expr)*
+       term: factor (('*'|'@'|'/'|'%'|'//') factor)*
+       xor_expr: and_expr ('^' and_expr)*
+    """
+    result = cvt(node.children[0], ctx)
+    if len(node.children) == 1:
+        # Can appear on LHS if it's a single item
+        return result
+    assert not ctx.lhs_binds, [node]
+    for i in range(1, len(node.children), 2):
+        result = ast_cooked.OpNode(
+            op_astns=[node.children[i]],
+            args=[result, cvt(node.children[i + 1], ctx)])
+    return result
+
+
+def cvt_break_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """break_stmt: 'break'"""
     assert not ctx.lhs_binds, [node]
     return ast_cooked.BreakStmt()
 
 
-def cvt_classdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_classdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """classdef: 'class' NAME ['(' [arglist] ')'] ':' suite"""
     assert not ctx.lhs_binds, [node]
     # The bindings for ClassDefStmt are built up in the calls to
@@ -307,11 +267,12 @@ def cvt_classdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         ctx.python_version)  # start new bindings for the parameters, suite
     if node.children[2].type == token.LPAR:
         if node.children[3].type == token.RPAR:
-            bases = ast_cooked.OMITTED_NODE  # type: ast_cooked.AstNode
+            bases = []  # type: Sequence[ast_cooked.Base]
         else:
-            bases = cvt(node.children[3], ctx_class)
+            bases = xcast(ast_cooked.ArgListNode,
+                          cvt(node.children[3], ctx_class)).args
     else:
-        bases = ast_cooked.OMITTED_NODE
+        bases = []
     suite = cvt(node.children[-1], ctx_class)
     return ast_cooked.ClassDefStmt(
         name=name,
@@ -320,10 +281,10 @@ def cvt_classdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         scope_bindings=ctx_class.scope_bindings)
 
 
-def cvt_comp_for(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_comp_for(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """comp_for: [ASYNC] 'for' exprlist 'in' testlist_safe [comp_iter]"""
     assert not ctx.lhs_binds, [node]
-    ch0 = typing_debug.cast(pytree.Leaf, node.children[0])
+    ch0 = xcast(pytree.Leaf, node.children[0])
     if ch0.value == 'async':
         children = node.children[1:]  # Don't care about ASYNC
     else:
@@ -346,7 +307,7 @@ def cvt_comp_for(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         scope_bindings=ctx_for.scope_bindings)
 
 
-def cvt_comp_if(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_comp_if(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """comp_if: 'if' old_test [comp_iter]"""
     assert not ctx.lhs_binds, [node]
     if len(node.children) == 2:
@@ -357,19 +318,39 @@ def cvt_comp_if(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         comp_iter=cvt(node.children[2], ctx))
 
 
-def cvt_comp_iter(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_comp_iter(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """comp_iter: comp_for | comp_if"""
     assert not ctx.lhs_binds, [node]
     return cvt(node.children[0], ctx)
 
 
-def cvt_comp_op(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_comp_op(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """comp_op: '<'|'>'|'=='|'>='|'<='|'<>'|'!='|'in'|'not' 'in'|'is'|'is' 'not'"""
     assert not ctx.lhs_binds, [node]
-    return ast_cooked.CompOpNode(op_astns=node.children)
+    # The following will be replaced in cvt_comparison
+    return ast_cooked.OpNode(op_astns=node.children, args=[])
 
 
-def cvt_compound_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_comparison(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
+    """comparison: expr (comp_op expr)*"""
+    # This is similar to cvt_binary_op
+    result = cvt(node.children[0], ctx)
+    if len(node.children) == 1:
+        # Can appear on LHS if it's a single item
+        return result
+    assert not ctx.lhs_binds, [node]
+    for i in range(1, len(node.children), 2):
+        op_astns = xcast(ast_cooked.OpNode, cvt(node.children[i],
+                                                ctx)).op_astns
+        typing_debug.assert_all_isinstance(pytree.Leaf,
+                                           op_astns)  # TODO: remove
+        result = ast_cooked.OpNode(
+            op_astns=op_astns, args=[result,
+                                     cvt(node.children[i + 1], ctx)])
+    return result
+
+
+def cvt_compound_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     compound_stmt: if_stmt | while_stmt | for_stmt | try_stmt | with_stmt |
                    funcdef | classdef | decorated | async_stmt
@@ -378,45 +359,46 @@ def cvt_compound_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return cvt(node.children[0], ctx)
 
 
-def cvt_continue_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_continue_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """continue_stmt: 'continue'"""
     assert not ctx.lhs_binds, [node]
     return ast_cooked.ContinueStmt()
 
 
-def cvt_decorated(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_decorated(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """decorated: decorators (classdef | funcdef | async_funcdef)"""
     assert not ctx.lhs_binds, [node]
     return ast_cooked.DecoratedStmt(items=cvt_children(node, ctx))
 
 
-def cvt_decorator(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_decorator(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """decorator: '@' dotted_name [ '(' [arglist] ')' ] NEWLINE"""
     assert not ctx.lhs_binds, [node]
     name = cvt(node.children[1], ctx)
     if node.children[2].type == token.LPAR:
         if node.children[3].type == token.RPAR:
-            arglist = ast_cooked.OMITTED_NODE  # type: ast_cooked.AstNode
+            arglist = []  # type: Sequence[ast_cooked.Base]
         else:
-            arglist = cvt(node.children[3], ctx)
+            arglist = xcast(ast_cooked.ArgListNode, cvt(node.children[3],
+                                                        ctx)).args
     else:
-        arglist = ast_cooked.OMITTED_NODE
+        arglist = []
     return ast_cooked.DecoratorNode(name=name, arglist=arglist)
 
 
-def cvt_decorators(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_decorators(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """decorators: decorator+"""
     assert not ctx.lhs_binds, [node]
     return ast_cooked.DecoratorsNode(items=cvt_children(node, ctx))
 
 
-def cvt_del_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_del_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """del_stmt: 'del' exprlist"""
     assert not ctx.lhs_binds, [node]
     return ast_cooked.DelStmt(exprs=cvt(node.children[1], ctx))
 
 
-def cvt_dictsetmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_dictsetmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     dictsetmaker: ( ((test ':' test | '**' expr)
                      (comp_for | (',' (test ':' test | '**' expr))* [','])) |
@@ -451,11 +433,10 @@ def cvt_dictsetmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     ])
 
 
-def cvt_dotted_as_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_dotted_as_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """dotted_as_name: dotted_name ['as' NAME]"""
     assert not ctx.lhs_binds, [node]
-    dotted_name = typing_debug.cast(ast_cooked.DottedNameNode,
-                                    cvt(node.children[0], ctx))
+    dotted_name = xcast(ast_cooked.DottedNameNode, cvt(node.children[0], ctx))
     if len(node.children) == 1:
         return ast_cooked.DottedAsNameNode(
             dotted_name=dotted_name,
@@ -465,14 +446,14 @@ def cvt_dotted_as_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         as_name=cvt_lhs_binds(True, node.children[2], ctx))
 
 
-def cvt_dotted_as_names(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_dotted_as_names(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """dotted_as_names: dotted_as_name (',' dotted_as_name)*"""
     assert not ctx.lhs_binds, [node]
     return ast_cooked.DottedAsNamesNode(
         names=cvt_children_skip_commas(node, ctx))
 
 
-def cvt_dotted_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_dotted_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """dotted_name: NAME ('.' NAME)*"""
     # Can appear on LHS
     # If this is on LHS, the last name is in a binding context
@@ -483,24 +464,24 @@ def cvt_dotted_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     ] + [cvt(node.children[-1], ctx)])
 
 
-def cvt_encoding_decl(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_encoding_decl(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """encoding_decl: NAME"""
     assert not ctx.lhs_binds, [node]
     raise ValueError('encoding_decl is not used in grammar: {!r}'.format(node))
 
 
-def cvt_eval_input(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_eval_input(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """eval_input: testlist NEWLINE* ENDMARKER"""
     assert not ctx.lhs_binds, [node]
     return cvt(node.children[0], ctx)
 
 
-def cvt_except_clause(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_except_clause(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """except_clause: 'except' [test [(',' | 'as') test]]"""
     assert not ctx.lhs_binds, [node]
     if len(node.children) == 1:
-        expr = ast_cooked.OMITTED_NODE  # type: ast_cooked.AstNode
-        as_item = ast_cooked.OMITTED_NODE  # type: ast_cooked.AstNode
+        expr = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
+        as_item = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
     elif len(node.children) == 2:
         expr = cvt(node.children[1], ctx)
         as_item = ast_cooked.OMITTED_NODE
@@ -511,13 +492,13 @@ def cvt_except_clause(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return ast_cooked.ExceptClauseNode(expr=expr, as_item=as_item)
 
 
-def cvt_exec_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_exec_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """exec_stmt: 'exec' expr ['in' test [',' test]]"""
     assert not ctx.lhs_binds, [node]
     if len(node.children) == 1:
         expr1 = cvt(node.children[1], ctx)
-        expr2 = ast_cooked.OMITTED_NODE  # type: ast_cooked.AstNode
-        expr3 = ast_cooked.OMITTED_NODE  # type: ast_cooked.AstNode
+        expr2 = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
+        expr3 = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
     elif len(node.children) == 4:
         expr1 = cvt(node.children[1], ctx)
         expr2 = cvt(node.children[3], ctx)
@@ -530,7 +511,7 @@ def cvt_exec_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return ast_cooked.ExecStmt(items=[expr1, expr2, expr3])
 
 
-def cvt_expr_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_expr_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     expr_stmt: testlist_star_expr
                ( annassign |
@@ -542,41 +523,54 @@ def cvt_expr_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         return cvt(node.children[0], ctx)
     if len(node.children) == 2:
         assert node.children[1].type == SYMS_ANNASSIGN
-        # Treat as binding even if there's no `=`, because it's
-        # sort of a binding (defines the type).
-        return ast_cooked.ExprStmt(
+        # Treat as binding even if there's no `=` in the annassign,
+        # because it's sort of a binding (defines the type).
+        annassign = xcast(ast_cooked.AnnAssignNode, cvt(node.children[1], ctx))
+        return ast_cooked.AnnAssignStmt(
             lhs=cvt_lhs_binds(True, node.children[0], ctx),
-            augassign=ast_cooked.OMITTED_NODE,
-            exprs=[cvt(node.children[1], ctx)])
+            lhs_type=annassign.lhs_type,
+            expr=annassign.expr)
     if node.children[1].type == token.EQUAL:
-        return ast_cooked.ExprStmt(
-            lhs=cvt_lhs_binds(True, node.children[0], ctx),
-            augassign=ast_cooked.OMITTED_NODE,
-            exprs=[
-                cvt(ch, ctx)
-                for ch in node.children[1:]
+        expr = cvt(node.children[-1], ctx)
+        lhs_ctx = ctx._replace(lhs_binds=True)
+        return ast_cooked.AssignExprStmt(
+            lhs=[
+                cvt(ch, lhs_ctx)
+                for ch in node.children[:-1]
                 if ch.type != token.EQUAL
-            ])
+            ],
+            expr=expr)
     assert node.children[1].type == SYMS_AUGASSIGN
-    return ast_cooked.ExprStmt(
-        lhs=cvt(node.children[0], ctx),  # modifies is not binding
-        augassign=cvt(node.children[1], ctx),
-        exprs=[cvt(node.children[2], ctx)])
+    augassign = xcast(ast_cooked.AugAssignNode, cvt(node.children[1], ctx))
+    expr = cvt(node.children[2], ctx)
+    lhs_augassign = cvt(node.children[0], ctx)  # modifies lhs; binds=False
+    return ast_cooked.AugAssignStmt(
+        lhs=lhs_augassign, augassign=augassign.op_astn, expr=expr)
 
 
-def cvt_exprlist(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_exprlist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """exprlist: (expr|star_expr) (',' (expr|star_expr))* [',']"""
     # Can appear in (LHS) binding context ('for' exprlist ...)
     return ast_cooked.ExprListNode(exprs=cvt_children_skip_commas(node, ctx))
 
 
-def cvt_flow_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_file_input(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
+    """file_input: (NEWLINE | stmt)* ENDMARKER"""
+    assert not ctx.lhs_binds, [node]
+    assert all(
+        ch.type in (SYMS_STMT, token.NEWLINE, token.ENDMARKER)
+        for ch in node.children)
+    stmts = [cvt(ch, ctx) for ch in node.children if ch.type == SYMS_STMT]
+    return ast_cooked.FileInput(stmts=stmts, scope_bindings=ctx.scope_bindings)
+
+
+def cvt_flow_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """flow_stmt: break_stmt | continue_stmt | return_stmt | raise_stmt | yield_stmt"""
     assert not ctx.lhs_binds, [node]
     return cvt(node.children[0], ctx)
 
 
-def cvt_for_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_for_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """for_stmt: 'for' exprlist 'in' testlist ':' suite ['else' ':' suite]"""
     assert not ctx.lhs_binds, [node]
     exprlist = cvt_lhs_binds(True, node.children[1], ctx)
@@ -594,18 +588,18 @@ def cvt_for_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         else_suite=else_suite)
 
 
-def cvt_funcdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_funcdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """funcdef: 'def' NAME parameters ['->' test] ':' suite"""
     assert not ctx.lhs_binds, [node]
     # The bindings for FuncDefStmt are built up in the calls to
     # parameters and suite.
-    name = typing_debug.cast(ast_cooked.NameNode,
-                             cvt_lhs_binds(True, node.children[1], ctx))
+    name = xcast(ast_cooked.NameNode, cvt_lhs_binds(True, node.children[1],
+                                                    ctx))
     ctx.scope_bindings[name.astn.value] = None
     # start a new set of bindings for the parameters, suite
     ctx_func = new_ctx(ctx.python_version)
-    parameters = typing_debug.cast(ast_cooked.TypedArgsListNode,
-                                   cvt(node.children[2], ctx_func))
+    parameters = xcast(ast_cooked.TypedArgsListNode,
+                       cvt(node.children[2], ctx_func))
     if node.children[3].type == token.RARROW:
         return_type = cvt(node.children[4], ctx)
     else:
@@ -619,15 +613,15 @@ def cvt_funcdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         scope_bindings=ctx_func.scope_bindings)
 
 
-def cvt_global_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_global_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """global_stmt: ('global' | 'nonlocal') NAME (',' NAME)*"""
     assert not ctx.lhs_binds, [node]
     names = [
-        typing_debug.cast(ast_cooked.NameNode, cvt(ch, ctx))
+        xcast(ast_cooked.NameNode, cvt(ch, ctx))
         for ch in node.children[1:]
         if ch.type != token.COMMA
     ]
-    ch0 = typing_debug.cast(pytree.Leaf, node.children[0])
+    ch0 = xcast(pytree.Leaf, node.children[0])
     if ch0.value == 'global':
         ctx.global_vars.update((name.astn.value, None) for name in names)
         return ast_cooked.GlobalStmt(names=names)
@@ -637,13 +631,13 @@ def cvt_global_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         return ast_cooked.NonLocalStmt(names=names)
 
 
-def cvt_if_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_if_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """if_stmt: 'if' test ':' suite ('elif' test ':' suite)* ['else' ':' suite]"""
     assert not ctx.lhs_binds, [node]
     ifthens = []
-    else_suite = ast_cooked.OMITTED_NODE  # type: ast_cooked.AstNode
+    else_suite = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
     for i in range(0, len(node.children), 4):
-        ch0 = typing_debug.cast(pytree.Leaf, node.children[i])
+        ch0 = xcast(pytree.Leaf, node.children[i])
         if ch0.value in ('if', 'elif'):
             ifthens.append(cvt(node.children[i + 1], ctx))
             ifthens.append(cvt(node.children[i + 3], ctx))
@@ -652,7 +646,7 @@ def cvt_if_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return ast_cooked.IfStmt(items=ifthens + [else_suite])
 
 
-def cvt_import_as_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_import_as_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """import_as_name: NAME ['as' NAME]"""
     assert not ctx.lhs_binds, [node]
     ch0 = node.children[0]
@@ -665,20 +659,20 @@ def cvt_import_as_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         as_name=cvt_lhs_binds(True, node.children[2], ctx))
 
 
-def cvt_import_as_names(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_import_as_names(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """import_as_names: import_as_name (',' import_as_name)* [',']"""
     assert not ctx.lhs_binds, [node]
     return ast_cooked.ImportAsNamesNode(
         names=cvt_children_skip_commas(node, ctx))
 
 
-def cvt_import_from(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_import_from(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     import_from: ('from' ('.'* dotted_name | '.'+)
                   'import' ('*' | '(' import_as_names ')' | import_as_names))
     """
     assert not ctx.lhs_binds, [node]
-    from_name = []  # type: List[ast_cooked.AstNode]
+    from_name = []  # type: List[ast_cooked.Base]
     for i, child in enumerate(node.children):
         if child.type == token.NAME and child.value == 'from':  # type: ignore
             continue
@@ -694,7 +688,7 @@ def cvt_import_from(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     i += 1
     # pylint: enable=undefined-loop-variable
     if node.children[i].type == token.STAR:
-        import_part = ast_cooked.StarNode()  # type: ast_cooked.AstNode
+        import_part = ast_cooked.StarNode()  # type: ast_cooked.Base
     elif node.children[i].type == token.LPAR:
         import_part = cvt(node.children[i + 1], ctx)
     else:
@@ -703,28 +697,28 @@ def cvt_import_from(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         from_name=from_name, import_part=import_part)
 
 
-def cvt_import_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_import_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """import_name: 'import' dotted_as_names"""
     assert not ctx.lhs_binds, [node]
     return ast_cooked.ImportNameNode(
         dotted_as_names=cvt(node.children[1], ctx))
 
 
-def cvt_import_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_import_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """import_stmt: import_name | import_from"""
     assert not ctx.lhs_binds, [node]
     return cvt(node.children[0], ctx)
 
 
-def cvt_lambdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_lambdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """lambdef: 'lambda' [varargslist] ':' test"""
     assert not ctx.lhs_binds, [node]
-    name = typing_debug.cast(ast_cooked.NameNode,
-                             cvt_lhs_binds(True, node.children[0], ctx))
+    name = xcast(ast_cooked.NameNode, cvt_lhs_binds(True, node.children[0],
+                                                    ctx))
     ctx_func = new_ctx(ctx.python_version)
     if len(node.children) == 4:
-        parameters = typing_debug.cast(ast_cooked.TypedArgsListNode,
-                                       cvt(node.children[1], ctx_func))
+        parameters = xcast(ast_cooked.TypedArgsListNode,
+                           cvt(node.children[1], ctx_func))
         suite = cvt(node.children[3], ctx_func)
     else:
         parameters = ast_cooked.TypedArgsListNode(args=[])
@@ -737,7 +731,7 @@ def cvt_lambdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         scope_bindings=ctx_func.scope_bindings)
 
 
-def cvt_listmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_listmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """listmaker: (test|star_expr) ( comp_for | (',' (test|star_expr))* [','] )"""
     assert not ctx.lhs_binds, [node]
     if len(node.children) == 1:
@@ -752,7 +746,7 @@ def cvt_listmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
             items=cvt_children_skip_commas(node, ctx))
 
 
-def cvt_parameters(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_parameters(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """parameters: '(' [typedargslist] ')'"""
     assert not ctx.lhs_binds, [node]
     if len(node.children) > 2:
@@ -760,13 +754,13 @@ def cvt_parameters(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return ast_cooked.TypedArgsListNode(args=[])
 
 
-def cvt_pass_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_pass_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """pass_stmt: 'pass'"""
     assert not ctx.lhs_binds, [node]
     return ast_cooked.PassStmt()
 
 
-def cvt_power(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_power(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """power: [AWAIT] atom trailer* ['**' factor]"""
     # Can appear on LHS
     if (node.children[0].type == token.NAME and
@@ -780,7 +774,7 @@ def cvt_power(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     if children[-1].type == SYMS_FACTOR:
         assert children[-2].type == token.DOUBLESTAR
         doublestar_factor = cvt(children[-1],
-                                ctx)  # type: Optional[ast_cooked.AstNode]
+                                ctx)  # type: Optional[ast_cooked.Base]
         children = children[:-2]
     else:
         assert len(children) == 1 or children[-1].type == SYMS_TRAILER
@@ -796,11 +790,11 @@ def cvt_power(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     trailer = ast_cooked.AtomTrailerNode(atom=atom, trailers=trailers)
     if doublestar_factor:
         return ast_cooked.OpNode(
-            op_astn=node.children[-2], args=[trailer, doublestar_factor])
+            op_astns=[node.children[-2]], args=[trailer, doublestar_factor])
     return trailer
 
 
-def cvt_print_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_print_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     print_stmt: 'print' ( [ test (',' test)* [','] ] |
                           '>>' test [ (',' test)+ [','] ] )
@@ -813,7 +807,7 @@ def cvt_print_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     ])
 
 
-def cvt_raise_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_raise_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """raise_stmt: 'raise' [test ['from' test | ',' test [',' test]]]"""
     assert not ctx.lhs_binds, [node]
     if len(node.children) == 1:
@@ -822,8 +816,8 @@ def cvt_raise_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     if len(node.children) > 2:
         if node.children[2].value == 'from':  # type: ignore
             raise_from = cvt(node.children[3], ctx)
-            exc2 = ast_cooked.OMITTED_NODE  # type: ast_cooked.AstNode
-            exc3 = ast_cooked.OMITTED_NODE  # type: ast_cooked.AstNode
+            exc2 = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
+            exc3 = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
         else:
             raise_from = ast_cooked.OMITTED_NODE
             exc2 = cvt(node.children[3], ctx)
@@ -838,7 +832,7 @@ def cvt_raise_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return ast_cooked.RaiseStmt(items=[exc, exc2, exc3, raise_from])
 
 
-def cvt_return_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_return_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """return_stmt: 'return' [testlist]"""
     assert not ctx.lhs_binds, [node]
     if len(node.children) == 2:
@@ -846,7 +840,7 @@ def cvt_return_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return ast_cooked.OMITTED_NODE
 
 
-def cvt_simple_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_simple_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """simple_stmt: small_stmt (';' small_stmt)* [';'] NEWLINE"""
     # filter for ch.type == SYMS_SMALL_STMT
     assert not ctx.lhs_binds, [node]
@@ -858,7 +852,7 @@ def cvt_simple_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     ])
 
 
-def cvt_single_input(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_single_input(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """single_input: NEWLINE | simple_stmt | compound_stmt NEWLINE"""
     assert not ctx.lhs_binds, [node]
     if node.children[0].type == token.NEWLINE:
@@ -866,13 +860,13 @@ def cvt_single_input(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return cvt(node.children[0], ctx)
 
 
-def cvt_sliceop(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_sliceop(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """sliceop: ':' [test]"""
     assert not ctx.lhs_binds, [node]
     return cvt(node.children[0], ctx)
 
 
-def cvt_small_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_small_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     small_stmt: (expr_stmt | print_stmt  | del_stmt | pass_stmt | flow_stmt |
                  import_stmt | global_stmt | exec_stmt | assert_stmt)
@@ -882,23 +876,23 @@ def cvt_small_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return cvt(node.children[0], ctx)
 
 
-def cvt_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """stmt: simple_stmt | compound_stmt"""
     assert not ctx.lhs_binds, [node]
     assert len(node.children) == 1
     return cvt(node.children[0], ctx)
 
 
-def cvt_subscript(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_subscript(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """subscript: test | [test] ':' [test] [sliceop]"""
     assert not ctx.lhs_binds, [node]
     if len(node.children) == 1:
         if node.children[0].type == token.COLON:
-            expr1 = ast_cooked.OMITTED_NODE  # type: ast_cooked.AstNode
+            expr1 = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
         else:
             expr1 = cvt(node.children[0], ctx)
-        expr2 = ast_cooked.OMITTED_NODE  # type: ast_cooked.AstNode
-        expr3 = ast_cooked.OMITTED_NODE  # type: ast_cooked.AstNode
+        expr2 = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
+        expr3 = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
     else:
         i = 0
         if node.children[i].type == token.COLON:
@@ -924,7 +918,7 @@ def cvt_subscript(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return ast_cooked.SubscriptNode(expr1=expr1, expr2=expr2, expr3=expr3)
 
 
-def cvt_subscriptlist(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_subscriptlist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """subscriptlist: subscript (',' subscript)* [',']"""
     # Can appear on LHS
     return ast_cooked.SubscriptListNode(
@@ -932,7 +926,7 @@ def cvt_subscriptlist(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
             node, ctx._replace(lhs_binds=False)))
 
 
-def cvt_suite(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_suite(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """suite: simple_stmt | NEWLINE INDENT stmt+ DEDENT"""
     assert not ctx.lhs_binds, [node]
     assert all(
@@ -946,13 +940,14 @@ def cvt_suite(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     ])
 
 
-def cvt_star_expr(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_star_expr(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """star_expr: '*' expr"""
     assert not ctx.lhs_binds, [node]
-    return ast_cooked.StarExprNode(expr=cvt(node.children[1], ctx))
+    # Ignore the `*`
+    return cvt(node.children[1], ctx)
 
 
-def cvt_test(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_test(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     test: or_test ['if' or_test 'else' test] | lambdef
     old_test: or_test | old_lambdef
@@ -961,19 +956,19 @@ def cvt_test(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return cvt(node.children[0], ctx)
 
 
-def cvt_testlist(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_testlist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """testlist: test (',' test)* [',']"""
     assert not ctx.lhs_binds, [node]
     return ast_cooked.TestListNode(items=cvt_children_skip_commas(node, ctx))
 
 
-def cvt_testlist1(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_testlist1(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """testlist1: test (',' test)*"""
     assert not ctx.lhs_binds, [node]
     return ast_cooked.TestListNode(items=cvt_children_skip_commas(node, ctx))
 
 
-def cvt_testlist_gexp(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_testlist_gexp(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """testlist_gexp: (test|star_expr) ( comp_for | (',' (test|star_expr))* [','] )"""
     # Can appear on LHS
     # Similar to cvt_listmaker
@@ -989,13 +984,13 @@ def cvt_testlist_gexp(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
             items=cvt_children_skip_commas(node, ctx))
 
 
-def cvt_testlist_safe(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_testlist_safe(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """testlist_safe: old_test [(',' old_test)+ [',']]"""
     assert not ctx.lhs_binds, [node]
     return ast_cooked.TestListNode(items=cvt_children_skip_commas(node, ctx))
 
 
-def cvt_testlist_star_expr(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_testlist_star_expr(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """testlist_star_expr: (test|star_expr) (',' (test|star_expr))* [',']"""
     # Can appear on LHS, e.g.:
     #   x, *middle, y = (1, 2, 3, 4, 5)
@@ -1004,7 +999,7 @@ def cvt_testlist_star_expr(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return ast_cooked.TestListNode(items=cvt_children_skip_commas(node, ctx))
 
 
-def cvt_tfpdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_tfpdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     tfpdef: tname | '(' tfplist ')'
     vfpdef: vname | '(' vfplist ')'
@@ -1015,7 +1010,7 @@ def cvt_tfpdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return cvt(node.children[1], ctx)
 
 
-def cvt_tfplist(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_tfplist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     tfplist: tfpdef (',' tfpdef)* [',']
     vfplist: vfpdef (',' vfpdef)* [',']
@@ -1024,7 +1019,7 @@ def cvt_tfplist(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return ast_cooked.TfpListNode(items=cvt_children_skip_commas(node, ctx))
 
 
-def cvt_tname(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_tname(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     tname: NAME [':' test]
     vname: NAME
@@ -1032,27 +1027,29 @@ def cvt_tname(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     assert ctx.lhs_binds, [node]
     name = cvt(node.children[0], ctx)  # Mark as binds even if no RHS
     if len(node.children) == 1:
-        type_expr = ast_cooked.OMITTED_NODE  # type: ast_cooked.AstNode
+        type_expr = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
     else:
         type_expr = cvt_lhs_binds(False, node.children[2], ctx)
     return ast_cooked.TnameNode(name=name, type_expr=type_expr)
 
 
-def cvt_trailer(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_trailer(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """trailer: '(' [arglist] ')' | '[' subscriptlist ']' | '.' NAME"""
     # Can appear on LHS - cvt_power will set ctx.lhs_binds appropriately
     if node.children[0].type == token.LPAR:
         if node.children[1].type == token.RPAR:
             return ast_cooked.ArgListNode(args=[])
         else:
-            return cvt_lhs_binds(False, node.children[1], ctx)
+            return xcast(ast_cooked.ArgListNode,
+                         cvt_lhs_binds(False, node.children[1], ctx))
     if node.children[0].type == token.LSQB:
-        return cvt_lhs_binds(False, node.children[1], ctx)
+        return xcast(ast_cooked.SubscriptListNode,
+                     cvt_lhs_binds(False, node.children[1], ctx))
     assert node.children[0].type == token.DOT
     return ast_cooked.DotNameTrailerNode(name=node.children[1])
 
 
-def cvt_try_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_try_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     try_stmt: ('try' ':' suite
                ((except_clause ':' suite)+
@@ -1068,7 +1065,7 @@ def cvt_try_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     ])
 
 
-def cvt_typedargslist(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_typedargslist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     typedargslist: ((tfpdef ['=' test] ',')*
                     ('*' [tname] (',' tname ['=' test])* [',' '**' tname] | '**' tname)
@@ -1106,7 +1103,7 @@ def cvt_typedargslist(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return ast_cooked.TypedArgsListNode(args=args)
 
 
-def cvt_while_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_while_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """while_stmt: 'while' test ':' suite ['else' ':' suite]"""
     assert not ctx.lhs_binds, [node]
     if len(node.children) == 7:
@@ -1120,18 +1117,18 @@ def cvt_while_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         else_suite=ast_cooked.OMITTED_NODE)
 
 
-def cvt_with_item(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_with_item(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """with_item: test ['as' expr]"""
     assert not ctx.lhs_binds, [node]
     item = cvt(node.children[0], ctx)
     if len(node.children) == 1:
-        as_item = ast_cooked.OMITTED_NODE  # type: ast_cooked.AstNode
+        as_item = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
     else:
         as_item = cvt(node.children[2], ctx)
     return ast_cooked.WithItemNode(item=item, as_item=as_item)
 
 
-def cvt_with_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_with_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """with_stmt: 'with' with_item (',' with_item)*  ':' suite"""
     assert not ctx.lhs_binds, [node]
     return ast_cooked.WithStmt(
@@ -1143,13 +1140,13 @@ def cvt_with_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
         suite=cvt(node.children[-1], ctx))
 
 
-def cvt_with_var(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_with_var(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """with_var: 'as' expr"""
     assert not ctx.lhs_binds, [node]
     return cvt(node.children[1], ctx)
 
 
-def cvt_yield_arg(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_yield_arg(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """yield_arg: 'from' test | testlist"""
     assert not ctx.lhs_binds, [node]
     # Don't care about FROM
@@ -1158,7 +1155,7 @@ def cvt_yield_arg(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return cvt(node.children[0], ctx)
 
 
-def cvt_yield_expr(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_yield_expr(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """yield_expr: 'yield' [yield_arg]"""
     assert not ctx.lhs_binds, [node]
     # Don't care that it's YIELD; just want the expr
@@ -1167,13 +1164,13 @@ def cvt_yield_expr(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return ast_cooked.YieldNode(items=[])
 
 
-def cvt_yield_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_yield_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """yield_stmt: yield_expr"""
     assert not ctx.lhs_binds, [node]
     return cvt(node.children[0], ctx)
 
 
-def cvt_token_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_token_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """Handle token.NAME."""
     assert isinstance(node, pytree.Leaf)
     if (ctx.lhs_binds and node.value not in ctx.global_vars and
@@ -1185,19 +1182,32 @@ def cvt_token_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
     return ast_cooked.NameNode(binds=this_binds, astn=node)
 
 
-def cvt_token_number(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_token_number(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """Handle token.NUMBER."""
     assert not ctx.lhs_binds, [node]
-    return ast_cooked.NumberNode(astn=typing_debug.cast(pytree.Leaf, node))
+    return ast_cooked.NumberNode(astn=xcast(pytree.Leaf, node))
 
 
-def cvt_token_string(node: pytree.Base, ctx: Ctx) -> ast_cooked.AstNode:
+def cvt_token_string(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """Handle token.NAME."""
     assert not ctx.lhs_binds, [node]
     astns = node if isinstance(node, list) else [node]
     typing_debug.assert_all_isinstance(pytree.Leaf, astns)  # TODO: remove
     return ast_cooked.StringNode(
         astns=typing.cast(Sequence[pytree.Leaf], astns))
+
+
+def cvt_unary_op(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
+    """Handles the following rules (as modified by _convert()):
+       factor: ('+'|'-'|'~') factor | power
+       not_test: 'not' not_test | comparison
+    """
+    if len(node.children) == 1:
+        # Can appear on LHS if it's a single item
+        return cvt(node.children[0], ctx)
+    assert not ctx.lhs_binds, [node]
+    return ast_cooked.OpNode(
+        op_astns=[node.children[0]], args=[cvt(node.children[1], ctx)])
 
 
 # The following dispatch table is derived from
@@ -1329,18 +1339,18 @@ SYMS_TNAMES = frozenset([syms.tfpdef, syms.vfpdef, syms.tname, syms.vname])
 
 # Explanation for the following: https://github.com/python/mypy/issues/4530
 _DISPATCH_TYPE = Dict[int, Callable[
-    [Arg(pytree.Base, 'node'), Arg(Ctx, 'ctx')], ast_cooked.AstNode]]
+    [Arg(pytree.Base, 'node'), Arg(Ctx, 'ctx')], ast_cooked.Base]]
 
 
 def cvt(node: pytree.Base, ctx: Ctx,
-        _DISPATCH: _DISPATCH_TYPE = _DISPATCH) -> ast_cooked.AstNode:
+        _DISPATCH: _DISPATCH_TYPE = _DISPATCH) -> ast_cooked.Base:
     """Call the appropriate cvt_XXX for node."""
     return _DISPATCH[node.type](node, ctx)
 
 
 def cvt_debug(node: pytree.Base,
               ctx: Ctx,
-              _DISPATCH: _DISPATCH_TYPE = _DISPATCH) -> ast_cooked.AstNode:
+              _DISPATCH: _DISPATCH_TYPE = _DISPATCH) -> ast_cooked.Base:
     """Call the appropriate cvt_XXX for node."""
     # This can be used instead of cvt() for debugging.
     cvt_func = _DISPATCH[node.type]
@@ -1349,14 +1359,14 @@ def cvt_debug(node: pytree.Base,
     except Exception as exc:
         raise Exception('%s calling=%s node=%r' % (exc, cvt_func,
                                                    node)) from exc
-    assert isinstance(result, ast_cooked.AstNode), [node, result]
+    assert isinstance(result, ast_cooked.Base), [node, result]
     return result
 
 
 def cvt_children(
         node: pytree.Base,  # pytree.Node
         ctx: Ctx,
-        _DISPATCH: _DISPATCH_TYPE = _DISPATCH) -> Sequence[ast_cooked.AstNode]:
+        _DISPATCH: _DISPATCH_TYPE = _DISPATCH) -> Sequence[ast_cooked.Base]:
     """Call the appropriate cvt_XXX for all node.children."""
     return [cvt(ch, ctx) for ch in node.children]
 
@@ -1364,7 +1374,7 @@ def cvt_children(
 def cvt_children_skip_commas(
         node: pytree.Base,  # pytree.Node
         ctx: Ctx,
-        _DISPATCH: _DISPATCH_TYPE = _DISPATCH) -> Sequence[ast_cooked.AstNode]:
+        _DISPATCH: _DISPATCH_TYPE = _DISPATCH) -> Sequence[ast_cooked.Base]:
     """Call the appropriate cvt_XXX for all node.children that aren't a comma."""
     return [cvt(ch, ctx) for ch in node.children if ch.type != token.COMMA]
 
@@ -1372,7 +1382,7 @@ def cvt_children_skip_commas(
 def cvt_lhs_binds(lhs_binds: bool,
                   node: pytree.Base,
                   ctx: Ctx,
-                  _DISPATCH: _DISPATCH_TYPE = _DISPATCH) -> ast_cooked.AstNode:
+                  _DISPATCH: _DISPATCH_TYPE = _DISPATCH) -> ast_cooked.Base:
     """Dispatch in a new context that has lhs_binds set."""
     return cvt(node, ctx._replace(lhs_binds=lhs_binds))
 

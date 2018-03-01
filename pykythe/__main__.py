@@ -2,10 +2,10 @@
 """Main program for Python parser that outputs JSON facts.
 
 This uses lib2to3, which supports both Python2 and Python3 syntax.
-
-TODO: The code here is temporary scaffolding, and will change
-      significantly before release.
 """
+
+# TODO: The code here is temporary scaffolding, and will change
+#       significantly before release.
 
 import argparse
 import collections
@@ -57,7 +57,9 @@ def main() -> int:
             ast_cooked.FqnCtx(
                 fqn_dot=file_to_module(src) + '.',
                 bindings=collections.ChainMap(collections.OrderedDict()),
-                python_version=args.python_version), anchors)
+                python_version=args.python_version),
+            anchors,
+        )
         for json_fact in kythe_facts.json_facts(anchors, parse_tree):
             print(json_fact)
     return 0
