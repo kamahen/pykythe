@@ -157,13 +157,11 @@ class ListExprBase(Base):
 
     def anchors(self, ctx: FqnCtx,
                 anchors: List[kythe.Anchor]) -> ast_fqn.Base:
-        # TODO: (when mypy doesn't get annoyed at it):
-        # items_expr = functools.reduce(
-        #       lambda items_expr, item: items_expr + [item.anchors_expr(ctx, anchors)],
-        #       self.items, [])
-        items_expr = []  # type: List[ast_fqn.Base]
-        for item in self.items:
-            items_expr += [item.anchors_expr(ctx, anchors)]
+        # TODO: https://github.com/python/mypy/issues/4673 (and in other places
+        #       where functools.reduce is used)
+        items_expr = functools.reduce(
+              lambda items_expr, item: items_expr + [item.anchors_expr(ctx, anchors)],
+              self.items, [])  # type: List[ast_fqn.Base]
         return self.result_type(items=items_expr)  # type: ignore  # pylint: disable=not-callable
 
 
@@ -309,10 +307,9 @@ class AssignExprStmt(Base):
         # process self.lhs left-to-right even though assigned in
         # reverse order (it doesn't really matter which order we
         # rocess them).
-        # TODO: use functools.reduce (see comment in ListExprBase.anchors)
-        lhs_expr = []  # type: List[ast_fqn.Base]
-        for lhs_item in self.lhs:  # even though assigned in reverse order
-            lhs_expr += [lhs_item.anchors_expr(ctx, anchors)]
+        lhs_expr = functools.reduce(
+            lambda lhs_expr, lhs_item: lhs_expr + [lhs_item.anchors_expr(ctx, anchors)],
+            self.lhs, [])  # type: List[ast_fqn.Base]
         return ast_fqn.Assign(lhs=lhs_expr, expr=expr_expr)
 
 
@@ -439,10 +436,9 @@ class ClassDefStmt(Base):
             bindings=ctx.bindings.new_child(
                 collections.OrderedDict((name, class_fqn_dot + name)
                                         for name in self.scope_bindings)))
-        # TODO: use functools.reduce (see comment in ListExprBase.anchors)
-        bases_expr = []  # type: List[ast_fqn.Base]
-        for base in self.bases:
-            bases_expr += [base.anchors_expr(ctx, anchors)]
+        bases_expr = functools.reduce(
+            lambda bases_expr, base: bases_expr + [base.anchors_expr(ctx, anchors)],
+            self.bases, [])  # type: List[ast_fqn.Base]
         anchors.append(
             kythe.ClassDefAnchor(
                 astn=self.name.astn, fqn=class_fqn, bases=bases_expr))
@@ -669,10 +665,9 @@ class ExprListNode(Base):
 
     def anchors(self, ctx: FqnCtx,
                 anchors: List[kythe.Anchor]) -> ast_fqn.Base:
-        # TODO: use functools.reduce (see comment in ListExprBase.anchors)
-        exprs_expr = []  # type: List[ast_fqn.Base]
-        for exprs_item in self.exprs:
-            exprs_expr += [exprs_item.anchors_expr(ctx, anchors)]
+        exprs_expr = functools.reduce(
+            lambda exprs_expr, exprs_item: exprs_expr + [exprs_item.anchors_expr(ctx, anchors)],
+            self.exprs, [])  # type: List[ast_fqn.Base]
         return ast_fqn.ExprList(items=exprs_expr)
 
 
@@ -1014,10 +1009,9 @@ class OpNode(Base):
 
     def anchors(self, ctx: FqnCtx,
                 anchors: List[kythe.Anchor]) -> ast_fqn.Base:
-        # TODO: use functools.reduce (see comment in ListExprBase.anchors)
-        args_expr = []  # type: List[ast_fqn.Base]
-        for args_item in self.args:
-            args_expr += [args_item.anchors_expr(ctx, anchors)]
+        args_expr = functools.reduce(
+            lambda args_expr, args_item: args_expr + [args_item.anchors_expr(ctx, anchors)],
+            self.args, [])  # type: List[ast_fqn.Base]
         return ast_fqn.Op(items=args_expr)
 
 
