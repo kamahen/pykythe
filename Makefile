@@ -128,7 +128,7 @@ run_server: prep_server
 snapshot:
 	rm -rf __pycache__
 	git gc
-	cd .. && tar --create --exclude=.cayley_history --gzip --file \
+	cd .. && tar --create --exclude=.cayley_history --exclude=.mypy_cache --exclude=__pycache__ --gzip --file \
 		$(HOME)/Downloads/pykythe_$$(date +%Y-%m-%d-%H-%M).tgz pykythe
 	ls -lh $(HOME)/Downloads/pykythe_*.tgz
 

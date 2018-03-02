@@ -9,6 +9,7 @@ Each node is a subclass of Base.
 """
 
 import collections
+import functools
 import logging  # pylint: disable=unused-import
 from lib2to3 import pytree
 from typing import Any, Callable, Dict, List, Optional, Sequence, Text, TypeVar, Union  # pylint: disable=unused-import
@@ -64,6 +65,18 @@ class Base(pod.PlainOldDataExtended):
         assert type(self) is not Base, "Must not instantiate ast_cooked.Node"
         for key, value in kwargs.items():
             setattr(self, key, value)
+
+    def atom_trailer_node(self, atom: 'Base') -> 'Base':
+        """For processing atom, trailer part of power.
+
+        This is implemented only for nodes that are the result of the
+        grammar rule `power: [AWAIT] atom trailer* ['**' factor]`.
+        """
+        # The following code stops pylint abstract-method from triggering
+        # in the classes that don't define it.
+        if False:  # pylint: disable=using-constant-test
+            raise NotImplementedError(self)
+        return Base(atom=atom)
 
     def anchors(self, ctx: FqnCtx,
                 anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
@@ -123,8 +136,7 @@ class Base(pod.PlainOldDataExtended):
 class LeafStmtBase(Base):
     """A convenience class for AST nodes (stmts) that have no children."""
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         return None
 
 
@@ -144,10 +156,14 @@ class ListExprBase(Base):
         self.items = items
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
+        # TODO: (when mypy doesn't get annoyed at it):
+        # items_expr = functools.reduce(
+        #       lambda items_expr, item: items_expr + [item.anchors_expr(ctx, anchors)],
+        #       self.items, [])
         items_expr = []  # type: List[ast_fqn.Base]
         for item in self.items:
-            items_expr.append(item.anchors_expr(ctx, anchors))
+            items_expr += [item.anchors_expr(ctx, anchors)]
         return self.result_type(items=items_expr)  # type: ignore  # pylint: disable=not-callable
 
 
@@ -163,8 +179,7 @@ class ListStmtBase(Base):
             "Must not instantiate ast_cooked.ListStmtBase")
         self.items = items
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for item in self.items:
             # TODO: remove the try/except (it's for debugging)
             try:
@@ -190,8 +205,7 @@ class AnnAssignNode(Base):
         self.lhs_type = lhs_type
         self.expr = expr
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         # Not used anywhere
         raise NotImplementedError(self)
 
@@ -211,7 +225,7 @@ class AnnAssignStmt(Base):
         self.expr = expr
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         lhs_type_expr = self.lhs_type.anchors_expr(ctx, anchors)
         expr_expr = self.expr.anchors_expr(ctx, anchors)
         lhs_expr = self.lhs.anchors_expr(ctx, anchors)
@@ -222,10 +236,8 @@ class AnnAssignStmt(Base):
 class ArgListNode(Base):
     """Corresponds to `arglist`.
 
-    The grammar uses this for `decorator` and `classdef`, but for
-    DecoratorNode and ClassDefNode, we only store the list of
-    args. This leave ArgListNode only used by `trailers` (and
-    therefore by `power`).
+    This is only usesd when processing a `decorator`, `classdef`, or
+    `trailers`, and is incorporated directly into the appropriate node.
     """
 
     __slots__ = ('args', )
@@ -234,12 +246,12 @@ class ArgListNode(Base):
         # pylint: disable=super-init-not-called
         self.args = args
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
-        args_expr = []  # type: List[ast_fqn.Base]
-        for args_item in self.args:
-            args_expr.append(args_item.anchors_expr(ctx, anchors))
-        return ast_fqn.ArgList(items=args_expr)
+    def atom_trailer_node(self, atom: Base) -> Base:
+        return AtomCallNode(atom=atom, args=self.args)
+
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        # Not used anywhere
+        raise NotImplementedError(self)
 
 
 class ArgumentNode(Base):
@@ -253,7 +265,7 @@ class ArgumentNode(Base):
         self.arg = arg
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         # TODO: handle self.name_astn (ref to the funcdef)
         arg_expr = self.arg.anchors_expr(ctx, anchors)
         return arg_expr
@@ -270,7 +282,7 @@ class AsNameNode(Base):
         self.as_name = xcast(NameNode, as_name)
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         # TODO: output anchor for self.name
         self.as_name.anchors(ctx, anchors)
         return ast_fqn.AsName(
@@ -292,11 +304,15 @@ class AssignExprStmt(Base):
         self.expr = expr
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         expr_expr = self.expr.anchors_expr(ctx, anchors)
-        lhs_expr = []  # List[ast_fqn.Base]
+        # process self.lhs left-to-right even though assigned in
+        # reverse order (it doesn't really matter which order we
+        # rocess them).
+        # TODO: use functools.reduce (see comment in ListExprBase.anchors)
+        lhs_expr = []  # type: List[ast_fqn.Base]
         for lhs_item in self.lhs:  # even though assigned in reverse order
-            lhs_expr.append(lhs_item.anchors_expr(ctx, anchors))
+            lhs_expr += [lhs_item.anchors_expr(ctx, anchors)]
         return ast_fqn.Assign(lhs=lhs_expr, expr=expr_expr)
 
 
@@ -304,23 +320,64 @@ class AssertStmt(ListStmtBase):
     """Corresponds to `assert_stmt`."""
 
 
-class AtomTrailerNode(Base):
-    """Correponds to the atom, trailer part of power."""
+def atom_trailer_node(atom: Base, trailers: Sequence[Base]) -> Base:
+    """Create the appropriate AtomXXX nodes."""
+    return functools.reduce(
+        lambda atom, trailer: trailer.atom_trailer_node(atom), trailers, atom)
 
-    __slots__ = ('atom', 'trailers')
 
-    def __init__(self, *, atom: Base, trailers: Sequence[Base]) -> None:
+class AtomCallNode(Base):
+    """Corresponds to `atom '(' [arglist] ')'`."""
+
+    __slots__ = ('atom', 'args')
+
+    def __init__(self, *, atom: Base, args: Sequence[Base]) -> None:
         # pylint: disable=super-init-not-called
         self.atom = atom
-        self.trailers = trailers
+        self.args = args
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
+        # TODO: add the args to ast_fqn.Call
         atom_expr = self.atom.anchors_expr(ctx, anchors)
-        trailers_expr = []  # type: List[ast_fqn.Base]
-        for trailers_item in self.trailers:
-            trailers_expr.append(trailers_item.anchors_expr(ctx, anchors))
-        return ast_fqn.AtomTrailer(atom=atom_expr, trailers=trailers_expr)
+        for arg in self.args:
+            arg.anchors(ctx, anchors)
+        return ast_fqn.Call(atom=atom_expr)
+
+
+class AtomDotNode(Base):
+    """Corresponds to `atom '.' NAME`."""
+
+    __slots__ = ('atom', 'attr_name')
+
+    def __init__(self, *, atom: Base, attr_name: pytree.Leaf) -> None:
+        # pylint: disable=super-init-not-called
+        self.atom = atom
+        self.attr_name = attr_name
+
+    def anchors(self, ctx: FqnCtx,
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
+        atom_expr = self.atom.anchors_expr(ctx, anchors)
+        return ast_fqn.Dot(atom=atom_expr, attr_name=self.attr_name.value)
+
+
+class AtomSubscriptNode(Base):
+    """Corresponds to `atom '[' [subscriptist] ']'`."""
+
+    __slots__ = ('atom', 'subscripts')
+
+    def __init__(self, *, atom: Base, subscripts: Sequence[Base]) -> None:
+        # pylint: disable=super-init-not-called
+        self.atom = atom
+        self.subscripts = subscripts
+
+    def anchors(self, ctx: FqnCtx,
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
+        # TODO: add the subscripts to ast_fqn.Subscript
+        atom_expr = self.atom.anchors_expr(ctx, anchors)
+        for subscript in self.subscripts:
+            subscript.anchors(ctx, anchors)
+        return ast_fqn.Call(atom=atom_expr)
 
 
 class AugAssignNode(Base):
@@ -332,8 +389,7 @@ class AugAssignNode(Base):
         # pylint: disable=super-init-not-called
         self.op_astn = xcast(pytree.Leaf, op_astn)
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         # Not used anywhere
         raise NotImplementedError(self)
 
@@ -351,7 +407,7 @@ class AugAssignStmt(Base):
         self.expr = expr
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         expr_expr = self.expr.anchors_expr(ctx, anchors)
         lhs_expr = self.lhs.anchors_expr(ctx, anchors)
         return ast_fqn.AugAssign(lhs=lhs_expr, expr=expr_expr)
@@ -374,8 +430,7 @@ class ClassDefStmt(Base):
         self.suite = suite
         self.scope_bindings = scope_bindings
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         assert self.name.binds
         class_fqn = ctx.fqn_dot + self.name.astn.value
         class_fqn_dot = class_fqn + '.'
@@ -384,9 +439,10 @@ class ClassDefStmt(Base):
             bindings=ctx.bindings.new_child(
                 collections.OrderedDict((name, class_fqn_dot + name)
                                         for name in self.scope_bindings)))
+        # TODO: use functools.reduce (see comment in ListExprBase.anchors)
         bases_expr = []  # type: List[ast_fqn.Base]
         for base in self.bases:
-            bases_expr.append(base.anchors_expr(ctx, anchors))
+            bases_expr += [base.anchors_expr(ctx, anchors)]
         anchors.append(
             kythe.ClassDefAnchor(
                 astn=self.name.astn, fqn=class_fqn, bases=bases_expr))
@@ -436,7 +492,7 @@ class CompForNode(Base):
             bindings=ctx.bindings.new_child(collections.OrderedDict()))
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         # Assume that the caller has created a new child in the
         # bindings, if needed.  This is done at the outermost level of
         # a comp_for (for Python 3), but not for any of the inner
@@ -467,7 +523,7 @@ class CompIfCompIterNode(Base):
         self.comp_iter = comp_iter
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         value_expr_expr = self.value_expr.anchors_expr(ctx, anchors)
         comp_iter_expr = self.comp_iter.anchors_expr(ctx, anchors)
         return ast_fqn.CompIfCompIter(
@@ -499,12 +555,12 @@ class DecoratorNode(Base):
         self.arglist = arglist
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
+        # TODO: add the args to ast_fqn.Call
         name_expr = self.name.anchors_expr(ctx, anchors)
-        trailers_expr = []  # List[ast_fqn.Base]
         for arg in self.arglist:
-            trailers_expr.append(arg.anchors_expr(ctx, anchors))
-        return ast_fqn.AtomTrailer(atom=name_expr, trailers=trailers_expr)
+            arg.anchors(ctx, anchors)
+        return ast_fqn.Call(atom=name_expr)
 
 
 class DelStmt(Base):
@@ -516,8 +572,7 @@ class DelStmt(Base):
         # pylint: disable=super-init-not-called
         self.exprs = exprs
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         self.exprs.anchors(ctx, anchors)
         return None
 
@@ -526,7 +581,7 @@ class DictSetMakerNode(ListExprBase):
     """Corresponds to `dictsetmaker` without `comp_for`."""
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         return ast_fqn.Dict(value=ast_fqn.Union(
             items=[]))  # TODO: union the types of the values
 
@@ -545,29 +600,19 @@ class DictGenListSetMakerCompForNode(Base):
         self.comp_for = xcast(CompForNode, comp_for)
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         comp_for_ctx = self.comp_for.scope_ctx(ctx)
         self.comp_for.anchors(comp_for_ctx, anchors)
         value_expr = self.value_expr.anchors_expr(comp_for_ctx, anchors)
         return ast_fqn.Dict(value=value_expr)
 
 
-class DotNode(Base):
-    """Corresponds to a DOT in `import_from`."""
-
-    __slots__ = ()
-
-    def __init__(self) -> None:
-        # pylint: disable=super-init-not-called
-        pass
-
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
-        return None
-
-
 class DotNameTrailerNode(Base):
-    """Corresponds to '.' NAME in trailer."""
+    """Corresponds to '.' NAME in trailer.
+
+    This is only used when processing a trailer and is incorporated
+    directly into AtomDotNode.
+    """
 
     __slots__ = ('name', )
 
@@ -575,45 +620,12 @@ class DotNameTrailerNode(Base):
         # pylint: disable=super-init-not-called
         self.name = xcast(pytree.Leaf, name)
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
-        return ast_fqn.Dot(name=self.name.value)
+    def atom_trailer_node(self, atom: Base) -> Base:
+        return AtomDotNode(atom=atom, attr_name=self.name)
 
-
-class DottedAsNameNode(Base):
-    """Corresponds to `dotted_as_name`."""
-
-    __slots__ = ('dotted_name', 'as_name')
-
-    def __init__(self, *, dotted_name: Base, as_name: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.dotted_name = xcast(DottedNameNode, dotted_name)
-        self.as_name = xcast(NameNode, as_name)
-        assert self.as_name.binds
-
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
-        self.dotted_name.anchors(ctx, anchors)
-        self.as_name.anchors(ctx, anchors)
-        return None
-
-
-class DottedAsNamesNode(Base):
-    """Corresponds to `dotted_as_names`."""
-
-    __slots__ = ('names', )
-
-    def __init__(self, *, names: Sequence[Base]) -> None:
-        # pylint: disable=super-init-not-called
-        typing_debug.assert_all_isinstance(DottedAsNameNode,
-                                           names)  # TODO: remove
-        self.names = typing.cast(Sequence[DottedAsNameNode], names)
-
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
-        for names_item in self.names:
-            names_item.anchors(ctx, anchors)
-        return None
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        # Not used anywhere
+        raise NotImplementedError(self)
 
 
 class DottedNameNode(Base):
@@ -627,7 +639,7 @@ class DottedNameNode(Base):
         self.names = typing.cast(Sequence[NameNode], names)
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         for names_item in self.names:
             names_item.anchors(ctx, anchors)
         return ast_fqn.DottedName(
@@ -638,7 +650,7 @@ class EllipsisNode(Base):
     """Corresponds to `...`."""
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         return ast_fqn.EllipsisConst()
 
 
@@ -656,10 +668,11 @@ class ExprListNode(Base):
         self.exprs = exprs
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
+        # TODO: use functools.reduce (see comment in ListExprBase.anchors)
         exprs_expr = []  # type: List[ast_fqn.Base]
         for exprs_item in self.exprs:
-            exprs_expr.append(exprs_item.anchors_expr(ctx, anchors))
+            exprs_expr += [exprs_item.anchors_expr(ctx, anchors)]
         return ast_fqn.ExprList(items=exprs_expr)
 
 
@@ -673,8 +686,7 @@ class ExceptClauseNode(Base):
         self.expr = expr
         self.as_item = as_item
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         self.expr.anchors(ctx, anchors)
         self.as_item.anchors(ctx, anchors)
         # TODO: output Binds info
@@ -692,8 +704,7 @@ class FileInput(Base):
         self.stmts = stmts
         self.scope_bindings = scope_bindings
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         file_ctx = ctx._replace(
             bindings=ctx.bindings.new_child(
                 collections.OrderedDict((name, ctx.fqn_dot + name)
@@ -720,8 +731,7 @@ class ForStmt(Base):
         self.suite = suite
         self.else_suite = else_suite
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         self.exprlist.anchors(ctx, anchors)  # Adds to ctx
         self.testlist.anchors(ctx, anchors)
         self.suite.anchors(ctx, anchors)
@@ -751,7 +761,7 @@ class FuncDefStmt(Base):
         self.scope_bindings = scope_bindings
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         assert self.name.binds
         # '.<local>.' is needed to distinguish `x` in following:
         #    def foo(x): pass
@@ -786,8 +796,7 @@ class GlobalStmt(Base):
         typing_debug.assert_all_isinstance(NameNode, names)  # TODO: remove
         self.names = typing.cast(Sequence[NameNode], names)
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for names_item in self.names:
             names_item.anchors(ctx, anchors)
         return None
@@ -807,8 +816,54 @@ class ImportAsNamesNode(Base):
         typing_debug.assert_all_isinstance(AsNameNode, names)  # TODO: remove
         self.names = typing.cast(Sequence[AsNameNode], names)
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        for names_item in self.names:
+            names_item.anchors(ctx, anchors)
+        return None
+
+
+class ImportDotNode(Base):
+    """Corresponds to a DOT in `import_from`."""
+
+    __slots__ = ()
+
+    def __init__(self) -> None:
+        # pylint: disable=super-init-not-called
+        pass
+
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        return None
+
+
+class ImportDottedAsNameNode(Base):
+    """Corresponds to `dotted_as_name`."""
+
+    __slots__ = ('dotted_name', 'as_name')
+
+    def __init__(self, *, dotted_name: Base, as_name: Base) -> None:
+        # pylint: disable=super-init-not-called
+        self.dotted_name = xcast(DottedNameNode, dotted_name)
+        self.as_name = xcast(NameNode, as_name)
+        assert self.as_name.binds
+
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.dotted_name.anchors(ctx, anchors)
+        self.as_name.anchors(ctx, anchors)
+        return None
+
+
+class ImportDottedAsNamesNode(Base):
+    """Corresponds to `dotted_as_names`."""
+
+    __slots__ = ('names', )
+
+    def __init__(self, *, names: Sequence[Base]) -> None:
+        # pylint: disable=super-init-not-called
+        typing_debug.assert_all_isinstance(ImportDottedAsNameNode,
+                                           names)  # TODO: remove
+        self.names = typing.cast(Sequence[ImportDottedAsNameNode], names)
+
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for names_item in self.names:
             names_item.anchors(ctx, anchors)
         return None
@@ -830,8 +885,7 @@ class ImportFromStmt(Base):
         # TODO: self.import_part = typing.cast(Union[ImportAsNamesNode, StarNode], import_part)
         self.import_part = import_part
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for from_name_item in self.from_name:
             from_name_item.anchors(ctx, anchors)
         self.import_part.anchors(ctx, anchors)
@@ -845,10 +899,9 @@ class ImportNameNode(Base):
 
     def __init__(self, *, dotted_as_names: Base) -> None:
         # pylint: disable=super-init-not-called
-        self.dotted_as_names = xcast(DottedAsNamesNode, dotted_as_names)
+        self.dotted_as_names = xcast(ImportDottedAsNamesNode, dotted_as_names)
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         self.dotted_as_names.anchors(ctx, anchors)
         return None
 
@@ -876,7 +929,7 @@ class NameNode(Base):
         self.astn = astn
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         name = self.astn.value
         if name in ctx.bindings:
             fqn = ctx.bindings[name]
@@ -904,8 +957,7 @@ class NonLocalStmt(Base):
         typing_debug.assert_all_isinstance(NameNode, names)  # TODO: remove
         self.names = typing.cast(Sequence[NameNode], names)
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for names_item in self.names:
             names_item.anchors(ctx, anchors)
         return None
@@ -925,7 +977,7 @@ class NumberNode(Base):
         self.astn = astn
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         return ast_fqn.Number(value=self.astn.value)
 
 
@@ -939,7 +991,7 @@ class OmittedNode(Base):
         return ctx
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         return ast_fqn.OMITTED
 
 
@@ -961,10 +1013,11 @@ class OpNode(Base):
         self.args = args
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
+        # TODO: use functools.reduce (see comment in ListExprBase.anchors)
         args_expr = []  # type: List[ast_fqn.Base]
         for args_item in self.args:
-            args_expr.append(args_item.anchors_expr(ctx, anchors))
+            args_expr += [args_item.anchors_expr(ctx, anchors)]
         return ast_fqn.Op(items=args_expr)
 
 
@@ -985,8 +1038,7 @@ class StarNode(Base):
 
     __slots__ = ()
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         return None
 
 
@@ -1008,7 +1060,7 @@ class StringNode(Base):
         self.astns = astns
 
     def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+                anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         return ast_fqn.String(value=''.join(astn.value for astn in self.astns))
 
 
@@ -1023,18 +1075,19 @@ class SubscriptNode(Base):
         self.expr2 = expr2
         self.expr3 = expr3
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
-        items_expr = [
-            self.expr1.anchors_expr(ctx, anchors),
-            self.expr2.anchors_expr(ctx, anchors),
-            self.expr3.anchors_expr(ctx, anchors)
-        ]
-        return ast_fqn.Subscript(items=items_expr)
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        self.expr1.anchors(ctx, anchors)
+        self.expr2.anchors(ctx, anchors)
+        self.expr3.anchors(ctx, anchors)
+        return None
 
 
 class SubscriptListNode(Base):
-    """Corresponds to `subscript_list`."""
+    """Corresponds to `subscript_list`.
+
+    This is only used when processing trailers and is incorporated
+    directly into AtomSubscriptNode.
+    """
 
     __slots__ = ('subscripts', )
 
@@ -1044,12 +1097,12 @@ class SubscriptListNode(Base):
                                            subscripts)  # TODO: remove
         self.subscripts = typing.cast(Sequence[SubscriptNode], subscripts)
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
-        subscripts_expr = []  # type: List[ast_fqn.Base]
-        for subscripts_item in self.subscripts:
-            subscripts_expr.append(subscripts_item.anchors_expr(ctx, anchors))
-        return ast_fqn.SubscriptList(items=subscripts_expr)
+    def atom_trailer_node(self, atom: Base) -> Base:
+        return AtomSubscriptNode(atom=atom, subscripts=self.subscripts)
+
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
+        # Not used anywhere
+        raise NotImplementedError(self)
 
 
 class TestListNode(ListExprBase):
@@ -1069,8 +1122,7 @@ class TnameNode(Base):
         self.name = xcast(NameNode, name)
         self.type_expr = type_expr
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         self.name.anchors(ctx, anchors)
         self.type_expr.anchors(ctx, anchors)
         return None
@@ -1096,8 +1148,7 @@ class TypedArgNode(Base):
         self.name = xcast(TnameNode, name)
         self.expr = expr
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         self.name.anchors(ctx, anchors)
         self.expr.anchors(ctx, anchors)
         return None
@@ -1117,8 +1168,7 @@ class TypedArgsListNode(Base):
         # pylint: disable=super-init-not-called
         self.args = args
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         # Not used anywhere
         raise NotImplementedError(self)
 
@@ -1134,8 +1184,7 @@ class WhileStmt(ListStmtBase):
         self.suite = suite
         self.else_suite = else_suite
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         self.test.anchors(ctx, anchors)
         self.suite.anchors(ctx, anchors)
         self.else_suite.anchors(ctx, anchors)
@@ -1149,11 +1198,10 @@ class WithItemNode(Base):
 
     def __init__(self, *, item: Base, as_item: Base) -> None:
         # pylint: disable=super-init-not-called
-        self.item = xcast(AtomTrailerNode, item)
+        self.item = item
         self.as_item = as_item
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         self.item.anchors(ctx, anchors)
         self.as_item.anchors(ctx, anchors)
         return None
@@ -1170,8 +1218,7 @@ class WithStmt(Base):
         self.items = typing.cast(Sequence[WithItemNode], items)
         self.suite = suite
 
-    def anchors(self, ctx: FqnCtx,
-                anchors: List[kythe.Anchor]) -> Optional[ast_fqn.Base]:
+    def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for items_item in self.items:
             items_item.anchors(ctx, anchors)
         self.suite.anchors(ctx, anchors)

@@ -78,10 +78,6 @@ class AnnAssign(Base):
         self.expr = expr
 
 
-class ArgList(Base):
-    """from ast_coooked.ArgListNode."""  # TODO: remove?
-
-
 class Assign(Base):
     """lhs1 = lhs2 = ... = expr"""
 
@@ -104,17 +100,6 @@ class AsName(Base):
         self.as_name = as_name
 
 
-class AtomTrailer(Base):
-    """An atom and trailers."""
-
-    __slots__ = ('atom', 'trailers')
-
-    def __init__(self, *, atom: Base, trailers: Sequence[Base]) -> None:
-        # pylint: disable=super-init-not-called
-        self.atom = atom
-        self.trailers = trailers
-
-
 class AugAssign(Base):
     """lhs1 <op>= expr"""
 
@@ -128,12 +113,13 @@ class AugAssign(Base):
 
 class Call(Base):
     """Call an expression."""
+    # TODO: incorporate args, return type
 
-    __slots__ = ('expr', )
+    __slots__ = ('atom', )
 
-    def __init__(self, *, expr: Base) -> None:
+    def __init__(self, *, atom: Base) -> None:
         # pylint: disable=super-init-not-called
-        self.expr = expr
+        self.atom = atom
 
 
 class ClassDef(Base):
@@ -208,11 +194,12 @@ class Dict(Base):
 class Dot(Base):
     """A "dot" operation (__getattr__, __setattr__, etc.)."""
 
-    __slots__ = ('name', )
+    __slots__ = ('atom', 'attr_name')
 
-    def __init__(self, *, name: Text) -> None:
+    def __init__(self, *, atom: Base, attr_name: Text) -> None:
         # pylint: disable=super-init-not-called
-        self.name = name
+        self.atom = atom
+        self.attr_name = attr_name
 
 
 class EllipsisConst(Base):
@@ -274,12 +261,15 @@ class Op(ListBase):
     """An operator (from ast_cooked.OpNode)."""
 
 
-class Subscript(ListBase):
-    """subscript [item[1]:item[2]:item[3]]."""
+class Subscript(Base):
+    """A subscript operation (__getitem__, __setitem__, etc.)."""
+    # TODO: incorpoprate subscripts, type of result
 
+    __slots__ = ('atom', )
 
-class SubscriptList(ListBase):
-    """from ast_cooked.SubscriptListNode."""
+    def __init__(self, *, atom: Base) -> None:
+        # pylint: disable=super-init-not-called
+        self.atom = atom
 
 
 class String(Base):

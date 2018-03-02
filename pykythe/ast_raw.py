@@ -438,10 +438,10 @@ def cvt_dotted_as_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     assert not ctx.lhs_binds, [node]
     dotted_name = xcast(ast_cooked.DottedNameNode, cvt(node.children[0], ctx))
     if len(node.children) == 1:
-        return ast_cooked.DottedAsNameNode(
+        return ast_cooked.ImportDottedAsNameNode(
             dotted_name=dotted_name,
             as_name=dotted_name.names[-1]._replace(binds=True))
-    return ast_cooked.DottedAsNameNode(
+    return ast_cooked.ImportDottedAsNameNode(
         dotted_name=dotted_name,
         as_name=cvt_lhs_binds(True, node.children[2], ctx))
 
@@ -449,7 +449,7 @@ def cvt_dotted_as_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 def cvt_dotted_as_names(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """dotted_as_names: dotted_as_name (',' dotted_as_name)*"""
     assert not ctx.lhs_binds, [node]
-    return ast_cooked.DottedAsNamesNode(
+    return ast_cooked.ImportDottedAsNamesNode(
         names=cvt_children_skip_commas(node, ctx))
 
 
@@ -679,7 +679,7 @@ def cvt_import_from(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         if child.type == token.NAME and child.value == 'import':  # type: ignore
             break
         if child.type == token.DOT:
-            from_name.append(ast_cooked.DotNode())
+            from_name.append(ast_cooked.ImportDotNode())
         else:
             from_name.append(cvt(child, ctx))
     # pylint: disable=undefined-loop-variable
@@ -787,7 +787,7 @@ def cvt_power(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     trailers = [cvt(ch, trailer_ctx) for ch in children[1:-1]]
     if len(children) > 1:
         trailers.append(cvt(children[-1], ctx))
-    trailer = ast_cooked.AtomTrailerNode(atom=atom, trailers=trailers)
+    trailer = ast_cooked.atom_trailer_node(atom, trailers)
     if doublestar_factor:
         return ast_cooked.OpNode(
             op_astns=[node.children[-2]], args=[trailer, doublestar_factor])

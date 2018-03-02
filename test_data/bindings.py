@@ -178,6 +178,37 @@ def testAnnAssign():
     # TODO: ee4 = 0  # type: int
 
 
+# TODO: This is only a partial test; make a new test that is more
+#       thorough, in a separate file
+class C:
+    def __init__(self):
+        self.f1 = [{'a': 1, 'b': 2}, {'c': 3}]
+
+class D(C):
+    def __init__(self):
+        super().__init__()
+        self.f2 = 1
+
+    def m1(self):
+        return self.f1
+
+    def mx(self):
+        return self
+
+class E:
+    def __init__(self):
+        self.f1 = D()
+
+def testTrailers():
+    d = D()
+    d.f2
+    d.f1
+    d.m1()
+    d.mx().mx().m1()
+    d.f1[0]['a']
+    e.f1.f1
+
+
 #- { @foo defines/binding Foo }
 #- { @x defines/binding FooParamX }
 #- { @i defines/binding FooParamI }
