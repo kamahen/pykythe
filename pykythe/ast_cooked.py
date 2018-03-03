@@ -157,11 +157,7 @@ class ListExprBase(Base):
 
     def anchors(self, ctx: FqnCtx,
                 anchors: List[kythe.Anchor]) -> ast_fqn.Base:
-        # TODO: https://github.com/python/mypy/issues/4673 (and in other places
-        #       where functools.reduce is used)
-        items_expr = functools.reduce(
-              lambda items_expr, item: items_expr + [item.anchors_expr(ctx, anchors)],
-              self.items, [])  # type: List[ast_fqn.Base]
+        items_expr = _append_anchors_expr(ctx, anchors, *self.items)
         return self.result_type(items=items_expr)  # type: ignore  # pylint: disable=not-callable
 
 
@@ -179,7 +175,7 @@ class ListStmtBase(Base):
 
     def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
         for item in self.items:
-            # TODO: remove the try/except (it's for debugging)
+            # TODO: remove the try/except (it's for debugging) - use __append_anchors
             try:
                 item.anchors(ctx, anchors)
             except AssertionError as exc:
@@ -282,7 +278,7 @@ class AsNameNode(Base):
     def anchors(self, ctx: FqnCtx,
                 anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         # TODO: output anchor for self.name
-        self.as_name.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, self.as_name)
         return ast_fqn.AsName(
             name=xcast(NameNode, self.name).astn.value,
             as_name=xcast(NameNode, self.as_name).astn.value)
@@ -306,10 +302,8 @@ class AssignExprStmt(Base):
         expr_expr = self.expr.anchors_expr(ctx, anchors)
         # process self.lhs left-to-right even though assigned in
         # reverse order (it doesn't really matter which order we
-        # rocess them).
-        lhs_expr = functools.reduce(
-            lambda lhs_expr, lhs_item: lhs_expr + [lhs_item.anchors_expr(ctx, anchors)],
-            self.lhs, [])  # type: List[ast_fqn.Base]
+        # process them).
+        lhs_expr = _append_anchors_expr(ctx, anchors, *self.lhs)
         return ast_fqn.Assign(lhs=lhs_expr, expr=expr_expr)
 
 
@@ -337,8 +331,7 @@ class AtomCallNode(Base):
                 anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         # TODO: add the args to ast_fqn.Call
         atom_expr = self.atom.anchors_expr(ctx, anchors)
-        for arg in self.args:
-            arg.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, *self.args)
         return ast_fqn.Call(atom=atom_expr)
 
 
@@ -372,8 +365,7 @@ class AtomSubscriptNode(Base):
                 anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         # TODO: add the subscripts to ast_fqn.Subscript
         atom_expr = self.atom.anchors_expr(ctx, anchors)
-        for subscript in self.subscripts:
-            subscript.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, *self.subscripts)
         return ast_fqn.Call(atom=atom_expr)
 
 
@@ -436,13 +428,11 @@ class ClassDefStmt(Base):
             bindings=ctx.bindings.new_child(
                 collections.OrderedDict((name, class_fqn_dot + name)
                                         for name in self.scope_bindings)))
-        bases_expr = functools.reduce(
-            lambda bases_expr, base: bases_expr + [base.anchors_expr(ctx, anchors)],
-            self.bases, [])  # type: List[ast_fqn.Base]
+        bases_expr = _append_anchors_expr(ctx, anchors, *self.bases)
         anchors.append(
             kythe.ClassDefAnchor(
                 astn=self.name.astn, fqn=class_fqn, bases=bases_expr))
-        self.suite.anchors(class_ctx, anchors)
+        _append_anchors(class_ctx, anchors, self.suite)
         return None
 
 
@@ -554,8 +544,7 @@ class DecoratorNode(Base):
                 anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         # TODO: add the args to ast_fqn.Call
         name_expr = self.name.anchors_expr(ctx, anchors)
-        for arg in self.arglist:
-            arg.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, *self.arglist)
         return ast_fqn.Call(atom=name_expr)
 
 
@@ -569,7 +558,7 @@ class DelStmt(Base):
         self.exprs = exprs
 
     def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
-        self.exprs.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, self.exprs)
         return None
 
 
@@ -598,7 +587,7 @@ class DictGenListSetMakerCompForNode(Base):
     def anchors(self, ctx: FqnCtx,
                 anchors: List[kythe.Anchor]) -> ast_fqn.Base:
         comp_for_ctx = self.comp_for.scope_ctx(ctx)
-        self.comp_for.anchors(comp_for_ctx, anchors)
+        _append_anchors(comp_for_ctx, anchors, self.comp_for)
         value_expr = self.value_expr.anchors_expr(comp_for_ctx, anchors)
         return ast_fqn.Dict(value=value_expr)
 
@@ -636,8 +625,7 @@ class DottedNameNode(Base):
 
     def anchors(self, ctx: FqnCtx,
                 anchors: List[kythe.Anchor]) -> ast_fqn.Base:
-        for names_item in self.names:
-            names_item.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, *self.names)
         return ast_fqn.DottedName(
             names=[name.astn.value for name in self.names])
 
@@ -665,9 +653,7 @@ class ExprListNode(Base):
 
     def anchors(self, ctx: FqnCtx,
                 anchors: List[kythe.Anchor]) -> ast_fqn.Base:
-        exprs_expr = functools.reduce(
-            lambda exprs_expr, exprs_item: exprs_expr + [exprs_item.anchors_expr(ctx, anchors)],
-            self.exprs, [])  # type: List[ast_fqn.Base]
+        exprs_expr = _append_anchors_expr(ctx, anchors, *self.exprs)
         return ast_fqn.ExprList(items=exprs_expr)
 
 
@@ -682,8 +668,7 @@ class ExceptClauseNode(Base):
         self.as_item = as_item
 
     def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
-        self.expr.anchors(ctx, anchors)
-        self.as_item.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, self.expr, self.as_item)
         # TODO: output Binds info
         return None
 
@@ -705,7 +690,7 @@ class FileInput(Base):
                 collections.OrderedDict((name, ctx.fqn_dot + name)
                                         for name in self.scope_bindings)))
         for stmt in self.stmts:
-            # TODO: remove the try/except (it's for debugging)
+            # TODO: remove the try/except (it's for debugging) - use _append_anchors
             try:
                 stmt.anchors(file_ctx, anchors)
             except AssertionError as exc:
@@ -727,10 +712,13 @@ class ForStmt(Base):
         self.else_suite = else_suite
 
     def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
-        self.exprlist.anchors(ctx, anchors)  # Adds to ctx
-        self.testlist.anchors(ctx, anchors)
-        self.suite.anchors(ctx, anchors)
-        self.else_suite.anchors(ctx, anchors)
+        _append_anchors(
+            ctx,
+            anchors,
+            self.exprlist,  # Adds to ctx
+            self.testlist,
+            self.suite,
+            self.else_suite)
         return None
 
 
@@ -775,9 +763,7 @@ class FuncDefStmt(Base):
                                         for name in self.scope_bindings)))
         anchors.append(kythe.FuncDefAnchor(astn=self.name.astn, fqn=func_fqn))
         return_type_expr = self.return_type.anchors_expr(func_ctx, anchors)
-        for parameter in self.parameters:
-            parameter.anchors(func_ctx, anchors)
-        self.suite.anchors(func_ctx, anchors)
+        _append_anchors(func_ctx, anchors, *self.parameters, self.suite)
         return ast_fqn.FuncDef(fqn=func_fqn, return_type=return_type_expr)
 
 
@@ -792,8 +778,7 @@ class GlobalStmt(Base):
         self.names = typing.cast(Sequence[NameNode], names)
 
     def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
-        for names_item in self.names:
-            names_item.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, *self.names)
         return None
 
 
@@ -812,8 +797,7 @@ class ImportAsNamesNode(Base):
         self.names = typing.cast(Sequence[AsNameNode], names)
 
     def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
-        for names_item in self.names:
-            names_item.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, *self.names)
         return None
 
 
@@ -842,8 +826,7 @@ class ImportDottedAsNameNode(Base):
         assert self.as_name.binds
 
     def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
-        self.dotted_name.anchors(ctx, anchors)
-        self.as_name.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, self.dotted_name, self.as_name)
         return None
 
 
@@ -859,8 +842,7 @@ class ImportDottedAsNamesNode(Base):
         self.names = typing.cast(Sequence[ImportDottedAsNameNode], names)
 
     def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
-        for names_item in self.names:
-            names_item.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, *self.names)
         return None
 
 
@@ -881,9 +863,7 @@ class ImportFromStmt(Base):
         self.import_part = import_part
 
     def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
-        for from_name_item in self.from_name:
-            from_name_item.anchors(ctx, anchors)
-        self.import_part.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, *self.from_name, self.import_part)
         return None
 
 
@@ -897,7 +877,7 @@ class ImportNameNode(Base):
         self.dotted_as_names = xcast(ImportDottedAsNamesNode, dotted_as_names)
 
     def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
-        self.dotted_as_names.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, self.dotted_as_names)
         return None
 
 
@@ -953,8 +933,7 @@ class NonLocalStmt(Base):
         self.names = typing.cast(Sequence[NameNode], names)
 
     def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
-        for names_item in self.names:
-            names_item.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, *self.names)
         return None
 
 
@@ -1009,9 +988,7 @@ class OpNode(Base):
 
     def anchors(self, ctx: FqnCtx,
                 anchors: List[kythe.Anchor]) -> ast_fqn.Base:
-        args_expr = functools.reduce(
-            lambda args_expr, args_item: args_expr + [args_item.anchors_expr(ctx, anchors)],
-            self.args, [])  # type: List[ast_fqn.Base]
+        args_expr = _append_anchors_expr(ctx, anchors, *self.args)
         return ast_fqn.Op(items=args_expr)
 
 
@@ -1070,9 +1047,7 @@ class SubscriptNode(Base):
         self.expr3 = expr3
 
     def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
-        self.expr1.anchors(ctx, anchors)
-        self.expr2.anchors(ctx, anchors)
-        self.expr3.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, self.expr1, self.expr2, self.expr3)
         return None
 
 
@@ -1117,8 +1092,7 @@ class TnameNode(Base):
         self.type_expr = type_expr
 
     def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
-        self.name.anchors(ctx, anchors)
-        self.type_expr.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, self.name, self.type_expr)
         return None
 
 
@@ -1143,8 +1117,7 @@ class TypedArgNode(Base):
         self.expr = expr
 
     def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
-        self.name.anchors(ctx, anchors)
-        self.expr.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, self.name, self.expr)
         return None
 
 
@@ -1179,9 +1152,7 @@ class WhileStmt(ListStmtBase):
         self.else_suite = else_suite
 
     def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
-        self.test.anchors(ctx, anchors)
-        self.suite.anchors(ctx, anchors)
-        self.else_suite.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, self.test, self.suite, self.else_suite)
         return None
 
 
@@ -1196,8 +1167,7 @@ class WithItemNode(Base):
         self.as_item = as_item
 
     def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
-        self.item.anchors(ctx, anchors)
-        self.as_item.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, self.item, self.as_item)
         return None
 
 
@@ -1213,9 +1183,7 @@ class WithStmt(Base):
         self.suite = suite
 
     def anchors(self, ctx: FqnCtx, anchors: List[kythe.Anchor]) -> None:
-        for items_item in self.items:
-            items_item.anchors(ctx, anchors)
-        self.suite.anchors(ctx, anchors)
+        _append_anchors(ctx, anchors, *self.items, self.suite)
         return None
 
 
@@ -1223,3 +1191,16 @@ class YieldNode(ListExprBase):
     """Corresponds to `yield_expr`."""
 
     result_type = ast_fqn.Yield
+
+
+def _append_anchors(ctx: FqnCtx, anchors: List[kythe.Anchor],
+                    *items: Base) -> None:
+    for item in items:
+        item.anchors(ctx, anchors)
+
+
+def _append_anchors_expr(ctx: FqnCtx, anchors: List[kythe.Anchor],
+                         *items: Base) -> List[ast_fqn.Base]:
+    """append to anchors and return anchors_expr values."""
+    return functools.reduce(
+        lambda expr, item: expr + [item.anchors_expr(ctx, anchors)], items, [])
