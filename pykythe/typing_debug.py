@@ -11,11 +11,11 @@ from typing import Any, Sequence, Type, Tuple, TypeVar, Union
 _T = TypeVar('_T')
 
 
-def cast(typ: Type[_T], val: Any) -> _T:
-    assert isinstance(val, typ), (typ, val)
+def cast(typ: Type[_T], val: Any, extra_info: Any = None) -> _T:
+    assert isinstance(val, typ), dict(type=typ, val=val, extra_info=extra_info)
     return val
 
 
-def assert_all_isinstance(typ: Union[Type, Tuple[Type, ...]],
-                          val: Sequence[Any]) -> None:
+def assert_all_isinstance(
+        typ: Union[Type, Tuple[Type, ...]], val: Sequence[Any]) -> None:
     assert all(isinstance(v, typ) for v in val), val

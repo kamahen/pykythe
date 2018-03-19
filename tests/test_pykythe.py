@@ -15,7 +15,7 @@ from lib2to3.pgen2 import token
 sys.path.insert(0,
                 os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from pykythe import ast_cooked, ast_raw, kythe, pod  # pylint: disable=wrong-import-position
+from pykythe import (ast, ast_cooked, ast_raw, pod)  # pylint: disable=wrong-import-position
 
 
 class SomeData(pod.PlainOldData):
@@ -29,7 +29,7 @@ class SomeData(pod.PlainOldData):
         super().__init__(a=a, b=b, c=c)
 
 
-class SomeData2(pod.PlainOldData):
+class SomeData2(pod.PlainOldDataExtended):
     """Simple example of subclassing PlainOldData, for testing.
 
     This subclass doesn't have an __init__ ... it's used for testing that
@@ -101,11 +101,18 @@ class TestPlainOldData(unittest.TestCase):
             # TypeError: __init__() got an unexpected keyword argument 'x'
             SomeData(a=1, b=2, c=3, x=666)  # type: ignore  # pylint: disable=unexpected-keyword-arg
 
+        c_1 = SomeData(a=1, b=2, c=3)
+        self.assertEqual(c_1.as_json_str(), '{"a": 1, "b": 2, "c": 3}')
+
         with self.assertRaises(ValueError):
             # ValueError: Missing field: 'c'
             SomeData2(a=1, b=2)
 
-        SomeData2(a=1, b=2, c=3)
+        c_2 = SomeData2(a=1, b=True, c='xxx')
+        # pylint: disable=line-too-long
+        self.assertEqual(c_2.as_json_str(
+        ), '{"kind": "SomeData2", "slots": {"a": {"kind": "int", "value": 1}, "b": {"kind": "bool", "value": "True"}, "c": {"kind": "str", "value": "xxx"}}}'
+                        )
 
         with self.assertRaises(ValueError):
             # ValueError: Unknown field names: ['x']
@@ -120,6 +127,7 @@ class TestAnchor(unittest.TestCase):
 
     def test_leafs(self) -> None:
         """Simple-minded test for anchors being computed correctly."""
+        # pylint: disable=too-many-locals
         content = ('# A comment\n'
                    'a = 1  # Binds `a`\n'
                    '\n'
@@ -137,193 +145,30 @@ class TestAnchor(unittest.TestCase):
         ]
         for python_version in 3, 2:
             parse_tree = ast_raw.parse(content, python_version)
+            src_file = ast.File(content, 'utf-8')
             self.assertEqual(content.decode('utf-8'), str(parse_tree))
             self.assertEqual(
                 str(parse_tree), ''.join(
                     str(node)
                     for node in parse_tree.pre_order()
                     if isinstance(node, pytree.Leaf)))
-            anchor_file = kythe.File(content, 'utf-8')
+            anchor_file = ast.File(content, 'utf-8')
             leaf_nodes = [
                 node for node in parse_tree.pre_order() if
                 isinstance(node, pytree.Leaf) and node.type in expected_types
             ]
             self.assertEqual(len(leaf_nodes), len(expected))
             for node, expected_str in zip(leaf_nodes, expected):
-                start, end = anchor_file.astn_to_range(node)
-                self.assertEqual(content[start:end], expected_str)
-            cooked_nodes = ast_raw.cvt_parse_tree(parse_tree, python_version)
-            anchors = []  # type: List[kythe.Anchor]
-            cooked_nodes.anchors(
-                ast_cooked.FqnCtx(
-                    fqn_dot='testing.',
-                    bindings=collections.ChainMap(),
-                    python_version=python_version),
-                anchors,
-            )
-            self.assertEqual(anchors, [
-                kythe.BindingAnchor(
-                    astn=pytree.Leaf(token.NAME, 'a'), fqn='testing.a'),
-                kythe.RefAnchor(
-                    astn=pytree.Leaf(token.NAME, 'a'), fqn='testing.a'),
-                kythe.BindingAnchor(
-                    astn=pytree.Leaf(token.NAME, 'bcd'), fqn='testing.bcd')
-            ])
-            self.assertEqual(
-                [
-                    (
-                        kythe._prefix_to_html(anchor.astn.prefix),  # pylint: disable=protected-access
-                        anchor.value_to_html(anchor_file))
-                    for anchor in anchors
-                ],
-                [
-                    ('<span class="comment">#&nbsp;A&nbsp;comment<br/></span>',
-                     '<span class="bind" id="@12-13"><a href="xref?q=%4012-13">a</a></span>'
-                    ),
-                    ('&nbsp;',
-                     '<span class="ref" id="@35-36"><a href="xref?q=%4035-36">a</a></span>'
-                    ),
-                    ('',
-                     '<span class="bind" id="@58-61"><a href="xref?q=%4058-61">bcd</a></span>'
-                    ),
-                ],
-            )
-            self.maxDiff = None  # pylint: disable=invalid-name
-            # pylint: disable=line-too-long
-            self.assertEqual(
-                kythe.html_lines(parse_tree, anchors,
-                                 kythe.File(content, 'utf-8')),
-                '<br/>\n'.join([
-                    '<span class="comment">#&nbsp;A&nbsp;comment</span>',
-                    ('<span class="bind" id="@12-13"><a href="xref?q=%4012-13">a</a></span>'
-                     '&nbsp;=&nbsp;1<span class="comment">'
-                     '&nbsp;&nbsp;#&nbsp;Binds&nbsp;`a`</span>'),
-                    '',
-                    ('<span class="reserved">if</span>&nbsp;'
-                     '<span class="ref" id="@35-36"><a href="xref?q=%4035-36">a</a></span>'
-                     '&nbsp;==&nbsp;234<span class="punc">:</span>'
-                     '<span class="comment">&nbsp;&nbsp;#&nbsp;Ref&nbsp;`a`</span>'
-                    ),
-                    ('&nbsp;&nbsp;<span class="bind" id="@58-61"><a href="xref?q=%4058-61">bcd</a></span>'
-                     '&nbsp;=&nbsp;<span class="string">&quot;&lt;br/&gt;&quot;</span>'
-                    ),
-                    '',
-                ]))
-
-
-class TestJson(unittest.TestCase):
-    """Unit tests for emitting kythe facts as Json."""
-
-    def test_json_1(self) -> None:
-        """
-        Example from
-        https://kythe.io/docs/schema/writing-an-indexer.html#_bootstrapping_kythe_support
-        """
-
-        node_vname = kythe.Vname(corpus='example', path='hello')
-
-        self.assertEqual(
-            json.loads(kythe.json_fact(node_vname, 'node/kind', b'file')),
-            {
-                "source": {
-                    "corpus": "example",
-                    "path": "hello"
-                },
-                "fact_name": "/kythe/node/kind",
-                "fact_value": "ZmlsZQ=="
-            },
-        )
-        self.assertEqual(
-            json.loads(kythe.json_fact(node_vname, 'text', b'Hello, world!')),
-            {
-                "source": {
-                    "corpus": "example",
-                    "path": "hello"
-                },
-                "fact_name": "/kythe/text",
-                "fact_value": "SGVsbG8sIHdvcmxkIQ=="
-            },
-        )
-
-    def test_json_2(self) -> None:
-        """
-        Example from
-        https://kythe.io/docs/schema/writing-an-indexer.html#_specifying_spans_of_text
-        """
-
-        def make_anchor_vname(file_vname: kythe.Vname, begin: int,
-                              end: int) -> kythe.Vname:
-            return kythe.Vname(
-                signature='@' + str(begin) + ':' + str(end),
-                path=file_vname.path,
-                root=file_vname.root,
-                corpus=file_vname.corpus,
-                language='ex')
-
-        begin, end = 4, 7
-        file_vname = kythe.Vname(corpus='example', path='hello')
-        anchor_vname = make_anchor_vname(
-            file_vname=file_vname, begin=begin, end=end)
-        self.assertEqual(
-            json.loads(kythe.json_fact(anchor_vname, 'node/kind', b'anchor')),
-            {
-                "source": {
-                    "signature": "@4:7",
-                    "path": "hello",
-                    "language": "ex",
-                    "corpus": "example",
-                },
-                "fact_name": "/kythe/node/kind",
-                "fact_value": "YW5jaG9y",
-            },
-        )
-        self.assertEqual(
-            json.loads(
-                kythe.json_fact(anchor_vname, 'loc/start',
-                                str(begin).encode('ascii'))),
-            {
-                "source": {
-                    "signature": "@4:7",
-                    "path": "hello",
-                    "language": "ex",
-                    "corpus": "example",
-                },
-                "fact_name": "/kythe/loc/start",
-                "fact_value": "NA==",
-            },
-        )
-        self.assertEqual(
-            json.loads(
-                kythe.json_fact(anchor_vname, 'loc/end',
-                                str(end).encode('ascii'))),
-            {
-                "source": {
-                    "signature": "@4:7",
-                    "path": "hello",
-                    "language": "ex",
-                    "corpus": "example",
-                },
-                "fact_name": "/kythe/loc/end",
-                "fact_value": "Nw==",
-            },
-        )
-        self.assertEqual(
-            json.loads(kythe.json_edge(anchor_vname, 'childof', file_vname)),
-            {
-                "source": {
-                    "signature": "@4:7",
-                    "path": "hello",
-                    "language": "ex",
-                    "corpus": "example",
-                },
-                "edge_kind": "/kythe/edge/childof",
-                "target": {
-                    "path": "hello",
-                    "corpus": "example",
-                },
-                "fact_name": "/",
-            },
-        )
+                anchor = anchor_file.astn_to_range(node)
+                self.assertEqual(
+                    content[anchor.start:anchor.end], expected_str)
+            cooked_nodes = ast_raw.cvt_parse_tree(
+                parse_tree, python_version, src_file)
+            fqn_ctx = ast_cooked.FqnCtx(
+                fqn_dot='testing.',
+                bindings=collections.ChainMap(),
+                python_version=python_version)
+            anchors = cooked_nodes.anchors(fqn_ctx)
 
 
 if __name__ == '__main__':

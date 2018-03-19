@@ -8,22 +8,29 @@ This uses lib2to3, which supports both Python2 and Python3 syntax.
 #       significantly before release.
 
 import argparse
+import base64
 import collections
 import json
 import logging
 import os.path
 import sys
 from typing import List  # pylint: disable=unused-import
+from .typing_debug import cast as xcast
 
-from . import ast_raw
-from . import ast_cooked
-from . import kythe
+from . import ast, ast_raw, ast_cooked
 
 
 def main() -> int:
     """Main (uses sys.argv)."""
-    parser = argparse.ArgumentParser(description='Parse Python file')
-    parser.add_argument('src', nargs='+', help='Input file')
+    parser = argparse.ArgumentParser(
+        description='Parse Python file, generating Kythe facts')
+    # TODO: allow nargs='+' for multiple inputs?
+    parser.add_argument('--src', required=True, help='Input file')
+    parser.add_argument(
+        '--out_fqn_expr',
+        required=True,
+        help=('output file for fqn_expr JSON facts. '
+              'These are post-processed to further resolve names.'))
     parser.add_argument(
         '--corpus', default='', help='Value of "corpus" in Kythe facts')
     parser.add_argument(
@@ -33,35 +40,39 @@ def main() -> int:
         default=3,
         choices=[2, 3],
         type=int,
-        help='Python version (')
+        help='Python major version')
     args = parser.parse_args()
-    for src in args.src:
-        with open(src, 'rb') as src_file:
-            src_content = src_file.read()
-            parse_tree = ast_raw.parse(src_content, args.python_version)
-        cooked_nodes = ast_raw.cvt_parse_tree(parse_tree, args.python_version)
-        cooked_nodes_json_dict = cooked_nodes.as_json_dict()
-        logging.debug('AS_JSON_DICT: %r', cooked_nodes_json_dict)
-        logging.debug('AS_JSON: %s', json.dumps(cooked_nodes_json_dict))
-        anchor_file = kythe.File(
+
+    with open(args.src, 'rb') as src_f:
+        src_content = xcast(bytes, src_f.read())
+        src_file = ast.File(
             content=src_content,
             encoding='utf-8')  # TODO: get encoding from parse
-        kythe_facts = kythe.KytheFacts(
-            corpus=args.corpus,
-            root=args.root,
-            anchor_file=anchor_file,
-            path=src,
-            language='python')
-        anchors = []  # type: List[kythe.Anchor]
-        cooked_nodes.anchors(
-            ast_cooked.FqnCtx(
-                fqn_dot=file_to_module(src) + '.',
-                bindings=collections.ChainMap(collections.OrderedDict()),
-                python_version=args.python_version),
-            anchors,
-        )
-        for json_fact in kythe_facts.json_facts(anchors, parse_tree):
-            print(json_fact)
+        parse_tree = ast_raw.parse(src_content, args.python_version)
+
+    meta = ast_cooked.Meta(
+        corpus=args.corpus,
+        root=args.root,
+        path=args.src,
+        language='python',
+        contents_b64=base64.b64encode(src_content).decode('ascii'))
+
+    cooked_nodes = ast_raw.cvt_parse_tree(
+        parse_tree, args.python_version, src_file)
+    cooked_nodes_json_dict = cooked_nodes.as_json_dict()
+    logging.debug('AS_JSON_DICT: %r', cooked_nodes_json_dict)
+    logging.debug('AS_JSON: %s', json.dumps(cooked_nodes_json_dict))
+    fqn_ctx = ast_cooked.FqnCtx(
+        fqn_dot=file_to_module(args.src) + '.',
+        bindings=collections.ChainMap(collections.OrderedDict()),
+        python_version=args.python_version)
+    anchors = cooked_nodes.anchors(fqn_ctx)
+
+    with open(args.out_fqn_expr, 'w') as out_fqn_expr_file:
+        logging.debug('Output fqn: %r', out_fqn_expr_file)
+        print(meta.as_json_str(), file=out_fqn_expr_file)
+        print(anchors.as_json_str(), file=out_fqn_expr_file)
+    logging.debug('Finished')
     return 0
 
 

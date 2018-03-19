@@ -14,7 +14,7 @@
 
 def testLhsTrailer():
     #- { @i defines/binding TestLhsTrailer_i }
-    i = 0
+    i = 'abc'
     #- { @d defines/binding TestLhsTrailer_d }
     d = {}
     d[i] = 1
@@ -24,8 +24,9 @@ def testLhsTrailer():
     #- // test_data.py3_test_grammar.GrammarTests.testLhsTrailer.<local>.x
     #- // { @x defines/binding TestLhsTrailer_x? }
     d[i].x = 2
+    cond = False
     # TODO: add tests for '.', f(i).x = ...
-    if False:  # Test forward global ref
+    if cond:  # Test forward global ref
         #- @testDictFor ref TestDictFor
         testDictFor()
 
