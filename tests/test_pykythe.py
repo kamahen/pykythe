@@ -118,6 +118,15 @@ class TestPlainOldData(unittest.TestCase):
             # ValueError: Unknown field names: ['x']
             SomeData2(a=1, b=2, c=3, x=666)
 
+        c_1a = SomeData(a=1, b=2, c=33)
+
+        self.assertEqual(c_1, c_1)
+        self.assertEqual(c_1, c_1._replace())  # test == with a copy
+        self.assertNotEqual(c_1, c_2)
+        self.assertNotEqual(c_1, c_1a)
+        self.assertFalse(c_1 == c_1a)
+        self.assertTrue(c_1 != c_1a)
+
 
 class TestAnchor(unittest.TestCase):
     """Unit tests for anchors."""

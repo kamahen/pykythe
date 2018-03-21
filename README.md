@@ -47,8 +47,12 @@ out (on Linux):
 	* `git clone https://github.com/python/mypy.git`
 	* `git clone https://github.com/google/yapf.git`
 	* [SWI-Prolog](http://www.swi-prolog.org/download/stable)
+      * [edcg](https://github.com/mndrix/edcg):
+       ```
+       echo 'pack_install(edcg).' | swipl
+       ```
 
-* `make -C <pkgdir> test test_grammar`
+* `make -C <pkgdir> all_tests`
 
 * You can see the generated facts in `/tmp/pykythe_test/py3_test_grammar.json-decoded`
 

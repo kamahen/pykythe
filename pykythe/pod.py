@@ -14,7 +14,8 @@ __init__ (that doesn't call super().__init__).
 import collections
 import json
 from lib2to3 import pytree  # For PlainOldDataExtended
-from typing import (Any, Mapping, MutableMapping, Sequence, Text, TypeVar)  # pylint: disable=unused-import
+from typing import (
+    Any, Mapping, MutableMapping, Sequence, Text, TypeVar, Union)  # pylint: disable=unused-import
 
 
 class PlainOldData:
@@ -33,6 +34,8 @@ class PlainOldData:
     isn't immutable; but it's also faster than namedtuple.
 
     # TODO: enforce immutability.
+
+    See also https://www.python.org/dev/peps/pep-0557/
     """
 
     # TODO: https://github.com/python/mypy/issues/4547
@@ -62,9 +65,19 @@ class PlainOldData:
 
     def __eq__(self, other: Any) -> bool:
         """Test for equality."""
-        return (self is other or (self.__class__ == other.__class__ and all(
-            getattr(self, attr) == getattr(other, attr)
-            for attr in self.__slots__)))
+        if self.__class__ is other.__class__:
+            return all(
+                getattr(self, attr) == getattr(other, attr)
+                for attr in self.__slots__)
+        return NotImplemented
+
+    def __ne__(self, other: Any) -> bool:
+        """Test for inequality."""
+        if self.__class__ is other.__class__:
+            return any(
+                getattr(self, attr) != getattr(other, attr)
+                for attr in self.__slots__)
+        return NotImplemented
 
     # __hash__ is not defined: this will result in a TypeError if
     # an attempt is made to use this object as the key to a dict.

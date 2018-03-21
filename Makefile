@@ -128,7 +128,7 @@ $(TESTOUTDIR)/%-fqn.json: \
 $(TESTOUTDIR)/%-kythe.json: $(TESTOUTDIR)/%-fqn.json scripts/pykythe_post_process.pl
 	scripts/pykythe_post_process.pl "$<" >"$@"
 
-%.json-decoded: %.json
+%.json-decoded: %.json scripts/decode_json.py
 	$(PYTHON3_EXE) -B scripts/decode_json.py <"$<" >"$@"
 
 %-kythe.entries: %-kythe.json
@@ -138,7 +138,7 @@ $(TESTOUTDIR)/%-kythe.json: $(TESTOUTDIR)/%-fqn.json scripts/pykythe_post_proces
 .PHONY: verify-%
 .SECONDARY: # %.entries %.json-decoded %.json
 
-verify-%: $(TESTOUTDIR)/%-kythe.entries
+verify-%: $(TESTOUTDIR)/%-kythe.entries $(TESTOUTDIR)/%-kythe.json-decoded
 	$(VERIFIER_EXE) -check_for_singletons -goal_prefix='#-' "$(word 2,$^)" <"$(word 1,$^)"
 
 prep_server: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).nq.gz

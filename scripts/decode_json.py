@@ -11,7 +11,13 @@ import sys
 import zlib
 
 for line in sys.stdin:
-    as_json = json.loads(line)
+    line = line.strip()
+    if not line:  # skip blank lines (typically at end of file)
+        continue
+    try:
+        as_json = json.loads(line)
+    except json.JSONDecodeError as exc:
+        raise ValueError('Error %r - JSON line: %r' % (exc, line)) from exc
     if 'fact_value' in as_json:
         if as_json['fact_name'] == '/kythe/x-htmlgz':
             as_json['fact_value'] = zlib.decompress(
