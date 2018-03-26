@@ -6,6 +6,7 @@
 :- use_module(library(http/json)).
 :- use_module(library(optparse)).
 :- use_module(library(edcg)).  % requires: ?- pack_install(edcg).
+:- use_module(must_once).
 
 
 %% "fqn" accumulator gets FQN anchor facts, each a dict to be output in JSON.
@@ -14,7 +15,18 @@ edcg:acc_info(fqn, T, Out, In, Out=[T|In]).
 edcg:acc_info(expr, T, Out, In, Out=[T|In]).
 
 %% All -->> predicates have the same hidden arguments:
-edcg:pred_info(_, _, [fqn, expr]).
+% edcg:pred_info(_, _, [fqn, expr]).
+edcg:pred_info(must_once, 1, [fqn, expr]).
+edcg:pred_info(kythe_json, 2, [fqn, expr]).
+edcg:pred_info(kythe_file, 0, [fqn, expr]).
+edcg:pred_info(node_anchors, 2, [fqn, expr]).
+edcg:pred_info(node_anchors2, 2, [fqn, expr]).
+edcg:pred_info(node_anchors_list, 2, [fqn, expr]).
+edcg:pred_info(anchor, 3, [fqn, expr]).
+edcg:pred_info(edge, 3, [fqn, expr]).
+edcg:pred_info(kythe_fact, 3, [fqn, expr]).
+edcg:pred_info(kythe_fact_b64, 3, [fqn, expr]).
+edcg:pred_info(kythe_edge, 3, [fqn, expr]).
 
 
 :- initialization main.
@@ -33,13 +45,7 @@ main :-
 
 process(FqnExprFile) :-
     % writeln('Reading from': FqnExprFile),
-    open(FqnExprFile, read, FqnExprStream),
-    must_once(json_read_dict(FqnExprStream, MetaDict)),
-    must_once(assert_meta(MetaDict)),
-    must_once(json_read_dict(FqnExprStream, JsonDict)),
-    must_once(at_end_of_stream(FqnExprStream)),
-    simplify_json(JsonDict, Node),
-    kythe_json(Node, _Expr, Fqns, Exprs),
+    read_anchors_exprs(FqnExprFile, Nodes, Fqns, Exprs),
     (  fail  %% TODO: remove this debugging code
     -> write('% === EXPRS ==='), nl, nl,
        print_term(Exprs, [indent_arguments(auto),
@@ -50,7 +56,7 @@ process(FqnExprFile) :-
     ),
     (  fail  %% TODO: remove this debugging code
     -> write('% === NODES ==='), nl, nl,
-       print_term(Node, [tab_width(0),
+       print_term(Nodes, [tab_width(0),
                          indent_arguments(2),
                          right_margin(120)]),
        write('.'), nl, nl,
@@ -63,38 +69,26 @@ process(FqnExprFile) :-
     %% write(KytheStream, "%% === Kythe ==="), nl(KytheStream),
     output_anchors(FqnsDedup, KytheStream).
 
-must_once(Goal) :-
-    (  call(Goal)
-    -> true
-    ;  throw(error(failed, context(goal, Goal)))
-    ).
-
-%% edcg doesn't understand the meta-pred "call", so expand -->> by hand:
-must_once(Goal, Fqn0, Fqn, Expr0, Expr) :-
-    (  call(Goal, Fqn0, Fqn, Expr0, Expr)
-    -> true
-    ;  throw(error(failed, context(goal, Goal)))
-    ).
+%% Read the JSON, convert to nodes tree, convert to nodes tree
+%% with FQNs and extract exprs.
+read_anchors_exprs(FqnExprFile, Nodes, Fqns, Exprs) :-
+    open(FqnExprFile, read, FqnExprStream),
+    must_once(json_read_dict(FqnExprStream, MetaDict)),
+    must_once(assert_meta(MetaDict)),
+    must_once(json_read_dict(FqnExprStream, JsonDict)),
+    must_once(at_end_of_stream(FqnExprStream)),
+    simplify_json(JsonDict, Nodes),
+    kythe_json(Nodes, _Expr, Fqns, Exprs).
 
 %% Save the meta-data as facts.
-
-assert_meta(_{kind: "Meta",
-              slots: _{
-                  corpus: _{
-                      kind: "str",
-                      value: Corpus},
-                  root: _{
-                      kind: "str",
-                      value: Root},
-                  path: _{
-                      kind: "str",
-                      value: Path},
-                  language: _{
-                      kind: "str",
-                      value: Language},
-                  contents_b64: _{
-                      kind: "str",
-                      value: ContentsB64}}}) :-
+assert_meta(
+        _{kind: "Meta",
+          slots: _{
+            corpus: _{kind: "str", value: Corpus},
+            root: _{kind: "str", value: Root},
+            path: _{kind: "str", value: Path},
+            language: _{kind: "str", value: Language},
+            contents_b64: _{kind: "str", value: ContentsB64}}}) :-
     retractall(corpus_root_path_language(_Corpus, _Root, _Path, _Language)),
     retractall(file_contents(_)),
     assertz(corpus_root_path_language(Corpus, Root, Path, Language)),
@@ -339,7 +333,7 @@ binds_atom("True", binds).
 
 anchor(Start, End, Source) -->>
     { format(string(Signature), '@~d:~d', [Start, End]) },
-    signature_source(Signature, Source),
+    { signature_source(Signature, Source) },
     kythe_fact(Source, '/kythe/node/kind', anchor),
     kythe_fact(Source, '/kythe/loc/start', Start),
     kythe_fact(Source, '/kythe/loc/end', End).
@@ -362,9 +356,6 @@ kythe_edge(Source, EdgeKind, Target) -->>
 signature_source(Signature, Source) :-
     corpus_root_path_language(Corpus, Root, Path, _Language),
     Source = _{signature: Signature, corpus: Corpus, root: Root, path: Path}.
-
-signature_source(Signature, Source) -->>
-    { signature_source(Signature, Source) }.
 
 output_anchors([], KytheStream) :-
     nl(KytheStream).

@@ -125,7 +125,8 @@ $(TESTOUTDIR)/%-fqn.json: \
 		--src="$<" \
 		--out_fqn_expr="$@"
 
-$(TESTOUTDIR)/%-kythe.json: $(TESTOUTDIR)/%-fqn.json scripts/pykythe_post_process.pl
+$(TESTOUTDIR)/%-kythe.json: $(TESTOUTDIR)/%-fqn.json \
+		scripts/pykythe_post_process.pl scripts/must_once.pl
 	@# TODO: make this into a script (with a saved state (qsave_program/2 stand_alone).
 	@# If you add </dev/null to the following, it'll keep going even on failure.
 	@# ... without that, it'll stop, waiting for input
