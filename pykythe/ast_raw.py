@@ -207,7 +207,7 @@ def cvt_atom(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             elif ch0.type == token.LBRACE:
                 result = ast_cooked.DictSetMakerNode(items=[])
             else:
-                result = ast_cooked.TestListNode(items=[])
+                result = ast_cooked.ExprListNode(items=[])
     elif ch0.type in _CONSTANT:
         result = cvt(ch0, ctx)
     elif (len(node.children) == 3 and node.children[0].type ==
@@ -253,7 +253,11 @@ def cvt_binary_op(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     result = cvt(node.children[0], ctx)
     if len(node.children) == 1:
-        # Can appear on LHS if it's a single item
+        # Can appear on LHS if it's a single item; also, this reduces
+        # the clutter in the ast_cooked tree without losing any
+        # significant information.
+        # TODO: modify _EXPR_NODES (used by _convert) to reduce
+        #       the raw tree before getting to here
         return result
     assert not ctx.lhs_binds, [node]
     for i in range(1, len(node.children), 2):
@@ -307,8 +311,7 @@ def cvt_comp_for(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     in_testlist = cvt(children[3], ctx)  # outside the `for`
     ctx_for = (ctx if ctx.python_version == 2 else
                ctx._replace(scope_bindings=collections.OrderedDict()))
-    for_exprlist = xcast(ast_cooked.ExprListNode,
-                         cvt_lhs_binds(True, children[1], ctx_for))
+    for_exprlist = cvt_lhs_binds(True, children[1], ctx_for)
     if len(children) == 5:
         comp_iter = cvt(children[4], ctx_for)  # evaluated in context of `for`
     else:
@@ -317,7 +320,7 @@ def cvt_comp_for(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         ctx.scope_bindings.update(ctx_for.scope_bindings)  # pragma: no cover
     return ast_cooked.CompForNode(
         for_astn=ctx.src_file.astn_to_range(children[0]),
-        for_exprlist=for_exprlist.items,
+        for_exprlist=for_exprlist,
         in_testlist=in_testlist,
         comp_iter=comp_iter,
         scope_bindings=ctx_for.scope_bindings)
@@ -413,8 +416,10 @@ def cvt_decorators(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 def cvt_del_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """del_stmt: 'del' exprlist"""
     assert not ctx.lhs_binds, [node]
-    exprs = xcast(ast_cooked.ExprListNode, cvt(node.children[1], ctx))
-    return ast_cooked.DelStmt(items=exprs.items)
+    exprs = cvt(node.children[1], ctx)
+    if isinstance(exprs, ast_cooked.ExprListNode):
+        ast_cooked.DelStmt(items=exprs.items)
+    return ast_cooked.DelStmt(items=[exprs])
 
 
 def cvt_dictsetmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -544,7 +549,10 @@ def cvt_expr_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     assert not ctx.lhs_binds, [node]
     if len(node.children) == 1:
-        return cvt(node.children[0], ctx)
+        return ast_cooked.make_stmts([
+            ast_cooked.AssignExprStmt(
+                lhs_list=[], expr=cvt(node.children[0], ctx))
+        ])
     if len(node.children) == 2:
         # TODO: test case
         assert node.children[1].type == SYMS_ANNASSIGN
@@ -556,13 +564,14 @@ def cvt_expr_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             lhs_type=annassign.lhs_type,
             expr=annassign.expr)
     if node.children[1].type == token.EQUAL:
+        # expr_stmt: testlist_star_expr ('=' (yield_expr|testlist_star_expr))+
+        #  (guaranteed at least one ('=' (yield_expr|testlist_star_expr)
+        #  because of the test (above): len(node.children) == 1
         expr = cvt(node.children[-1], ctx)
         lhs_ctx = ctx._replace(lhs_binds=True)
         return ast_cooked.AssignExprStmt(
-            lhs=[
-                cvt(ch, lhs_ctx)
-                for ch in node.children[:-1]
-                if ch.type != token.EQUAL
+            lhs_list=[
+                cvt(ch, lhs_ctx) for ch in node.children[:-1:2]  # skip '='s
             ],
             expr=expr)
     assert node.children[1].type == SYMS_AUGASSIGN
@@ -575,8 +584,9 @@ def cvt_expr_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 
 def cvt_exprlist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """exprlist: (expr|star_expr) (',' (expr|star_expr))* [',']"""
-    # Can appear in (LHS) binding context ('for' exprlist ...)
-    return ast_cooked.ExprListNode(items=cvt_children_skip_commas(node, ctx))
+    # TODO: Can appear in (LHS) binding context ('for' exprlist ...)?
+    #       (or is this only as testlist?)
+    return cvt_children_skip_commas_tuple(node, ctx)
 
 
 def cvt_file_input(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -585,8 +595,11 @@ def cvt_file_input(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     assert all(
         ch.type in (SYMS_STMT, token.NEWLINE, token.ENDMARKER)
         for ch in node.children)
-    stmts = [cvt(ch, ctx) for ch in node.children if ch.type == SYMS_STMT]
-    return ast_cooked.FileInput(stmts=stmts, scope_bindings=ctx.scope_bindings)
+    stmts = ast_cooked.make_stmts([
+        cvt(ch, ctx) for ch in node.children if ch.type == SYMS_STMT
+    ])
+    return ast_cooked.FileInput(
+        stmts=stmts.items, scope_bindings=ctx.scope_bindings)
 
 
 def cvt_flow_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -598,8 +611,7 @@ def cvt_flow_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 def cvt_for_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """for_stmt: 'for' exprlist 'in' testlist ':' suite ['else' ':' suite]"""
     assert not ctx.lhs_binds, [node]
-    exprlist = xcast(ast_cooked.ExprListNode,
-                     cvt_lhs_binds(True, node.children[1], ctx))
+    exprlist = cvt_lhs_binds(True, node.children[1], ctx)
     testlist = cvt(node.children[3], ctx)
     suite = cvt(node.children[5], ctx)
     if len(node.children) == 9:
@@ -608,7 +620,7 @@ def cvt_for_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         assert len(node.children) == 6
         else_suite = ast_cooked.OMITTED_NODE
     return ast_cooked.ForStmt(
-        for_exprlist=exprlist.items,
+        for_exprlist=exprlist,
         in_testlist=testlist,
         suite=suite,
         else_suite=else_suite)
@@ -762,16 +774,12 @@ def cvt_lambdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 def cvt_listmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """listmaker: (test|star_expr) ( comp_for | (',' (test|star_expr))* [','] )"""
     assert not ctx.lhs_binds, [node]
-    if len(node.children) == 1:
-        return ast_cooked.ListMakerNode(items=[cvt(node.children[0], ctx)])
-    if node.children[1].type == SYMS_COMP_FOR:
+    if len(node.children) > 1 and node.children[1].type == SYMS_COMP_FOR:
         assert len(node.children) == 2
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=cvt(node.children[0], ctx),
             comp_for=cvt(node.children[1], ctx))
-    else:
-        return ast_cooked.ListMakerNode(
-            items=cvt_children_skip_commas(node, ctx))
+    return ast_cooked.ListMakerNode(items=cvt_children_skip_commas(node, ctx))
 
 
 def cvt_parameters(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -881,7 +889,7 @@ def cvt_simple_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     assert all(
         ch.type in (SYMS_SMALL_STMT, token.SEMI, token.NEWLINE)
         for ch in node.children)
-    return ast_cooked.make_flattened_stmts(
+    return ast_cooked.make_stmts(
         cvt(ch, ctx) for ch in node.children if ch.type == SYMS_SMALL_STMT)
 
 
@@ -908,14 +916,14 @@ def cvt_small_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     assert not ctx.lhs_binds, [node]
     assert len(node.children) == 1
-    return cvt(node.children[0], ctx)
+    return ast_cooked.make_stmts([cvt(node.children[0], ctx)])
 
 
 def cvt_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """stmt: simple_stmt | compound_stmt"""
     assert not ctx.lhs_binds, [node]
     assert len(node.children) == 1
-    return cvt(node.children[0], ctx)
+    return ast_cooked.make_stmts([cvt(node.children[0], ctx)])
 
 
 def cvt_subscript(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -969,8 +977,7 @@ def cvt_suite(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     assert all(
         ch.type in (SYMS_SIMPLE_STMT, SYMS_STMT, token.NEWLINE, token.INDENT,
                     token.DEDENT) for ch in node.children)
-
-    return ast_cooked.make_flattened_stmts(
+    return ast_cooked.make_stmts(
         cvt(ch, ctx)
         for ch in node.children
         if ch.type not in (token.NEWLINE, token.INDENT, token.DEDENT))
@@ -995,7 +1002,7 @@ def cvt_test(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 def cvt_testlist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """testlist: test (',' test)* [',']"""
     assert not ctx.lhs_binds, [node]
-    return ast_cooked.TestListNode(items=cvt_children_skip_commas(node, ctx))
+    return cvt_children_skip_commas_tuple(node, ctx)
 
 
 def cvt_testlist1(
@@ -1005,29 +1012,25 @@ def cvt_testlist1(
     Python2 only, so there are no test cases
     """
     assert not ctx.lhs_binds, [node]
-    return ast_cooked.TestListNode(items=cvt_children_skip_commas(node, ctx))
+    return ast_cooked.ExprListNode(items=cvt_children_skip_commas(node, ctx))
 
 
 def cvt_testlist_gexp(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """testlist_gexp: (test|star_expr) ( comp_for | (',' (test|star_expr))* [','] )"""
     # Can appear on LHS
     # Similar to cvt_listmaker
-    if len(node.children) == 1:
-        return ast_cooked.TestListNode(items=[cvt(node.children[0], ctx)])
-    if node.children[1].type == SYMS_COMP_FOR:
+    if len(node.children) > 1 and node.children[1].type == SYMS_COMP_FOR:
         assert len(node.children) == 2
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=cvt(node.children[0], ctx),
             comp_for=cvt(node.children[1], ctx))
-    else:
-        return ast_cooked.TestListNode(
-            items=cvt_children_skip_commas(node, ctx))
+    return cvt_children_skip_commas_tuple(node, ctx)
 
 
 def cvt_testlist_safe(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """testlist_safe: old_test [(',' old_test)+ [',']]"""
     assert not ctx.lhs_binds, [node]
-    return ast_cooked.TestListNode(items=cvt_children_skip_commas(node, ctx))
+    return cvt_children_skip_commas_tuple(node, ctx)
 
 
 def cvt_testlist_star_expr(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -1036,7 +1039,7 @@ def cvt_testlist_star_expr(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     #   x, *middle, y = (1, 2, 3, 4, 5)
     # or in some cases on the RHS:
     #   [x, *middle, y]
-    return ast_cooked.TestListNode(items=cvt_children_skip_commas(node, ctx))
+    return cvt_children_skip_commas_tuple(node, ctx)
 
 
 def cvt_tfpdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -1089,7 +1092,7 @@ def cvt_trailer(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
                      cvt_lhs_binds(False, node.children[1], ctx))
     assert node.children[0].type == token.DOT
     return ast_cooked.DotNameTrailerNode(
-        name=ctx.src_file.astn_to_range(node.children[1]))
+        binds=ctx.lhs_binds, name=ctx.src_file.astn_to_range(node.children[1]))
 
 
 def cvt_try_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -1409,7 +1412,7 @@ def cvt_debug(node: pytree.Base,
     except Exception as exc:
         raise Exception(
             '%s calling=%s node=%r' % (exc, cvt_func, node)) from exc
-    assert isinstance(result, ast_cooked.Base), [node, result]
+    assert isinstance(result, ast_cooked.Base), dict(node=node, result=result)
     return result
 
 
@@ -1427,6 +1430,22 @@ def cvt_children_skip_commas(
         _DISPATCH: _DISPATCH_TYPE = _DISPATCH) -> Sequence[ast_cooked.Base]:
     """Call the appropriate cvt_XXX for all node.children that aren't a comma."""
     return [cvt(ch, ctx) for ch in node.children if ch.type != token.COMMA]
+
+
+def cvt_children_skip_commas_tuple(
+        node: pytree.Base,  # pytree.Node
+        ctx: Ctx,
+        _DISPATCH: _DISPATCH_TYPE = _DISPATCH) -> ast_cooked.Base:
+    """Like cvt_children_skip_commas, but special case for singleton without comma.
+
+    If node.children is a single item, then just return the result of running `cvt` on it;
+    otherwise, return tuple_type with its items being the mapping of `cvt` onto all the
+    node.children. This covers the special case of a trailing comma (e.g., `x, = [1]`).
+    """
+    if len(node.children) == 1:
+        return cvt(node.children[0], ctx)
+    return ast_cooked.ExprListNode(
+        items=[cvt(ch, ctx) for ch in node.children if ch.type != token.COMMA])
 
 
 def cvt_lhs_binds(lhs_binds: bool,

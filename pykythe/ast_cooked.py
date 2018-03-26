@@ -44,8 +44,7 @@ import functools
 import logging  # pylint: disable=unused-import
 from lib2to3 import pytree
 from typing import (  # pylint: disable=unused-import
-    Any, Callable, Mapping, MutableMapping, Iterable, List, Optional, Sequence,
-    Text)
+    Any, Mapping, MutableMapping, Iterable, List, Optional, Sequence, Text)
 import typing
 from mypy_extensions import Arg  # pylint: disable=unused-import
 
@@ -134,11 +133,20 @@ class Base(pod.PlainOldDataExtended):
           something different is returned.
 
         """
-        return self.__class__(  # type: ignore  # TODO: https://github.com/python/mypy/issues/4602
-            **{
-                attr: getattr(self, attr).anchors(ctx)
-                for attr in self.__slots__
-            })
+        attr_values = {
+            attr: self.attr_anchors(attr, ctx)
+            for attr in self.__slots__
+        }
+        # TODO: https://github.com/python/mypy/issues/4602
+        return self.__class__(**attr_values)  # type: ignore
+
+    def attr_anchors(self, attr: Text, ctx: FqnCtx) -> 'Base':
+        # TODO: inline this when fully debugged
+        try:
+            return xcast(Base, getattr(self, attr).anchors(ctx))
+        except Exception as exc:
+            raise RuntimeError(
+                '%r node=%r:%r' % (exc, attr, getattr(self, attr))) from exc
 
     def atom_trailer_node(self, atom: 'Base') -> 'Base':
         """For processing atom, trailer part of power.
@@ -167,7 +175,15 @@ class ListBase(Base):
 
     def anchors(self, ctx: FqnCtx) -> Base:
         return self.__class__(  # type: ignore  # TODO: https://github.com/python/mypy/issues/4602
-            items=[item.anchors(ctx) for item in self.items])
+            items=[_anchors_wrap(item, ctx) for item in self.items])
+
+
+def _anchors_wrap(item: Base, ctx: FqnCtx) -> Base:
+    # TODO: inline this when fully debugged
+    try:
+        return xcast(Base, item.anchors(ctx))
+    except Exception as exc:
+        raise RuntimeError('%r node=%r' % (exc, item)) from exc
 
 
 class AnnAssignNode(Base):
@@ -243,7 +259,7 @@ class ArgumentNode(Base):
         self.arg = arg
 
     def anchors(self, ctx: FqnCtx) -> Base:
-        return ArgumentNode(name=self.name, arg=self.arg.anchors(ctx))
+        return ArgumentNode(name=self.name, arg=_anchors_wrap(self.arg, ctx))
 
 
 class AsNameNode(Base):
@@ -260,22 +276,26 @@ class AsNameNode(Base):
 class AssignExprStmt(Base):
     """Corresponds to `expr_stmt: testlist_star_expr ('=' (yield_expr|testlist_star_expr))*`.
 
-    `lhs` is a list of assignment bindings; it can be empty.
+    lhs_list is a list of items found on the left-hand-side of `=`s
+    (it can be empty).
     """
 
-    __slots__ = ('lhs', 'expr')
+    __slots__ = ('lhs_list', 'expr')
 
-    def __init__(self, *, lhs: Sequence[Base], expr: Base) -> None:
+    def __init__(self, *, lhs_list: Sequence[Base], expr: Base) -> None:
         # pylint: disable=super-init-not-called
-        self.lhs = lhs
+        self.lhs_list = lhs_list
         self.expr = expr
 
     def anchors(self, ctx: FqnCtx) -> Base:
         # anchors(ctx) can modify the bindings in ctx, so need to be
         # careful to do things in the right order.
         lhs_anchors = list(
-            reversed([item.anchors(ctx) for item in reversed(self.lhs)]))
-        return AssignExprStmt(lhs=lhs_anchors, expr=self.expr.anchors(ctx))
+            reversed([
+                _anchors_wrap(item, ctx) for item in reversed(self.lhs_list)
+            ]))
+        return AssignExprStmt(
+            lhs_list=lhs_anchors, expr=_anchors_wrap(self.expr, ctx))
 
 
 class AssertStmt(ListBase):
@@ -300,23 +320,28 @@ class AtomCallNode(Base):
 
     def anchors(self, ctx: FqnCtx) -> Base:
         return AtomCallNode(
-            atom=self.atom.anchors(ctx),
-            args=[arg.anchors(ctx) for arg in self.args])
+            atom=_anchors_wrap(self.atom, ctx),
+            args=[_anchors_wrap(arg, ctx) for arg in self.args])
 
 
 class AtomDotNode(Base):
     """Corresponds to `atom '.' NAME`."""
 
-    __slots__ = ('atom', 'attr_name')
+    # TODO: is `binds` needed or can it be inferred?
+    __slots__ = ('atom', 'attr_name', 'binds')
 
-    def __init__(self, *, atom: Base, attr_name: ast.Astn) -> None:
+    def __init__(
+            self, *, atom: Base, attr_name: ast.Astn, binds: bool) -> None:
         # pylint: disable=super-init-not-called
         self.atom = atom
         self.attr_name = attr_name
+        self.binds = binds
 
     def anchors(self, ctx: FqnCtx) -> Base:
         return AtomDotNode(
-            atom=self.atom.anchors(ctx), attr_name=self.attr_name)
+            atom=_anchors_wrap(self.atom, ctx),
+            attr_name=self.attr_name,
+            binds=self.binds)
 
 
 class AtomSubscriptNode(Base):
@@ -331,9 +356,9 @@ class AtomSubscriptNode(Base):
 
     def anchors(self, ctx: FqnCtx) -> Base:
         return AtomSubscriptNode(
-            atom=self.atom.anchors(ctx),
+            atom=_anchors_wrap(self.atom, ctx),
             subscripts=[
-                subscript.anchors(ctx) for subscript in self.subscripts
+                _anchors_wrap(subscript, ctx) for subscript in self.subscripts
             ])
 
 
@@ -364,9 +389,9 @@ class AugAssignStmt(Base):
 
     def anchors(self, ctx: FqnCtx) -> Base:
         return AugAssignStmt(
-            lhs=self.lhs.anchors(ctx),
+            lhs=_anchors_wrap(self.lhs, ctx),
             augassign=self.augassign,
-            expr=self.expr.anchors(ctx))
+            expr=_anchors_wrap(self.expr, ctx))
 
 
 class BreakStmt(ListBase):
@@ -391,8 +416,8 @@ class ClassDefStmt(Base):
         assert self.name.binds
         class_fqn = ctx.fqn_dot + self.name.name.value
         class_fqn_dot = class_fqn + '.'
-        name_anchors = xcast(
-            NameBinds, self.name.anchors(ctx))  # already in bindings
+        name_anchors = xcast(NameBinds, _anchors_wrap(
+            self.name, ctx))  # already in bindings
         class_ctx = ctx._replace(
             fqn_dot=class_fqn_dot,
             bindings=ctx.bindings.new_child(
@@ -401,11 +426,11 @@ class ClassDefStmt(Base):
         class_anchors = Class(
             fqn=class_fqn,
             name=name_anchors,
-            bases=[base.anchors(ctx) for base in self.bases])
+            bases=[_anchors_wrap(base, ctx) for base in self.bases])
         # treat as: fqn = Class(...)
-        return make_flattened_stmts([
-            AssignExprStmt(lhs=[name_anchors], expr=class_anchors),
-            self.suite.anchors(class_ctx)
+        return make_stmts([
+            AssignExprStmt(lhs_list=[name_anchors], expr=class_anchors),
+            _anchors_wrap(self.suite, class_ctx)
         ])
 
 
@@ -431,14 +456,18 @@ class ColonNode(ListBase):
 
 
 class CompForNode(Base):
-    """Corresponds to `comp_for`."""
+    """Corresponds to `comp_for`.
+
+    Note that for_exprlist isn't necessarily a list (e.g., to distinguish
+    between `for foo= ...` and for foo,=...`)
+    """
 
     __slots__ = ('for_astn', 'for_exprlist', 'in_testlist', 'comp_iter',
                  'scope_bindings')
 
-    def __init__(self, *, for_astn: ast.Astn, for_exprlist: Sequence[Base],
-                 in_testlist: Base, comp_iter: Base,
-                 scope_bindings: Mapping[Text, None]) -> None:
+    def __init__(
+            self, *, for_astn: ast.Astn, for_exprlist: Base, in_testlist: Base,
+            comp_iter: Base, scope_bindings: Mapping[Text, None]) -> None:
         # pylint: disable=super-init-not-called
         self.for_astn = for_astn
         self.for_exprlist = for_exprlist
@@ -468,13 +497,11 @@ class CompForNode(Base):
         #    x for x in [1,x]  # `x` in `[1,x]` is outer scope
         #    (x, y) for x in [1,2] for y in range(x)  # `x` in `range(x)` is from `for x`
         # [(x, y) for x in [1,2,x] for y in range(x)]  # error: y undefined
-        in_testlist_anchors = self.in_testlist.anchors(ctx)
+        in_testlist_anchors = _anchors_wrap(self.in_testlist, ctx)
         ctx.bindings.update((name, ctx.fqn_dot + name)
                             for name in self.scope_bindings)
-        for_exprlist_anchors = [
-            expr.anchors(ctx) for expr in self.for_exprlist
-        ]
-        comp_iter_anchors = self.comp_iter.anchors(ctx)
+        for_exprlist_anchors = _anchors_wrap(self.for_exprlist, ctx)
+        comp_iter_anchors = _anchors_wrap(self.comp_iter, ctx)
         return CompFor(
             for_astn=self.for_astn,
             for_exprlist=for_exprlist_anchors,
@@ -487,7 +514,7 @@ class CompFor(Base):
 
     __slots__ = ('for_astn', 'for_exprlist', 'in_testlist', 'comp_iter')
 
-    def __init__(self, *, for_astn: ast.Astn, for_exprlist: Sequence[Base],
+    def __init__(self, *, for_astn: ast.Astn, for_exprlist: Base,
                  in_testlist: Base, comp_iter: Base) -> None:
         # pylint: disable=super-init-not-called
         self.for_astn = for_astn
@@ -535,8 +562,8 @@ class DecoratorNode(Base):
 
     def anchors(self, ctx: FqnCtx) -> Base:
         return AtomCallNode(
-            atom=self.name.anchors(ctx),
-            args=[arg.anchors(ctx) for arg in self.args])
+            atom=_anchors_wrap(self.name, ctx),
+            args=[_anchors_wrap(arg, ctx) for arg in self.args])
 
 
 class DelStmt(ListBase):
@@ -568,14 +595,15 @@ class DotNameTrailerNode(Base):
     directly into AtomDotNode.
     """
 
-    __slots__ = ('name', )
+    __slots__ = ('name', 'binds')
 
-    def __init__(self, *, name: ast.Astn) -> None:
+    def __init__(self, *, name: ast.Astn, binds: bool) -> None:
         # pylint: disable=super-init-not-called
         self.name = name
+        self.binds = binds
 
     def atom_trailer_node(self, atom: Base) -> Base:
-        return AtomDotNode(atom=atom, attr_name=self.name)
+        return AtomDotNode(atom=atom, attr_name=self.name, binds=self.binds)
 
     def anchors(self, ctx: FqnCtx) -> Base:
         # Not used anywhere
@@ -595,15 +623,13 @@ class ExecStmt(ListBase):
 
 
 class ExprListNode(ListBase):
-    """Corresponds to `exprlist`.
+    """Corresponds to `exprlist`, `testlist`, `testlist1`, `testlist_gexp`
+    `testlist_star_expr` without `comp_for`.
 
-    This is only used when processing del_stmt or for_stmt, which
-    use the contents directly.
+    DelStmt doesn't use ExprListNode (despite the grammar); it
+    directly stores the items (there's no semantic difference if the
+    list ends with `,`).
     """
-
-    def anchors(self, ctx: FqnCtx) -> Base:
-        # Not used anywhere
-        raise NotImplementedError(self)  # pragma: no cover
 
 
 class ExceptClauseNode(Base):
@@ -633,18 +659,23 @@ class FileInput(Base):
             bindings=ctx.bindings.new_child(
                 collections.OrderedDict((name, ctx.fqn_dot + name)
                                         for name in self.scope_bindings)))
+        stmts = [_anchors_wrap(stmt, file_ctx) for stmt in self.stmts]
         return FileInput(
-            stmts=[stmt.anchors(file_ctx) for stmt in self.stmts],
+            stmts=[_anchors_wrap(stmt, file_ctx) for stmt in self.stmts],
             scope_bindings=self.scope_bindings)
 
 
 class ForStmt(Base):
-    """Corresponds to `for_stmt`."""
+    """Corresponds to `for_stmt`.
+
+    Note that for_exprlist isn't necessarily a list (e.g., to distinguish
+    between `for foo= ...` and for foo,=...`)
+    """
 
     __slots__ = ('for_exprlist', 'in_testlist', 'suite', 'else_suite')
 
-    def __init__(self, *, for_exprlist: Sequence[Base], in_testlist: Base,
-                 suite: Base, else_suite: Base) -> None:
+    def __init__(self, *, for_exprlist: Base, in_testlist: Base, suite: Base,
+                 else_suite: Base) -> None:
         # pylint: disable=super-init-not-called
         self.for_exprlist = for_exprlist
         self.in_testlist = in_testlist
@@ -656,16 +687,14 @@ class ForStmt(Base):
         # for_exprlist adds to bindings, suite and else_suite use the
         # additional bindings (and also the bindings "leak" outside
         # the for-loop).
-        in_testlist_anchors = self.in_testlist.anchors(ctx)
+        in_testlist_anchors = _anchors_wrap(self.in_testlist, ctx)
         # for_exprlist adds to bindings
-        for_exprlist_anchors = [
-            expr.anchors(ctx) for expr in self.for_exprlist
-        ]
+        for_exprlist_anchors = _anchors_wrap(self.for_exprlist, ctx)
         return ForStmt(
             for_exprlist=for_exprlist_anchors,
             in_testlist=in_testlist_anchors,
-            suite=self.suite.anchors(ctx),
-            else_suite=self.else_suite.anchors(ctx))
+            suite=_anchors_wrap(self.suite, ctx),
+            else_suite=_anchors_wrap(self.else_suite, ctx))
 
 
 class FuncDefStmt(Base):
@@ -704,8 +733,8 @@ class FuncDefStmt(Base):
         else:
             func_fqn = '{}{}'.format(ctx.fqn_dot, self.name.name.value)
         func_fqn_dot = func_fqn + '.<local>.'
-        name_anchors = xcast(
-            NameBinds, self.name.anchors(ctx))  # already in bindings
+        name_anchors = xcast(NameBinds, _anchors_wrap(
+            self.name, ctx))  # already in bindings
         func_ctx = ctx._replace(
             fqn_dot=func_fqn_dot,
             bindings=ctx.bindings.new_child(
@@ -715,13 +744,13 @@ class FuncDefStmt(Base):
             fqn=func_fqn,
             name=name_anchors,
             parameters=[
-                parameter.anchors(ctx) for parameter in self.parameters
+                _anchors_wrap(parameter, ctx) for parameter in self.parameters
             ],
-            return_type=self.return_type.anchors(func_ctx))
+            return_type=_anchors_wrap(self.return_type, func_ctx))
         # treat as : fqn = Func(...)
-        return make_flattened_stmts([
-            AssignExprStmt(lhs=[name_anchors], expr=func_anchors),
-            self.suite.anchors(func_ctx)
+        return make_stmts([
+            AssignExprStmt(lhs_list=[name_anchors], expr=func_anchors),
+            _anchors_wrap(self.suite, func_ctx)
         ])
 
 
@@ -807,7 +836,7 @@ class ImportFromStmt(Base):
     def anchors(self, ctx: FqnCtx) -> Base:
         return ImportFromStmt(
             from_name=self.from_name,
-            import_part=self.import_part.anchors(ctx))
+            import_part=_anchors_wrap(self.import_part, ctx))
 
 
 class ImportNameNode(Base):
@@ -938,7 +967,7 @@ class OpNode(Base):
     def anchors(self, ctx: FqnCtx) -> Base:
         return OpNode(
             op_astns=self.op_astns,
-            args=[arg.anchors(ctx) for arg in self.args])
+            args=[_anchors_wrap(arg, ctx) for arg in self.args])
 
 
 class PassStmt(ListBase):
@@ -958,10 +987,13 @@ class StarNode(Base):
 
 
 class Stmts(ListBase):
-    """Corresponds to `simple_stmt`, `suite`."""
+    """Corresponds to `simple_stmt`, `suite`.
+
+    Should never be created directly, but through the `make_stmts` factory.
+    """
 
 
-def make_flattened_stmts(items: Iterable[Base]) -> Stmts:
+def make_stmts(items: Iterable[Base]) -> Stmts:
     """Create Stmts node, flattening any Stmts in items."""
     flattened_items = []  # type: List[Base]
     for item in items:
@@ -1025,8 +1057,7 @@ class SubscriptListNode(Base):
 
 
 class TestListNode(ListBase):
-    """Corresponds to `testlist`, `testlist1`, `testlist_gexp`
-    `testlist_star_expr` without `comp_for`."""
+    """Corresponds to ."""
 
 
 class TnameNode(Base):
@@ -1116,8 +1147,8 @@ class WithStmt(Base):
 
     def anchors(self, ctx: FqnCtx) -> Base:
         return WithStmt(
-            items=[item.anchors(ctx) for item in self.items],
-            suite=self.suite.anchors(ctx))
+            items=[_anchors_wrap(item, ctx) for item in self.items],
+            suite=_anchors_wrap(self.suite, ctx))
 
 
 class YieldNode(ListBase):

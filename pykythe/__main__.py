@@ -57,10 +57,12 @@ def main() -> int:
         language='python',
         contents_b64=base64.b64encode(src_content).decode('ascii'))
 
+    logging.debug('RAW= %r', parse_tree)
     cooked_nodes = ast_raw.cvt_parse_tree(
         parse_tree, args.python_version, src_file)
+    logging.debug('COOKED= %r', cooked_nodes)
     cooked_nodes_json_dict = cooked_nodes.as_json_dict()
-    logging.debug('AS_JSON_DICT: %r', cooked_nodes_json_dict)
+    logging.debug('AS_JSON_DICT= %r', cooked_nodes_json_dict)
     logging.debug('AS_JSON: %s', json.dumps(cooked_nodes_json_dict))
     fqn_ctx = ast_cooked.FqnCtx(
         fqn_dot=file_to_module(args.src) + '.',
@@ -69,7 +71,7 @@ def main() -> int:
     anchors = cooked_nodes.anchors(fqn_ctx)
 
     with open(args.out_fqn_expr, 'w') as out_fqn_expr_file:
-        logging.debug('Output fqn: %r', out_fqn_expr_file)
+        logging.debug('Output fqn= %r', out_fqn_expr_file)
         print(meta.as_json_str(), file=out_fqn_expr_file)
         print(anchors.as_json_str(), file=out_fqn_expr_file)
     logging.debug('Finished')

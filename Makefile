@@ -126,7 +126,11 @@ $(TESTOUTDIR)/%-fqn.json: \
 		--out_fqn_expr="$@"
 
 $(TESTOUTDIR)/%-kythe.json: $(TESTOUTDIR)/%-fqn.json scripts/pykythe_post_process.pl
-	scripts/pykythe_post_process.pl "$<" >"$@"
+	@# TODO: make this into a script (with a saved state (qsave_program/2 stand_alone).
+	@# If you add </dev/null to the following, it'll keep going even on failure.
+	@# ... without that, it'll stop, waiting for input
+	@# If you add --quiet, you might be confused by this situation
+	swipl -O -s scripts/pykythe_post_process.pl "$<" >"$@"
 
 %.json-decoded: %.json scripts/decode_json.py
 	$(PYTHON3_EXE) -B scripts/decode_json.py <"$<" >"$@"
@@ -173,13 +177,13 @@ ls_decor:
 	$(KYTHE_EXE) -api $(TESTOUTDIR)/tables decor kythe://test-corpus?path=$(TEST_GRAMMAR_DIR)/$(TEST_GRAMMAR_FILE).py
 
 push_to_github:
-	grep SUBMIT $$(find tests pykythe -type f); if [ $$? -eq 0 ]; then exit 1; fi
-	-# The following are for the initial setup only:
-	-#   mkdir -p $(TESTGITHUB)
-	-#   rm -rf $(TESTGITHUB)/pykythe
-	-#   cd $(TESTGITHUB) && git clone https://github.com/kamahen/pykythe.git
-	-# The following is not needed ("git clone" sets this up):
-	-#   git remote add origin https://github.com/kamahen/pykythe.git
+	grep SUBMIT $$(find tests pykythe scripts test_data tests -type f); if [ $$? -eq 0 ]; then exit 1; fi
+	@# The following are for the initial setup only:
+	@#   mkdir -p $(TESTGITHUB)
+	@#   rm -rf $(TESTGITHUB)/pykythe
+	@#   cd $(TESTGITHUB) && git clone https://github.com/kamahen/pykythe.git
+	@# The following is not needed ("git clone" sets this up):
+	@#   git remote add origin https://github.com/kamahen/pykythe.git
 	cd $(TESTGITHUB)/pykythe && git pull
 	rsync -aAHX --exclude .git \
 		--exclude .coverage --exclude htmlcov --exclude __pykythe__ \

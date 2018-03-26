@@ -138,13 +138,16 @@ class TestAnchor(unittest.TestCase):
         """Simple-minded test for anchors being computed correctly."""
         # pylint: disable=too-many-locals
         content = ('# A comment\n'
-                   'a = 1  # Binds `a`\n'
+                   'a, (b, x) = y = 1  # Binds `a`, `b`\n'
                    '\n'
                    'if a == 234:  # Ref `a`\n'
                    '  bcd = "<br/>"\n').encode('utf-8')
         expected_types = (token.NAME, token.NUMBER, token.STRING)
         expected = [
             b'a',
+            b'b',
+            b'x',
+            b'y',
             b'1',
             b'if',
             b'a',
@@ -154,6 +157,7 @@ class TestAnchor(unittest.TestCase):
         ]
         for python_version in 3, 2:
             parse_tree = ast_raw.parse(content, python_version)
+            logging.debug('RAW= %r', parse_tree)
             src_file = ast.File(content, 'utf-8')
             self.assertEqual(content.decode('utf-8'), str(parse_tree))
             self.assertEqual(
@@ -173,6 +177,8 @@ class TestAnchor(unittest.TestCase):
                     content[anchor.start:anchor.end], expected_str)
             cooked_nodes = ast_raw.cvt_parse_tree(
                 parse_tree, python_version, src_file)
+            logging.debug('RAW= %r', parse_tree)
+            logging.debug('COOKED= %r', cooked_nodes)
             fqn_ctx = ast_cooked.FqnCtx(
                 fqn_dot='testing.',
                 bindings=collections.ChainMap(),
