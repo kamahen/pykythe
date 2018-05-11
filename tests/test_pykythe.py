@@ -1,7 +1,6 @@
 """Test pykythe."""
 
 import collections
-import json
 import logging  # pylint: disable=unused-import
 import os
 import pickle
@@ -15,7 +14,7 @@ from lib2to3.pgen2 import token
 sys.path.insert(0,
                 os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from pykythe import (ast, ast_cooked, ast_raw, pod)  # pylint: disable=wrong-import-position
+from pykythe import (ast, ast_cooked, ast_raw, typing_debug, pod)  # pylint: disable=wrong-import-position
 
 
 class SomeData(pod.PlainOldData):
@@ -23,7 +22,7 @@ class SomeData(pod.PlainOldData):
 
     # pylint: disable=too-few-public-methods
 
-    __slots__ = ('a', 'b', 'c')
+    __slots__ = ['a', 'b', 'c']
 
     def __init__(self, a: int, b: int, c: int) -> None:
         super().__init__(a=a, b=b, c=c)
@@ -38,7 +37,7 @@ class SomeData2(pod.PlainOldDataExtended):
 
     # pylint: disable=too-few-public-methods
 
-    __slots__ = ('a', 'b', 'c')
+    __slots__ = ['a', 'b', 'c']
 
 
 class EmptyData(pod.PlainOldData):
@@ -55,12 +54,12 @@ class TestPlainOldData(unittest.TestCase):
         a_node = SomeData(a=1, b=2, c=3)
         self.assertEqual(a_node, a_node)
         self.assertEqual(repr(a_node), 'SomeData(a=1, b=2, c=3)')
-        self.assertEqual(a_node._asdict(),
-                         collections.OrderedDict([
-                             ('a', 1),
-                             ('b', 2),
-                             ('c', 3),
-                         ]))
+        self.assertEqual(
+            a_node._asdict(),
+            collections.OrderedDict([
+                ('a', 1),
+                ('b', 2),
+                ('c', 3), ]))
 
         a_copy = a_node._replace()
         self.assertNotEqual(id(a_node), id(a_copy))
@@ -69,29 +68,29 @@ class TestPlainOldData(unittest.TestCase):
         b_node = a_node._replace(a=999)
         self.assertNotEqual(a_node, b_node)
         self.assertEqual(repr(a_node), 'SomeData(a=1, b=2, c=3)')
-        self.assertEqual(a_node._asdict(),
-                         collections.OrderedDict([
-                             ('a', 1),
-                             ('b', 2),
-                             ('c', 3),
-                         ]))
+        self.assertEqual(
+            a_node._asdict(),
+            collections.OrderedDict([
+                ('a', 1),
+                ('b', 2),
+                ('c', 3), ]))
         self.assertEqual(repr(b_node), 'SomeData(a=999, b=2, c=3)')
-        self.assertEqual(b_node._asdict(),
-                         collections.OrderedDict([
-                             ('a', 999),
-                             ('b', 2),
-                             ('c', 3),
-                         ]))
+        self.assertEqual(
+            b_node._asdict(),
+            collections.OrderedDict([
+                ('a', 999),
+                ('b', 2),
+                ('c', 3), ]))
 
         b_pickle = pickle.dumps(b_node, protocol=pickle.HIGHEST_PROTOCOL)
         b_unpickle = pickle.loads(b_pickle)
         self.assertEqual(repr(b_unpickle), 'SomeData(a=999, b=2, c=3)')
-        self.assertEqual(b_unpickle._asdict(),
-                         collections.OrderedDict([
-                             ('a', 999),
-                             ('b', 2),
-                             ('c', 3),
-                         ]))
+        self.assertEqual(
+            b_unpickle._asdict(),
+            collections.OrderedDict([
+                ('a', 999),
+                ('b', 2),
+                ('c', 3), ]))
 
         with self.assertRaises(ValueError):
             # ValueError: Unknown field names: ['x']
@@ -110,9 +109,10 @@ class TestPlainOldData(unittest.TestCase):
 
         c_2 = SomeData2(a=1, b=True, c='xxx')
         # pylint: disable=line-too-long
-        self.assertEqual(c_2.as_json_str(
-        ), '{"kind": "SomeData2", "slots": {"a": {"kind": "int", "value": 1}, "b": {"kind": "bool", "value": "True"}, "c": {"kind": "str", "value": "xxx"}}}'
-                        )
+        self.assertEqual(
+            c_2.as_json_str(),
+            '{"kind": "SomeData2", "slots": {"a": {"kind": "int", "value": 1}, "b": {"kind": "bool", "value": "True"}, "c": {"kind": "str", "value": "xxx"}}}'
+        )
 
         with self.assertRaises(ValueError):
             # ValueError: Unknown field names: ['x']
@@ -153,23 +153,21 @@ class TestAnchor(unittest.TestCase):
             b'a',
             b'234',
             b'bcd',
-            b'"<br/>"',
-        ]
+            b'"<br/>"', ]
         for python_version in 3, 2:
             parse_tree = ast_raw.parse(content, python_version)
             logging.debug('RAW= %r', parse_tree)
-            src_file = ast.File(content, 'utf-8')
+            src_file = ast.File('<>', content, 'utf-8')
             self.assertEqual(content.decode('utf-8'), str(parse_tree))
             self.assertEqual(
                 str(parse_tree), ''.join(
                     str(node)
                     for node in parse_tree.pre_order()
                     if isinstance(node, pytree.Leaf)))
-            anchor_file = ast.File(content, 'utf-8')
+            anchor_file = ast.File('<>', content, 'utf-8')
             leaf_nodes = [
                 node for node in parse_tree.pre_order() if
-                isinstance(node, pytree.Leaf) and node.type in expected_types
-            ]
+                isinstance(node, pytree.Leaf) and node.type in expected_types]
             self.assertEqual(len(leaf_nodes), len(expected))
             for node, expected_str in zip(leaf_nodes, expected):
                 anchor = anchor_file.astn_to_range(node)
@@ -182,8 +180,19 @@ class TestAnchor(unittest.TestCase):
             fqn_ctx = ast_cooked.FqnCtx(
                 fqn_dot='testing.',
                 bindings=collections.ChainMap(),
+                class_fqn=None,
+                class_astn=None,
                 python_version=python_version)
             anchors = cooked_nodes.anchors(fqn_ctx)
+            self.assertEqual(
+                typing_debug.cast(
+                    ast_cooked.FileInput, anchors).scope_bindings,
+                collections.OrderedDict([
+                    ('a', None),
+                    ('b', None),
+                    ('x', None),
+                    ('y', None),
+                    ('bcd', None), ]))
 
 
 if __name__ == '__main__':

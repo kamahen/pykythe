@@ -30,6 +30,13 @@ def testLhsTrailer():
         #- @testDictFor ref TestDictFor
         testDictFor()
 
+        #- @testDictFor ref TestDictFor
+        testDictFor  # Note: no call (for testing when call fails)
+
+
+#- @testDictFor ref TestDictFor  // This is a forward reference test; it would fail in reality.
+testDictFor()
+
 
 #- { @testDictFor defines/binding TestDictFor }
 def testDictFor():
@@ -50,7 +57,6 @@ def testDictFor():
     #- !{ @#1x ref TestDictFor_for1_x }
     assert x == 100, x
     assert y == {2: 3, 100: 101}, y
-
 
 #- { @testListFor defines/binding TestListFor }
 def testListFor():
@@ -102,8 +108,6 @@ def testListFor():
     # z          0                                                                                    1
     assert aa == [(2, 0, 2), (4, 0, 4), (4, 2, 4)]
 
-    assert aa == [(2, 0, 2), (4, 0, 4), (4, 2, 4)]
-
 
 def testGexpFor():
     #- { @x defines/binding TestGexpLocalX }
@@ -139,8 +143,9 @@ def testForLoop():
     else:
         #- @foo ref Foo
         #- @i_num ref TestForLoopINum
-        #- @x ref TestForLoopX
-        foo(i_num, x)
+        #- @#1x ref TestForLoopX
+        #- // @#0x ... function param ref foo.<local>.x
+        foo(i_num, x=x)
     #- @foo ref Foo
     #- @i_num ref TestForLoopINum
     #- @x ref TestForLoopX
@@ -148,16 +153,16 @@ def testForLoop():
 
 
 def testNonLocal():
-    #- { @x defines/binding TestNonLocalX }
-    x = 0
+    #- { @xxx defines/binding TestNonLocalXxx }
+    xxx = 0
 
     def f():
-        #- @x ref TestNonLocalX
-        nonlocal x
-        #- @x ref TestNonLocalX?  // TODO: should be defines/binding
-        x = 2
-        #- @x ref TestNonLocalX
-        return x
+        #- @xxx ref TestNonLocalXxx
+        nonlocal xxx
+        #- @xxx ref TestNonLocalXxx?  // TODO: should be defines/binding
+        xxx = 2
+        #- @xxx ref TestNonLocalXxx
+        return xxx
 
 
 def testAnnAssign():

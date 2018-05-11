@@ -90,7 +90,9 @@ $(PYTYPE_DIR)/pykythe/ast_raw.pyi: $(addprefix $(PYTYPE_DIR)/pykythe/,\
 $(PYTYPE_DIR)/pykythe/__main__.pyi: $(addprefix $(PYTYPE_DIR)/pykythe/,\
 	pod.pyi typing_debug.pyi ast_raw.pyi ast_cooked.pyi ast.pyi)
 
-MYPY=mypy --python-version=3.6 --strict-optional --check-untyped-defs --warn-incomplete-stub --warn-no-return --no-incremental --disallow-any-unimported --show-error-context --implicit-optional --strict --disallow-incomplete-defs
+# TODO: --python-version=3.6  # conflict if python3.6 is not default python3
+#       maybe --no-site-packages ?
+MYPY=mypy --python-version=3.5 --strict-optional --check-untyped-defs --warn-incomplete-stub --warn-no-return --no-incremental --disallow-any-unimported --show-error-context --implicit-optional --strict --disallow-incomplete-defs
 # TODO: --disallow-incomplete-defs  https://github.com/python/mypy/issues/4603
 # TODO: --disallow-any-generics
 
@@ -131,7 +133,8 @@ $(TESTOUTDIR)/%-kythe.json: $(TESTOUTDIR)/%-fqn.json \
 	@# If you add </dev/null to the following, it'll keep going even on failure.
 	@# ... without that, it'll stop, waiting for input
 	@# If you add --quiet, you might be confused by this situation
-	swipl -O -s scripts/pykythe_post_process.pl "$<" >"$@"
+	swipl -O -s scripts/pykythe_post_process.pl "$<" >"$@" 2>"$@-error" </dev/null
+	cat "$@-error"
 
 %.json-decoded: %.json scripts/decode_json.py
 	$(PYTHON3_EXE) -B scripts/decode_json.py <"$<" >"$@"
@@ -143,7 +146,7 @@ $(TESTOUTDIR)/%-kythe.json: $(TESTOUTDIR)/%-fqn.json \
 .PHONY: verify-%
 .SECONDARY: # %.entries %.json-decoded %.json
 
-verify-%: $(TESTOUTDIR)/%-kythe.entries $(TESTOUTDIR)/%-kythe.json-decoded
+verify-%:  $(TESTOUTDIR)/%-kythe.entries $(TEST_GRAMMAR_DIR)/%.py $(TESTOUTDIR)/%-kythe.json $(TESTOUTDIR)/%-kythe.json-decoded
 	$(VERIFIER_EXE) -check_for_singletons -goal_prefix='#-' "$(word 2,$^)" <"$(word 1,$^)"
 
 prep_server: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).nq.gz

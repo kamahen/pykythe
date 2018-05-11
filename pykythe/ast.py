@@ -10,7 +10,7 @@ from .typing_debug import cast as xcast
 class Astn(pod.PlainOldDataExtended):
     """pytree.Leaf contents with byte offset."""
 
-    __slots__ = ('value', 'start', 'end')
+    __slots__ = ['value', 'start', 'end']
 
     def __init__(self, *, value: Text, start: int, end: int) -> None:
         # pylint: disable=super-init-not-called
@@ -22,10 +22,11 @@ class Astn(pod.PlainOldDataExtended):
 class File(pod.PlainOldData):
     """Encapsulate a file for offsets, etc."""
 
-    __slots__ = ('content', 'line_offsets', 'encoding', 'numlines')
+    __slots__ = ['path', 'content', 'line_offsets', 'encoding', 'numlines']
 
-    def __init__(self, content: bytes, encoding: Text) -> None:
+    def __init__(self, path: Text, content: bytes, encoding: Text) -> None:
         # pylint: disable=super-init-not-called
+        self.path = path
         self.content = content
         self.line_offsets = {1: 0}
         self.encoding = encoding

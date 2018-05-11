@@ -1,5 +1,5 @@
 #!/usr/bin/env swipl
-% -*- Mode: Prolog -*-
+% -*- mode: Prolog -*-
 
                %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
                %% TODO: THIS IS OUT OF DATE and doesn't work!!! %%

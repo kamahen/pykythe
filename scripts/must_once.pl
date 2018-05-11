@@ -1,4 +1,4 @@
-% -*- Mode: Prolog -*-
+% -*- mode: Prolog -*-
 
 :- module(must_once, [must_once/1, must_once/3, must_once/5]).
 
@@ -8,7 +8,7 @@
 must_once(Goal) :-
     (  call(Goal)
     -> true
-    ;  throw(error(failed, context(goal, Goal)))
+    ;  throw(error(failed(Goal), _))
     ).
 
 %% edcg doesn't understand the meta-pred "call", so expand -->> by hand:
@@ -16,11 +16,11 @@ must_once(Goal) :-
 must_once(Goal, AccumA0, AccumA) :-
     (  call(Goal, AccumA0, AccumA)
     -> true
-    ;  throw(error(failed, context(goal, Goal)))
+    ;  throw(error(failed(Goal), _))
     ).
 
 must_once(Goal, AccumA0, AccumA, AccumB0, AccumB) :-
     (  call(Goal, AccumA0, AccumA, AccumB0, AccumB)
     -> true
-    ;  throw(error(failed, context(goal, Goal)))
+    ;  throw(error(failed(Goal), _))
     ).

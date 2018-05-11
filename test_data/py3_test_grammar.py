@@ -37,9 +37,9 @@ TODO: remove all "#- //" lines (these are "to be implemented" syntactic items).
 #- // @#0test ref vname("Lib.test", _, _, _, python)
 #- // @support ref vname("Lib.test.support", _, _, _, python)
 #- // @run_unittest ref vname("Lib.test.support.run_unittest", _, _, _, python)
-#- { @run_unittest defines/binding vname("test_data.py3_test_grammar.run_unittest", "test-corpus", "test-root", "", python) }
+#- // { @run_unittest defines/binding vname("test_data.py3_test_grammar.run_unittest", "test-corpus", "test-root", "", python) }
 #- // @check_syntax_error ref vname("Lib.test.support.check_syntax_error", _, _, _, python)
-#- { @check_syntax_error defines/binding vname("test_data.py3_test_grammar.check_syntax_error", _, _, _, python) }
+#- // { @check_syntax_error defines/binding vname("test_data.py3_test_grammar.check_syntax_error", _, _, _, python) }
 from test.support import run_unittest, check_syntax_error
 import unittest
 import sys
@@ -566,7 +566,7 @@ class GrammarTests(unittest.TestCase):
         x = 0
         y = 0
         def f():
-            #- @x ref TestNonLocalX
+            #- @x ref TestNonLocalX?  // TODO: implement
             nonlocal x
             nonlocal x, y
 

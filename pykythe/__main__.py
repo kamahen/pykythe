@@ -46,6 +46,8 @@ def main() -> int:
     with open(args.src, 'rb') as src_f:
         src_content = xcast(bytes, src_f.read())
         src_file = ast.File(
+            path=args.
+            src,  # TODO: add args.root, args.corpus (even though in Meta)
             content=src_content,
             encoding='utf-8')  # TODO: get encoding from parse
         parse_tree = ast_raw.parse(src_content, args.python_version)
@@ -67,6 +69,8 @@ def main() -> int:
     fqn_ctx = ast_cooked.FqnCtx(
         fqn_dot=file_to_module(args.src) + '.',
         bindings=collections.ChainMap(collections.OrderedDict()),
+        class_fqn=None,
+        class_astn=None,
         python_version=args.python_version)
     anchors = cooked_nodes.anchors(fqn_ctx)
 

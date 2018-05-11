@@ -14,8 +14,8 @@ __init__ (that doesn't call super().__init__).
 import collections
 import json
 from lib2to3 import pytree  # For PlainOldDataExtended
-from typing import (
-    Any, Mapping, MutableMapping, Sequence, Text, TypeVar, Union)  # pylint: disable=unused-import
+from typing import (  # pylint: disable=unused-import
+    Any, Mapping, MutableMapping, Sequence, Text, TypeVar)
 
 
 class PlainOldData:
@@ -39,7 +39,7 @@ class PlainOldData:
     """
 
     # TODO: https://github.com/python/mypy/issues/4547
-    __slots__ = ()  # type: Sequence[str]
+    __slots__ = []  # type: Sequence[str]
 
     def __init__(self, **kwargs: Any) -> None:  # pragma: no cover
         """Create object with attrs defined by a dict."""
@@ -49,8 +49,8 @@ class PlainOldData:
                 # Will raise KeyError if a kwargs item isn't in __slots__
                 setattr(self, attr, kwargs.pop(attr))
         except KeyError as exc:
-            raise ValueError('Missing field: {}'.format(
-                ', '.join(repr(a) for a in exc.args))) from exc
+            raise ValueError('Missing field: {}'.format(', '.join(
+                repr(a) for a in exc.args))) from exc
         if kwargs:
             raise ValueError('Unknown field names: {!r}'.format(list(kwargs)))
 
@@ -87,6 +87,7 @@ class PlainOldData:
     #               hash(getattr(self, a) for a in self.__slots__))
 
     # TODO: pytype doesn't like `bound` with a string:
+    # TODO: from __future__ import annotations (PEP 563, Python 3.7)
     _SelfType = TypeVar('_SelfType', bound='PlainOldData')
 
     def _replace(self: _SelfType, **kwargs: Any) -> _SelfType:  # pylint: disable=undefined-variable
@@ -95,10 +96,10 @@ class PlainOldData:
         # because there can't be any dups in it:
         new_attrs = {
             attr: kwargs.pop(attr) if attr in kwargs else getattr(self, attr)
-            for attr in self.__slots__
-        }
+            for attr in self.__slots__}
         if kwargs:
-            raise ValueError('Unknown field names: {!r}'.format(list(kwargs)))
+            raise ValueError('Unknown field names for {!s}: {!r}'.format(
+                type(self), list(kwargs)))
         return self.__class__(  # type: ignore  # TODO: https://github.com/python/mypy/issues/4602
             **new_attrs)
 
