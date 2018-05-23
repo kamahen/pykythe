@@ -113,8 +113,10 @@
 %% :- set_prolog_flag(generate_debug_info, false).
 
 %% "kythe_fact" accumulator gets FQN anchor facts, in an association
-%% list, with the key being Source-FactName and the value being a dict
-%% to be output in JSON.
+%% list, with the key being fact(Source,FactName) or
+%% edge(Source,EdgeKind,Target) and the value being a dict to be
+%% output in JSON. (An association list is used rather than a dict
+%% because the keys are compound terms, not atoms.)
 edcg:acc_info(kythe_fact, T, In, Out, kythe_fact_accum(T, In, Out)).
 %% "expr" accumulator gets expressions that need interpreting.
 edcg:acc_info(expr, T, Out, In, Out=[T|In]).
@@ -962,13 +964,13 @@ kythe_fact_accum(T, In, Out) :-
     % Source and Target are typically dicts, and they must have ground tags ...
     % for simplicity, these are all 'json').
     (  T = json{source: Source, fact_name: FactName, fact_value: _FactBase64}
-    -> (  get_assoc(Source-FactName, In, _)
+    -> (  get_assoc(fact(Source,FactName), In, _)
        -> In = Out  % already there - ignore subsequent values
-       ;  put_assoc(Source-FactName, In, T, Out)
+       ;  put_assoc(fact(Source,FactName), In, T, Out)
        )
     ;  T = json{source: Source, edge_kind: EdgeKind, target: Target, fact_name: '/'},
-       must_once(\+ get_assoc(Source-EdgeKind-Target, In, _)),
-       put_assoc(Source-EdgeKind-Target, In, T, Out)
+       must_once(\+ get_assoc(edge(Source,EdgeKind,Target), In, _)),
+       put_assoc(edge(Source,EdgeKind,Target), In, T, Out)
     ;  throw(error(bad_kythe_fact(T), _))
     ).
 
