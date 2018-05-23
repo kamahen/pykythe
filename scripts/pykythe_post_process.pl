@@ -56,7 +56,7 @@
 %%     fqn(Fqn) - a global or local name (fully qualified)
 %%     class(Fqn, Bases)  %% Bases is a list of union types
 %%     func(Fqn, ReturnType)  %% ReturnType is a union type
-%%     import(...)  %% TODO: work out details
+%%     import(Fqn, Path)  %% TODO: this will probably change somewhat
 
 %% There are two flavors of the "eval" predicates, depending on the
 %% behavior with fqn(Fqn): the ..._and_lookup will the Fqn and return
@@ -89,7 +89,7 @@
 %% or two passes are needed).
 
 
-%% TODO: can we remove the fqn accumulator from the first pass
+%% TODO: can we remove the kythe_fact accumulator from the first pass
 %%       and generate all the Kythe information from the second pass?
 
 %% TODO: Use QLF: http://www.swi-prolog.org/pldoc/man?section=qlf
@@ -101,7 +101,8 @@
 :- use_module(library(pprint), [print_term/2]).
 :- use_module(library(ordsets)).
 :- use_module(must_once, [must_once/1,
-                          must_once/5 as must_once_fqn_expr,
+                          must_once/3 as must_once_kythe_fact,
+                          must_once/5 as must_once_kythe_fact_expr,
                           must_once/5 as must_once_fqn_sym_rej]).
 
 :- style_check(+singleton).
@@ -121,10 +122,14 @@ edcg:acc_info(expr, T, Out, In, Out=[T|In]).
 %% "sym_rej" accumulator is for symtab + items that need reprocessing.
 edcg:acc_info(sym_rej, FqnType, In, Out, add_kythe_fact_accum(FqnType, In, Out)).
 
-edcg:pred_info(must_once_fqn_expr, 1,              [kythe_fact, expr]).
+edcg:pred_info(must_once_kythe_fact_expr, 1,       [kythe_fact, expr]).
+
+edcg:pred_info(must_once_kythe_fact, 1,            [kythe_fact]).
 
 edcg:pred_info(anchor, 3,                          [kythe_fact]).
+edcg:pred_info(dots_and_dotted_name, 3,            [kythe_fact]).
 edcg:pred_info(edge, 3,                            [kythe_fact]).
+edcg:pred_info(from_import_part, 3,                [kythe_fact]).
 edcg:pred_info(kythe_edge, 3,                      [kythe_fact]).
 edcg:pred_info(kythe_fact, 3,                      [kythe_fact]).
 edcg:pred_info(kythe_fact_b64, 3,                  [kythe_fact]).
@@ -136,6 +141,7 @@ edcg:pred_info(kythe_json, 2,                      [kythe_fact, expr]).
 edcg:pred_info(node_anchors, 2,                    [kythe_fact, expr]).
 edcg:pred_info(node_anchors2, 2,                   [kythe_fact, expr]).
 edcg:pred_info(node_anchors_expr_list, 1,          [kythe_fact, expr]).
+edcg:pred_info(node_anchors_import_from, 1,        [kythe_fact, expr]).
 edcg:pred_info(node_anchors_list, 2,               [kythe_fact, expr]).
 
 edcg:pred_info(must_once_fqn_sym_rej, 1,           [kythe_fact, sym_rej]).
@@ -339,7 +345,7 @@ kythe_file -->>  % [kythe_fact]
 %% 'expr' accumulator.
 
 node_anchors(Node, Type) -->>  % [kythe_fact, expr]
-    must_once_fqn_expr(
+    must_once_kythe_fact_expr(
         node_anchors2(Node, Type)).
 
 % For descriptions of the following, and how they relate to the raw
@@ -361,9 +367,10 @@ node_anchors(Node, Type) -->>  % [kythe_fact, expr]
 
 % See comments at the top of this file on union and single types.
 
-%% TODO: change call([AtomType], ...) to
-%%       list_to_ord_set([AtomType], AtomTypeSet) ... call(AtomTypeSet, ...)
-%%       etc.
+% The following are handled by the container (e.g., ImportFromStmt):
+%   AsNameNode
+%   NameRawNode  (from DottedNameNode, ImportFromStmt, etc.)
+%   NameNode
 
 node_anchors2('AnnAssignStmt'{left_annotation: LeftAnnotation, expr: Expr, left: Left}, stmt(annassign)) -->>  % [kythe_fact, expr]
     expr_normalized(Expr),
@@ -374,10 +381,6 @@ node_anchors2('ArgumentNode'{name: NameAstn, arg: Arg}, todo_arg(Name, ArgType))
     % TODO: match Name to func def param
     { node_astn(NameAstn, _, _, Name) },
     node_anchors(Arg, ArgType).
-node_anchors2('AsNameNode'{name: Name, as_name: AsName}, todo_as_name(Name, Fqn, AsNameType)) -->>  % [kythe_fact, expr]
-    node_anchors(AsName, AsNameType),
-    { Name = 'NameRefFqn'{fqn: Fqn, name: _} },
-    [ asname(Fqn, [AsNameType]) ]:expr.
 node_anchors2('AssertStmt'{items: Items}, stmt(assert)) -->>  % [kythe_fact, expr]
     node_anchors_expr_list(Items).
 node_anchors2('AssignExprStmt'{expr: Expr, left: Left}, stmt(assign)) -->>  % [kythe_fact, expr]
@@ -421,7 +424,7 @@ node_anchors2('CompIfCompIterNode'{value_expr: ValueExpr, comp_iter: CompIter}, 
 node_anchors2('ContinueStmt'{}, stmt(continue)) -->> [ ].  % [kythe_fact, expr]
 node_anchors2('DecoratedStmt'{items: Items}, todo_decorated(ItemsType)) -->>  % [kythe_fact, expr]
              node_anchors_list(Items, ItemsType).
-node_anchors2('DecoratorDottedNameNode'{items: Items}, todo_decorator_dottedname(ItemsType)) -->>  % [kythe_fact, expr]  % TODO: fqn accumulator
+node_anchors2('DecoratorDottedNameNode'{items: Items}, todo_decorator_dottedname(ItemsType)) -->>  % [kythe_fact, expr]
     from_dots(Items, ItemsType).
 node_anchors2('DecoratorsNode'{items: Items}, todo_decorators(ItemsType)) -->>  % [kythe_fact, expr]
     node_anchors_list(Items, ItemsType).
@@ -474,60 +477,49 @@ node_anchors2('Func'{fqn: str(Fqn), name: NameAstn, parameters: Parameters, retu
 node_anchors2('GlobalStmt'{items: Items}, stmt(global)) -->>  % [kythe_fact, expr]
     node_anchors_expr_list(Items).
 node_anchors2('IfStmt'{items: Items}, stmt(if)) -->>  % [kythe_fact, expr]
-    node_anchors_list(Items, _).
-node_anchors2('ImportAsNamesNode'{items: Items}, todo_importas(ItemsType)) -->>  % [kythe_fact, expr]  % TODO: fqn accumulator
-    node_anchors_list(Items, ItemsType).
+             node_anchors_list(Items, _).
 node_anchors2('ImportDottedAsNameFqn'{dotted_name: DottedName, as_name: AsName},
-              todo_importdotted(DottedNameType, AsNameType)) -->>  % [kythe_fact, expr]  % TODO: fqn accumulator
+              unused_importdotted(DottedNameType, AsNameType)) -->>  % [kythe_fact, expr]
     node_anchors(AsName, AsNameType),
     node_anchors(DottedName, DottedNameType).
 node_anchors2('ImportDottedAsNamesFqn'{items: Items},
-              todo_expr(importdotteds)) -->>  % [kythe_fact, expr] % TODO: fqn accumulator
+              unused_importdotteds) -->>  % [kythe_fact, expr]
+    { must_once(map_eq('ImportDottedAsNameFqn'{as_name:_, dotted_name: _}, Items)) },  % TODO: remove
     node_anchors_list(Items, _).
 node_anchors2('ImportFromStmt'{from_name: DotsAndDottedName,
-                               import_part: 'ImportAsNamesNode'{items: ImportPart}},
-              todo_importfrom(dotted=_DottedNames, name=_Name, as=_AsName)) -->>  % [kythe_fact, expr] % TODO: fqn accumulator
-    { must_once(
-          dots_and_dotted_name(DotsAndDottedName, ImportPart)) },
-    [ ].
-    %% TODO:
-    %%   ImportPart='ImportAsNamesNode'{items: ['AsNameNode'{name: Name, as_name: AsName}]}
-    %%   [ assign(ImportPart) ]:expr,
-    %%   node_anchors_list(FromName, FromNameType),
-    %%   node_anchors(ImportPart, ImportPartType).  % Is this needed?
+                               import_part: 'ImportAsNamesNode'{items: ImportPartItems}},
+              unused_importfrom(CombImportPart)) -->>  % [kythe_fact, expr]
+    must_once_kythe_fact(
+        dots_and_dotted_name(DotsAndDottedName, ImportPartItems, CombImportPart)),
+    % TOO: ref/import
+    node_anchors_import_from(CombImportPart).
 node_anchors2('ImportFromStmt'{from_name: DotsAndDottedName,
                                import_part: 'StarNode'{}},
-              todo_importfrom_star(dotted=_DottedNames)) -->>  % [kythe_fact, expr] % TODO: fqn accumulator
-    { must_once(
-          dots_and_dotted_name(DotsAndDottedName, '*')) },
+              unused_importfrom_star) -->>  % [kythe_fact, expr]
+    must_once_kythe_fact(
+        dots_and_dotted_name(DotsAndDottedName, '*', _CombImportPart)),
+    % TODO: expand '*'
+    % TOO: ref/import
     [ ].
 node_anchors2('ImportNameFqn'{dotted_as_names: DottedAsNames},
-              todo_import(DottedAsNamesType)) -->>  % [kythe_fact, expr] % TODO: fqn accumulator
+              unused_import(DottedAsNamesType)) -->>  % [kythe_fact, expr]
+    { must_once(DottedAsNames = 'ImportDottedAsNamesFqn'{items:_}) },  % TODO: remove
     node_anchors(DottedAsNames, DottedAsNamesType).
+
 node_anchors2('ListMakerNode'{items: Items}, todo_list(ItemsType)) -->>  % [kythe_fact, expr]
     node_anchors_list(Items, ItemsType).
-%% TODO: remove NameNode -- it seems to come from ImportFromStmt et al
-%%       and should be refined.
-%%- node_anchors2('NameNode'{binds: bool(_Binds), name: NameAstn}, todo_name_from_import(Name)) -->>  % [kythe_fact, expr]
-%%-    { node_astn(NameAstn, _, _, Name) }.
 node_anchors2('NameBindsFqn'{fqn: str(Fqn), name: NameAstn}, fqn(FqnAtom)) -->>  % [kythe_fact, expr]  %% result is same as NameRefFqn
     { atom_string(FqnAtom, Fqn) },
     { node_astn(NameAstn, Start, End, _Token) },
     { signature_node(FqnAtom, Signature) },
     anchor(Start, End, Source),
     edge(Source, '/kythe/edge/defines/binding', FqnAtom),  %% only difference from NameRef
-    kythe_fact(Signature, '/kythe/node/kind', 'variable'),
-    [ ].  % [ fqn(FqnAtom) ]:expr.  % TODO: this is also in fqns from anchor
-
-%% 'NameRawNode'{name: NameAstn} is handled by the construct that contains it
-%% (e.g., DottedNameNode, ImportFromStmt, etc.)
-
+    kythe_fact(Signature, '/kythe/node/kind', 'variable').
 node_anchors2('NameRefFqn'{fqn: str(Fqn), name: NameAstn}, fqn(FqnAtom)) -->>  % [kythe_fact, expr]  %% result is same as NameBinds
     { atom_string(FqnAtom, Fqn) },
     { node_astn(NameAstn, Start, End, _Token) },
     anchor(Start, End, Source),
-    edge(Source, '/kythe/edge/ref', FqnAtom),  %% only difference from NameBinds
-    [ ].  % [ fqn(FqnAtom) ]:expr.  % TODO: this is also in fqns from anchor
+    edge(Source, '/kythe/edge/ref', FqnAtom).  %% only difference from NameBindsFqn
 node_anchors2('NameRefGenerated'{fqn: str(Fqn)}, fqn(FqnAtom)) -->>  % [kythe_fact, expr]  %% result is same as NameBinds
     { atom_string(FqnAtom, Fqn) }.
 node_anchors2('NonLocalStmt'{items: Items}, stmt(nonlocal)) -->>  % [kythe_fact, expr]
@@ -570,23 +562,23 @@ node_anchors2('WithStmt'{items: Items, suite: Suite}, stmt(with)) -->>  % [kythe
     node_anchors_list(Items, _),  % handled by WithItemNode
     node_anchors(Suite, _).
 
-dots_and_dotted_name(DotsAndDottedName, ImportPart) :-
+dots_and_dotted_name(DotsAndDottedName, ImportPart, CombImportPart) -->> % [kythe_fact]
     %% the name is zero or more ImportDotNode's followed by zero or
     %% one DottedNameNode. If there are no ImportDotNode's, then the
     %% result is $PYTHONPATH.DottedName/ImportPart. If there are
     %% ImportDotNode's, then the result is FilePath/ImportPart, where
     %% FilePath is derived from the Meta information for the file,
     %% followed by '/..' as needed.
-    corpus_root_path_language(_Corpus, _Root, Path, _Language),
-    must_once(
-        atom_concat(PathBase, '.py', Path)),  %% TODO: don't rely on '.py' being the extension?
-    from_dots_import(DotsAndDottedName, PathBase, Dots, DottedNameList),
-    atomic_list_concat(DottedNameList, '.', DottedName),
-    (  Dots = []
-    -> atomic_list_concat(['$PYTHONPATH/', DottedName], CombFromName)
-    ;  atomic_list_concat(Dots, CombFromName)
+    { corpus_root_path_language(_Corpus, _Root, Path, _Language) },
+    { must_once(
+          atom_concat(PathBase, '.py', Path)) },  %% TODO: don't rely on '.py' being the extension?
+    { from_dots_import(DotsAndDottedName, PathBase, Dots, DottedNameList) },
+    { atomic_list_concat(DottedNameList, '.', DottedName) },
+    (  { Dots = [] }
+    -> { atomic_list_concat(['$PYTHONPATH/', DottedName], CombFromName) }
+    ;  { atomic_list_concat(Dots, CombFromName) }
     ),
-    from_import_part(ImportPart, CombFromName, _CombImportPart).
+    from_import_part(ImportPart, CombFromName, CombImportPart).
 
 from_dots_import([], _, [], []) :- !.
 from_dots_import(['ImportDotNode'{}|Ds], PathBase, [PathBase|Dots], DottedNameList) :- !,
@@ -599,16 +591,25 @@ from_dots(['NameRawNode'{name: NameAstn}|Ns], [Name|Names]) :-
     node_astn(NameAstn, _, _, Name),
     from_dots(Ns, Names).
 
-from_import_part('*', _, '*').  % TODO: probably needs a better convention
-from_import_part([], _, []).
-from_import_part(['AsNameNode'{as_name: 'NameBindsFqn'{fqn: str(AsName), name: _AsNameAstn},
+from_import_part('*', _, '*') -->> [ ].   % [kythe_fact] % TODO: probably needs a better convention
+from_import_part([], _, []) -->> [ ].  % [kythe_fact]
+from_import_part(['AsNameNode'{as_name: 'NameBindsFqn'{fqn: str(AsName), name: AsNameAstn},
                                name: 'NameRawNode'{name: NameAstn}}|Ns],
                  CombFromName,
-                 [ConcatName-AsNameAtom|NANs]) :-
-    node_astn(NameAstn, _, _, Name),
-    atomic_list_concat([CombFromName, '/', Name], ConcatName),
-    atom_string(AsNameAtom, AsName),
+                 [ConcatName-AsNameAtom|NANs]) -->> % [kythe_fact]
+    { node_astn(NameAstn, _, _, Name) },
+    { node_astn(AsNameAstn, Start, End, _) },
+    { atomic_list_concat([CombFromName, '/', Name], ConcatName) },
+    { atom_string(AsNameAtom, AsName) },
+    anchor(Start, End, Source),
+    edge(Source, '/kythe/edge/defines/binding', AsName),
     from_import_part(Ns, CombFromName, NANs).
+
+node_anchors_import_from([]) -->> [ ].  % [kythe_fact, expr]
+node_anchors_import_from([Path-Fqn|AsItems]) -->>  % [kythe_fact, expr]
+    [ import_from(Path, Fqn) ]:expr,
+    % TODO: ref/import
+    node_anchors_import_from(AsItems).
 
 %% Handle DottedNameNode  TODO: needs some file resolution
 dotted_name_raw([], []).
@@ -652,7 +653,7 @@ dot_binds_atom("True", '/kythe/edge/defines/binding').
 
 anchor(Start, End, Source) -->>  % [kythe_fact]
     { format(string(Signature), '@~d:~d', [Start, End]) },
-    { signature_source(Signature, Source) },
+{ signature_source(Signature, Source) },
     kythe_fact(Source, '/kythe/node/kind', anchor),
     kythe_fact(Source, '/kythe/loc/start', Start),
     kythe_fact(Source, '/kythe/loc/end', End).
@@ -706,20 +707,21 @@ output_anchor(AnchorAsDict, KytheStream) :-
 
 assign_exprs(Exprs, Symtab, Fqns) :-
     initial_symtab(Symtab0),
-    assign_exprs_count(5, Exprs, Symtab0, Symtab, Fqns).  % TODO: is Count=5 too much?
+    assign_exprs_count(1, Exprs, Symtab0, Symtab, Fqns).
 
 assign_exprs_count(Count, Exprs, Symtab0, Symtab, Fqns) :-
     do_if(false,
           format(user_error, '% === EXPRS === ~q~n~n', [Count])),
     assign_exprs_count2(Exprs, Symtab0, Symtab1, Rej, Fqns1),  % phrase(assign_exprs_count(...))
-    CountDecr is Count - 1,
-    (  finished_assign_exprs_count(Rej, CountDecr)
-    -> Symtab = Symtab1, Fqns = Fqns1
-    ;  assign_exprs_count(CountDecr, Exprs, Symtab1, Symtab, Fqns)
+    length(Rej, RejLen),
+    do_if(true,
+          format(user_error, 'Pass ~q (rej=~q)~n', [Count, RejLen])),
+    CountIncr is Count + 1,
+    (  (Rej = [] ; CountIncr > 5)  % TODO: is 5 too high?
+    -> Symtab = Symtab1,
+       Fqns = Fqns1
+    ;  assign_exprs_count(CountIncr, Exprs, Symtab1, Symtab, Fqns)
     ).
-
-finished_assign_exprs_count([], _CountDecr).
-finished_assign_exprs_count(_Rej, CountDecr) :- CountDecr =< 0.
 
 assign_exprs_count2(Exprs, Symtab0, SymtabWithRej, Rej, Fqns) :-  % [kythe_fact, sym_rej]
     dict_pairs(Symtab0, symtab, SymtabPairs0),
@@ -734,7 +736,7 @@ assign_exprs_count2(Exprs, Symtab0, SymtabWithRej, Rej, Fqns) :-  % [kythe_fact,
 
 assign_exprs_eval_list([]) -->> [ ].  % [kythe_fact, sym_rej]
 assign_exprs_eval_list([Assign|Assigns]) -->>  % [kythe_fact, sym_rej]
-    SymtabRej/sym_rej,  %% TODO: delete (used for debug loggin)
+    SymtabRej/sym_rej,  %% TODO: delete (it's only used for debug logging)
     { do_if(false,
             dump_term('', SymtabRej)) },
     { do_if(false,
@@ -758,6 +760,8 @@ assign_expr_eval(class(Fqn, Bases)) -->>  % [kythe_fact, sym_rej]
     [ Fqn-[class(Fqn, Bases)] ]:sym_rej.
 assign_expr_eval(func(Fqn, ReturnType)) -->>  % [kythe_fact, sym_rej]
     [ Fqn-[func(Fqn, ReturnType)] ]:sym_rej.
+assign_expr_eval(import_from(Path, Fqn)) -->>  % [kythe_fact, sym_rej]
+    [ Fqn-[import(Fqn, Path)] ]: sym_rej.
 
 eval_union_type(Type, EvalType) -->>  % [kythe_fact, sym_rej]
     { ord_empty(EvalType0) },
@@ -801,6 +805,9 @@ eval_lookup_single(class(ClassName, Bases0),
 eval_lookup_single(func(FuncName, ReturnType0),
                    [func(FuncName, ReturnType)]) -->> !,  % [kythe_fact, sym_rej]
     eval_lookup(ReturnType0, ReturnType).
+eval_lookup_single(import(Fqn, Path),
+                   [import(Fqn, Path)]) -->> !,  % [kythe_fact, sym_rej]
+    [ ].
 eval_lookup_single(var(Fqn),
                    [var(Fqn)]) -->> !, [ ].  % [kythe_fact, sym_rej]
 eval_lookup_single(_EvalType, []) -->> [ ].  % [kythe_fact, sym_rej]
@@ -816,14 +823,16 @@ eval_single_type(call(Atom, Parms), EvalType) -->>  % [kythe_fact, sym_rej]
     eval_atom_call_union(AtomEval, ParmsEval, EvalType).
 eval_single_type(call_op(OpAstns, ArgsType), [call_op(OpAstns, ArgsTypeEval)]) -->>  % [kythe_fact, sym_rej]
     eval_union_type_list(ArgsType, ArgsTypeEval).
-eval_single_type(func(Name, ReturnType), [func(Name, ReturnTypeEval)]) -->>  % [kythe_fact, sym_rej]
-    eval_union_type_and_lookup(ReturnType, ReturnTypeEval).
 eval_single_type(class(Name, Bases), [class(Name, BasesEval)]) -->>  % [kythe_fact, sym_rej]
     eval_union_type_list(Bases, BasesEval).
+eval_single_type(import(Fqn, Path), [import(Fqn, Path)]) -->>  % [kythe_fact, sym_rej]
+    [ ].  % TODO: look-up
+eval_single_type(func(Name, ReturnType), [func(Name, ReturnTypeEval)]) -->>  % [kythe_fact, sym_rej]
+    eval_union_type_and_lookup(ReturnType, ReturnTypeEval).
 eval_single_type(ellipsis, []) -->> [ ].  % [kythe_fact, sym_rej]
 eval_single_type(omitted, []) -->> [ ].  % [kythe_fact, sym_rej]
+
 %% TODO: implement the following:
-eval_single_type(todo_as_name(_Name, _Fqn, _AsNameType), []) -->> [ ].  % [kythe_fact, sym_rej]
 eval_single_type(todo_compfor(iter:_CompIterType, for:_ForExprlistType, in:_InTestlistType), []) -->> [ ].  % [kythe_fact, sym_rej]
 eval_single_type(todo_compifcompiter(_ValueExprType, _CompIterType), []) -->> [ ].  % [kythe_fact, sym_rej]
 eval_single_type(todo_decorated(_ItemsType), []) -->> [ ].  % [kythe_fact, sym_rej]
@@ -833,13 +842,6 @@ eval_single_type(todo_dictgen(_ValueExprType, _CompForType), []) -->> [ ].  % [k
 eval_single_type(todo_dictkeyvaluelist(_ItemsType), []) -->> [ ].  % [kythe_fact, sym_rej]
 eval_single_type(todo_dictset(_ItemsType), []) -->> [ ].  % [kythe_fact, sym_rej]
 eval_single_type(todo_dottedname(_ItemsType), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_importas(_ItemsType), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_importdotted(_DottedNameType, _AsNameType), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_expr(importdotteds), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_importfrom(dotted=_DottedNames, name=_Name, as=_AsName), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_importfrom_star(dotted=_DottedNames), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_import(_DottedAsNamesType), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_name_from_import(_Name), []) -->> [ ].  % [kythe_fact, sym_rej]
 eval_single_type(todo_expr(stmts), []) -->> [ ].  % [kythe_fact, sym_rej]
 eval_single_type(todo_typedarg(), []) -->> [ ].  % [kythe_fact, sym_rej]
 eval_single_type(todo_subscr(_), []) -->> [ ].  % [kythe_fact, sym_rej]
@@ -860,12 +862,17 @@ eval_atom_dot_union([T|Ts], Astn, DotBinds, EvalType0, EvalType) -->>  % [kythe_
 eval_atom_dot_single([], _Astn, _DotBinds, EvalType, EvalType) -->> [ ].  % [kythe_fact, sym_rej]
 eval_atom_dot_single([T|Ts], Astn, DotBinds, EvalType0, EvalType) -->>  % [kythe_fact, sym_rej]
     %% TODO: also allow func(...).attr (currently only allows class(...).attr
+    Astn = astn(Start, End, Attr),
     (  { T = class(ClassName, _) }
-    -> Astn = astn(Start, End, Attr),
-       { atomic_list_concat([ClassName, '.', Attr], FqnAttr) },
+    -> { atomic_list_concat([ClassName, '.', Attr], FqnAttr) },
        { ord_add_element(EvalType0, fqn(FqnAttr), EvalType1) },
        anchor(Start, End, Source),
        edge(Source, DotBinds, FqnAttr)
+    ;  { T = import(_Fqn, Path) },
+       { atomic_list_concat([Path, '::', Attr], FqnAttr) },  % TODO: need to resolve path
+       anchor(Start, End, Source),
+       edge(Source, DotBinds, FqnAttr),
+       { EvalType1 = EvalType0 }
     ;  { EvalType1 = EvalType0 }
     ),
     eval_atom_dot_single(Ts, Astn, DotBinds, EvalType1, EvalType).
@@ -928,15 +935,16 @@ add_rej_to_symtab([Fqn-RejType|FTs], Symtab0, Symtab) :-
 %% adds it Rej.
 %% TODO: use library(assoc) instead of dict for Symtab (performance)
 add_kythe_fact_accum(Fqn-Type, Symtab0-Rej0, Symtab-Rej) :-
-    (  get_dict(Fqn, Symtab0, Type0)
-    -> Symtab = Symtab0,  %% TODO: Symtab[Fqn] := ord_union(Symtab0[Fqn], Type) ?
-       (  Type = Type0
+    (  get_dict(Fqn, Symtab0, TypeSymtab)
+    -> Symtab = Symtab0,
+       (  Type = TypeSymtab  %% in case Type is not instantiated (i.e., a lookup)
        -> Rej = Rej0
-       ;  Type = []
+       ;  ord_union(TypeSymtab, Type, TypeComb),  % TODO: ord_intersect(TypeSymtab, Type) ?
+          TypeComb = TypeSymtab
        -> Rej = Rej0
        ;  Rej = [Fqn-Type|Rej0]
        )
-    ;  Type = []  %% in case Type is not instantiated (e.g., a lookup)
+    ;  Type = []  %% in case Type is not instantiated (i.e., a lookup)
     -> Rej = Rej0,
        put_dict(Fqn, Symtab0, Type, Symtab)
     ;  Rej = Rej0,
@@ -991,6 +999,13 @@ do_if(Cond, Pred) :-
     ;  true
     ).
 
+%% Check that all items in a list can unify without instantiating
+%% anything in the pattern.
+map_eq(_Pattern, []).
+map_eq(Pattern, [X|Xs]) :-
+    \+ \+ Pattern = X,
+    map_eq(Pattern, Xs).
+
 %% TODO: Remove this debugging code
 dump_term(Msg, Term) :-
     dump_term(Msg, Term, [tab_width(0),
@@ -999,7 +1014,7 @@ dump_term(Msg, Term) :-
 dump_term(Msg, Term, Options) :-
     (  Msg = ''
     -> true
-    ;  format(user_error, '% === ~s ===~n~n', [Msg])
+    ;  format(user_error, '% === ~w ===~n~n', [Msg])
     ),
     % print_term leaves trailing whitespace, so remove it
     with_output_to(
@@ -1010,5 +1025,5 @@ dump_term(Msg, Term, Options) :-
     (  Msg = ''
     -> format(user_error, '~s.~n', [TermStr2])
     ;  format(user_error, '~s.~n~n', [TermStr2]),
-       format(user_error, '% === end ~s ===~n~n', [Msg])
+       format(user_error, '% === end ~w ===~n~n', [Msg])
     ).

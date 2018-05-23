@@ -31,9 +31,11 @@ TESTGITHUB=$(HOME)/tmp/test-github
 TESTOUTDIR=/tmp/pykythe_test
 BROWSE_PORT=8002
 PYTHON3_EXE:=$(shell which python3.6)
+SWIPL_EXE:=$(shell which swipl)
 # COVERAGE=/usr/local/bin/coverage
 # COVERAGE:=$(shell type -p coverage)  # doesn't work because "type" isn't a command
 COVERAGE:=$(shell which coverage)
+TIME=time
 
 all_tests: test test_grammar test test_grammar  # pykythe_http_server
 
@@ -119,21 +121,23 @@ $(TESTOUTDIR)/%-fqn.json: \
 		scripts/decode_json.py \
 		pykythe/ast_cooked.py \
 		pykythe/ast_raw.py \
-		pykythe/pod.py
+		pykythe/pod.py \
+		Makefile
 	mkdir -p $(TESTOUTDIR)
-	$(PYTHON3_EXE) -B -m pykythe \
+	$(TIME) $(PYTHON3_EXE) -B -m pykythe \
 		--corpus='test-corpus' \
 		--root='test-root' \
 		--src="$<" \
 		--out_fqn_expr="$@"
 
 $(TESTOUTDIR)/%-kythe.json: $(TESTOUTDIR)/%-fqn.json \
-		scripts/pykythe_post_process.pl scripts/must_once.pl
+		scripts/pykythe_post_process.pl scripts/must_once.pl \
+		Makefile
 	@# TODO: make this into a script (with a saved state (qsave_program/2 stand_alone).
 	@# If you add </dev/null to the following, it'll keep going even on failure.
 	@# ... without that, it'll stop, waiting for input
 	@# If you add --quiet, you might be confused by this situation
-	swipl -O -s scripts/pykythe_post_process.pl "$<" >"$@" 2>"$@-error" </dev/null
+	$(TIME) $(SWIPL_EXE) -O -s scripts/pykythe_post_process.pl "$<" >"$@" 2>"$@-error" </dev/null
 	cat "$@-error"
 
 %.json-decoded: %.json scripts/decode_json.py

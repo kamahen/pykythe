@@ -147,6 +147,9 @@ spaces_before_comment=2
 # etc.
 space_between_ending_comma_and_closing_bracket=True
 
+# Split before arguments
+split_all_comma_separated_values=False
+
 # Split before arguments if the argument list is terminated by a
 # comma.
 split_arguments_when_comma_terminated=False

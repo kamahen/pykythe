@@ -5,17 +5,36 @@ This code is for development debugging and will change a lot over time
 """
 
 # TODO - remove these import's
-#- // @foo4 defines/binding Foo4?  # TODO: needs to be implemented
-#- // @foo_bar5 defines/binding Foo5?  # TODO: needs to be implemented
+#- { @foo4 defines/binding Foo4?  } // TODO: needs to be implemented
+#- { @foo_bar5 defines/binding Foo5?  } // TODO: needs to be implemented
 from ....yyy import foo4, foo5 as foo_bar5
+#- { @sep defines/binding Sep? }
 from os.path import sep
+#- { @foo3 defines/binding Foo3? }
 from .xxx import foo3
+#- { @foo1 defines/binding Foo1? }
 from .. import foo1
+#- { @foo2 defines/binding Foo2? }
 from . import foo2
-#- @xos defines/binding Xos?  // TODO: needs full implementation
+#- { @xos defines/binding Xos? }  // TODO: needs full implementation
 import xos
+#- // !{ @path defines/binding _ }  // TODO: check that there's no anchor either, also for other "from" and "import"
+#- { @xos defines/binding _Xos2?}  // TODO: check that there's no anchor either
 import xos.path
+#- { @os_path defines/binding OsPath? }  // TODO: needs full implementation
 import xos.path2 as os_path
+
+#- @foo4 ref Foo4?
+foo4
+
+#- @foo4 ref Foo4?
+#- @x ref Foo4X?
+foo4.x
+
+fff = foo4
+
+#- @x ref Foo4X?
+fff.x
 
 # TODO: add some simple tests of the imports (e.g. foo4.bar, foo_bar5.bar)
 

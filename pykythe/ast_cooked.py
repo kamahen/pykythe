@@ -953,7 +953,11 @@ class ImportDottedAsNameFqn(Base):
 
 
 class ImportDottedAsNameNode(Base):
-    """Corresponds to `dotted_as_name`."""
+    """Corresponds to `dotted_as_name`.
+
+    This is only used by `import_name`, so if the `as` is missing,
+    then the first item in the `dotted_name` gets marked as "binds".
+    """
 
     __slots__ = ['dotted_name', 'as_name']
 
