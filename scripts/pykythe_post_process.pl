@@ -100,6 +100,7 @@
 :- use_module(library(edcg)).  % requires: ?- pack_install(edcg).
 :- use_module(library(pprint), [print_term/2]).
 :- use_module(library(ordsets)).
+:- use_module(library(assoc)).
 :- use_module(must_once, [must_once/1,
                           must_once/3 as must_once_kythe_fact,
                           must_once/5 as must_once_kythe_fact_expr,
@@ -111,16 +112,14 @@
 :- style_check(+discontiguous).
 %% :- set_prolog_flag(generate_debug_info, false).
 
-%% "kythe_fact" accumulator gets FQN anchor facts, each a dict to be
-%% output in JSON.  Note that this builds the list in *reverse* order,
-%% so that SoFar/kythe_fact can get the list to this point (for
-%% dup removal).
-%% TODO: use dict to avoid linear scans (see kythe_fact_b64)
-edcg:acc_info(kythe_fact, T, In, Out, Out=[T|In]).
+%% "kythe_fact" accumulator gets FQN anchor facts, in an association
+%% list, with the key being Source-FactName and the value being a dict
+%% to be output in JSON.
+edcg:acc_info(kythe_fact, T, In, Out, kythe_fact_accum(T, In, Out)).
 %% "expr" accumulator gets expressions that need interpreting.
 edcg:acc_info(expr, T, Out, In, Out=[T|In]).
 %% "sym_rej" accumulator is for symtab + items that need reprocessing.
-edcg:acc_info(sym_rej, FqnType, In, Out, add_kythe_fact_accum(FqnType, In, Out)).
+edcg:acc_info(sym_rej, FqnType, In, Out, sym_rej_accum(FqnType, In, Out)).
 
 edcg:pred_info(must_once_kythe_fact_expr, 1,       [kythe_fact, expr]).
 
@@ -244,22 +243,23 @@ main :-
     halt.
 
 process(FqnExprFile) :-
-    read_anchors_exprs(FqnExprFile, Fqns, Exprs),
+    read_anchors_exprs(FqnExprFile, KytheFacts, Exprs),
     do_if(false,
           dump_term('EXPRS', Exprs, [indent_arguments(auto),
                                      right_margin(72)])),
     must_once(
-        assign_exprs(Exprs, Symtab, Fqns2)),
+        assign_exprs(Exprs, Symtab, KytheFacts2)),
     do_if(false,
           dump_term('SYMTAB', Symtab)),
     current_output(KytheStream),
     %% write(KytheStream, "%% === Kythe ==="), nl(KytheStream),
-    output_anchors(Fqns, KytheStream),
-    output_anchors(Fqns2, KytheStream).
+    output_anchors(KytheFacts, KytheStream),
+    output_anchors(KytheFacts2, KytheStream).
 
-%% Read the JSON, convert to nodes tree, convert to nodes tree
-%% with FQNs and extract exprs.
-read_anchors_exprs(FqnExprFile, Fqns, Exprs) :-
+%% Read the JSON, convert to nodes tree, convert to nodes tree with
+%% FQNs and extract anchors and related facts into KytheFacts, plus
+%% Exprs (see node_anchors//2).
+read_anchors_exprs(FqnExprFile, KytheFacts, Exprs) :-
     open(FqnExprFile, read, FqnExprStream),
     must_once(
         json_read_dict(FqnExprStream, MetaDict)),
@@ -272,7 +272,7 @@ read_anchors_exprs(FqnExprFile, Fqns, Exprs) :-
     simplify_json(JsonDict, Nodes),
     do_if(false,
           dump_term('NODES', Nodes)),
-    kythe_json(Nodes, _Expr, Fqns, Exprs).
+    kythe_json(Nodes, _Expr, KytheFacts, Exprs).
 
 %% Save the meta-data as facts.
 assert_meta(
@@ -322,8 +322,10 @@ simplify_json_slot_pairs([K-V|KVs], [K-V2|KVs2]) :-
     simplify_json(V, V2),
     simplify_json_slot_pairs(KVs, KVs2).
 
-kythe_json(Node, Expr, Fqns, Exprs) :-
-    kythe_json(Node, Expr, [], Fqns, Exprs, []).  % phrase(kythe_json(Node, Expr), Fqns, Exprs)
+kythe_json(Node, Expr, KytheFacts, Exprs) :-
+    empty_assoc(KytheFacts0),
+    kythe_json(Node, Expr, KytheFacts0, KytheFacts1, Exprs, []),  % phrase(kythe_json(Node, Expr), KytheFacts, Exprs)
+    assoc_to_values(KytheFacts1, KytheFacts).
 
 kythe_json(Node, Expr) -->>  % [kythe_fact, expr]
     kythe_file,
@@ -332,17 +334,17 @@ kythe_json(Node, Expr) -->>  % [kythe_fact, expr]
 kythe_file -->>  % [kythe_fact]
     % TODO: output x-numlines, x-html ?
     { corpus_root_path_language(Corpus, Root, Path, _Language) },
-    { Source = _{corpus: Corpus, root: Root, path: Path} },
+    { Source = json{corpus: Corpus, root: Root, path: Path} },
     kythe_fact(Source, '/kythe/node/kind', 'file'),
     { file_contents_b64(ContentsB64) },
     kythe_fact_b64(Source, '/kythe/text', ContentsB64).
 
 
-%% Extract anchors (with FQNs) from the the AST nodes.  The FQNs go
-%% into accumulator 'fqn' and the expressions (for further processing)
-%% go into accumulator 'expr'. The predicate returns a "type", which
-%% is usesd to populate the right-hand-sides of assign/2 terms in the
-%% 'expr' accumulator.
+%% Extract anchors (with FQNs) from the the AST nodes.  The anchors go
+%% into accumulator 'kythe_fact' and the expressions (for further
+%% processing) go into accumulator 'expr'. The predicate returns a
+%% "type", which is usesd to populate the right-hand-sides of assign/2
+%% terms in the 'expr' accumulator.
 
 node_anchors(Node, Type) -->>  % [kythe_fact, expr]
     must_once_kythe_fact_expr(
@@ -667,27 +669,19 @@ kythe_fact(Source, FactName, FactValue) -->>  % [kythe_fact]
     kythe_fact_b64(Source, FactName, FactBase64).
 
 kythe_fact_b64(Source, FactName, FactBase64) -->>  % [kythe_fact]
-    %% If Source-EdgeKind is already there, don't add (this prevents
-    %% duplicates, such as two 'node/kind' facts -- instead, only the
-    %% first is used.
-    %% TODO: use dict for accumulator (see edcg:acc_info)
-    SoFar/kythe_fact,
-    { Check = _{source: Source, fact_name: FactName, fact_value: _} },
-    (  { memberchk(Check, SoFar) }
-    -> [ ]
-    ;  [ _{source: Source, fact_name: FactName, fact_value: FactBase64} ]:kythe_fact
-    ).
+    % The accumulator takes care of duplicate removal.
+    [ json{source: Source, fact_name: FactName, fact_value: FactBase64} ]:kythe_fact.
 
 kythe_edge(Source, EdgeKind, Target) -->>  % [kythe_fact]
-    [ _{source: Source, edge_kind: EdgeKind, target: Target, fact_name: '/'} ]:kythe_fact.
+    [ json{source: Source, edge_kind: EdgeKind, target: Target, fact_name: '/'} ]:kythe_fact.
 
 signature_source(Signature, Source) :-
     corpus_root_path_language(Corpus, Root, Path, _Language),
-    Source = _{signature: Signature, corpus: Corpus, root: Root, path: Path}.
+    Source = json{signature: Signature, corpus: Corpus, root: Root, path: Path}.
 
 signature_node(Signature, Vname) :-
     corpus_root_path_language(Corpus, Root, _Path, Language),
-    Vname = _{signature: Signature, corpus: Corpus, root: Root, language: Language}.
+    Vname = json{signature: Signature, corpus: Corpus, root: Root, language: Language}.
 
 %% The anchors are in *reverse* order (see the definition of the 'fqn'
 %% accumulator. For debugging, you might want to reverse them first.
@@ -698,6 +692,9 @@ output_anchors([Anchor|Anchors], KytheStream) :-
     output_anchors(Anchors, KytheStream).
 
 output_anchor(AnchorAsDict, KytheStream) :-
+    % The tags are ignored unless option tag(type) is specified (which
+    % it isn't). All dicts should have the tag 'json', for simplicity.
+    % (See also kythe_fact_accum/3 for a bit more on the dicts.)
     json_write_dict(KytheStream, AnchorAsDict, [width(0)]),
     nl(KytheStream).
 
@@ -705,30 +702,32 @@ output_anchor(AnchorAsDict, KytheStream) :-
 %%%%%% assign exprs %%%%%%%
 %%%%%%              %%%%%%%
 
-assign_exprs(Exprs, Symtab, Fqns) :-
+assign_exprs(Exprs, Symtab, KytheFacts) :-
     initial_symtab(Symtab0),
-    assign_exprs_count(1, Exprs, Symtab0, Symtab, Fqns).
+    assign_exprs_count(1, Exprs, Symtab0, Symtab, KytheFacts).
 
-assign_exprs_count(Count, Exprs, Symtab0, Symtab, Fqns) :-
+assign_exprs_count(Count, Exprs, Symtab0, Symtab, KytheFacts) :-
     do_if(false,
           format(user_error, '% === EXPRS === ~q~n~n', [Count])),
-    assign_exprs_count2(Exprs, Symtab0, Symtab1, Rej, Fqns1),  % phrase(assign_exprs_count(...))
+    assign_exprs_count2(Exprs, Symtab0, Symtab1, Rej, KytheFacts1),  % phrase(assign_exprs_count(...))
     length(Rej, RejLen),
     do_if(true,
           format(user_error, 'Pass ~q (rej=~q)~n', [Count, RejLen])),
     CountIncr is Count + 1,
     (  (Rej = [] ; CountIncr > 5)  % TODO: is 5 too high?
     -> Symtab = Symtab1,
-       Fqns = Fqns1
-    ;  assign_exprs_count(CountIncr, Exprs, Symtab1, Symtab, Fqns)
+       KytheFacts = KytheFacts1
+    ;  assign_exprs_count(CountIncr, Exprs, Symtab1, Symtab, KytheFacts)
     ).
 
-assign_exprs_count2(Exprs, Symtab0, SymtabWithRej, Rej, Fqns) :-  % [kythe_fact, sym_rej]
+assign_exprs_count2(Exprs, Symtab0, SymtabWithRej, Rej, KytheFacts) :-  % [kythe_fact, sym_rej]
     dict_pairs(Symtab0, symtab, SymtabPairs0),
     exprs_from_symtab(SymtabPairs0, ExprsFromSymtab),
     append(ExprsFromSymtab, Exprs, ExprsCombined),  %% TODO: difference list
+    empty_assoc(KytheFacts0),
     must_once(
-        assign_exprs_eval_list(ExprsCombined, [], Fqns, Symtab0-[], SymtabAfterEval-Rej)),  % phrase(assign_exprs_eval_list(...))
+        assign_exprs_eval_list(ExprsCombined, KytheFacts0, KytheFacts1, Symtab0-[], SymtabAfterEval-Rej)),  % phrase(assign_exprs_eval_list(...))
+    assoc_to_values(KytheFacts1, KytheFacts),
     do_if(false,
           dump_term('REJ', Rej)),
     must_once(
@@ -929,12 +928,12 @@ add_rej_to_symtab([Fqn-RejType|FTs], Symtab0, Symtab) :-
     put_dict(Fqn, Symtab0, CombinedType, Symtab1),
     add_rej_to_symtab(FTs, Symtab1, Symtab).
 
-%% The accumulator for 'fqn_rej'.
+%% The accumulator for 'sym_rej'.
 %% Tries to unify Key-Type unifies with what's already in symtab;
 %% if that fails because it's not in the symtab, adds it; otherwise
 %% adds it Rej.
 %% TODO: use library(assoc) instead of dict for Symtab (performance)
-add_kythe_fact_accum(Fqn-Type, Symtab0-Rej0, Symtab-Rej) :-
+sym_rej_accum(Fqn-Type, Symtab0-Rej0, Symtab-Rej) :-
     (  get_dict(Fqn, Symtab0, TypeSymtab)
     -> Symtab = Symtab0,
        (  Type = TypeSymtab  %% in case Type is not instantiated (i.e., a lookup)
@@ -954,6 +953,24 @@ add_kythe_fact_accum(Fqn-Type, Symtab0-Rej0, Symtab-Rej) :-
 dict_values(Dict, Values) :-
     dict_pairs(Dict, _, Pairs),
     pairs_values(Pairs, Values).
+
+%% The accumulator for 'kythe_fact'.
+kythe_fact_accum(T, In, Out) :-
+    % If a fact is already there, keep it and ignore subsequent value (e.g.,
+    % for redefining a variable).
+    % This code depends on all the JSON dicts having a ground tag (e.g., the
+    % Source and Target are typically dicts, and they must have ground tags ...
+    % for simplicity, these are all 'json').
+    (  T = json{source: Source, fact_name: FactName, fact_value: _FactBase64}
+    -> (  get_assoc(Source-FactName, In, _)
+       -> In = Out  % already there - ignore subsequent values
+       ;  put_assoc(Source-FactName, In, T, Out)
+       )
+    ;  T = json{source: Source, edge_kind: EdgeKind, target: Target, fact_name: '/'},
+       must_once(\+ get_assoc(Source-EdgeKind-Target, In, _)),
+       put_assoc(Source-EdgeKind-Target, In, T, Out)
+    ;  throw(error(bad_kythe_fact(T), _))
+    ).
 
 %% For more compact output (debugging):
 portray(Astn) :-
