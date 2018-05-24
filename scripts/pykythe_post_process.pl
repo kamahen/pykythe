@@ -1,7 +1,7 @@
 % -*- mode: Prolog -*-
 
 % Post-processor for the simplified nodes with FQNs that is generated
-% by pykythe (see ast_cooked.Base.anchors).  The post-processing is
+% by pykythe (see ast_cooked.Base.add_fqns).  The post-processing is
 % mainly:
 % - add Kythe anchor facts
 % - add facts/edges for attributes (e.g., "foo" in self.foo)
@@ -144,7 +144,7 @@ edcg:pred_info(assign_normalized, 2,               [kythe_fact, expr]).
 edcg:pred_info(expr_normalized, 1,                 [kythe_fact, expr]).
 edcg:pred_info(kythe_json, 1,                      [kythe_fact, expr]).
 edcg:pred_info(node_anchors, 2,                    [kythe_fact, expr]).
-edcg:pred_info(node_anchors2, 2,                   [kythe_fact, expr]).
+edcg:pred_info(node_anchors_impl, 2,               [kythe_fact, expr]).
 edcg:pred_info(node_anchors_expr_list, 1,          [kythe_fact, expr]).
 edcg:pred_info(node_anchors_import_from, 1,        [kythe_fact, expr]).
 edcg:pred_info(node_anchors_list, 2,               [kythe_fact, expr]).
@@ -374,9 +374,9 @@ kythe_file -->>
 %  terms in the 'expr' accumulator.
 node_anchors(Node, Type) -->>
     must_once_kythe_fact_expr(
-        node_anchors2(Node, Type)).
+        node_anchors_impl(Node, Type)).
 
-%! node_anchors2(+Node:json_dict, -ExprType)//[kythe_fact, expr] is det.
+%! node_anchors_impl(+Node:json_dict, -ExprType)//[kythe_fact, expr] is det.
 
 %   For descriptions of the following, and how they relate to the raw
 %   ASTN, see ast_cooked.py.
@@ -402,51 +402,51 @@ node_anchors(Node, Type) -->>
 %     NameRawNode  (from DottedNameNode, ImportFromStmt, etc.)
 %     NameNode
 
-node_anchors2('AnnAssignStmt'{left_annotation: LeftAnnotation,
-                              expr: Expr,
-                              left: Left},
-              stmt(annassign)) -->>
+node_anchors_impl('AnnAssignStmt'{left_annotation: LeftAnnotation,
+                                  expr: Expr,
+                                  left: Left},
+                  stmt(annassign)) -->>
     expr_normalized(Expr),
     assign_normalized(Left, LeftAnnotation).
-node_anchors2('ArgumentNode'{name: NameAstn, arg: Arg},
-              todo_arg(Name, ArgType)) -->>
+node_anchors_impl('ArgumentNode'{name: NameAstn, arg: Arg},
+                  todo_arg(Name, ArgType)) -->>
     % ast_raw creates ArgumentNode only for `test '=' test`; all other cases
     % just generate the expr (or similar)
     % TODO: match Name to func def param
     { node_astn(NameAstn, _, _, Name) },
     node_anchors(Arg, ArgType).
-node_anchors2('AssertStmt'{items: Items},
-              stmt(assert)) -->>
+node_anchors_impl('AssertStmt'{items: Items},
+                  stmt(assert)) -->>
     node_anchors_expr_list(Items).
-node_anchors2('AssignExprStmt'{expr: Expr, left: Left},
-              stmt(assign)) -->>
+node_anchors_impl('AssignExprStmt'{expr: Expr, left: Left},
+                  stmt(assign)) -->>
     assign_normalized(Left, Expr).
-node_anchors2('AtomCallNode'{args: Args, atom: Atom},
-              call([AtomType], ArgsType)) -->>
+node_anchors_impl('AtomCallNode'{args: Args, atom: Atom},
+                  call([AtomType], ArgsType)) -->>
     node_anchors(Atom, AtomType),
     node_anchors_list(Args, ArgsType).
-node_anchors2('AtomDotNode'{atom: Atom, binds: bool(Binds),
-                            attr_name: AttrNameAstn},
-              dot([AtomType], astn(Start, End, AttrName), DotEdgeName)) -->>
+node_anchors_impl('AtomDotNode'{atom: Atom, binds: bool(Binds),
+                                attr_name: AttrNameAstn},
+                  dot([AtomType], astn(Start, End, AttrName), DotEdgeName)) -->>
     { dot_edge_name(Binds, DotEdgeName) },
     { node_astn(AttrNameAstn, Start, End, AttrName) },
     node_anchors(Atom, AtomType).
-node_anchors2('AtomSubscriptNode'{atom: Atom,
-                                  subscripts: Subscripts},
-              todo_subscr([AtomType])) -->>
+node_anchors_impl('AtomSubscriptNode'{atom: Atom,
+                                      subscripts: Subscripts},
+                  todo_subscr([AtomType])) -->>
     node_anchors(Atom, AtomType),
     node_anchors_list(Subscripts, _).
-node_anchors2('AugAssignStmt'{augassign: _OpAstn,
-                              expr: Expr,
-                              left: Left},
-              stmt(augassign)) -->>
+node_anchors_impl('AugAssignStmt'{augassign: _OpAstn,
+                                  expr: Expr,
+                                  left: Left},
+                  stmt(augassign)) -->>
     % { node_astn(OpAstn, _, _, _Op) },
     expr_normalized(Left),
     expr_normalized(Expr).
-node_anchors2('BreakStmt'{},
-              stmt(break)) -->> [ ].
-node_anchors2('Class'{bases: Bases, fqn: str(Fqn), name: NameAstn},
-              class(FqnAtom, BasesType)) -->>
+node_anchors_impl('BreakStmt'{},
+                  stmt(break)) -->> [ ].
+node_anchors_impl('Class'{bases: Bases, fqn: str(Fqn), name: NameAstn},
+                  class(FqnAtom, BasesType)) -->>
     { atom_string(FqnAtom, Fqn) },
     { node_astn(NameAstn, Start, End, _Token) },
     { signature_node(FqnAtom, Signature) },
@@ -456,87 +456,87 @@ node_anchors2('Class'{bases: Bases, fqn: str(Fqn), name: NameAstn},
     kythe_fact(Signature, '/kythe/subkind', 'class'),
     node_anchors_list(Bases, BasesType),
     [ class(FqnAtom, BasesType) ]:expr.
-node_anchors2('CompFor'{for_astn: _ForAstn,
-                        for_exprlist: ForExprlist,
-                        in_testlist: InTestlist,
-                        comp_iter: CompIter},
-              todo_compfor(iter:CompIterType, for:ForExprlistType, in:InTestlistType)) -->>
+node_anchors_impl('CompFor'{for_astn: _ForAstn,
+                            for_exprlist: ForExprlist,
+                            in_testlist: InTestlist,
+                            comp_iter: CompIter},
+                  todo_compfor(iter:CompIterType, for:ForExprlistType, in:InTestlistType)) -->>
     node_anchors(ForExprlist, ForExprlistType),
     node_anchors(InTestlist, InTestlistType),
     node_anchors(CompIter, CompIterType).
-node_anchors2('CompIfCompIterNode'{value_expr: ValueExpr,
-                                   comp_iter: CompIter},
-              todo_compifcompiter(ValueExprType, CompIterType)) -->>
+node_anchors_impl('CompIfCompIterNode'{value_expr: ValueExpr,
+                                       comp_iter: CompIter},
+                  todo_compifcompiter(ValueExprType, CompIterType)) -->>
     node_anchors(ValueExpr, ValueExprType),
     node_anchors(CompIter, CompIterType).
-node_anchors2('ContinueStmt'{},
-              stmt(continue)) -->> [ ].
-node_anchors2('DecoratedStmt'{items: Items},
-              todo_decorated(ItemsType)) -->>
-             node_anchors_list(Items, ItemsType).
-node_anchors2('DecoratorDottedNameNode'{items: Items},
-              todo_decorator_dottedname(ItemsType)) -->>
+node_anchors_impl('ContinueStmt'{},
+                  stmt(continue)) -->> [ ].
+node_anchors_impl('DecoratedStmt'{items: Items},
+                  todo_decorated(ItemsType)) -->>
+                 node_anchors_list(Items, ItemsType).
+node_anchors_impl('DecoratorDottedNameNode'{items: Items},
+                  todo_decorator_dottedname(ItemsType)) -->>
     from_dots(Items, ItemsType).
-node_anchors2('DecoratorsNode'{items: Items},
-              todo_decorators(ItemsType)) -->>
+node_anchors_impl('DecoratorsNode'{items: Items},
+                  todo_decorators(ItemsType)) -->>
     node_anchors_list(Items, ItemsType).
-node_anchors2('DelStmt'{items: Items},
-              stmt(del)) -->>
+node_anchors_impl('DelStmt'{items: Items},
+                  stmt(del)) -->>
     node_anchors_expr_list(Items).
-node_anchors2('DictGenListSetMakerCompFor'{value_expr: ValueExpr,
-                                           comp_for: CompFor},
-              todo_dictgen(ValueExprType, CompForType)) -->>
+node_anchors_impl('DictGenListSetMakerCompFor'{value_expr: ValueExpr,
+                                               comp_for: CompFor},
+                  todo_dictgen(ValueExprType, CompForType)) -->>
     node_anchors(ValueExpr, ValueExprType),
     node_anchors(CompFor, CompForType).
-node_anchors2('DictKeyValue'{items: Items},
-              todo_dictkeyvaluelist(ItemsType)) -->>
+node_anchors_impl('DictKeyValue'{items: Items},
+                  todo_dictkeyvaluelist(ItemsType)) -->>
     node_anchors_list(Items, ItemsType).
-node_anchors2('DictSetMakerNode'{items: Items},
-              todo_dictset(ItemsType)) -->>
+node_anchors_impl('DictSetMakerNode'{items: Items},
+                  todo_dictset(ItemsType)) -->>
     node_anchors_list(Items, ItemsType).
 %% DottedNameNode is restricted to import contexts (see also DecoratorDottedNameNode)
-node_anchors2('DottedNameNode'{items: Items},
-              todo_dottedname(ItemsType)) -->>
+node_anchors_impl('DottedNameNode'{items: Items},
+                  todo_dottedname(ItemsType)) -->>
     { must_once(
           dotted_name_raw(Items, ItemsType)) }.
-node_anchors2('EllipsisNode'{}, ellipsis) -->> [ ].
-node_anchors2('ExceptClauseNode'{expr: Expr,
-                                 as_item: AsItem},
-              stmt(except)) -->>
+node_anchors_impl('EllipsisNode'{}, ellipsis) -->> [ ].
+node_anchors_impl('ExceptClauseNode'{expr: Expr,
+                                     as_item: AsItem},
+                  stmt(except)) -->>
     node_anchors(Expr, ExprType),
     node_anchors(AsItem, AsItemType),
     (  { AsItem = omitted }
     -> [ expr([ExprType]) ]:expr
     ;  [ assign(AsItemType, [ExprType]) ]:expr
     ).
-node_anchors2('ExprListNode'{items: Items},
-              todo_exprlist(ItemsType)) -->>
+node_anchors_impl('ExprListNode'{items: Items},
+                  todo_exprlist(ItemsType)) -->>
     node_anchors_list(Items, ItemsType).
-node_anchors2('ExprStmt'{expr: Expr},
-              stmt(assign)) -->>
+node_anchors_impl('ExprStmt'{expr: Expr},
+                  stmt(assign)) -->>
     node_anchors(Expr, ExprType),
     [ expr([ExprType]) ]:expr.
-node_anchors2('FileInput'{scope_bindings: _ScopeBindings,
-                          stmts: Stmts,
-                          path: _Path},
-              stmt(file)) -->>
+node_anchors_impl('FileInput'{scope_bindings: _ScopeBindings,
+                              stmts: Stmts,
+                              path: _Path},
+                  stmt(file)) -->>
     %% node_anchors(ScopeBindings, _),
     node_anchors_list(Stmts, _).
-node_anchors2('ForStmt'{for_exprlist:
-                        ForExprlist,
-                        in_testlist: InTestlist,
-                        suite: Suite,
-                        else_suite: ElseSuite},
-              stmt(for)) -->>
+node_anchors_impl('ForStmt'{for_exprlist:
+                            ForExprlist,
+                            in_testlist: InTestlist,
+                            suite: Suite,
+                            else_suite: ElseSuite},
+                  stmt(for)) -->>
     node_anchors(ElseSuite, _),  % node_anchors(ElseSuite, stmt(_))
     node_anchors(ForExprlist, _),
     node_anchors(InTestlist, _),
     node_anchors(Suite, _).
-node_anchors2('Func'{fqn: str(Fqn),
-                     name: NameAstn,
-                     parameters: Parameters,
-                     return_type: ReturnType},
-              func(FqnAtom, [ReturnTypeType])) -->>
+node_anchors_impl('Func'{fqn: str(Fqn),
+                         name: NameAstn,
+                         parameters: Parameters,
+                         return_type: ReturnType},
+                  func(FqnAtom, [ReturnTypeType])) -->>
     { atom_string(FqnAtom, Fqn) },
     { node_astn(NameAstn, Start, End, _Token) },
     { signature_node(FqnAtom, Signature) },
@@ -546,117 +546,117 @@ node_anchors2('Func'{fqn: str(Fqn),
     node_anchors_list(Parameters, _),
     node_anchors(ReturnType, ReturnTypeType),
     [ func(FqnAtom, [ReturnTypeType]) ]:expr.
-node_anchors2('GlobalStmt'{items: Items},
-              stmt(global)) -->>
+node_anchors_impl('GlobalStmt'{items: Items},
+                  stmt(global)) -->>
     node_anchors_expr_list(Items).
-node_anchors2('IfStmt'{items: Items},
-              stmt(if)) -->>
-             node_anchors_list(Items, _).
-node_anchors2('ImportDottedAsNameFqn'{dotted_name: DottedName,
-                                      as_name: AsName},
-              unused_importdotted(DottedNameType, AsNameType)) -->>
+node_anchors_impl('IfStmt'{items: Items},
+                  stmt(if)) -->>
+    node_anchors_list(Items, _).
+node_anchors_impl('ImportDottedAsNameFqn'{dotted_name: DottedName,
+                                          as_name: AsName},
+                  unused_importdotted(DottedNameType, AsNameType)) -->>
     node_anchors(AsName, AsNameType),
     node_anchors(DottedName, DottedNameType).
-node_anchors2('ImportDottedAsNamesFqn'{items: Items},
-              unused_importdotteds) -->>
+node_anchors_impl('ImportDottedAsNamesFqn'{items: Items},
+                  unused_importdotteds) -->>
     { must_once(map_match('ImportDottedAsNameFqn'{as_name:_, dotted_name: _}, Items)) },  % TODO: remove
     node_anchors_list(Items, _).
-node_anchors2('ImportFromStmt'{from_name: DotsAndDottedName,
-                               import_part: 'ImportAsNamesNode'{items: ImportPartItems}},
-              unused_importfrom(CombImportPart)) -->>
+node_anchors_impl('ImportFromStmt'{from_name: DotsAndDottedName,
+                                   import_part: 'ImportAsNamesNode'{items: ImportPartItems}},
+                  unused_importfrom(CombImportPart)) -->>
     must_once_kythe_fact(
         dots_and_dotted_name(DotsAndDottedName, ImportPartItems, CombImportPart)),
     % TOO: ref/import
     node_anchors_import_from(CombImportPart).
-node_anchors2('ImportFromStmt'{from_name: DotsAndDottedName,
-                               import_part: 'StarNode'{}},
-              unused_importfrom_star) -->>
+node_anchors_impl('ImportFromStmt'{from_name: DotsAndDottedName,
+                                   import_part: 'StarNode'{}},
+                  unused_importfrom_star) -->>
     must_once_kythe_fact(
         dots_and_dotted_name(DotsAndDottedName, '*', _CombImportPart)),
     % TODO: expand '*'
     % TOO: ref/import
     [ ].
-node_anchors2('ImportNameFqn'{dotted_as_names: DottedAsNames},
-              unused_import(DottedAsNamesType)) -->>
-    { must_once(DottedAsNames = 'ImportDottedAsNamesFqn'{items:_}) },  % TODO: remove
+node_anchors_impl('ImportNameFqn'{dotted_as_names: DottedAsNames},
+                  unused_import(DottedAsNamesType)) -->>
+                 { must_once(DottedAsNames = 'ImportDottedAsNamesFqn'{items:_}) },  % TODO: remove
     node_anchors(DottedAsNames, DottedAsNamesType).
 
-node_anchors2('ListMakerNode'{items: Items},
-              todo_list(ItemsType)) -->>
+node_anchors_impl('ListMakerNode'{items: Items},
+                  todo_list(ItemsType)) -->>
     node_anchors_list(Items, ItemsType).
-node_anchors2('NameBindsFqn'{fqn: str(Fqn), name: NameAstn},
-              fqn(FqnAtom)) -->>  %% result is same as NameRefFqn
+node_anchors_impl('NameBindsFqn'{fqn: str(Fqn), name: NameAstn},
+                  fqn(FqnAtom)) -->>  %% result is same as NameRefFqn
     { atom_string(FqnAtom, Fqn) },
     { node_astn(NameAstn, Start, End, _Token) },
     { signature_node(FqnAtom, Signature) },
     anchor(Start, End, Source),
     edge(Source, '/kythe/edge/defines/binding', FqnAtom),  %% only difference from NameRef
     kythe_fact(Signature, '/kythe/node/kind', 'variable').
-node_anchors2('NameRefFqn'{fqn: str(Fqn), name: NameAstn},
-              fqn(FqnAtom)) -->>  %% result is same as NameBinds
+node_anchors_impl('NameRefFqn'{fqn: str(Fqn), name: NameAstn},
+                  fqn(FqnAtom)) -->>  %% result is same as NameBinds
     { atom_string(FqnAtom, Fqn) },
     { node_astn(NameAstn, Start, End, _Token) },
     anchor(Start, End, Source),
     edge(Source, '/kythe/edge/ref', FqnAtom).  %% only difference from NameBindsFqn
-node_anchors2('NameRefGenerated'{fqn: str(Fqn)},
-              fqn(FqnAtom)) -->>  %% result is same as NameBinds
+node_anchors_impl('NameRefGenerated'{fqn: str(Fqn)},
+                  fqn(FqnAtom)) -->>  %% result is same as NameBinds
     { atom_string(FqnAtom, Fqn) }.
-node_anchors2('NonLocalStmt'{items: Items},
-              stmt(nonlocal)) -->>
+node_anchors_impl('NonLocalStmt'{items: Items},
+                  stmt(nonlocal)) -->>
     node_anchors_expr_list(Items).
-node_anchors2('NumberNode'{astn: _Astn},
-              class('builtin.Number', [])) -->> [ ].
-node_anchors2('OmittedNode'{}, omitted) -->> [ ].
-node_anchors2('OpNode'{args: Args, op_astns: OpAstns},
-              call_op(OpAstns, ArgsType)) -->>
+node_anchors_impl('NumberNode'{astn: _Astn},
+                  class('builtin.Number', [])) -->> [ ].
+node_anchors_impl('OmittedNode'{}, omitted) -->> [ ].
+node_anchors_impl('OpNode'{args: Args, op_astns: OpAstns},
+                  call_op(OpAstns, ArgsType)) -->>
     node_anchors_list(Args, ArgsType).
-node_anchors2('PassStmt'{},
-              stmt(break)) -->> [ ].
-node_anchors2('RaiseStmt'{items: Items},
-              stmt(raise)) -->>
+node_anchors_impl('PassStmt'{},
+                  stmt(break)) -->> [ ].
+node_anchors_impl('RaiseStmt'{items: Items},
+                  stmt(raise)) -->>
     node_anchors_list(Items, _).
-node_anchors2('StarNode'{},
-              star) -->> [ ].  % TODO: can we get rid of this in ast_cooked?
-node_anchors2('Stmts'{items: Items},
-              todo_expr(stmts)) -->>
+node_anchors_impl('StarNode'{},
+                  star) -->> [ ].  % TODO: can we get rid of this in ast_cooked?
+node_anchors_impl('Stmts'{items: Items},
+                  todo_expr(stmts)) -->>
     node_anchors_list(Items, _).
-node_anchors2('StringNode'{astns: _Astns},
-              class('builtin.str', [])) -->> [ ].
-node_anchors2('SubscriptNode'{expr1: Expr1, expr2: Expr2, expr3: Expr3},
-              subscr([Expr1Type, Expr2Type, Expr3Type])) -->>
+node_anchors_impl('StringNode'{astns: _Astns},
+                  class('builtin.str', [])) -->> [ ].
+node_anchors_impl('SubscriptNode'{expr1: Expr1, expr2: Expr2, expr3: Expr3},
+                  subscr([Expr1Type, Expr2Type, Expr3Type])) -->>
     node_anchors(Expr1, Expr1Type),
     node_anchors(Expr2, Expr2Type),
     node_anchors(Expr3, Expr3Type).
-node_anchors2('TnameNode'{name: Name, type_expr: TypeType},
-              stmt(tname)) -->>
+node_anchors_impl('TnameNode'{name: Name, type_expr: TypeType},
+                  stmt(tname)) -->>
     assign_normalized(Name, TypeType).
-node_anchors2('TryStmt'{items: Items},
-              stmt(try)) -->>
+node_anchors_impl('TryStmt'{items: Items},
+                  stmt(try)) -->>
     node_anchors_list(Items, _).
-node_anchors2('TypedArgNode'{tname: 'TnameNode'{name: Name,
-                                                type_expr: TypeExpr},
-                             expr: Expr},
-              todo_typedarg()) -->>
+node_anchors_impl('TypedArgNode'{tname: 'TnameNode'{name: Name,
+                                                    type_expr: TypeExpr},
+                                 expr: Expr},
+                  todo_typedarg()) -->>
     assign_normalized(Name, TypeExpr),
     expr_normalized(Expr).  %% assign_normalized(Name, Expr) would cause duplicate facts
-node_anchors2('WhileStmt'{else_suite: ElseSuite,
-                          suite: Suite,
-                          test: Test},
-              stmt(while)) -->>
+node_anchors_impl('WhileStmt'{else_suite: ElseSuite,
+                              suite: Suite,
+                              test: Test},
+                  stmt(while)) -->>
     node_anchors(ElseSuite, _),
     node_anchors(Suite, _),
     node_anchors(Test, _).
-node_anchors2('WithItemNode'{item: Item,
-                             as_item: AsItem},
-              stmt(with_item)) -->>
+node_anchors_impl('WithItemNode'{item: Item,
+                                 as_item: AsItem},
+                  stmt(with_item)) -->>
     node_anchors(Item, ItemType),
     node_anchors(AsItem, AsItemType),
     (  { AsItemType = omitted }
     -> [ expr([ItemType]) ]:expr
     ;  [ assign(AsItemType, [ItemType]) ]:expr
     ).
-node_anchors2('WithStmt'{items: Items, suite: Suite},
-              stmt(with)) -->>
+node_anchors_impl('WithStmt'{items: Items, suite: Suite},
+                  stmt(with)) -->>
     node_anchors_list(Items, _),  % handled by WithItemNode
     node_anchors(Suite, _).
 

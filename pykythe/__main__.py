@@ -72,12 +72,12 @@ def main() -> int:
         class_fqn=None,
         class_astn=None,
         python_version=args.python_version)
-    anchors = cooked_nodes.anchors(fqn_ctx)
+    add_fqns = cooked_nodes.add_fqns(fqn_ctx)
 
     with open(args.out_fqn_expr, 'w') as out_fqn_expr_file:
         logging.debug('Output fqn= %r', out_fqn_expr_file)
         print(meta.as_json_str(), file=out_fqn_expr_file)
-        print(anchors.as_json_str(), file=out_fqn_expr_file)
+        print(add_fqns.as_json_str(), file=out_fqn_expr_file)
     logging.debug('Finished')
     return 0
 

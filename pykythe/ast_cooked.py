@@ -93,7 +93,7 @@ class Base(pod.PlainOldDataExtended):
 
     These mostly correspond to nodes in lib2to3.pytree.{Node,Leaf},
     with some modifications. Some of them are generated from the
-    anchors() method.
+    add_fqns() method.
 
     This class should not be called directly.
     """
@@ -109,7 +109,7 @@ class Base(pod.PlainOldDataExtended):
         for attr, value in kwargs.items():
             setattr(self, attr, value)  # pragma: no cover
 
-    def anchors(self, ctx: FqnCtx) -> 'Base':
+    def add_fqns(self, ctx: FqnCtx) -> 'Base':
         """Generate a new tree with FQNs filled in.
 
         This defines the generic form, using self.__slots__.  In a few
@@ -120,12 +120,16 @@ class Base(pod.PlainOldDataExtended):
         (typically, a "name" of some kind in Python) to which semantic
         information is attached.
 
-        A few nodes are special, such as FuncDefStmt and
-        NameNode. These generate fully qualified names (FQNs) that are
-        corpus-wide unique and are used for Kythe `ref` and
+        In most cases, this method simply recursively calls `add_fqns on its
+        contents and returns a new node with the results.
+
+        A few nodes are special, such as `FuncDefStmt` and
+        `NameRefNode`. These generate fully qualified names (FQNs)
+        that are corpus-wide unique and are used for Kythe `ref` and
         `defines/binding`. A FQN is a list of names separated by '.'
         that gives the name hierarchy. There are some examples in the
-        tests.
+        tests. In some cases, a different node is returned with the
+        extra information (e.g., `NameRefFqn`).
 
         This code assumes that all subnodes of type NameNode have had
         the `binds` attribute set properly (ast_raw.cvt does this when
@@ -133,8 +137,7 @@ class Base(pod.PlainOldDataExtended):
 
         Arguments:
           ctx: The context for generating the FQN information (mainly
-               the FQN of the enclosing scope). The `anchors` field
-               is appended to.
+               the FQN of the enclosing scope).
         Returns:
           A new node that transforms names to FQNs. Usually it is the
           same type as the original node but in a few cases (e.g., NameNode),
@@ -142,15 +145,15 @@ class Base(pod.PlainOldDataExtended):
 
         """
         attr_values = {
-            attr: self.attr_anchors(attr, ctx)
+            attr: self.attr_add_fqns(attr, ctx)
             for attr in self.__slots__}
         # TODO: https://github.com/python/mypy/issues/4602
         return self.__class__(**attr_values)  # type: ignore
 
-    def attr_anchors(self, attr: Text, ctx: FqnCtx) -> 'Base':
+    def attr_add_fqns(self, attr: Text, ctx: FqnCtx) -> 'Base':
         # TODO: inline this when fully debugged
         try:
-            return xcast(Base, getattr(self, attr).anchors(ctx))
+            return xcast(Base, getattr(self, attr).add_fqns(ctx))
         except Exception as exc:
             raise RuntimeError(
                 '%r node=%r:%r' % (exc, attr, getattr(self, attr))) from exc
@@ -180,9 +183,9 @@ class ListBase(Base):
             "Must not instantiate ast_cooked.ListBase")
         self.items = items
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         return self.__class__(  # type: ignore  # TODO: https://github.com/python/mypy/issues/4602
-            items=[_anchors_wrap(item, ctx) for item in self.items])
+            items=[_add_fqns_wrap(item, ctx) for item in self.items])
 
 
 class EmptyBase(Base):
@@ -192,14 +195,14 @@ class EmptyBase(Base):
         # pylint: disable=super-init-not-called
         pass
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         return self
 
 
-def _anchors_wrap(item: Base, ctx: FqnCtx) -> Base:
+def _add_fqns_wrap(item: Base, ctx: FqnCtx) -> Base:
     # TODO: inline this when fully debugged
     try:
-        return xcast(Base, item.anchors(ctx))
+        return xcast(Base, item.add_fqns(ctx))
     except Exception as exc:
         raise RuntimeError('%r node=%r' % (exc, item)) from exc
 
@@ -221,7 +224,7 @@ class AnnAssignNode(Base):
         self.expr = expr
         self.left_annotation = left_annotation
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not used anywhere
         raise NotImplementedError(self)  # pragma: no cover
 
@@ -231,8 +234,8 @@ class AnnAssignStmt(Base):
 
     `expr` can be OmittedNode
 
-    For anchors, `left` is processed after `left_annotation`,`expr` --
-    this is why the __slots__ and args to __init_ have `left` last.
+    For `add_fqns`, `left` is processed after `left_annotation`,`expr`
+    -- this is why the __slots__ and args to __init_ have `left` last.
     """
 
     __slots__ = ['left_annotation', 'expr', 'left']
@@ -262,7 +265,7 @@ class ArgListNode(Base):
     def atom_trailer_node(self, atom: Base) -> Base:
         return AtomCallNode(atom=atom, args=self.args)
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not used anywhere
         raise NotImplementedError(self)  # pragma: no cover
 
@@ -281,8 +284,8 @@ class ArgumentNode(Base):
         self.name = name
         self.arg = arg
 
-    def anchors(self, ctx: FqnCtx) -> Base:
-        return ArgumentNode(name=self.name, arg=_anchors_wrap(self.arg, ctx))
+    def add_fqns(self, ctx: FqnCtx) -> Base:
+        return ArgumentNode(name=self.name, arg=_add_fqns_wrap(self.arg, ctx))
 
 
 class AsNameNode(Base):
@@ -306,7 +309,7 @@ class AssignExprStmt(Base):
         self.expr = expr
         self.left = left
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         # disallow reprocessing, which could change things if a `left` contains
         # something that's in the `expr`.
         raise NotImplementedError(self)  # pragma: no cover
@@ -318,11 +321,11 @@ class AssignMultipleExprStmt(Base):
     left_list is a list of items found on the left-hand-side of `=`s
     (it can be empty).
 
-    This node is not returned from anchors(); instead either ExprStmt
+    This node is not returned from add_fqns(); instead either ExprStmt
     (if left_list is empty) or multiple AssignExprStmt's, each with
     the same `expr`.
 
-    For anchors, `left_list` is processed after `expr` -- this is why
+    For `add_fqns`, `left_list` is processed after `expr` -- this is why
     the __slots__ and args to __init_ have `left_list` last.
 
     # TODO: if multiple "="s (`left_list`), then create a temporary to
@@ -336,19 +339,19 @@ class AssignMultipleExprStmt(Base):
         self.expr = expr
         self.left_list = left_list
 
-    def anchors(self, ctx: FqnCtx) -> Base:
-        expr = _anchors_wrap(self.expr, ctx)
-        # anchors(ctx) can modify the bindings in ctx, so need to be
+    def add_fqns(self, ctx: FqnCtx) -> Base:
+        expr = _add_fqns_wrap(self.expr, ctx)
+        # add_fqns(ctx) can modify the bindings in ctx, so need to be
         # careful to do things in the right order.
-        left_anchors = list(
+        left_add_fqns = list(
             reversed([
-                _anchors_wrap(item, ctx)
+                _add_fqns_wrap(item, ctx)
                 for item in reversed(self.left_list)]))
-        if len(left_anchors) == 1:
-            return AssignExprStmt(left=left_anchors[0], expr=expr)
-        if len(left_anchors) > 1:
+        if len(left_add_fqns) == 1:
+            return AssignExprStmt(left=left_add_fqns[0], expr=expr)
+        if len(left_add_fqns) > 1:
             return make_stmts(
-                AssignExprStmt(left=left, expr=expr) for left in left_anchors)
+                AssignExprStmt(left=left, expr=expr) for left in left_add_fqns)
         return ExprStmt(expr=expr)
 
 
@@ -372,10 +375,10 @@ class AtomCallNode(Base):
         self.atom = atom
         self.args = args
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         return AtomCallNode(
-            atom=_anchors_wrap(self.atom, ctx),
-            args=[_anchors_wrap(arg, ctx) for arg in self.args])
+            atom=_add_fqns_wrap(self.atom, ctx),
+            args=[_add_fqns_wrap(arg, ctx) for arg in self.args])
 
 
 class AtomDotNode(Base):
@@ -391,9 +394,9 @@ class AtomDotNode(Base):
         self.attr_name = attr_name
         self.binds = binds
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         return AtomDotNode(
-            atom=_anchors_wrap(self.atom, ctx),
+            atom=_add_fqns_wrap(self.atom, ctx),
             attr_name=self.attr_name,
             binds=self.binds)
 
@@ -408,11 +411,11 @@ class AtomSubscriptNode(Base):
         self.atom = atom
         self.subscripts = subscripts
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         return AtomSubscriptNode(
-            atom=_anchors_wrap(self.atom, ctx),
+            atom=_add_fqns_wrap(self.atom, ctx),
             subscripts=[
-                _anchors_wrap(subscript, ctx)
+                _add_fqns_wrap(subscript, ctx)
                 for subscript in self.subscripts])
 
 
@@ -425,7 +428,7 @@ class AugAssignNode(Base):
         # pylint: disable=super-init-not-called
         self.op = op  # pylint: disable=invalid-name
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not used anywhere
         raise NotImplementedError(self)  # pragma: no cover
 
@@ -433,7 +436,7 @@ class AugAssignNode(Base):
 class AugAssignStmt(Base):
     """Corresponds to expr_stmt: augassign (yield_expr|testlist).
 
-    For anchors, `left` is processed after ``expr` -- this is why the
+    For add_fqns, `left` is processed after ``expr` -- this is why the
     __slots__ and args to __init_ have `left_list` last.
     """
 
@@ -445,11 +448,11 @@ class AugAssignStmt(Base):
         self.expr = expr
         self.left = left
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         return AugAssignStmt(
             augassign=self.augassign,
-            expr=_anchors_wrap(self.expr, ctx),
-            left=_anchors_wrap(self.left, ctx))
+            expr=_add_fqns_wrap(self.expr, ctx),
+            left=_add_fqns_wrap(self.left, ctx))
 
 
 class BreakStmt(EmptyBase):
@@ -457,7 +460,7 @@ class BreakStmt(EmptyBase):
 
 
 class Class(Base):
-    """Created by ClassDefStmt.anchors()."""
+    """Created by ClassDefStmt.add_fqns()."""
 
     __slots__ = ['fqn', 'name', 'bases']
 
@@ -468,7 +471,7 @@ class Class(Base):
         self.name = name
         self.bases = bases
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not reprocessed.
         raise NotImplementedError(self)  # pragma: no cover
 
@@ -486,11 +489,11 @@ class ClassDefStmt(Base):
         self.suite = suite
         self.scope_bindings = scope_bindings
 
-    def anchors(self, ctx: FqnCtx) -> Base:
-        # Similar to FuncDefStmt.anchors
+    def add_fqns(self, ctx: FqnCtx) -> Base:
+        # Similar to FuncDefStmt.add_fqns
         class_fqn = ctx.fqn_dot + self.name.name.value
         class_fqn_dot = class_fqn + '.'
-        name_anchors = xcast(NameBindsFqn, _anchors_wrap(
+        name_add_fqns = xcast(NameBindsFqn, _add_fqns_wrap(
             self.name, ctx))  # already in bindings
         class_ctx = ctx._replace(
             fqn_dot=class_fqn_dot,
@@ -499,12 +502,13 @@ class ClassDefStmt(Base):
                                         for name in self.scope_bindings)),
             class_fqn=class_fqn,
             class_astn=self.name.name)
-        class_anchors = Class(
+        class_add_fqns = Class(
             fqn=class_fqn,
-            name=name_anchors.name,
-            bases=[_anchors_wrap(base, ctx) for base in self.bases])
+            name=name_add_fqns.name,
+            bases=[_add_fqns_wrap(base, ctx) for base in self.bases])
         return make_stmts([
-            class_anchors, _anchors_wrap(self.suite, class_ctx)])
+            class_add_fqns,
+            _add_fqns_wrap(self.suite, class_ctx)])
 
 
 class CompForNode(Base):
@@ -544,7 +548,7 @@ class CompForNode(Base):
             fqn_dot=for_fqn_dot,
             bindings=ctx.bindings.new_child(collections.OrderedDict()))
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         # Assume that the caller has created a new child in the
         # bindings, if needed.  This is done at the outermost level of
         # a comp_for (for Python 3), but not for any of the inner
@@ -553,16 +557,16 @@ class CompForNode(Base):
         #    x for x in [1,x]  # `x` in `[1,x]` is outer scope
         #    (x, y) for x in [1,2] for y in range(x)  # `x` in `range(x)` is from `for x`
         # [(x, y) for x in [1,2,x] for y in range(x)]  # error: y undefined
-        in_testlist_anchors = _anchors_wrap(self.in_testlist, ctx)
+        in_testlist_add_fqns = _add_fqns_wrap(self.in_testlist, ctx)
         ctx.bindings.update((name, ctx.fqn_dot + name)
                             for name in self.scope_bindings)
-        for_exprlist_anchors = _anchors_wrap(self.for_exprlist, ctx)
-        comp_iter_anchors = _anchors_wrap(self.comp_iter, ctx)
+        for_exprlist_add_fqns = _add_fqns_wrap(self.for_exprlist, ctx)
+        comp_iter_add_fqns = _add_fqns_wrap(self.comp_iter, ctx)
         return CompFor(
             for_astn=self.for_astn,
-            for_exprlist=for_exprlist_anchors,
-            in_testlist=in_testlist_anchors,
-            comp_iter=comp_iter_anchors)
+            for_exprlist=for_exprlist_add_fqns,
+            in_testlist=in_testlist_add_fqns,
+            comp_iter=comp_iter_add_fqns)
 
 
 class CompFor(Base):
@@ -578,7 +582,7 @@ class CompFor(Base):
         self.in_testlist = in_testlist
         self.comp_iter = comp_iter
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not reprocessed.
         raise NotImplementedError(self)  # pragma: no cover
 
@@ -631,10 +635,10 @@ class DecoratorNode(Base):
         self.name = xcast(DecoratorDottedNameNode, name)
         self.args = args
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         return AtomCallNode(
-            atom=_anchors_wrap(self.name, ctx),
-            args=[_anchors_wrap(arg, ctx) for arg in self.args])
+            atom=_add_fqns_wrap(self.name, ctx),
+            args=[_add_fqns_wrap(arg, ctx) for arg in self.args])
 
 
 class DelStmt(ListBase):
@@ -650,7 +654,7 @@ class DictSetMakerNode(ListBase):
 
 
 class DictGenListSetMakerCompFor(Base):
-    """Created by DictGenListSetMakerCompForNode.anchors()."""
+    """Created by DictGenListSetMakerCompForNode.add_fqns()."""
 
     __slots__ = ['value_expr', 'comp_for']
 
@@ -659,7 +663,7 @@ class DictGenListSetMakerCompFor(Base):
         self.value_expr = value_expr
         self.comp_for = comp_for
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not reprocessed.
         raise NotImplementedError(self)  # pragma: no cover
 
@@ -678,10 +682,10 @@ class DictGenListSetMakerCompForNode(Base):
         self.value_expr = value_expr
         self.comp_for = xcast(CompForNode, comp_for)
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         comp_for_ctx = self.comp_for.scope_ctx(ctx)
-        comp_for = xcast(CompFor, self.comp_for.anchors(comp_for_ctx))
-        value_expr = self.value_expr.anchors(comp_for_ctx)
+        comp_for = xcast(CompFor, self.comp_for.add_fqns(comp_for_ctx))
+        value_expr = self.value_expr.add_fqns(comp_for_ctx)
         return DictGenListSetMakerCompFor(
             value_expr=value_expr, comp_for=comp_for)
 
@@ -706,7 +710,7 @@ class DotNameTrailerNode(Base):
         return AtomDotNode(
             atom=atom, attr_name=self.name.name, binds=self.binds)
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not used anywhere
         raise NotImplementedError(self)  # pragma: no cover
 
@@ -748,7 +752,7 @@ class ExprStmt(Base):
         # pylint: disable=super-init-not-called
         self.expr = expr
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         # disallow reprocessing, even though probably benign (see AssignExprStmt).
         raise NotImplementedError(self)  # pragma: no cover
 
@@ -776,12 +780,12 @@ class FileInput(Base):
         self.stmts = stmts
         self.scope_bindings = scope_bindings
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         file_ctx = ctx._replace(
             bindings=ctx.bindings.new_child(
                 collections.OrderedDict((name, ctx.fqn_dot + name)
                                         for name in self.scope_bindings)))
-        stmts = [_anchors_wrap(stmt, file_ctx) for stmt in self.stmts]
+        stmts = [_add_fqns_wrap(stmt, file_ctx) for stmt in self.stmts]
         return FileInput(
             path=self.path, stmts=stmts, scope_bindings=self.scope_bindings)
 
@@ -803,23 +807,23 @@ class ForStmt(Base):
         self.suite = suite
         self.else_suite = else_suite
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         # Order is important: in_testlist is in outer bindings context,
         # for_exprlist adds to bindings, suite and else_suite use the
         # additional bindings (and also the bindings "leak" outside
         # the for-loop).
-        in_testlist_anchors = _anchors_wrap(self.in_testlist, ctx)
+        in_testlist_add_fqns = _add_fqns_wrap(self.in_testlist, ctx)
         # for_exprlist adds to bindings
-        for_exprlist_anchors = _anchors_wrap(self.for_exprlist, ctx)
+        for_exprlist_add_fqns = _add_fqns_wrap(self.for_exprlist, ctx)
         return ForStmt(
-            for_exprlist=for_exprlist_anchors,
-            in_testlist=in_testlist_anchors,
-            suite=_anchors_wrap(self.suite, ctx),
-            else_suite=_anchors_wrap(self.else_suite, ctx))
+            for_exprlist=for_exprlist_add_fqns,
+            in_testlist=in_testlist_add_fqns,
+            suite=_add_fqns_wrap(self.suite, ctx),
+            else_suite=_add_fqns_wrap(self.else_suite, ctx))
 
 
 class Func(Base):
-    """Created by FuncDefStmt.anchors()."""
+    """Created by FuncDefStmt.add_fqns()."""
 
     __slots__ = ['fqn', 'name', 'parameters', 'return_type']
 
@@ -831,7 +835,7 @@ class Func(Base):
         self.parameters = parameters
         self.return_type = return_type
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not reprocessed.
         raise NotImplementedError(self)  # pragma: no cover
 
@@ -847,7 +851,7 @@ class FuncDefStmt(Base):
     __slots__ = [
         'name', 'parameters', 'return_type', 'suite', 'scope_bindings']
 
-    # _slot_anchors not needed because anchors() method is overriden.
+    # _slot_add_fqns not needed because add_fqns() method is overriden.
 
     def __init__(self, *, name: 'NameBindsNode', parameters: Sequence[Base],
                  return_type: Base, suite: Base,
@@ -859,8 +863,8 @@ class FuncDefStmt(Base):
         self.suite = suite
         self.scope_bindings = scope_bindings
 
-    def anchors(self, ctx: FqnCtx) -> Base:
-        # Similar to ClassDefStmt.anchors
+    def add_fqns(self, ctx: FqnCtx) -> Base:
+        # Similar to ClassDefStmt.add_fqns
         # '.<local>.' is needed to distinguish `x` in following:
         #    def foo(x): pass
         #    foo.x = 'a string'
@@ -872,7 +876,7 @@ class FuncDefStmt(Base):
             func_fqn = '{}{}'.format(ctx.fqn_dot, self.name.name.value)
         func_fqn_dot = func_fqn + '.<local>.'
         # self.name is already in bindings
-        name_anchors = xcast(NameBindsFqn, _anchors_wrap(self.name, ctx))
+        name_add_fqns = xcast(NameBindsFqn, _add_fqns_wrap(self.name, ctx))
         func_ctx = ctx._replace(
             fqn_dot=func_fqn_dot,
             bindings=ctx.bindings.new_child(
@@ -895,24 +899,25 @@ class FuncDefStmt(Base):
                         OmittedNode)):
             param0 = TypedArgNode(
                 tname=TnameNode(
-                    name=_anchors_wrap(
+                    name=_add_fqns_wrap(
                         xcast(TypedArgNode, self.parameters[0]).tname.name,
                         func_ctx),
                     type_expr=NameRefGenerated(fqn=ctx.class_fqn)),
                 expr=OMITTED_NODE)
             parameters = [param0] + [
-                xcast(TypedArgNode, _anchors_wrap(parameter, func_ctx))
+                xcast(TypedArgNode, _add_fqns_wrap(parameter, func_ctx))
                 for parameter in self.parameters[1:]]
         else:
             parameters = [
-                xcast(TypedArgNode, _anchors_wrap(parameter, func_ctx))
+                xcast(TypedArgNode, _add_fqns_wrap(parameter, func_ctx))
                 for parameter in self.parameters]
-        func_anchors = Func(
+        func_add_fqns = Func(
             fqn=func_fqn,
-            name=name_anchors.name,
+            name=name_add_fqns.name,
             parameters=parameters,
-            return_type=_anchors_wrap(self.return_type, ctx))
-        return make_stmts([func_anchors, _anchors_wrap(self.suite, func_ctx)])
+            return_type=_add_fqns_wrap(self.return_type, ctx))
+        return make_stmts([
+            func_add_fqns, _add_fqns_wrap(self.suite, func_ctx)])
 
 
 class GlobalStmt(ListBase):
@@ -939,7 +944,7 @@ class ImportDotNode(Base):
 
 
 class ImportDottedAsNameFqn(Base):
-    """Created by ImportDottedAsNameNode.anchors."""
+    """Created by ImportDottedAsNameNode.add_fqns."""
 
     __slots__ = ['dotted_name', 'as_name']
 
@@ -948,7 +953,7 @@ class ImportDottedAsNameFqn(Base):
         self.dotted_name = xcast(DottedNameNode, dotted_name)
         self.as_name = xcast(NameBindsFqn, as_name)
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         return self  # The components have already been processed
 
 
@@ -966,10 +971,10 @@ class ImportDottedAsNameNode(Base):
         self.dotted_name = xcast(DottedNameNode, dotted_name)
         self.as_name = xcast(NameBindsNode, as_name)
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         return ImportDottedAsNameFqn(
-            dotted_name=_anchors_wrap(self.dotted_name, ctx),
-            as_name=_anchors_wrap(self.as_name, ctx))
+            dotted_name=_add_fqns_wrap(self.dotted_name, ctx),
+            as_name=_add_fqns_wrap(self.as_name, ctx))
 
 
 class ImportDottedAsNamesFqn(ListBase):
@@ -981,12 +986,12 @@ class ImportDottedAsNamesFqn(ListBase):
             ImportDottedAsNameFqn, items)  # TODO: remove
         self.items = typing.cast(Sequence[ImportDottedAsNameFqn], items)
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         return self  # The components have already been processed
 
 
 class ImportDottedAsNamesNode(ListBase):
-    """Created by ImportDottedAsNamesNode.anchors."""
+    """Created by ImportDottedAsNamesNode.add_fqns."""
 
     def __init__(self, *, items: Sequence[Base]) -> None:
         # pylint: disable=super-init-not-called
@@ -994,9 +999,9 @@ class ImportDottedAsNamesNode(ListBase):
             ImportDottedAsNameNode, items)  # TODO: remove
         self.items = typing.cast(Sequence[ImportDottedAsNameNode], items)
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         return ImportDottedAsNamesFqn(
-            items=[_anchors_wrap(item, ctx) for item in self.items])
+            items=[_add_fqns_wrap(item, ctx) for item in self.items])
 
 
 class ImportFromStmt(Base):
@@ -1015,17 +1020,17 @@ class ImportFromStmt(Base):
         # TODO: self.import_part = typing.cast(Union[ImportAsNamesNode, StarNode], import_part)
         self.import_part = import_part
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         # ast_raw.cvt_import_from has made sure that the names in
         # import_part are NameBindsNode, so we don't need to do
         # anything special about them.
         return ImportFromStmt(
-            from_name=[_anchors_wrap(name, ctx) for name in self.from_name],
-            import_part=_anchors_wrap(self.import_part, ctx))
+            from_name=[_add_fqns_wrap(name, ctx) for name in self.from_name],
+            import_part=_add_fqns_wrap(self.import_part, ctx))
 
 
 class ImportNameFqn(Base):
-    """Created by ImportNameNode.anchors."""
+    """Created by ImportNameNode.add_fqns."""
 
     __slots__ = ['dotted_as_names']
 
@@ -1033,7 +1038,7 @@ class ImportNameFqn(Base):
         # pylint: disable=super-init-not-called
         self.dotted_as_names = xcast(ImportDottedAsNamesFqn, dotted_as_names)
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         return self  # The components have already been processed
 
 
@@ -1046,9 +1051,9 @@ class ImportNameNode(Base):
         # pylint: disable=super-init-not-called
         self.dotted_as_names = xcast(ImportDottedAsNamesNode, dotted_as_names)
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         return ImportNameFqn(
-            dotted_as_names=_anchors_wrap(self.dotted_as_names, ctx))
+            dotted_as_names=_add_fqns_wrap(self.dotted_as_names, ctx))
 
 
 class ListMakerNode(ListBase):
@@ -1056,7 +1061,7 @@ class ListMakerNode(ListBase):
 
 
 class NameBindsFqn(Base):
-    """Created by NameBindsNode.anchors."""
+    """Created by NameBindsNode.add_fqns."""
 
     __slots__ = ['name', 'fqn']
 
@@ -1065,7 +1070,7 @@ class NameBindsFqn(Base):
         self.name = name
         self.fqn = fqn
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not reprocessed.
         raise NotImplementedError(self)  # pragma: no cover
 
@@ -1084,7 +1089,7 @@ class NameBindsNode(Base):
         # pylint: disable=super-init-not-called
         self.name = name
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         name = self.name.value
         # There are some obscure cases where fqn doesn't get filled
         # in, typically due to the grammar accepting an illegal Python
@@ -1117,7 +1122,7 @@ class NameRawNode(Base):
         # pylint: disable=super-init-not-called
         self.name = name
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         return self
 
 
@@ -1135,7 +1140,7 @@ class NameRefNode(Base):
         # pylint: disable=super-init-not-called
         self.name = name
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         name = self.name.value
         # There are some obscure cases where fqn doesn't get filled
         # in, typically due to the grammar accepting an illegal Python
@@ -1150,7 +1155,7 @@ class NameRefNode(Base):
 
 
 class NameRefFqn(Base):
-    """Created by NameRefNode.anchors."""
+    """Created by NameRefNode.add_fqns."""
 
     __slots__ = ['name', 'fqn']
 
@@ -1159,16 +1164,17 @@ class NameRefFqn(Base):
         self.name = name
         self.fqn = fqn
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not reprocessed.
         raise NotImplementedError(self)  # pragma: no cover
 
 
 class NameRefGenerated(Base):
     """Like NameRef, but for `self` type nodes.
+
     This is used to distinguish between nodes that should generate
-    anchors and those that are generated (e.g., for handling the
-    `self` in method definitions and don't need anchors.
+    add_fqns and those that are generated (e.g., for handling the
+    `self` in method definitions and don't need `add_fqns`).
     """
 
     __slots__ = ['fqn']
@@ -1177,7 +1183,7 @@ class NameRefGenerated(Base):
         # pylint: disable=super-init-not-called
         self.fqn = fqn
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not reprocessed.
         raise NotImplementedError(self)  # pragma: no cover
 
@@ -1199,7 +1205,7 @@ class NumberNode(Base):
         # pylint: disable=super-init-not-called
         self.astn = astn
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         return self
 
 
@@ -1223,10 +1229,10 @@ class OpNode(Base):
         self.op_astns = op_astns
         self.args = args
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         return OpNode(
             op_astns=self.op_astns,
-            args=[_anchors_wrap(arg, ctx) for arg in self.args])
+            args=[_add_fqns_wrap(arg, ctx) for arg in self.args])
 
 
 class PassStmt(EmptyBase):
@@ -1276,7 +1282,7 @@ class StringNode(Base):
         # pylint: disable=super-init-not-called
         self.astns = astns
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         return self
 
 
@@ -1310,7 +1316,7 @@ class SubscriptListNode(Base):
     def atom_trailer_node(self, atom: Base) -> Base:
         return AtomSubscriptNode(atom=atom, subscripts=self.subscripts)
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not used anywhere
         raise NotImplementedError(self)  # pragma: no cover
 
@@ -1355,7 +1361,7 @@ class TypedArgsListNode(Base):
     """Corresponds to `typedargslist`.
 
     This is only used when processing a funcdef; the args are given
-    directly to FuncDefStmt, which is why anchors() isn't
+    directly to FuncDefStmt, which is why add_fqns() isn't
     defined for TypedArgsListNode.
     """
 
@@ -1365,7 +1371,7 @@ class TypedArgsListNode(Base):
         # pylint: disable=super-init-not-called
         self.args = args
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not used anywhere
         raise NotImplementedError(self)  # pragma: no cover
 
@@ -1404,10 +1410,10 @@ class WithStmt(Base):
         self.items = typing.cast(Sequence[WithItemNode], items)
         self.suite = suite
 
-    def anchors(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         return WithStmt(
-            items=[_anchors_wrap(item, ctx) for item in self.items],
-            suite=_anchors_wrap(self.suite, ctx))
+            items=[_add_fqns_wrap(item, ctx) for item in self.items],
+            suite=_add_fqns_wrap(self.suite, ctx))
 
 
 class YieldNode(ListBase):

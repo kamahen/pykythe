@@ -183,10 +183,10 @@ class TestAnchor(unittest.TestCase):
                 class_fqn=None,
                 class_astn=None,
                 python_version=python_version)
-            anchors = cooked_nodes.anchors(fqn_ctx)
+            add_fqns = cooked_nodes.add_fqns(fqn_ctx)
             self.assertEqual(
                 typing_debug.cast(
-                    ast_cooked.FileInput, anchors).scope_bindings,
+                    ast_cooked.FileInput, add_fqns).scope_bindings,
                 collections.OrderedDict([
                     ('a', None),
                     ('b', None),

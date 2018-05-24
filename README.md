@@ -28,29 +28,35 @@ out (on Linux):
 
 * Following the instructions at
   [Kythe - getting started](https://github.com/google/kythe#getting-started )
-  to download the latest tarball from
-  [https://github.com/google/kythe/releases] and copy the binaries
+  to download the latest tarball from the
+  [Kythe repository](https://github.com/google/kythe/releases) and copy the binaries
   into `/opt/kythe`.
 
 * Install `python3.6`
 
-* Install (using `pip`, or by cloning the git repository, `cd`-ing
-  into it, then running `sudo -H pip3 install --upgrade .`
-  (`pytype` is special -- see its installation instructions).
-  * You might need to symlink `mypy_extensions` into
-    `o/usr/local/lib/python3.6/dist-packages`.
+* Install [SWI-Prolog](http://www.swi-prolog.org/download/stable). After installing:
 
-* Optional for now:
+  * [edcg](https://github.com/mndrix/edcg):
+    ```
+    echo 'pack_install(edcg).' | swipl
+    ```
+
+* Install (using `pip`) `dataclasses`. (This is a backport
+  of `dataclasses` from Python 3.7.)
+
+* Install `mypy` and `pytype` (using `pip`, or by cloning the git
+  repository, `cd`-ing into it, then running `sudo -H pip3 install
+  --upgrade .`) (`pytype` is special -- see its installation
+  instructions).
+  * You might need to symlink `mypy_extensions` into
+    `/usr/local/lib/python3.6/dist-packages`.
+
+* Optional:
 
 	* `git clone https://github.com/python/typeshed.git`
 	* `git clone https://github.com/google/pytype`
 	* `git clone https://github.com/python/mypy.git`
 	* `git clone https://github.com/google/yapf.git`
-	* [SWI-Prolog](http://www.swi-prolog.org/download/stable)
-      * [edcg](https://github.com/mndrix/edcg):
-       ```
-       echo 'pack_install(edcg).' | swipl
-       ```
 
 * `make -C <pkgdir> all_tests`
 
@@ -64,7 +70,7 @@ or using [pip](https://pypi.python.org/pypi/yapf).
 The `Makefile` has a rule `pyformat` that formats everything.
 
 Prolog code is formatted according to the recommendations in
-http://www.covingtoninnovations.com/mc/plcoding.pdf
+[plcoding.pdf](http://www.covingtoninnovations.com/mc/plcoding.pdf)
 with an extension for EDCGs that shows the accumulators.
 
 ## Type declarations
