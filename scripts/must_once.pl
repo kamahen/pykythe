@@ -5,6 +5,8 @@
 %% Like once/1, but also works with EDCGs.
 %% You must add edcg:pred_info(must_once, 1, ...) facts in the using module.
 
+%! must_once(:Goal) is det.
+%  Throws an error if Goal doesn't succeed.
 must_once(Goal) :-
     (  call(Goal)
     -> true

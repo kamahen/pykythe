@@ -58,10 +58,14 @@ out (on Linux):
 
 ## Code formatting
 
-All the code is formatted using `yapf` configured with `.style.yapf`.
+All the Python code is formatted using `yapf` configured with `.style.yapf`.
 You can either install it from [github](https://github.com/google/yapf)
 or using [pip](https://pypi.python.org/pypi/yapf).
 The `Makefile` has a rule `pyformat` that formats everything.
+
+Prolog code is formatted according to the recommendations in
+http://www.covingtoninnovations.com/mc/plcoding.pdf
+with an extension for EDCGs that shows the accumulators.
 
 ## Type declarations
 

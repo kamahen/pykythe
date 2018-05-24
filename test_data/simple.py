@@ -95,6 +95,8 @@ class C2:
         #- @#0x defines/binding C2_x
         self.x = 'C2_x'
 
+def make_C2() -> C2: return C2()
+
 #- @C1 defines/binding C1
 class C1:
     #- @__init__ defines/binding _C1_init
@@ -105,6 +107,8 @@ class C1:
         #- @#0x defines/binding C1_x
         #- @#1x ref C1_init_x
         self.x = x
+
+def make_C1(x: C2) -> C1: return C1(x)
 
 #- @c2 defines/binding Global_c2
 #- @C2 ref C2
@@ -138,6 +142,14 @@ c3 = c1.x.x
 #- @#0x ref C1_x
 #- @#1x defines/binding C2_x
 c1.x.x = 'C2_x_modified'
+
+m_c2 = make_C2()
+#- @x ref C2_x
+m_c2.x
+
+#- @#0x ref C1_x
+#- @#1x ref C2_x
+make_C1(make_C2()).x.x
 
 # TODO: The following have syntax errors (lib2to3 bug)
 #       https://bugs.python.org/issue33064
