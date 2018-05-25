@@ -40,6 +40,8 @@ and we can therefore deduce that `c` is also of type `class(C)`.
 """
 
 import collections
+import dataclasses
+from dataclasses import dataclass
 import functools
 import logging  # pylint: disable=unused-import
 from typing import (  # pylint: disable=unused-import
@@ -55,6 +57,7 @@ from .typing_debug import cast as xcast
 # pylint: disable=too-many-lines
 
 
+@dataclass(frozen=True)
 class FqnCtx(pod.PlainOldData):
     """Context for computing FQNs (fully qualified names).
 
@@ -66,26 +69,16 @@ class FqnCtx(pod.PlainOldData):
                  FQN of the enclosing class.
       class_astn: class name's ASTN or None (if not within a class).
       python_version: 2 or 3
-
     """
+
+    fqn_dot: Text
+    bindings: typing.ChainMap[Text, Text]  # pylint: disable=no-member
+    class_fqn: Optional[Text]
+    class_astn: Optional[ast.Astn]
+    python_version: int
 
     __slots__ = [
         'fqn_dot', 'bindings', 'class_fqn', 'class_astn', 'python_version']
-
-    def __init__(
-            self,
-            *,
-            fqn_dot: Text,
-            bindings: typing.ChainMap[Text, Text],  # pylint: disable=no-member
-            class_fqn: Optional[Text],
-            class_astn: Optional[ast.Astn],
-            python_version: int) -> None:
-        # pylint: disable=super-init-not-called
-        self.fqn_dot = fqn_dot
-        self.bindings = bindings
-        self.class_fqn = class_fqn
-        self.class_astn = class_astn
-        self.python_version = python_version
 
 
 class Base(pod.PlainOldDataExtended):
@@ -100,7 +93,7 @@ class Base(pod.PlainOldDataExtended):
 
     # TODO: https://github.com/python/mypy/issues/4547
 
-    __slots__ = []  # type: Sequence[str]
+    __slots__ = []
 
     def __init__(self, **kwargs: Any) -> None:
         # pylint: disable=super-init-not-called
@@ -171,29 +164,29 @@ class Base(pod.PlainOldDataExtended):
         return Base(atom=atom)  # pragma: no cover
 
 
+@dataclass(frozen=True)
 class ListBase(Base):
     """A convenience class for AST nodes (expr) that contain a single list."""
 
+    items: Sequence[Base]
+
     __slots__ = ['items']
 
-    def __init__(self, *, items: Sequence[Base]) -> None:
-        # pylint: disable=super-init-not-called
+    def __post_init__(self) -> None:
         # pylint: disable=unidiomatic-typecheck
         assert type(self) is not ListBase, (
             "Must not instantiate ast_cooked.ListBase")
-        self.items = items
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self.__class__(  # type: ignore  # TODO: https://github.com/python/mypy/issues/4602
             items=[_add_fqns_wrap(item, ctx) for item in self.items])
 
 
+@dataclass(frozen=True)
 class EmptyBase(Base):
     """A convenience class for AST nodes (expr) that contain nothing."""
 
-    def __init__(self) -> None:
-        # pylint: disable=super-init-not-called
-        pass
+    __slots__ = []
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self
@@ -207,6 +200,7 @@ def _add_fqns_wrap(item: Base, ctx: FqnCtx) -> Base:
         raise RuntimeError('%r node=%r' % (exc, item)) from exc
 
 
+@dataclass(frozen=True)
 class AnnAssignNode(Base):
     """Corresponds to `annassign` (expr can be OmittedNode).
 
@@ -215,20 +209,19 @@ class AnnAssignNode(Base):
     """
 
     # TODO: also use for # type: ... comment
+    # TODO: test case (see ast_raw.cvt_annassign)
+
+    left_annotation: Base
+    expr: Base
 
     __slots__ = ['left_annotation', 'expr']
-
-    def __init__(self, *, left_annotation: Base, expr: Base) -> None:
-        # pylint: disable=super-init-not-called
-        # TODO: test case (see ast_raw.cvt_annassign)
-        self.expr = expr
-        self.left_annotation = left_annotation
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not used anywhere
         raise NotImplementedError(self)  # pragma: no cover
 
 
+@dataclass(frozen=True)
 class AnnAssignStmt(Base):
     """Corresponds to `expr_stmt: testlist_star_expr annassign`.
 
@@ -238,17 +231,14 @@ class AnnAssignStmt(Base):
     -- this is why the __slots__ and args to __init_ have `left` last.
     """
 
+    left_annotation: Base
+    expr: Base
+    left: Base
+
     __slots__ = ['left_annotation', 'expr', 'left']
 
-    def __init__(
-            self, *, left_annotation: Base, expr: Base, left: Base) -> None:
-        # pylint: disable=super-init-not-called
-        # TODO: test case (see ast_raw.cvt_expr_stmt)
-        self.left_annotation = left_annotation
-        self.expr = expr
-        self.left = left
 
-
+@dataclass(frozen=True)
 class ArgListNode(Base):
     """Corresponds to `arglist`.
 
@@ -256,11 +246,9 @@ class ArgListNode(Base):
     `trailers`, and is incorporated directly into the appropriate node.
     """
 
-    __slots__ = ['args']
+    args: Sequence[Base]
 
-    def __init__(self, *, args: Sequence[Base]) -> None:
-        # pylint: disable=super-init-not-called
-        self.args = args
+    __slots__ = ['args']
 
     def atom_trailer_node(self, atom: Base) -> Base:
         return AtomCallNode(atom=atom, args=self.args)
@@ -270,6 +258,7 @@ class ArgListNode(Base):
         raise NotImplementedError(self)  # pragma: no cover
 
 
+@dataclass(frozen=True)
 class ArgumentNode(Base):
     """Corresponds to `argument: test '=' test`.
 
@@ -277,37 +266,33 @@ class ArgumentNode(Base):
     ast_raw.cvt_argument removes them by returning the child node.
     """
 
-    __slots__ = ['name', 'arg']
+    name: ast.Astn
+    arg: Base
 
-    def __init__(self, *, name: ast.Astn, arg: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.name = name
-        self.arg = arg
+    __slots__ = ['name', 'arg']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return ArgumentNode(name=self.name, arg=_add_fqns_wrap(self.arg, ctx))
 
 
+@dataclass(frozen=True)
 class AsNameNode(Base):
     """Corresponds to `import_as_name`."""
 
+    name: Base
+    as_name: Base
+
     __slots__ = ['name', 'as_name']
 
-    def __init__(self, *, name: Base, as_name: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.name = name
-        self.as_name = as_name
 
-
+@dataclass(frozen=True)
 class AssignExprStmt(Base):
     """Corresponds to a single assignment from AssignMultipleExprStmt (q.v.)."""
 
-    __slots__ = ['left', 'expr']
+    left: Base
+    expr: Base
 
-    def __init__(self, *, left: Base, expr: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.expr = expr
-        self.left = left
+    __slots__ = ['left', 'expr']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # disallow reprocessing, which could change things if a `left` contains
@@ -315,6 +300,7 @@ class AssignExprStmt(Base):
         raise NotImplementedError(self)  # pragma: no cover
 
 
+@dataclass(frozen=True)
 class AssignMultipleExprStmt(Base):
     """Corresponds to `expr_stmt: testlist_star_expr ('=' (yield_expr|testlist_star_expr))*`.
 
@@ -332,12 +318,10 @@ class AssignMultipleExprStmt(Base):
             contain the expr and use that.
     """
 
-    __slots__ = ['expr', 'left_list']
+    expr: Base
+    left_list: Sequence[Base]
 
-    def __init__(self, *, expr: Base, left_list: Sequence[Base]) -> None:
-        # pylint: disable=super-init-not-called
-        self.expr = expr
-        self.left_list = left_list
+    __slots__ = ['expr', 'left_list']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         expr = _add_fqns_wrap(self.expr, ctx)
@@ -365,15 +349,14 @@ def atom_trailer_node(atom: Base, trailers: Sequence[Base]) -> Base:
         lambda atom, trailer: trailer.atom_trailer_node(atom), trailers, atom)
 
 
+@dataclass(frozen=True)
 class AtomCallNode(Base):
     """Corresponds to `atom '(' [arglist] ')'`."""
 
-    __slots__ = ['atom', 'args']
+    atom: Base
+    args: Sequence[Base]
 
-    def __init__(self, *, atom: Base, args: Sequence[Base]) -> None:
-        # pylint: disable=super-init-not-called
-        self.atom = atom
-        self.args = args
+    __slots__ = ['atom', 'args']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return AtomCallNode(
@@ -381,18 +364,16 @@ class AtomCallNode(Base):
             args=[_add_fqns_wrap(arg, ctx) for arg in self.args])
 
 
+@dataclass(frozen=True)
 class AtomDotNode(Base):
     """Corresponds to `atom '.' NAME`."""
 
+    atom: Base
+    attr_name: ast.Astn
+    binds: bool
+
     # TODO: is `binds` needed or can it be inferred?
     __slots__ = ['atom', 'attr_name', 'binds']
-
-    def __init__(
-            self, *, atom: Base, attr_name: ast.Astn, binds: bool) -> None:
-        # pylint: disable=super-init-not-called
-        self.atom = atom
-        self.attr_name = attr_name
-        self.binds = binds
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return AtomDotNode(
@@ -401,15 +382,14 @@ class AtomDotNode(Base):
             binds=self.binds)
 
 
+@dataclass(frozen=True)
 class AtomSubscriptNode(Base):
     """Corresponds to `atom '[' [subscriptist] ']'`."""
 
-    __slots__ = ['atom', 'subscripts']
+    atom: Base
+    subscripts: Sequence[Base]
 
-    def __init__(self, *, atom: Base, subscripts: Sequence[Base]) -> None:
-        # pylint: disable=super-init-not-called
-        self.atom = atom
-        self.subscripts = subscripts
+    __slots__ = ['atom', 'subscripts']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return AtomSubscriptNode(
@@ -419,20 +399,20 @@ class AtomSubscriptNode(Base):
                 for subscript in self.subscripts])
 
 
+@dataclass(frozen=True)
 class AugAssignNode(Base):
     """Corresponds to `augassign`."""
 
-    __slots__ = ['op']
+    op: ast.Astn
 
-    def __init__(self, *, op: ast.Astn) -> None:  # pylint: disable=invalid-name
-        # pylint: disable=super-init-not-called
-        self.op = op  # pylint: disable=invalid-name
+    __slots__ = ['op']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not used anywhere
         raise NotImplementedError(self)  # pragma: no cover
 
 
+@dataclass(frozen=True)
 class AugAssignStmt(Base):
     """Corresponds to expr_stmt: augassign (yield_expr|testlist).
 
@@ -440,13 +420,11 @@ class AugAssignStmt(Base):
     __slots__ and args to __init_ have `left_list` last.
     """
 
-    __slots__ = ['augassign', 'expr', 'left']
+    augassign: ast.Astn
+    expr: Base
+    left: Base
 
-    def __init__(self, *, augassign: ast.Astn, expr: Base, left: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.augassign = augassign
-        self.expr = expr
-        self.left = left
+    __slots__ = ['augassign', 'expr', 'left']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return AugAssignStmt(
@@ -459,35 +437,31 @@ class BreakStmt(EmptyBase):
     """Corresponds to `break_stmt`."""
 
 
+@dataclass(frozen=True)
 class Class(Base):
     """Created by ClassDefStmt.add_fqns()."""
 
-    __slots__ = ['fqn', 'name', 'bases']
+    fqn: Text
+    name: ast.Astn
+    bases: Sequence[Base]
 
-    def __init__(
-            self, *, fqn: Text, name: ast.Astn, bases: Sequence[Base]) -> None:
-        # pylint: disable=super-init-not-called
-        self.fqn = fqn
-        self.name = name
-        self.bases = bases
+    __slots__ = ['fqn', 'name', 'bases']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not reprocessed.
         raise NotImplementedError(self)  # pragma: no cover
 
 
+@dataclass(frozen=True)
 class ClassDefStmt(Base):
     """Corresponds to `classdef`."""
 
-    __slots__ = ['name', 'bases', 'suite', 'scope_bindings']
+    name: 'NameBindsNode'
+    bases: Sequence[Base]
+    suite: Base
+    scope_bindings: Mapping[Text, None]
 
-    def __init__(self, *, name: 'NameBindsNode', bases: Sequence[Base],
-                 suite: Base, scope_bindings: Mapping[Text, None]) -> None:
-        # pylint: disable=super-init-not-called
-        self.name = name
-        self.bases = bases
-        self.suite = suite
-        self.scope_bindings = scope_bindings
+    __slots__ = ['name', 'bases', 'suite', 'scope_bindings']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Similar to FuncDefStmt.add_fqns
@@ -495,7 +469,8 @@ class ClassDefStmt(Base):
         class_fqn_dot = class_fqn + '.'
         name_add_fqns = xcast(NameBindsFqn, _add_fqns_wrap(
             self.name, ctx))  # already in bindings
-        class_ctx = ctx._replace(
+        class_ctx = dataclasses.replace(
+            ctx,
             fqn_dot=class_fqn_dot,
             bindings=ctx.bindings.new_child(
                 collections.OrderedDict((name, class_fqn_dot + name)
@@ -511,6 +486,7 @@ class ClassDefStmt(Base):
             _add_fqns_wrap(self.suite, class_ctx)])
 
 
+@dataclass(frozen=True)
 class CompForNode(Base):
     """Corresponds to `comp_for`.
 
@@ -518,19 +494,15 @@ class CompForNode(Base):
     between `for foo= ...` and for foo,=...`)
     """
 
+    for_astn: ast.Astn
+    for_exprlist: Base
+    in_testlist: Base
+    comp_iter: Base
+    scope_bindings: Mapping[Text, None]
+
     __slots__ = [
         'for_astn', 'for_exprlist', 'in_testlist', 'comp_iter',
         'scope_bindings']
-
-    def __init__(
-            self, *, for_astn: ast.Astn, for_exprlist: Base, in_testlist: Base,
-            comp_iter: Base, scope_bindings: Mapping[Text, None]) -> None:
-        # pylint: disable=super-init-not-called
-        self.for_astn = for_astn
-        self.for_exprlist = for_exprlist
-        self.in_testlist = in_testlist
-        self.comp_iter = comp_iter
-        self.scope_bindings = scope_bindings
 
     def scope_ctx(self, ctx: FqnCtx) -> FqnCtx:
         """New FqnCtx for the scope of the comp_for (updates ctx for Python2).
@@ -544,7 +516,8 @@ class CompForNode(Base):
             return ctx
         for_fqn_dot = '{}<comp_for>[{:d},{:d}].'.format(
             ctx.fqn_dot, self.for_astn.start, self.for_astn.end)
-        return ctx._replace(
+        return dataclasses.replace(
+            ctx,
             fqn_dot=for_fqn_dot,
             bindings=ctx.bindings.new_child(collections.OrderedDict()))
 
@@ -569,33 +542,30 @@ class CompForNode(Base):
             comp_iter=comp_iter_add_fqns)
 
 
+@dataclass(frozen=True)
 class CompFor(Base):
     """Created by CompForNode."""
 
-    __slots__ = ['for_astn', 'for_exprlist', 'in_testlist', 'comp_iter']
+    for_astn: ast.Astn
+    for_exprlist: Base
+    in_testlist: Base
+    comp_iter: Base
 
-    def __init__(self, *, for_astn: ast.Astn, for_exprlist: Base,
-                 in_testlist: Base, comp_iter: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.for_astn = for_astn
-        self.for_exprlist = for_exprlist
-        self.in_testlist = in_testlist
-        self.comp_iter = comp_iter
+    __slots__ = ['for_astn', 'for_exprlist', 'in_testlist', 'comp_iter']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not reprocessed.
         raise NotImplementedError(self)  # pragma: no cover
 
 
+@dataclass(frozen=True)
 class CompIfCompIterNode(Base):
     """Corresponds to `comp_if` with `comp_iter`."""
 
-    __slots__ = ['value_expr', 'comp_iter']
+    value_expr: Base
+    comp_iter: Base
 
-    def __init__(self, *, value_expr: Base, comp_iter: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.value_expr = value_expr
-        self.comp_iter = comp_iter
+    __slots__ = ['value_expr', 'comp_iter']
 
 
 class ContinueStmt(EmptyBase):
@@ -613,13 +583,12 @@ class DecoratedStmt(ListBase):
 class DecoratorDottedNameNode(ListBase):
     """Corresponds to `dotted_name` in `decorator` (see also DottedNameNode)."""
 
-    def __init__(self, *, items: Sequence[Base]) -> None:
-        # TODO: Delete this debugging-only __init__
-        # pylint: disable=super-init-not-called
-        typing_debug.assert_all_isinstance(NameRawNode, items)
-        self.items = typing.cast(Sequence[NameRawNode], items)
+    def __post_init__(self) -> None:
+        # self.items = typing.cast(Sequence[NameRawNode], items)
+        typing_debug.assert_all_isinstance(NameRawNode, self.items)
 
 
+@dataclass(frozen=True)
 class DecoratorNode(Base):
     """Corresponds to `decorator`.
 
@@ -628,12 +597,10 @@ class DecoratorNode(Base):
     from DottedNameNode to DecoratorDottedNameNode.
     """
 
-    __slots__ = ['name', 'args']
+    name: DecoratorDottedNameNode
+    args: Sequence[Base]
 
-    def __init__(self, *, name: Base, args: Sequence[Base]) -> None:
-        # pylint: disable=super-init-not-called
-        self.name = xcast(DecoratorDottedNameNode, name)
-        self.args = args
+    __slots__ = ['name', 'args']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return AtomCallNode(
@@ -653,34 +620,32 @@ class DictSetMakerNode(ListBase):
     """Corresponds to `dictsetmaker` without `comp_for`."""
 
 
+@dataclass(frozen=True)
 class DictGenListSetMakerCompFor(Base):
     """Created by DictGenListSetMakerCompForNode.add_fqns()."""
 
+    value_expr: Base
+    comp_for: CompFor
+
     __slots__ = ['value_expr', 'comp_for']
 
-    def __init__(self, *, value_expr: Base, comp_for: CompFor) -> None:
-        # pylint: disable=super-init-not-called
-        self.value_expr = value_expr
-        self.comp_for = comp_for
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not reprocessed.
         raise NotImplementedError(self)  # pragma: no cover
 
 
+@dataclass(frozen=True)
 class DictGenListSetMakerCompForNode(Base):
     """Corresponds to {`dict_set_maker', `listmaker`, testlist_gexp`} with
     `comp_for`. For our purposes, it's not important to know whether
     this is a list, set, or dict comprehension
-
     """
 
-    __slots__ = ['value_expr', 'comp_for']
+    value_expr: Base
+    comp_for: CompForNode
 
-    def __init__(self, *, value_expr: Base, comp_for: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.value_expr = value_expr
-        self.comp_for = xcast(CompForNode, comp_for)
+    __slots__ = ['value_expr', 'comp_for']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         comp_for_ctx = self.comp_for.scope_ctx(ctx)
@@ -690,6 +655,7 @@ class DictGenListSetMakerCompForNode(Base):
             value_expr=value_expr, comp_for=comp_for)
 
 
+@dataclass(frozen=True)
 class DotNameTrailerNode(Base):
     """Corresponds to '.' NAME in trailer.
 
@@ -697,14 +663,13 @@ class DotNameTrailerNode(Base):
     directly into AtomDotNode.
     """
 
-    __slots__ = ['name', 'binds']
-
-    # TODO: Remove binds and instead of DotNameTrailerNode{Binds,Ref}
+    # TODO: Remove binds and instead: DotNameTrailerNode{Binds,Ref}
     #       similar to Name{Binds,Ref}Fqn
-    def __init__(self, *, name: Base, binds: bool) -> None:
-        # pylint: disable=super-init-not-called
-        self.name = xcast(NameRawNode, name)
-        self.binds = binds
+
+    name: 'NameRawNode'
+    binds: bool
+
+    __slots__ = ['name', 'binds']
 
     def atom_trailer_node(self, atom: Base) -> Base:
         return AtomDotNode(
@@ -718,11 +683,9 @@ class DotNameTrailerNode(Base):
 class DottedNameNode(ListBase):
     """Corresponds to `dotted_name`."""
 
-    def __init__(self, *, items: Sequence[Base]) -> None:
-        # TODO: Delete this debugging-only __init__
-        # pylint: disable=super-init-not-called
-        typing_debug.assert_all_isinstance(NameRawNode, items)
-        self.items = typing.cast(Sequence[NameRawNode], items)
+    def __post_init__(self) -> None:
+        # self.items = typing.cast(Sequence[NameRawNode], items)
+        typing_debug.assert_all_isinstance(NameRawNode, self.items)
 
 
 class EllipsisNode(EmptyBase):
@@ -743,45 +706,42 @@ class ExprListNode(ListBase):
     """
 
 
+@dataclass(frozen=True)
 class ExprStmt(Base):
     """Corresponds an expr-only from AssignMultipleExprStmt (q.v.)."""
 
-    __slots__ = ['expr']
+    expr: Base
 
-    def __init__(self, *, expr: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.expr = expr
+    __slots__ = ['expr']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # disallow reprocessing, even though probably benign (see AssignExprStmt).
         raise NotImplementedError(self)  # pragma: no cover
 
 
+@dataclass(frozen=True)
 class ExceptClauseNode(Base):
     """Corresponds to `except_clause`."""
 
+    expr: Base
+    as_item: Base
+
     __slots__ = ['expr', 'as_item']
 
-    def __init__(self, *, expr: Base, as_item: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.expr = expr
-        self.as_item = as_item
 
-
+@dataclass(frozen=True)
 class FileInput(Base):
     """Corresponds to `file_input`."""
 
+    path: Text
+    stmts: Sequence[Base]
+    scope_bindings: Mapping[Text, None]
+
     __slots__ = ['path', 'stmts', 'scope_bindings']
 
-    def __init__(self, *, path: Text, stmts: Sequence[Base],
-                 scope_bindings: Mapping[Text, None]) -> None:
-        # pylint: disable=super-init-not-called
-        self.path = path
-        self.stmts = stmts
-        self.scope_bindings = scope_bindings
-
     def add_fqns(self, ctx: FqnCtx) -> Base:
-        file_ctx = ctx._replace(
+        file_ctx = dataclasses.replace(
+            ctx,
             bindings=ctx.bindings.new_child(
                 collections.OrderedDict((name, ctx.fqn_dot + name)
                                         for name in self.scope_bindings)))
@@ -790,6 +750,7 @@ class FileInput(Base):
             path=self.path, stmts=stmts, scope_bindings=self.scope_bindings)
 
 
+@dataclass(frozen=True)
 class ForStmt(Base):
     """Corresponds to `for_stmt`.
 
@@ -797,15 +758,12 @@ class ForStmt(Base):
     between `for foo= ...` and for foo,=...`)
     """
 
-    __slots__ = ['for_exprlist', 'in_testlist', 'suite', 'else_suite']
+    for_exprlist: Base
+    in_testlist: Base
+    suite: Base
+    else_suite: Base
 
-    def __init__(self, *, for_exprlist: Base, in_testlist: Base, suite: Base,
-                 else_suite: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.for_exprlist = for_exprlist
-        self.in_testlist = in_testlist
-        self.suite = suite
-        self.else_suite = else_suite
+    __slots__ = ['for_exprlist', 'in_testlist', 'suite', 'else_suite']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Order is important: in_testlist is in outer bindings context,
@@ -822,24 +780,23 @@ class ForStmt(Base):
             else_suite=_add_fqns_wrap(self.else_suite, ctx))
 
 
+@dataclass(frozen=True)
 class Func(Base):
     """Created by FuncDefStmt.add_fqns()."""
 
-    __slots__ = ['fqn', 'name', 'parameters', 'return_type']
+    fqn: Text
+    name: ast.Astn
+    parameters: Sequence[Base]
+    return_type: Base
 
-    def __init__(self, *, fqn: Text, name: ast.Astn,
-                 parameters: Sequence[Base], return_type: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.fqn = fqn
-        self.name = name
-        self.parameters = parameters
-        self.return_type = return_type
+    __slots__ = ['fqn', 'name', 'parameters', 'return_type']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not reprocessed.
         raise NotImplementedError(self)  # pragma: no cover
 
 
+@dataclass(frozen=True)
 class FuncDefStmt(Base):
     """Corresponds to `funcdef` / `async_funcdef` or lambdadef.
 
@@ -848,20 +805,16 @@ class FuncDefStmt(Base):
     subclass of Base and not of Base.
     """
 
+    name: 'NameBindsNode'
+    parameters: Sequence[Base]
+    return_type: Base
+    suite: Base
+    scope_bindings: Mapping[Text, None]
+
     __slots__ = [
         'name', 'parameters', 'return_type', 'suite', 'scope_bindings']
 
-    # _slot_add_fqns not needed because add_fqns() method is overriden.
-
-    def __init__(self, *, name: 'NameBindsNode', parameters: Sequence[Base],
-                 return_type: Base, suite: Base,
-                 scope_bindings: Mapping[Text, None]) -> None:
-        # pylint: disable=super-init-not-called
-        self.name = name
-        self.parameters = parameters
-        self.return_type = return_type
-        self.suite = suite
-        self.scope_bindings = scope_bindings
+    # attr_add_fqns not needed because add_fqns() method is overriden.
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Similar to ClassDefStmt.add_fqns
@@ -877,7 +830,8 @@ class FuncDefStmt(Base):
         func_fqn_dot = func_fqn + '.<local>.'
         # self.name is already in bindings
         name_add_fqns = xcast(NameBindsFqn, _add_fqns_wrap(self.name, ctx))
-        func_ctx = ctx._replace(
+        func_ctx = dataclasses.replace(
+            ctx,
             fqn_dot=func_fqn_dot,
             bindings=ctx.bindings.new_child(
                 collections.OrderedDict((name, func_fqn_dot + name)
@@ -932,31 +886,27 @@ class ImportAsNamesNode(ListBase):
     """Corresponds to `import_as_names`."""
 
 
+@dataclass(frozen=True)
 class ImportDotNode(Base):
     """Corresponds to a DOT in `import_from`."""
 
-    __slots__ = []  # type: Sequence[str]
-
-    def __init__(self) -> None:
-        # pylint: disable=super-init-not-called
-        # TODO: test case
-        pass
+    __slots__ = []
 
 
+@dataclass(frozen=True)
 class ImportDottedAsNameFqn(Base):
     """Created by ImportDottedAsNameNode.add_fqns."""
 
-    __slots__ = ['dotted_name', 'as_name']
+    dotted_name: DottedNameNode
+    as_name: 'NameBindsFqn'
 
-    def __init__(self, *, dotted_name: Base, as_name: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.dotted_name = xcast(DottedNameNode, dotted_name)
-        self.as_name = xcast(NameBindsFqn, as_name)
+    __slots__ = ['dotted_name', 'as_name']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self  # The components have already been processed
 
 
+@dataclass(frozen=True)
 class ImportDottedAsNameNode(Base):
     """Corresponds to `dotted_as_name`.
 
@@ -964,27 +914,26 @@ class ImportDottedAsNameNode(Base):
     then the first item in the `dotted_name` gets marked as "binds".
     """
 
-    __slots__ = ['dotted_name', 'as_name']
+    dotted_name: DottedNameNode
+    as_name: 'NameBindsNode'
 
-    def __init__(self, *, dotted_name: Base, as_name: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.dotted_name = xcast(DottedNameNode, dotted_name)
-        self.as_name = xcast(NameBindsNode, as_name)
+    __slots__ = ['dotted_name', 'as_name']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return ImportDottedAsNameFqn(
-            dotted_name=_add_fqns_wrap(self.dotted_name, ctx),
-            as_name=_add_fqns_wrap(self.as_name, ctx))
+            dotted_name=xcast(DottedNameNode, 
+                _add_fqns_wrap(self.dotted_name, ctx)),
+            as_name=xcast(NameBindsFqn,
+                _add_fqns_wrap(self.as_name, ctx)))
 
 
 class ImportDottedAsNamesFqn(ListBase):
     """Corresponds to `dotted_as_names`."""
 
-    def __init__(self, *, items: Sequence[Base]) -> None:
-        # pylint: disable=super-init-not-called
+    def __post_init__(self) -> None:
+        # self.items = typing.cast(Sequence[ImportDottedAsNameFqn], items)
         typing_debug.assert_all_isinstance(
-            ImportDottedAsNameFqn, items)  # TODO: remove
-        self.items = typing.cast(Sequence[ImportDottedAsNameFqn], items)
+            ImportDottedAsNameFqn, self.items)  # TODO: remove
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self  # The components have already been processed
@@ -993,32 +942,32 @@ class ImportDottedAsNamesFqn(ListBase):
 class ImportDottedAsNamesNode(ListBase):
     """Created by ImportDottedAsNamesNode.add_fqns."""
 
-    def __init__(self, *, items: Sequence[Base]) -> None:
-        # pylint: disable=super-init-not-called
+    def __post_init__(self) -> None:
+        # self.items = typing.cast(Sequence[ImportDottedAsNameNode], items)
         typing_debug.assert_all_isinstance(
-            ImportDottedAsNameNode, items)  # TODO: remove
-        self.items = typing.cast(Sequence[ImportDottedAsNameNode], items)
+            ImportDottedAsNameNode, self.items)  # TODO: remove
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return ImportDottedAsNamesFqn(
             items=[_add_fqns_wrap(item, ctx) for item in self.items])
 
 
+@dataclass(frozen=True)
 class ImportFromStmt(Base):
     """Corresponds to `import_name`."""
 
+    from_name: Sequence[Base]
+    import_part: Base
+
     __slots__ = ['from_name', 'import_part']
 
-    def __init__(
-            self, *, from_name: Sequence[Base], import_part: Base) -> None:
-        # pylint: disable=super-init-not-called
+    def __post_init__(self) -> None:
         typing_debug.assert_all_isinstance((DottedNameNode, ImportDotNode),
-                                           from_name)  # TODO: remove
-        self.from_name = typing.cast(Sequence[DottedNameNode], from_name)
+                                           self.from_name)
+        # self.from_name = typing.cast(Sequence[DottedNameNode], from_name)
         assert isinstance(
-            import_part, (ImportAsNamesNode, StarNode))  # TODO: remove
+            self.import_part, (ImportAsNamesNode, StarNode))
         # TODO: self.import_part = typing.cast(Union[ImportAsNamesNode, StarNode], import_part)
-        self.import_part = import_part
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # ast_raw.cvt_import_from has made sure that the names in
@@ -1029,52 +978,55 @@ class ImportFromStmt(Base):
             import_part=_add_fqns_wrap(self.import_part, ctx))
 
 
+@dataclass(frozen=True)
 class ImportNameFqn(Base):
     """Created by ImportNameNode.add_fqns."""
 
-    __slots__ = ['dotted_as_names']
+    dotted_as_names: ImportDottedAsNamesFqn
 
-    def __init__(self, *, dotted_as_names: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.dotted_as_names = xcast(ImportDottedAsNamesFqn, dotted_as_names)
+    __slots__ = ['dotted_as_names']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self  # The components have already been processed
 
 
+@dataclass(frozen=True)
 class ImportNameNode(Base):
     """Corresponds to `import_name`."""
 
+    dotted_as_names: Base
+
     __slots__ = ['dotted_as_names']
 
-    def __init__(self, *, dotted_as_names: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.dotted_as_names = xcast(ImportDottedAsNamesNode, dotted_as_names)
+    def __post_init__(self) -> None:
+        # self.dotted_as_names = xcast(ImportDottedAsNamesNode, dotted_as_names)
+        assert isinstance(self.dotted_as_names, ImportDottedAsNamesNode)
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return ImportNameFqn(
-            dotted_as_names=_add_fqns_wrap(self.dotted_as_names, ctx))
+            dotted_as_names=xcast(ImportDottedAsNamesFqn,
+                                  _add_fqns_wrap(self.dotted_as_names, ctx)))
 
 
 class ListMakerNode(ListBase):
     """Corresponds to `listmaker` without `comp_for`."""
 
 
+@dataclass(frozen=True)
 class NameBindsFqn(Base):
     """Created by NameBindsNode.add_fqns."""
 
-    __slots__ = ['name', 'fqn']
+    name: ast.Astn
+    fqn: Text
 
-    def __init__(self, name: ast.Astn, fqn: Text) -> None:
-        # pylint: disable=super-init-not-called
-        self.name = name
-        self.fqn = fqn
+    __slots__ = ['name', 'fqn']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not reprocessed.
         raise NotImplementedError(self)  # pragma: no cover
 
 
+@dataclass(frozen=True)
 class NameBindsNode(Base):
     """Corresponds to a NAME node, in binding context.
 
@@ -1083,11 +1035,9 @@ class NameBindsNode(Base):
               is self.astn.value
     """
 
-    __slots__ = ['name']
+    name: ast.Astn
 
-    def __init__(self, *, name: ast.Astn) -> None:
-        # pylint: disable=super-init-not-called
-        self.name = name
+    __slots__ = ['name']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         name = self.name.value
@@ -1103,6 +1053,7 @@ class NameBindsNode(Base):
         return NameBindsFqn(name=self.name, fqn=fqn)
 
 
+@dataclass(frozen=True)
 class NameRawNode(Base):
     """Corresponds to a NAME node that doesn't get a FQN.
 
@@ -1116,16 +1067,15 @@ class NameRawNode(Base):
 
     """
 
-    __slots__ = ['name']
+    name: ast.Astn
 
-    def __init__(self, *, name: ast.Astn) -> None:
-        # pylint: disable=super-init-not-called
-        self.name = name
+    __slots__ = ['name']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self
 
 
+@dataclass(frozen=True)
 class NameRefNode(Base):
     """Corresponds to a NAME node, in ref contet.
 
@@ -1134,11 +1084,9 @@ class NameRefNode(Base):
               is self.astn.value
     """
 
-    __slots__ = ['name']
+    name: ast.Astn
 
-    def __init__(self, *, name: ast.Astn) -> None:
-        # pylint: disable=super-init-not-called
-        self.name = name
+    __slots__ = ['name']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         name = self.name.value
@@ -1154,21 +1102,21 @@ class NameRefNode(Base):
         return NameRefFqn(name=self.name, fqn=fqn)
 
 
+@dataclass(frozen=True)
 class NameRefFqn(Base):
     """Created by NameRefNode.add_fqns."""
 
-    __slots__ = ['name', 'fqn']
+    name: ast.Astn
+    fqn: Text
 
-    def __init__(self, name: ast.Astn, fqn: Text) -> None:
-        # pylint: disable=super-init-not-called
-        self.name = name
-        self.fqn = fqn
+    __slots__ = ['name', 'fqn']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not reprocessed.
         raise NotImplementedError(self)  # pragma: no cover
 
 
+@dataclass(frozen=True)
 class NameRefGenerated(Base):
     """Like NameRef, but for `self` type nodes.
 
@@ -1177,11 +1125,9 @@ class NameRefGenerated(Base):
     `self` in method definitions and don't need `add_fqns`).
     """
 
-    __slots__ = ['fqn']
+    fqn: Text
 
-    def __init__(self, fqn: Text) -> None:
-        # pylint: disable=super-init-not-called
-        self.fqn = fqn
+    __slots__ = ['fqn']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not reprocessed.
@@ -1192,6 +1138,7 @@ class NonLocalStmt(ListBase):
     """Corresponds to "nonlocal" variant of `global_stmt`."""
 
 
+@dataclass(frozen=True)
 class NumberNode(Base):
     """Corresponds to a NUMBER node.
 
@@ -1199,11 +1146,9 @@ class NumberNode(Base):
     astn: The AST node of the number
     """
 
-    __slots__ = ['astn']
+    astn: ast.Astn
 
-    def __init__(self, *, astn: ast.Astn) -> None:
-        # pylint: disable=super-init-not-called
-        self.astn = astn
+    __slots__ = ['astn']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self
@@ -1220,14 +1165,13 @@ OMITTED_NODE = OmittedNode()
 class OpNode(Base):
     """Corresponds to various expression nodes (unary, binary, comparison)."""
 
+    op_astns: Sequence[ast.Astn]
+    args: Sequence[Base]
+
     __slots__ = ['op_astns', 'args']
 
-    def __init__(self, *, op_astns: Sequence[ast.Astn],
-                 args: Sequence[Base]) -> None:
-        # pylint: disable=super-init-not-called
-        typing_debug.assert_all_isinstance(ast.Astn, op_astns)  # TODO: remove
-        self.op_astns = op_astns
-        self.args = args
+    def __post_init__(self) -> None:
+        typing_debug.assert_all_isinstance(ast.Astn, self.op_astns)
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return OpNode(
@@ -1269,6 +1213,7 @@ def make_stmts(items: Iterable[Base]) -> Stmts:
     return Stmts(items=flattened_items)
 
 
+@dataclass(frozen=True)
 class StringNode(Base):
     """Corresponds to a STRING node.
 
@@ -1276,28 +1221,26 @@ class StringNode(Base):
         astns: The AST nodes of the string
     """
 
-    __slots__ = ['astns']
+    astns: Sequence[ast.Astn]
 
-    def __init__(self, *, astns: Sequence[ast.Astn]) -> None:
-        # pylint: disable=super-init-not-called
-        self.astns = astns
+    __slots__ = ['astns']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self
 
 
+@dataclass(frozen=True)
 class SubscriptNode(Base):
     """Corresponds to `subscript`."""
 
+    expr1: Base
+    expr2: Base
+    expr3: Base
+
     __slots__ = ['expr1', 'expr2', 'expr3']
 
-    def __init__(self, *, expr1: Base, expr2: Base, expr3: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.expr1 = expr1
-        self.expr2 = expr2
-        self.expr3 = expr3
 
-
+@dataclass(frozen=True)
 class SubscriptListNode(Base):
     """Corresponds to `subscript_list`.
 
@@ -1305,13 +1248,13 @@ class SubscriptListNode(Base):
     directly into AtomSubscriptNode.
     """
 
+    subscripts: Sequence[Base]
+
     __slots__ = ['subscripts']
 
-    def __init__(self, *, subscripts: Sequence[Base]) -> None:
-        # pylint: disable=super-init-not-called
-        typing_debug.assert_all_isinstance(
-            SubscriptNode, subscripts)  # TODO: remove
-        self.subscripts = typing.cast(Sequence[SubscriptNode], subscripts)
+    def __post_init__(self) -> None:
+        typing_debug.assert_all_isinstance(SubscriptNode, self.subscripts)
+        # self.subscripts = typing.cast(Sequence[SubscriptNode], subscripts)
 
     def atom_trailer_node(self, atom: Base) -> Base:
         return AtomSubscriptNode(atom=atom, subscripts=self.subscripts)
@@ -1325,15 +1268,14 @@ class TestListNode(ListBase):
     """Corresponds to ."""
 
 
+@dataclass(frozen=True)
 class TnameNode(Base):
     """Corresponds to `tname`."""
 
-    __slots__ = ['name', 'type_expr']
+    name: Base
+    type_expr: Base
 
-    def __init__(self, *, name: Base, type_expr: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.name = name
-        self.type_expr = type_expr
+    __slots__ = ['name', 'type_expr']
 
 
 class TfpListNode(ListBase):
@@ -1346,17 +1288,17 @@ class TryStmt(ListBase):
     """Corresponds to `try_stmt`."""
 
 
+@dataclass(frozen=True)
 class TypedArgNode(Base):
     """Corresponds to `typedargslist` `tfpdef ['=' test]` and similar."""
 
+    tname: 'TnameNode'
+    expr: Base
+
     __slots__ = ['tname', 'expr']
 
-    def __init__(self, *, tname: Base, expr: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.tname = xcast(TnameNode, tname)
-        self.expr = expr
 
-
+@dataclass(frozen=True)
 class TypedArgsListNode(Base):
     """Corresponds to `typedargslist`.
 
@@ -1365,50 +1307,49 @@ class TypedArgsListNode(Base):
     defined for TypedArgsListNode.
     """
 
-    __slots__ = ['args']
+    args: Sequence[TypedArgNode]
 
-    def __init__(self, *, args: Sequence[TypedArgNode]) -> None:
-        # pylint: disable=super-init-not-called
-        self.args = args
+    __slots__ = ['args']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Not used anywhere
         raise NotImplementedError(self)  # pragma: no cover
 
 
+@dataclass(frozen=True)
 class WhileStmt(Base):
     """Corresponds to `while_stmt`."""
 
+    test: Base
+    suite: Base
+    else_suite: Base
+
     __slots__ = ['test', 'suite', 'else_suite']
 
-    def __init__(self, *, test: Base, suite: Base, else_suite: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.test = test
-        self.suite = suite
-        self.else_suite = else_suite
 
-
+@dataclass(frozen=True)
 class WithItemNode(Base):
     """Corresponds to `with_item`."""
 
+    item: Base
+    as_item: Base
+
     __slots__ = ['item', 'as_item']
 
-    def __init__(self, *, item: Base, as_item: Base) -> None:
-        # pylint: disable=super-init-not-called
-        self.item = item
-        self.as_item = as_item
 
-
+@dataclass(frozen=True)
 class WithStmt(Base):
     """Corresponds to `with_stmt`."""
 
+    items: Sequence[Base]
+    suite: Base
+
     __slots__ = ['items', 'suite']
 
-    def __init__(self, *, items: Sequence[Base], suite: Base) -> None:
+    def __post_init__(self) -> None:
         # pylint: disable=super-init-not-called
-        typing_debug.assert_all_isinstance(WithItemNode, items)  # TODO: remove
-        self.items = typing.cast(Sequence[WithItemNode], items)
-        self.suite = suite
+        typing_debug.assert_all_isinstance(WithItemNode, self.items)
+        # self.items = typing.cast(Sequence[WithItemNode], items)
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return WithStmt(
@@ -1425,16 +1366,14 @@ class YieldNode(ListBase):
 # === other facts that are output as JSON
 
 
+@dataclass(frozen=True)
 class Meta(pod.PlainOldDataExtended):
     """Information about the file."""
 
-    __slots__ = ['corpus', 'root', 'path', 'language', 'contents_b64']
+    corpus: Text
+    root: Text
+    path: Text
+    language: Text
+    contents_b64: Text
 
-    def __init__(self, *, corpus: Text, root: Text, path: Text, language: Text,
-                 contents_b64: Text) -> None:
-        # pylint: disable=super-init-not-called
-        self.corpus = corpus
-        self.root = root
-        self.path = path
-        self.language = language
-        self.contents_b64 = contents_b64
+    __slots__ = ['corpus', 'root', 'path', 'language', 'contents_b64']

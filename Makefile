@@ -94,7 +94,8 @@ $(PYTYPE_DIR)/pykythe/__main__.pyi: $(addprefix $(PYTYPE_DIR)/pykythe/,\
 
 # TODO: --python-version=3.6  # conflict if python3.6 is not default python3
 #       maybe --no-site-packages ?
-MYPY=mypy --python-version=3.5 --strict-optional --check-untyped-defs --warn-incomplete-stub --warn-no-return --no-incremental --disallow-any-unimported --show-error-context --implicit-optional --strict --disallow-incomplete-defs
+# Anyway, mypy doesn't yet have a plugin for dataclasses. :(
+MYPY=$(PYTHON3_EXE) $$(which mypy) --python-version=3.6 --strict-optional --check-untyped-defs --warn-incomplete-stub --warn-no-return --no-incremental --disallow-any-unimported --show-error-context --implicit-optional --strict --disallow-incomplete-defs
 # TODO: --disallow-incomplete-defs  https://github.com/python/mypy/issues/4603
 # TODO: --disallow-any-generics
 

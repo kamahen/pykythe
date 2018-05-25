@@ -11,6 +11,8 @@ the first pass).
 
 import codecs
 import collections
+from dataclasses import dataclass
+import dataclasses
 import enum
 import io
 import logging
@@ -62,15 +64,17 @@ class NameCtx(enum.Enum):
     RAW = 'RAW'  # TODO: enum.auto()
 
 
+@dataclass(frozen=True)
 class Ctx(pod.PlainOldData):
     """Context for traversing the lib2to3 AST.
 
-    Note that scope_bindings, global_vars, nonlocal_vars are dicts, so they
-    can be updated and therefore Ctx behaves somewhat like a mutable
-    object (name_ctx should not be updated; instead a new Ctx object
-    should be created using _replace). For those who like functional
-    programming, this is cheating; but Python doesn't make it easy to
-    have "accumulators" in the Prolog DCG or Haskell sense.
+    Note that scope_bindings, global_vars, nonlocal_vars are dicts, so
+    they can be updated and therefore Ctx behaves somewhat like a
+    mutable object (name_ctx should not be updated; instead a new Ctx
+    object should be created using the replace method). For those who
+    like functional programming, this is cheating; but Python doesn't
+    make it easy to have "accumulators" in the Prolog DCG or Haskell
+    sense.
 
     Attributes:
         name_ctx: Used to mark ast_cooked.NameNode items as being in a
@@ -102,24 +106,21 @@ class Ctx(pod.PlainOldData):
 
     """
 
+    name_ctx: NameCtx
+    scope_bindings: Dict[Text, None]
+    global_vars: Dict[Text, None]
+    nonlocal_vars: Dict[Text, None]
+    python_version: int
+    src_file: ast.File
+
     __slots__ = [
         'name_ctx', 'scope_bindings', 'global_vars', 'nonlocal_vars',
         'python_version', 'src_file']
 
-    def __init__(  # pylint: disable=too-many-arguments
-            self, name_ctx: NameCtx, scope_bindings: Dict[Text, None],
-            global_vars: Dict[Text, None], nonlocal_vars: Dict[Text, None],
-            python_version: int, src_file: ast.File) -> None:
+    def __post_init__(self) -> None:
         # scope_bindings should be collections.OrderedDicts if you want
         # deterministic results.
-        # pylint: disable=super-init-not-called
-        self.name_ctx = name_ctx
-        self.scope_bindings = scope_bindings
-        self.global_vars = global_vars
-        self.nonlocal_vars = nonlocal_vars
-        self.python_version = python_version
         assert self.python_version in (2, 3)
-        self.src_file = src_file
 
 
 def new_ctx(python_version: int, src_file: ast.File) -> Ctx:
@@ -182,7 +183,8 @@ def cvt_argument(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         # the arg is a generator
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=cvt(node.children[0], ctx),
-            comp_for=cvt(node.children[1], ctx))
+            comp_for=xcast(ast_cooked.CompForNode,
+                           cvt(node.children[1], ctx)))
     if node.children[0].type == token.DOUBLESTAR:
         return cvt(node.children[1], ctx)  # Ignore the `**`
     assert node.children[0].type == SYMS_STAR_EXPR, dict(
@@ -337,7 +339,8 @@ def cvt_comp_for(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         children = node.children
     in_testlist = cvt(children[3], ctx)  # outside the `for`
     ctx_for = (ctx if ctx.python_version == 2 else
-               ctx._replace(scope_bindings=collections.OrderedDict()))
+               dataclasses.replace(
+                   ctx, scope_bindings=collections.OrderedDict()))
     for_exprlist = cvt_name_ctx(NameCtx.BINDING, children[1], ctx_for)
     if len(children) == 5:
         comp_iter = cvt(children[4], ctx_for)  # evaluated in context of `for`
@@ -467,20 +470,23 @@ def cvt_dictsetmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             value_expr=ast_cooked.DictKeyValue(
                 items=[cvt(node.children[0], ctx),
                        cvt(node.children[2], ctx)]),
-            comp_for=cvt(node.children[3], ctx))
+            comp_for=xcast(ast_cooked.CompForNode,
+                           cvt(node.children[3], ctx)))
     if (len(node.children) == 3 and
             node.children[0].type == token.DOUBLESTAR and
             node.children[2].type == SYMS_COMP_FOR):
         # TODO: test case
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=cvt(node.children[1], ctx),  # ignore '**'
-            comp_for=cvt(node.children[2], ctx))
+            comp_for=xcast(ast_cooked.CompForNode,
+                           cvt(node.children[2], ctx)))
     if node.children[1] == SYMS_COMP_FOR:
         # TODO: test case
         assert len(node.children) == 2
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=cvt(node.children[0], ctx),
-            comp_for=cvt(node.children[1], ctx))
+            comp_for=xcast(ast_cooked.CompForNode,
+                           cvt(node.children[1], ctx)))
     return ast_cooked.DictSetMakerNode(items=[
         cvt(ch, ctx)
         for ch in node.children
@@ -598,7 +604,7 @@ def cvt_expr_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         #  (guaranteed at least one ('=' (yield_expr|testlist_star_expr)
         #  because of the test (above): len(node.children) == 1
         expr = cvt(node.children[-1], ctx)
-        left_ctx = ctx._replace(name_ctx=NameCtx.BINDING)
+        left_ctx = dataclasses.replace(ctx, name_ctx=NameCtx.BINDING)
         # TODO: (multiple) ast_cooked.AssignExprStmt's (with temporary as needed):
         return ast_cooked.AssignMultipleExprStmt(
             left_list=[
@@ -809,7 +815,8 @@ def cvt_listmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         assert len(node.children) == 2
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=cvt(node.children[0], ctx),
-            comp_for=cvt(node.children[1], ctx))
+            comp_for=xcast(ast_cooked.CompForNode,
+                           cvt(node.children[1], ctx)))
     return ast_cooked.ListMakerNode(items=cvt_children_skip_commas(node, ctx))
 
 
@@ -850,7 +857,7 @@ def cvt_power(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     # For the trailer, all but the last item are in a non-binding
     # context; the last item is in the current binds context (which
     # only applies for ".").
-    trailer_ctx = ctx._replace(name_ctx=NameCtx.REF)
+    trailer_ctx = dataclasses.replace(ctx, name_ctx=NameCtx.REF)
     atom = cvt(children[0], trailer_ctx)
     trailers = [cvt(ch, trailer_ctx) for ch in children[1:-1]]
     if len(children) > 1:
@@ -998,7 +1005,7 @@ def cvt_subscriptlist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     # Can appear on left of assignment
     return ast_cooked.SubscriptListNode(
         subscripts=cvt_children_skip_commas(
-            node, ctx._replace(name_ctx=NameCtx.REF)))
+            node, dataclasses.replace(ctx, name_ctx=NameCtx.REF)))
 
 
 def cvt_suite(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -1053,7 +1060,8 @@ def cvt_testlist_gexp(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         assert len(node.children) == 2
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=cvt(node.children[0], ctx),
-            comp_for=cvt(node.children[1], ctx))
+            comp_for=xcast(ast_cooked.CompForNode,
+                           cvt(node.children[1], ctx)))
     return cvt_children_skip_commas_tuple(node, ctx)
 
 
@@ -1123,7 +1131,8 @@ def cvt_trailer(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     assert node.children[0].type == token.DOT
     return ast_cooked.DotNameTrailerNode(
         binds=ctx.name_ctx is NameCtx.BINDING,
-        name=cvt_name_ctx(NameCtx.RAW, node.children[1], ctx))
+        name=xcast(ast_cooked.NameRawNode,
+                   cvt_name_ctx(NameCtx.RAW, node.children[1], ctx)))
 
 
 def cvt_try_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -1163,13 +1172,15 @@ def cvt_typedargslist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             if i + 1 <= max_i and node.children[i + 1].type == token.EQUAL:
                 args.append(
                     ast_cooked.TypedArgNode(
-                        tname=cvt_name_ctx(NameCtx.BINDING, ch0, ctx),
+                        tname=xcast(ast_cooked.TnameNode,
+                                    cvt_name_ctx(NameCtx.BINDING, ch0, ctx)),
                         expr=cvt(node.children[i + 2], ctx)))
                 i += 3
             else:
                 args.append(
                     ast_cooked.TypedArgNode(
-                        tname=cvt_name_ctx(NameCtx.BINDING, ch0, ctx),
+                        tname=xcast(ast_cooked.TnameNode,
+                                    cvt_name_ctx(NameCtx.BINDING, ch0, ctx)),
                         expr=ast_cooked.OMITTED_NODE))
                 i += 1
         else:
@@ -1486,7 +1497,7 @@ def cvt_name_ctx(name_ctx: NameCtx,
                  ctx: Ctx,
                  _DISPATCH: _DISPATCH_TYPE = _DISPATCH) -> ast_cooked.Base:
     """Dispatch in a new context that changes name_ctx."""
-    return cvt(node, ctx._replace(name_ctx=name_ctx))
+    return cvt(node, dataclasses.replace(ctx, name_ctx=name_ctx))
 
 
 # pylint: enable=dangerous-default-value,invalid-name
