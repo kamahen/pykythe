@@ -118,7 +118,7 @@ clean:
 
 $(TESTOUTDIR)/%-kythe.json: \
 		$(TEST_GRAMMAR_DIR)/%.py \
-		scripts/pykythe_post_process.pl scripts/must_once.pl \
+		pykythe/pykythe.pl pykythe/must_once.pl \
 		pykythe/__main__.py \
 		scripts/decode_json.py \
 		pykythe/ast_cooked.py \
@@ -130,7 +130,7 @@ $(TESTOUTDIR)/%-kythe.json: \
 	@# If you add </dev/null to the following, it'll keep going even on failure.
 	@# ... without that, it'll stop, waiting for input
 	@# If you add --quiet, you might be confused by this situation
-	$(TIME) $(SWIPL_EXE) -O -s scripts/pykythe_post_process.pl \
+	$(TIME) $(SWIPL_EXE) -O -s pykythe/pykythe.pl \
 	    --parsecmd="$(PYTHON3_EXE) -B -m pykythe" \
 	    --corpus='test-corpus' \
 	    --root='test-root' \
