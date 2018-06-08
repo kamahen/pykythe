@@ -19,11 +19,11 @@
 %    - references and assignments (in the assign/2 facts).
 %    Each predicate also returns a "type" result that is used to
 %    populate the right-hand-side of assign/2 facts (for statements,
-%    a stmt/1 term is returned for completeness.  For more details,
+%    a expr/1 term is returned for completeness.  For more details,
 %    see node_anchors//2.
-% 2. Process the assign/2 facts, by intepreting the expressions and
-%    recording the results in a symtab (symbol table), then
-%    outputting Kythe facts for the attributes, calls, etc.  Note
+% 2. Process the assign/2 and expr/1 facts, by intepreting the
+%    expressions and recording the results in a symtab (symbol table),
+%    then outputting Kythe facts for the attributes, calls, etc.  Note
 %    that expr([]) is a no-op.
 
 % A word on "types" and "eval".
@@ -33,13 +33,13 @@
 %   self.x = 'C2_x'
 % is turned into the following (in portray-output format):
 %    'AssignExprStmt'{
-%        expr:'StringNode'{astn:[ASTN(1160:1166, "'C2_x'")]},
-%        left:'AtomDotNode'{
-%               atom:'NameRefFqn'{
-%                       fqn:str("test_data.simple.C2.__init__.<local>.self"),
-%                       name:'ASTN'(1151:1155, "self") },
-%               attr_name:'ASTN'(1156:1157, "x"),
-%               binds:bool("True") } }
+%        expr: 'StringNode'{astn: [ASTN(1160:1166, "'C2_x'")]},
+%        left: 'AtomDotNode'{
+%               atom: 'NameRefFqn'{
+%                         fqn: str("test_data.simple.C2.__init__.<local>.self"),
+%                         name: 'ASTN'(1151:1155, "self") },
+%               attr_name: 'ASTN'(1156:1157, "x"),
+%               binds: bool("True") } }
 %
 % When this is read in, it is simplified to:
 %   assign(dot([fqn('test_data.simple.C2.__init__.<local>.self')],
@@ -108,6 +108,9 @@
                           must_once/3 as must_once_kythe_fact,
                           must_once/5 as must_once_kythe_fact_expr,
                           must_once/5 as must_once_fqn_sym_rej]).
+
+:- dynamic corpus_root_path_language/4.  % Corpus, Root, Path, Language
+:- dynamic file_contents/1.
 
 :- style_check(+singleton).
 :- style_check(+no_effect).
@@ -246,18 +249,48 @@ initial_symtab(Symtab) :-
 %! main is det.
 %  The main predicate, run during initialization.
 main :-
-    OptsSpec = [],
-    opt_arguments(OptsSpec, _Opts, PositionalArgs),
-    (  PositionalArgs = [FqnExprPath]
-    -> true
-    ;  PositionalArgs = []
-    -> FqnExprPath = '/dev/stdin'
-    ;  FqnExprPath = '/dev/stdin',  % quiet var_branches style check
-       throw(error(bad_positional_args(PositionalArgs), _))
-    ),
+    OptsSpec = [
+        [opt(parsecmd), type(atom), longflags([parsecmd]),
+         help('Command for running parser than generates fqn.json file')],
+        [opt(corpus), type(atom), default(''), longflags([corpus]),
+        help('Value of "corpus" in Kythe facts')],
+        [opt(root), type(atom), default(''), longflags([root]),
+         help('Value of "root" in Kythe facts')],
+        [opt(python_version), type(integer), default(3), longflags(python_version),
+         help('Python major version')]
+    ],
+    opt_arguments(OptsSpec, Opts, PositionalArgs),
+    must_once(PositionalArgs = [Src]),  % TODO: nice error message
+    must_once(run_parse_cmd(Opts, Src, OutFile)),
     must_once(
-        process(FqnExprPath)),
+        process(OutFile)),
     halt.
+
+%! run_parse_cmd(+Opts, +Src, -OutFile) is det.
+%  Run the parse command into a temporary file. (The temp file is
+%  automatically deleted on graceful termination.)
+%  An alternative would be to run the parse command as a process, into
+%  a a pipe. This needs more memory, is more complicated to manage,
+%  and is a bit more difficult to debug.
+run_parse_cmd(Opts, Src, OutFile) :-
+    must_once(ground(Opts)),
+    memberchk(parsecmd(ParseCmd), Opts),
+    memberchk(corpus(Corpus), Opts),
+    memberchk(root(Root), Opts),
+    memberchk(python_version(PythonVersion), Opts),
+    must_once(memberchk(PythonVersion, [2, 3])),
+    tmp_file_stream(OutFile, OutFileStream, [encoding(binary), extension('fqn-json')]),
+    close(OutFileStream),
+    atomic_list_concat(
+            [ParseCmd,
+             " --corpus='", Corpus, "'",
+             " --root='", Root, "'",
+             " --python_version='", PythonVersion, "'",
+             " --src='", Src, "'",
+             " --out_fqn_expr='", OutFile, "'"],
+            Cmd),
+    shell(Cmd, Status),
+    must_once(Status == 0).
 
 %! process(+FqnExprPath:atom) is det.
 %  Read in a single file (JSON output from pykythe module, which
@@ -274,8 +307,28 @@ process(FqnExprPath) :-
           dump_term('SYMTAB', Symtab)),
     current_output(KytheStream),
     % write(KytheStream, "%% === Kythe ==="), nl(KytheStream),
+    symtab_as_kythe_fact(Symtab, SymtabKytheFact),
+    output_kythe_fact(SymtabKytheFact, KytheStream),
     output_kythe_facts(KytheFacts, KytheStream),
     output_kythe_facts(KytheFacts2, KytheStream).
+
+%! symtab_as_kythe_fact(+Symtab, -KytheFactAsJsonDict) is det.
+%  Convert the symtab into a Kythe fact.
+symtab_as_kythe_fact(Symtab,
+                     json{source: Source,
+                          fact_name: '/kythe/x-symtab',
+                          fact_value: SymtabStr64}) :-
+    print_term_cleaned(Symtab,
+                       [tab_width(0),
+                        indent_arguments(2),
+                        right_margin(100)],
+                       SymtabStr),
+    % TODO: the following is dup-ed from kythe_file//0 but
+    %       with Language specified
+    base64(SymtabStr, SymtabStr64),
+    corpus_root_path_language(Corpus, Root, Path, Language),
+    Source = json{corpus: Corpus, root: Root, path: Path, language: Language}.
+
 
 %! read_anchors_exprs(+FqnExprPath:atom, +KytheFacts:list, -Exprs:list) is det.
 %  Read the JSON node tree (with FQNs), extract anchors and related
@@ -670,7 +723,7 @@ node_anchors_impl('WithStmt'{items: Items, suite: Suite},
 dots_and_dotted_name(DotsAndDottedName, ImportPart, CombImportPart) -->>
     { corpus_root_path_language(_Corpus, _Root, Path, _Language) },
     { must_once(
-          atom_concat(PathBase, '.py', Path)) },  %% TODO: don't rely on '.py' being the extension?
+          remove_py_ext(Path, PathBase)) },
     { from_dots_import(DotsAndDottedName, PathBase, Dots, DottedNameList) },
     { atomic_list_concat(DottedNameList, '.', DottedName) },
     (  { Dots = [] }
@@ -678,6 +731,11 @@ dots_and_dotted_name(DotsAndDottedName, ImportPart, CombImportPart) -->>
     ;  { atomic_list_concat(Dots, FullFromName) }
     ),
     from_import_part(ImportPart, FullFromName, CombImportPart).
+
+remove_py_ext(Path, PathBase) :-
+    % TODO: allow more than .py and .pyi as extensions?
+    ( Ext = 'py' ; Ext = 'pyi' ),
+    file_name_extension(PathBase, Ext, Path).
 
 %! from_dots_import(+ImportPart:list, +PathBase:atom, -CombImportPart:list) is det.
 from_dots_import([], _, [], []) :- !.
@@ -1240,14 +1298,59 @@ dump_term(Msg, Term, Options) :-
     -> true
     ;  format(user_error, '% === ~w ===~n~n', [Msg])
     ),
-    % print_term leaves trailing whitespace, so remove it
-    with_output_to(
-            string(TermStr),
-            (current_output(TermStream),
-             print_term(Term, [output(TermStream)|Options]))),
-    re_replace(" *\n"/g, "\n", TermStr, TermStr2),
+    print_term_cleaned(Term, Options, TermStr),
     (  Msg = ''
-    -> format(user_error, '~s.~n', [TermStr2])
-    ;  format(user_error, '~s.~n~n', [TermStr2]),
+    -> format(user_error, '~s.~n', [TermStr])
+    ;  format(user_error, '~s.~n~n', [TermStr]),
        format(user_error, '% === end ~w ===~n~n', [Msg])
     ).
+
+%! print_term_cleaned(+Term, +Options, -TermStr) is det.
+%  print_term, cleaned up
+print_term_cleaned(Term, Options, TermStr) :-
+    % print_term leaves trailing whitespace, so remove it
+    with_output_to(
+            string(TermStr0),
+            (current_output(TermStream),
+             print_term(Term, [output(TermStream)|Options]))),
+    re_replace(" *\n"/g, "\n", TermStr0, TermStr).
+
+%! read_kythe_symtab(+KytheStream, -Symtab, -Text) is det.
+%  read Kythe JSON for /kythe/x-symtab, /kythe/text
+read_kythe_symtab(KytheStream, Symtab, Text) :-
+    json_read_dict(KytheStream, SymtabJson),
+    json_read_dict(KytheStream, FileJson),
+    json_read_dict(KytheStream, TextJson),
+    base64("file", File64atom),
+    atom_string(File64atom, File64string),
+    must_once(
+        SymtabJson = _{fact_name: "/kythe/x-symtab",
+                       fact_value: Symtab64,
+                       source: _{corpus: _,
+                                 root: _,
+                                 language: "python",
+                                 path: FilePath}}),
+    must_once(
+        FileJson = _{fact_name: "/kythe/node/kind",
+                     fact_value: File64string,
+                     source: _{corpus: _,
+                               root: _,
+                               path: FilePath}}),
+    must_once(
+            TextJson = _{fact_name: "/kythe/text",
+                         fact_value: Text64,
+                         source: _{corpus: _,
+                                   root: _,
+                                   path: FilePath}}),
+    base64(SymtabStr, Symtab64),
+    term_to_atom(Symtab, SymtabStr),
+    base64(Text, Text64).
+
+test_simple :-
+    open('/tmp/pykythe_test/simple-kythe.json',
+         read,
+         KytheStream,
+         []),
+    read_kythe_symtab(KytheStream, Symtab, Text),
+    dump_term('SYMTAB', Symtab),
+    format('===TEXT===~n~w=== end TEXT===~n', [Text]).

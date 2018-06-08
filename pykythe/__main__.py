@@ -45,13 +45,15 @@ def main() -> int:
 
     with open(args.src, 'rb') as src_f:
         src_content = xcast(bytes, src_f.read())
+        # TODO: add to ast.File: args.root, args.corpus (even though in Meta)
         src_file = ast.File(
-            path=args.
-            src,  # TODO: add args.root, args.corpus (even though in Meta)
+            path=args.src,
             content=src_content,
             encoding='utf-8')  # TODO: get encoding from parse
         parse_tree = ast_raw.parse(src_content, args.python_version)
 
+    # b64encode returns bytes, so use decode() to turn it into a
+    # string, because json.dumps can't process bytes.
     meta = ast_cooked.Meta(
         corpus=args.corpus,
         root=args.root,

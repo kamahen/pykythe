@@ -116,8 +116,9 @@ clean:
 	-# $(RM) -r $(TESTOUTDIR)
 	-# find $(TESTOUTDIR) -type f
 
-$(TESTOUTDIR)/%-fqn.json: \
+$(TESTOUTDIR)/%-kythe.json: \
 		$(TEST_GRAMMAR_DIR)/%.py \
+		scripts/pykythe_post_process.pl scripts/must_once.pl \
 		pykythe/__main__.py \
 		scripts/decode_json.py \
 		pykythe/ast_cooked.py \
@@ -125,20 +126,15 @@ $(TESTOUTDIR)/%-fqn.json: \
 		pykythe/pod.py \
 		Makefile
 	mkdir -p $(TESTOUTDIR)
-	$(TIME) $(PYTHON3_EXE) -B -m pykythe \
-		--corpus='test-corpus' \
-		--root='test-root' \
-		--src="$<" \
-		--out_fqn_expr="$@"
-
-$(TESTOUTDIR)/%-kythe.json: $(TESTOUTDIR)/%-fqn.json \
-		scripts/pykythe_post_process.pl scripts/must_once.pl \
-		Makefile
 	@# TODO: make this into a script (with a saved state (qsave_program/2 stand_alone).
 	@# If you add </dev/null to the following, it'll keep going even on failure.
 	@# ... without that, it'll stop, waiting for input
 	@# If you add --quiet, you might be confused by this situation
-	$(TIME) $(SWIPL_EXE) -O -s scripts/pykythe_post_process.pl "$<" >"$@" 2>"$@-error" </dev/null
+	$(TIME) $(SWIPL_EXE) -O -s scripts/pykythe_post_process.pl \
+	    --parsecmd="$(PYTHON3_EXE) -B -m pykythe" \
+	    --corpus='test-corpus' \
+	    --root='test-root' \
+	    "$<" >"$@" 2>"$@-error" </dev/null
 	cat "$@-error"
 
 %.json-decoded: %.json scripts/decode_json.py
@@ -151,7 +147,7 @@ $(TESTOUTDIR)/%-kythe.json: $(TESTOUTDIR)/%-fqn.json \
 .PHONY: verify-%
 .SECONDARY: # %.entries %.json-decoded %.json
 
-verify-%:  $(TESTOUTDIR)/%-kythe.entries $(TEST_GRAMMAR_DIR)/%.py $(TESTOUTDIR)/%-kythe.json $(TESTOUTDIR)/%-kythe.json-decoded
+verify-%: $(TESTOUTDIR)/%-kythe.entries $(TEST_GRAMMAR_DIR)/%.py
 	$(VERIFIER_EXE) -check_for_singletons -goal_prefix='#-' "$(word 2,$^)" <"$(word 1,$^)"
 
 prep_server: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).nq.gz

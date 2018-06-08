@@ -516,10 +516,10 @@ class CompForNode(Base):
             return ctx
         for_fqn_dot = '{}<comp_for>[{:d},{:d}].'.format(
             ctx.fqn_dot, self.for_astn.start, self.for_astn.end)
-        return dataclasses.replace(
+        return xcast(FqnCtx, dataclasses.replace(
             ctx,
             fqn_dot=for_fqn_dot,
-            bindings=ctx.bindings.new_child(collections.OrderedDict()))
+            bindings=ctx.bindings.new_child(collections.OrderedDict())))
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Assume that the caller has created a new child in the
