@@ -97,19 +97,22 @@
 % TODO: Use QLF: http://www.swi-prolog.org/pldoc/man?section=qlf
 
 
-:- use_module(library(http/json)).
-:- use_module(library(optparse)).
+:- use_module(library(aggregate), [aggregate_all/3, foreach/2]).
+:- use_module(library(assoc), [empty_assoc/1, assoc_to_values/2, get_assoc/3, put_assoc/4,
+                               is_assoc/1, gen_assoc/3, min_assoc/3, max_assoc/3]).
 :- use_module(library(edcg)).  % requires: ?- pack_install(edcg).
+:- use_module(library(filesex), [relative_file_name/3]).
+:- use_module(library(http/json), [json_read_dict/2, json_write_dict/3]).
+:- use_module(library(optparse), [opt_arguments/3]).
+:- use_module(library(ordsets), [list_to_ord_set/2, ord_empty/1, ord_union/3, ord_add_element/3]).
 :- use_module(library(pprint), [print_term/2]).
-:- use_module(library(ordsets)).
-:- use_module(library(assoc)).
-:- use_module(library(aggregate)).
 :- use_module(must_once, [must_once/1,
+                          must_once_msg/3,
                           must_once/3 as must_once_kythe_fact,
                           must_once/5 as must_once_kythe_fact_expr,
                           must_once/5 as must_once_fqn_sym_rej]).
 
-:- dynamic corpus_root_path_language/4.  % Corpus, Root, Path, Language
+:- dynamic corpus_root_path_language/4.  % KytheCorpus, KytheRoot, Path, Language
 :- dynamic file_contents/1.
 
 :- style_check(+singleton).
@@ -141,11 +144,11 @@ edcg:pred_info(edge, 3,                            [kythe_fact]).
 edcg:pred_info(from_import_part, 3,                [kythe_fact]).
 edcg:pred_info(kythe_fact, 3,                      [kythe_fact]).
 edcg:pred_info(kythe_fact_b64, 3,                  [kythe_fact]).
-edcg:pred_info(kythe_file, 0,                      [kythe_fact]).
+edcg:pred_info(kythe_file, 1,                      [kythe_fact]).
 
 edcg:pred_info(assign_normalized, 2,               [kythe_fact, expr]).
 edcg:pred_info(expr_normalized, 1,                 [kythe_fact, expr]).
-edcg:pred_info(kythe_json, 1,                      [kythe_fact, expr]).
+edcg:pred_info(kythe_json, 2,                      [kythe_fact, expr]).
 edcg:pred_info(node_anchors, 2,                    [kythe_fact, expr]).
 edcg:pred_info(node_anchors_impl, 2,               [kythe_fact, expr]).
 edcg:pred_info(node_anchors_expr_list, 1,          [kythe_fact, expr]).
@@ -249,55 +252,158 @@ initial_symtab(Symtab) :-
 %! main is det.
 %  The main predicate, run during initialization.
 main :-
+    current_prolog_flag(version, PrologVersion),
+    must_once_msg(PrologVersion >= 70713, 'SWI-Prolog version is too old', []),  % Sync this with README.md
+    % TODO: optparse has a bug if a longflags contains '_', so using '-' for now.
     OptsSpec = [
         [opt(parsecmd), type(atom), longflags([parsecmd]),
          help('Command for running parser than generates fqn.json file')],
-        [opt(corpus), type(atom), default(''), longflags([corpus]),
+        [opt(kythe_corpus), type(atom), default(''), longflags(['kythe-corpus']),
         help('Value of "corpus" in Kythe facts')],
-        [opt(root), type(atom), default(''), longflags([root]),
+        [opt(kythe_root), type(atom), default(''), longflags(['kythe-root']),
          help('Value of "root" in Kythe facts')],
+        [opt(pythonpath), type(atom), default(''), longflags(['pythonpath']),
+         help('Similar to $PYTHONPATH for resolving imports (":"-separated paths)')],
+        [opt(rootpath), type(atom), default(''), longflags(['rootpath']),
+         help('":"-separated list of paths used to turn an absolute path into a canonical FQN')],
         [opt(python_version), type(integer), default(3), longflags(python_version),
          help('Python major version')]
     ],
-    opt_arguments(OptsSpec, Opts, PositionalArgs),
-    must_once(PositionalArgs = [Src]),  % TODO: nice error message
-    must_once(run_parse_cmd(Opts, Src, OutFile)),
+    opt_arguments(OptsSpec, Opts0, PositionalArgs),
+    must_once_msg(PositionalArgs = [Src], 'Missing/extra positional args', []),
+    split_path_string(pythonpath, Opts0, Opts1),
+    split_path_string(rootpath, Opts1, Opts),
+    memberchk(rootpath(RootPaths), Opts),
+    memberchk(pythonpath(PythonPaths), Opts),
+    validate_paths(PythonPaths, RootPaths),
+    path_to_python_module(Src, RootPaths, SrcFqn),
     must_once(
-        process(OutFile)),
+        parse_and_process_module(SrcFqn, Opts)),
     halt.
 
-%! run_parse_cmd(+Opts, +Src, -OutFile) is det.
-%  Run the parse command into a temporary file. (The temp file is
-%  automatically deleted on graceful termination.)
-%  An alternative would be to run the parse command as a process, into
-%  a a pipe. This needs more memory, is more complicated to manage,
-%  and is a bit more difficult to debug.
-run_parse_cmd(Opts, Src, OutFile) :-
-    must_once(ground(Opts)),
-    memberchk(parsecmd(ParseCmd), Opts),
-    memberchk(corpus(Corpus), Opts),
-    memberchk(root(Root), Opts),
-    memberchk(python_version(PythonVersion), Opts),
-    must_once(memberchk(PythonVersion, [2, 3])),
-    tmp_file_stream(OutFile, OutFileStream, [encoding(binary), extension('fqn-json')]),
-    close(OutFileStream),
-    atomic_list_concat(
-            [ParseCmd,
-             " --corpus='", Corpus, "'",
-             " --root='", Root, "'",
-             " --python_version='", PythonVersion, "'",
-             " --src='", Src, "'",
-             " --out_fqn_expr='", OutFile, "'"],
-            Cmd),
-    shell(Cmd, Status),
-    must_once(Status == 0).
+%! validate_paths(+PythonPaths:list(atom), RootPaths:list(atom)) is semidet.
+validate_paths(PythonPaths, RootPaths) :-
+    forall(
+        member(P, PythonPaths),
+        must_once(
+            (member(R, RootPaths),
+             starts_with(P, R)))).
 
-%! process(+FqnExprPath:atom) is det.
+%! split_path_string0(+OptName:atom, +Opts0:list, -Opts:list) is det.
+%  Find the option given by OptName in Opts0, split the value into
+%  components in a list, add back into Opts (can be in a different
+%  position in the list).
+split_path_string(OptName, Opts0, [NewOpt|Opts1]) :-
+    Opt =.. [OptName, PathStr],
+    select(Opt, Opts0, Opts1),
+    split_atom(PathStr, ':', '', PathList0),
+    maplist(absolute_dir, PathList0, PathList),
+    NewOpt =.. [OptName, PathList].
+
+%! absolute_dir(+Path0:atom, -AbsPath:atom) is det.
+%  Apply absolute_file_name to Path0, giving AbsPath, ensuring it's a directory
+%  and appending '/' to the name.
+absolute_dir(Path0, AbsPath) :-
+    remove_suffix_star(Path0, '/', Path),
+    absolute_file_name(Path, AbsPath0, [access(read), file_type(directory), file_errors(fail)]),
+    atom_concat(AbsPath0, '/', AbsPath).
+
+%! split_atom(+Atom:atom, +SepChars:atom, +PadChars:atom, -SubAtoms:list(atom)) is det.
+%  Like split_string, but result is a list of atoms.
+split_atom(Atom, SepChars, PadChars, SubAtoms) :-
+    split_string(Atom, SepChars, PadChars, SubString),
+    string_list_atom_list(SubString, SubAtoms).
+
+%! string_list_atom_list(+Strings:list(string), -Atoms:list(atom)) is det.
+%  Convert a list of strings to a list of atoms.
+string_list_atom_list([], []).
+string_list_atom_list([S|Ss], [A|As]) :-
+    atom_string(A, S),
+    string_list_atom_list(Ss, As).
+
+%! starts_with(+Full:atom, +Prefix:atom) is semidet.
+%  Test for Full starting with Prefix.
+starts_with(Full, Prefix) :-
+    starts_with(Full, Prefix, _).
+
+%! starts_with(+Full:atom, +Prefix:atom, -Rest:atom) is semidet.
+%  Full = Prefix concat Rest
+starts_with(Full, Prefix, Rest) :-
+    string_concat(Prefix, RestStr, Full),
+    atom_string(Rest, RestStr).
+
+%! remove_suffix_star(+Full:atom, +Suffix:atom, -NoSuffix:atom) is det.
+%  Repeatedly removes suffix if present.
+remove_suffix_star(Full, Suffix, NoSuffix) :-
+    (  atom_concat(Full1, Suffix, Full)
+    -> remove_suffix_star(Full1, Suffix, NoSuffix)
+    ;  NoSuffix = Full
+    ).
+
+%! lookup_module(+Module:atom, +RootPaths:list(atom), -CanonicalPath:atom, -FullPath:atom) is det.
+%  Given a module (e.g., 'os.path'), a list of root paths, a list of
+%  Python paths, find the file (e.g.,
+%  FullPath='/path/to/my/dir/typeshed/stdlib/3/os/path.pyi',
+%  CanonicalPath='typeshed/stdlib/3/os/path.pyi').  Assumes that all
+%  RootPaths and PythonPaths are absolute form and that the Module has
+%  been created by using an entry from PythonPaths that canonicalizes
+%  it (see validate_paths/2).
+lookup_module(Module, RootPaths, CanonicalPath, FullPath) :-
+    module_name_as_path(Module, CanonicalPath),
+    member(RootPathPrefix, RootPaths),
+    atom_concat(RootPathPrefix, CanonicalPath, FullPath),
+    path_to_python_module(FullPath, RootPaths, Fqn),
+    must_once_msg(
+        Module == Fqn,
+        'Derived FQN differs from Module name ... canonical(~q) full(~q)',
+        [CanonicalPath, FullPath]).
+
+%! module_name_as_path(+Module:atom, -Path:atom) is nondet.
+%! module_name_as_path(-Module:atom, +Path:atom) is nondet.
+%  Convert a module ('path.to.module') to a path
+%  ('path/to/module.py').  Does not check for existence of the file,
+%  nor apply any PythonPath addition or RootPath removal. Backtracks
+%  through all solutions. At least one of Module and Path must be
+%  instantiated.
+module_name_as_path(Module, Path) :-
+    (  var(Module)
+    -> py_ext(Path0, Path),
+       split_atom(Path0, '/', '', ModuleParts),
+       atomic_list_concat(ModuleParts, '.', Module)
+    ;  split_atom(Module, '.', '', ModuleParts),
+       atomic_list_concat(ModuleParts, '/', Path1),
+       py_ext(Path1, Path)
+    ).
+
+path_to_python_module(Path, RootPaths, Fqn) :-
+    canonical_path(Path, RootPaths, CanonicalPath),
+    py_ext(CanonicalPath0, CanonicalPath),
+    split_atom(CanonicalPath0, '/', '', FqnParts),
+    atomic_list_concat(FqnParts, '.', Fqn).
+
+canonical_path(Path, RootPaths, CanonicalPath) :-
+    absolute_file_name(Path, AbsPath, [access(read), file_errors(fail)]),
+    member(RootPathPart, RootPaths),
+    starts_with(AbsPath, RootPathPart, CanonicalPath).
+
+%! parse_and_process_module(+SrcFqn:atom, +Opts) is det.
 %  Read in a single file (JSON output from pykythe module, which
 %  encodes the AST nodes with FQNs), output Kythe JSON to current
 %  output stream.
-process(FqnExprPath) :-
-    read_anchors_exprs(FqnExprPath, KytheFacts, Exprs),
+parse_and_process_module(SrcFqn, Opts) :-
+    memberchk(rootpath(RootPaths), Opts),
+    lookup_module(SrcFqn, RootPaths, CanonicalSrc, Src),
+    SrcInfo = src{src_fqn: SrcFqn,
+                  canonical_src: CanonicalSrc,
+                  src: Src},
+    must_once(
+        run_parse_cmd(Opts, Src, SrcFqn, ParsedFile)),
+    must_once(
+        read_nodes(ParsedFile, Opts, Nodes)),
+    do_if(false,
+          dump_term('NODES', Nodes)),
+    must_once(
+        kythe_json(Nodes, SrcInfo, KytheFacts, Exprs)),
     do_if(false,
           dump_term('EXPRS', Exprs, [indent_arguments(auto),
                                      right_margin(72)])),
@@ -311,6 +417,32 @@ process(FqnExprPath) :-
     output_kythe_fact(SymtabKytheFact, KytheStream),
     output_kythe_facts(KytheFacts, KytheStream),
     output_kythe_facts(KytheFacts2, KytheStream).
+
+%! run_parse_cmd(+Opts, +Src, +SrcFqn, -OutFile) is det.
+%  Run the parse command into a temporary file. (The temp file is
+%  automatically deleted on graceful termination.)
+%  An alternative would be to run the parse command as a process, into
+%  a a pipe. This needs more memory, is more complicated to manage,
+%  and is a bit more difficult to debug.
+run_parse_cmd(Opts, Src, SrcFqn, OutFile) :-
+    must_once_msg(ground(Opts), 'Invalid command line options', []),
+    memberchk(parsecmd(ParseCmd), Opts),
+    memberchk(kythe_corpus(KytheCorpus), Opts),
+    memberchk(kythe_root(KytheRoot), Opts),
+    memberchk(python_version(PythonVersion), Opts),
+    must_once_msg(memberchk(PythonVersion, [2, 3]), 'Invalid Python version: ~q', [PythonVersion]),
+    tmp_file_stream(OutFile, OutFileStream, [encoding(binary), extension('fqn-json')]),
+    close(OutFileStream),
+    atomic_list_concat(
+            [ParseCmd,
+             " --kythe-corpus='", KytheCorpus, "'",
+             " --kythe-root='", KytheRoot, "'",
+             " --python_version='", PythonVersion, "'",
+             " --src='", Src, "'",
+             " --module='", SrcFqn, "'",
+             " --out_fqn_expr='", OutFile, "'"],
+            Cmd),
+    must_once_msg(shell(Cmd, 0), 'Parse failed', []).
 
 %! symtab_as_kythe_fact(+Symtab, -KytheFactAsJsonDict) is det.
 %  Convert the symtab into a Kythe fact.
@@ -326,43 +458,38 @@ symtab_as_kythe_fact(Symtab,
     % TODO: the following is dup-ed from kythe_file//0 but
     %       with Language specified
     base64(SymtabStr, SymtabStr64),
-    corpus_root_path_language(Corpus, Root, Path, Language),
-    Source = json{corpus: Corpus, root: Root, path: Path, language: Language}.
+    corpus_root_path_language(KytheCorpus, KytheRoot, Path, Language),
+    Source = json{corpus: KytheCorpus, root: KytheRoot, path: Path, language: Language}.
 
 
-%! read_anchors_exprs(+FqnExprPath:atom, +KytheFacts:list, -Exprs:list) is det.
-%  Read the JSON node tree (with FQNs), extract anchors and related
-%  facts into KytheFacts, plus Exprs (see node_anchors//2).
-read_anchors_exprs(FqnExprPath, KytheFacts, Exprs) :-
+%! read_nodes(+FqnExprPath:atom, +Opts:list, -Nodes) is det.
+%  Read the JSON node tree (with FQNs) into Nodes.
+read_nodes(FqnExprPath, Opts, Nodes) :-
     open(FqnExprPath, read, FqnExprStream),
-    must_once(
-        json_read_dict(FqnExprStream, MetaDict)),
-    must_once(
-        assert_meta(MetaDict)),
-    must_once(
-        json_read_dict(FqnExprStream, JsonDict)),
+    json_read_dict(FqnExprStream, MetaDict),
+    assert_meta(MetaDict, Opts),
+    json_read_dict(FqnExprStream, JsonDict),
     must_once(
         at_end_of_stream(FqnExprStream)),
-    must_once(
-        simplify_json(JsonDict, Nodes)),
-    do_if(false,
-          dump_term('NODES', Nodes)),
-    kythe_json(Nodes, KytheFacts, Exprs).
+    simplify_json(JsonDict, Nodes).
 
-%! assert_meta(+MetaDictJson:dict) is det.
+%! assert_meta(+MetaDictJson:dict, +Opts:list) is det.
 %  Assert the meta-data as facts. The argument is the Prolog dict form
 %  of the first JSON item (see ast_cooked.Meta).
 assert_meta(
         _{kind: "Meta",
           slots: _{
-            corpus: _{kind: "str", value: Corpus},
-            root: _{kind: "str", value: Root},
+            kythe_corpus: _{kind: "str", value: KytheCorpus},
+            kythe_root: _{kind: "str", value: KytheRoot},
             path: _{kind: "str", value: Path},
             language: _{kind: "str", value: Language},
-            contents_b64: _{kind: "str", value: ContentsB64}}}) :-
-    retractall(corpus_root_path_language(_Corpus, _Root, _Path, _Language)),
+            contents_b64: _{kind: "str", value: ContentsB64}}},
+        Opts) :-
+    retractall(corpus_root_path_language(_KytheCorpus, _KytheRoot, _Path, _Language)),
     retractall(file_contents(_)),
-    assertz(corpus_root_path_language(Corpus, Root, Path, Language)),
+    memberchk(rootpath(RootPaths), Opts),
+    canonical_path(Path, RootPaths, CanonicalPath),
+    assertz(corpus_root_path_language(KytheCorpus, KytheRoot, CanonicalPath, Language)),
     assertz(file_contents_b64(ContentsB64)).
 
 %! simplify_json(+Json, -Prolog) is det.
@@ -390,31 +517,32 @@ simplify_json(_{kind: Kind, slots: Slots}, Value) :-
 simplify_json_slot_pair(Key-Value, Key-Value2) :-
     simplify_json(Value, Value2).
 
-%! kythe_json(+Nodes, -KytheFacts:list, -Exprs:list) is det.
+%! kythe_json(+Nodes, +SrcInfo:dict, -KytheFacts:list, -Exprs:list) is det.
 %  Wrapper for kythe_json//1.
 %  TODO: separate KytheFacts into those that require de-duping and
 %        those that can be simply appended (difference list). This is
 %        for performance because get_assoc/3 and assoc:insert/5
 %        (calling compare/3) are the performance bottleneck.
-kythe_json(Node, KytheFacts, Exprs) :-
+kythe_json(Node, SrcInfo, KytheFacts, Exprs) :-
     empty_assoc(KytheFacts0),
-    kythe_json(Node, KytheFacts0, KytheFacts1, Exprs, []),  % phrase(kythe_json(Node), KytheFacts, Exprs)
+    kythe_json(Node, SrcInfo, KytheFacts0, KytheFacts1, Exprs, []),  % phrase(kythe_json(Node), KytheFacts, Exprs)
     assoc_to_values(KytheFacts1, KytheFacts).
 
 %! kythe_json(+Nodes)//[kythe_fact, expr] is det.
 %  Traverse the Nodes, accumulating in KytheFacts (mostly anchors)
 %  and Expr (which will be traversed later, to fill in dynamically
 %  created attribtes (e.g., self.foo).
-kythe_json(Node) -->>
-    kythe_file,
+kythe_json(Node, SrcInfo) -->>
+    kythe_file(SrcInfo),
     node_anchors(Node, _Expr).
 
 %! kythe_file//[kythe_fact] is det.
 %  Generate the KytheFacts at the file level.
-kythe_file -->>
+kythe_file(SrcInfo) -->>
     % TODO: output x-numlines, x-html ?
-    { corpus_root_path_language(Corpus, Root, Path, _Language) },
-    { Source = json{corpus: Corpus, root: Root, path: Path} },
+    { corpus_root_path_language(KytheCorpus, KytheRoot, Path, _Language) },
+    { must_once(Path == SrcInfo.canonical_src) },
+    { Source = json{corpus: KytheCorpus, root: KytheRoot, path: Path} },
     kythe_fact(Source, '/kythe/node/kind', 'file'),
     { file_contents_b64(ContentsB64) },
     kythe_fact_b64(Source, '/kythe/text', ContentsB64).
@@ -713,6 +841,8 @@ node_anchors_impl('WithStmt'{items: Items, suite: Suite},
     node_anchors_list(Items, _),  % handled by WithItemNode
     node_anchors(Suite, _).
 
+% TODO: need to update with file lookup etc.
+% TODO: add module info into symtab for handling recursive imports
 %! dots_and_dotted_name(+DotsAndDottedName, +ImportPart, -CombImportPart)//[kythe_fact] is det.
 %  The name is zero or more ImportDotNode's followed by zero or one
 %  DottedNameNode. If there are no ImportDotNode's, then the result is
@@ -721,9 +851,9 @@ node_anchors_impl('WithStmt'{items: Items, suite: Suite},
 %  from the Meta information for the file, followed by '/..' as
 %  needed.
 dots_and_dotted_name(DotsAndDottedName, ImportPart, CombImportPart) -->>
-    { corpus_root_path_language(_Corpus, _Root, Path, _Language) },
+    { corpus_root_path_language(_KytheCorpus, _KytheRoot, Path, _Language) },
     { must_once(
-          remove_py_ext(Path, PathBase)) },
+          py_ext(PathBase, Path)) },
     { from_dots_import(DotsAndDottedName, PathBase, Dots, DottedNameList) },
     { atomic_list_concat(DottedNameList, '.', DottedName) },
     (  { Dots = [] }
@@ -732,10 +862,19 @@ dots_and_dotted_name(DotsAndDottedName, ImportPart, CombImportPart) -->>
     ),
     from_import_part(ImportPart, FullFromName, CombImportPart).
 
-remove_py_ext(Path, PathBase) :-
+%! py_ext(+Path:atom, -PathBase:atom is nondet.
+%! py_ext(-Path:atom, +PathBase:atom is nondet.
+%  Path unifies with all permutations of PathBase plus {.py,.pyi} and
+%  __init_ equivalents
+py_ext(PathBase, Path) :-
     % TODO: allow more than .py and .pyi as extensions?
-    ( Ext = 'py' ; Ext = 'pyi' ),
-    file_name_extension(PathBase, Ext, Path).
+    % TODO: verify order of checking.
+    % TODO: allow more than one "hit" (e.g., if there are both a .py and .pyi,
+    %       then use the .pyi to get type info for the .py and possibly create
+    %       anchors in both)
+    ( Ext = '.py' ; Ext = '.pyi' ; Ext = '/__init__.py' ; Ext = '/__init__.pyi' ),
+    % file_name_extension/3 adds a '.', so can't use for /__init__.*
+    atom_concat(PathBase, Ext, Path).
 
 %! from_dots_import(+ImportPart:list, +PathBase:atom, -CombImportPart:list) is det.
 from_dots_import([], _, [], []) :- !.
@@ -835,7 +974,7 @@ node_astn('Astn'{start: int(Start), end: int(End), value: str(Value)},
 dot_edge_name("False", '/kythe/edge/ref').
 dot_edge_name("True", '/kythe/edge/defines/binding').
 
-%! anchor(+Start, +End, +Source)//[kythe_fact] is det.
+%! anchor(+Start, +End, -Source)//[kythe_fact] is det.
 %  Create the Kythe facts for an anchor.
 anchor(Start, End, Source) -->>
     { format(string(Signature), '@~d:~d', [Start, End]) },
@@ -866,14 +1005,14 @@ kythe_fact_b64(Source, FactName, FactBase64) -->>
 %! signature_source(+Signature:string, -Source) is det.
 %  Create a Kythe "source" tuple from a Signature string.
 signature_source(Signature, Source) :-
-    corpus_root_path_language(Corpus, Root, Path, _Language),
-    Source = json{signature: Signature, corpus: Corpus, root: Root, path: Path}.
+    corpus_root_path_language(KytheCorpus, KytheRoot, Path, _Language),
+    Source = json{signature: Signature, corpus: KytheCorpus, root: KytheRoot, path: Path}.
 
-%! signaure_node(+Signature:string, -Vname) is det.
+%! signature_node(+Signature:string, -Vname) is det.
 %  Create a Kythe "vname" from a Signature string
 signature_node(Signature, Vname) :-
-    corpus_root_path_language(Corpus, Root, _Path, Language),
-    Vname = json{signature: Signature, corpus: Corpus, root: Root, language: Language}.
+    corpus_root_path_language(KytheCorpus, KytheRoot, _Path, Language),
+    Vname = json{signature: Signature, corpus: KytheCorpus, root: KytheRoot, language: Language}.
 
 %! output_kythe_facts(+Anchors:list, +KytheStream:stream) is det.
 %  Output the Kythe facts to a specified stream.
@@ -1221,7 +1360,9 @@ kythe_fact_accum(T, In, Out) :-
        ;  put_assoc(fact(Source,FactName), In, T, Out)
        )
     ;  T = json{source: Source, edge_kind: EdgeKind, target: Target, fact_name: '/'},
-       must_once(\+ get_assoc(edge(Source,EdgeKind,Target), In, _)),
+       must_once_msg(
+           \+ get_assoc(edge(Source,EdgeKind,Target), In, _),
+           'Duplicate Kythe edge facts', []),
        put_assoc(edge(Source,EdgeKind,Target), In, T, Out)
     ;  throw(error(bad_kythe_fact(T), _))
     ).
@@ -1314,43 +1455,3 @@ print_term_cleaned(Term, Options, TermStr) :-
             (current_output(TermStream),
              print_term(Term, [output(TermStream)|Options]))),
     re_replace(" *\n"/g, "\n", TermStr0, TermStr).
-
-%! read_kythe_symtab(+KytheStream, -Symtab, -Text) is det.
-%  read Kythe JSON for /kythe/x-symtab, /kythe/text
-read_kythe_symtab(KytheStream, Symtab, Text) :-
-    json_read_dict(KytheStream, SymtabJson),
-    json_read_dict(KytheStream, FileJson),
-    json_read_dict(KytheStream, TextJson),
-    base64("file", File64atom),
-    atom_string(File64atom, File64string),
-    must_once(
-        SymtabJson = _{fact_name: "/kythe/x-symtab",
-                       fact_value: Symtab64,
-                       source: _{corpus: _,
-                                 root: _,
-                                 language: "python",
-                                 path: FilePath}}),
-    must_once(
-        FileJson = _{fact_name: "/kythe/node/kind",
-                     fact_value: File64string,
-                     source: _{corpus: _,
-                               root: _,
-                               path: FilePath}}),
-    must_once(
-            TextJson = _{fact_name: "/kythe/text",
-                         fact_value: Text64,
-                         source: _{corpus: _,
-                                   root: _,
-                                   path: FilePath}}),
-    base64(SymtabStr, Symtab64),
-    term_to_atom(Symtab, SymtabStr),
-    base64(Text, Text64).
-
-test_simple :-
-    open('/tmp/pykythe_test/simple-kythe.json',
-         read,
-         KytheStream,
-         []),
-    read_kythe_symtab(KytheStream, Symtab, Text),
-    dump_term('SYMTAB', Symtab),
-    format('===TEXT===~n~w=== end TEXT===~n', [Text]).

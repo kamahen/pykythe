@@ -26,15 +26,19 @@ def main() -> int:
         description='Parse Python file, generating Kythe facts')
     # TODO: allow nargs='+' for multiple inputs?
     parser.add_argument('--src', required=True, help='Input file')
+    parser.add_argument('--module', required=True,
+                        help='FQN of module corresponding to --src')
     parser.add_argument(
         '--out_fqn_expr',
         required=True,
         help=('output file for fqn_expr JSON facts. '
               'These are post-processed to further resolve names.'))
     parser.add_argument(
-        '--corpus', default='', help='Value of "corpus" in Kythe facts')
+        '--kythe-corpus', dest='kythe_corpus', default='',
+        help='Value of "corpus" in Kythe facts')
     parser.add_argument(
-        '--root', default='', help='Value of "root" in Kythe facts')
+        '--kythe-root', dest='kythe_root', default='',
+        help='Value of "root" in Kythe facts')
     parser.add_argument(
         '--python_version',
         default=3,
@@ -55,8 +59,8 @@ def main() -> int:
     # b64encode returns bytes, so use decode() to turn it into a
     # string, because json.dumps can't process bytes.
     meta = ast_cooked.Meta(
-        corpus=args.corpus,
-        root=args.root,
+        kythe_corpus=args.kythe_corpus,
+        kythe_root=args.kythe_root,
         path=args.src,
         language='python',
         contents_b64=base64.b64encode(src_content).decode('ascii'))
@@ -69,7 +73,7 @@ def main() -> int:
     logging.debug('AS_JSON_DICT= %r', cooked_nodes_json_dict)
     logging.debug('AS_JSON: %s', json.dumps(cooked_nodes_json_dict))
     fqn_ctx = ast_cooked.FqnCtx(
-        fqn_dot=file_to_module(args.src) + '.',
+        fqn_dot=args.module + '.',
         bindings=collections.ChainMap(collections.OrderedDict()),
         class_fqn=None,
         class_astn=None,
@@ -82,12 +86,6 @@ def main() -> int:
         print(add_fqns.as_json_str(), file=out_fqn_expr_file)
     logging.debug('Finished')
     return 0
-
-
-def file_to_module(file_name: str) -> str:
-    root, _ = os.path.splitext(file_name)
-    components = root.split(os.path.sep)
-    return '.'.join(components)
 
 
 if __name__ == '__main__':

@@ -1370,10 +1370,11 @@ class YieldNode(ListBase):
 class Meta(pod.PlainOldDataExtended):
     """Information about the file."""
 
-    corpus: Text
-    root: Text
+    kythe_corpus: Text
+    kythe_root: Text
     path: Text
     language: Text
     contents_b64: Text
 
-    __slots__ = ['corpus', 'root', 'path', 'language', 'contents_b64']
+    __slots__ = [
+        'kythe_corpus', 'kythe_root', 'path', 'language', 'contents_b64']

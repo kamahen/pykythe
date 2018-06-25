@@ -1511,8 +1511,11 @@ def parse(src_bytes: bytes, python_version: int) -> pytree.Base:
         encoding, _ = tokenize.detect_encoding(src_f.readline)  # type: ignore
     src_str = codecs.decode(src_bytes, encoding)
     lib2to3_logger = logging.getLogger('pykythe')
-    grammar = (pygram.python_grammar if python_version == 2 else
-               pygram.python_grammar_no_print_statement)
+    grammar = pygram.python_grammar
+    if python_version == 3:
+        # TODO: why doesn't lib2to3.pygram do this for "exec"?
+        del grammar.keywords["print"]
+        del grammar.keywords["exec"]
     parser_driver = driver.Driver(
         grammar, convert=_convert, logger=lib2to3_logger)
     if not src_str.endswith('\n'):  # pragma: no cover

@@ -16,13 +16,13 @@ from .xxx import foo3
 from .. import foo1
 #- { @foo2 defines/binding Foo2? }
 from . import foo2
-#- { @xos defines/binding Xos? }  // TODO: needs full implementation
-import xos
+#- { @os defines/binding Os? }  // TODO: needs full implementation
+import os
 #- // !{ @path defines/binding _ }  // TODO: check that there's no anchor either, also for other "from" and "import"
-#- { @xos defines/binding _Xos2?}  // TODO: check that there's no anchor either
-import xos.path
+#- { @os defines/binding _Os2?}  // TODO: check that there's no anchor either
+import os.path
 #- { @os_path defines/binding OsPath? }  // TODO: needs full implementation
-import xos.path2 as os_path
+import os.path2 as os_path
 
 #- @foo4 ref Foo4?
 foo4

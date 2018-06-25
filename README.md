@@ -34,9 +34,10 @@ out (on Linux):
 
 * Install `python3.6`
 
-* Install [SWI-Prolog](http://www.swi-prolog.org/Download.html). You need at
-  least version 7.7 (version 7.6 has a bug in how it handles arguments), so as
-  of 2018-06-08, this means using the "devel" download or PPA.
+* Install [SWI-Prolog](http://www.swi-prolog.org/Download.html). You
+  need at least version 7.7.13 (earlier versions have a bug in how
+  they handle command line arguments), so as of 2018-06-08, this means
+  using the "devel" download or PPA.
 
   After installing:
 

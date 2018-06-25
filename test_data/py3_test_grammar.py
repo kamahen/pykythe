@@ -27,8 +27,8 @@ TODO: remove all "#- //" lines (these are "to be implemented" syntactic items).
 #- // TODO: fix the vname's corpus, root
 #- //       vname(Signature?, Corpus?, Root?, Path?, Language?)
 
-#- // Pkg=vname("test_data.py3_test_grammar", _, _, _, python).node/kind package
-#- { File=vname("", "test-corpus", "test-root", "test_data/py3_test_grammar.py", "").node/kind file }
+#- // Pkg=vname("pykythe.test_data.py3_test_grammar", _, _, _, python).node/kind package
+#- { File=vname("", "test-corpus", "test-root", "pykythe/test_data/py3_test_grammar.py", "").node/kind file }
 #- // File childof Pkg
 #- { File.text _ }  // The contents of this file
 #- // File.text/encoding "utf-8"
@@ -37,26 +37,26 @@ TODO: remove all "#- //" lines (these are "to be implemented" syntactic items).
 #- // @#0test ref vname("Lib.test", _, _, _, python)
 #- // @support ref vname("Lib.test.support", _, _, _, python)
 #- // @run_unittest ref vname("Lib.test.support.run_unittest", _, _, _, python)
-#- // { @run_unittest defines/binding vname("test_data.py3_test_grammar.run_unittest", "test-corpus", "test-root", "", python) }
+#- // { @run_unittest defines/binding vname("pykythe.test_data.py3_test_grammar.run_unittest", "test-corpus", "test-root", "", python) }
 #- // @check_syntax_error ref vname("Lib.test.support.check_syntax_error", _, _, _, python)
-#- // { @check_syntax_error defines/binding vname("test_data.py3_test_grammar.check_syntax_error", _, _, _, python) }
+#- // { @check_syntax_error defines/binding vname("pykythe.test_data.py3_test_grammar.check_syntax_error", _, _, _, python) }
 from test.support import run_unittest, check_syntax_error
 import unittest
 import sys
 # testing import *
 from sys import *
 
-#- { @TokenTests defines/binding TokenTests=vname("test_data.py3_test_grammar.TokenTests", _, _, _, python) }
+#- { @TokenTests defines/binding TokenTests=vname("pykythe.test_data.py3_test_grammar.TokenTests", _, _, _, python) }
 #- { TokenTests.node/kind record }
 #- { TokenTests.subkind class }
 class TokenTests(unittest.TestCase):
 
-    #- { @testBackslash defines/binding TestBackslash=vname("test_data.py3_test_grammar.TokenTests.testBackslash", _, _, _, python) }
+    #- { @testBackslash defines/binding TestBackslash=vname("pykythe.test_data.py3_test_grammar.TokenTests.testBackslash", _, _, _, python) }
     #- { TestBackslash.node/kind function }
-    #- { @self defines/binding TestBackslash_self=vname("test_data.py3_test_grammar.TokenTests.testBackslash.<local>.self", _, _, _, python) }
+    #- { @self defines/binding TestBackslash_self=vname("pykythe.test_data.py3_test_grammar.TokenTests.testBackslash.<local>.self", _, _, _, python) }
     def testBackslash(self):
         # Backslash means line continuation:
-        #- { @x defines/binding TokenTest_testBackslash_local_x=vname("test_data.py3_test_grammar.TokenTests.testBackslash.<local>.x", _, _, _, python) }
+        #- { @x defines/binding TokenTest_testBackslash_local_x=vname("pykythe.test_data.py3_test_grammar.TokenTests.testBackslash.<local>.x", _, _, _, python) }
         #- !{ @x ref _ }
         x = 1 \
         + 1
@@ -620,11 +620,11 @@ class GrammarTests(unittest.TestCase):
         for i in 1, 2, 3: pass
         for i, j, k in (): pass
         else: pass
-        #- { @Squares defines/binding Squares=vname("test_data.py3_test_grammar.GrammarTests.testFor.<local>.Squares", _, _, _, python) }
+        #- { @Squares defines/binding Squares=vname("pykythe.test_data.py3_test_grammar.GrammarTests.testFor.<local>.Squares", _, _, _, python) }
         #- { Squares.node/kind record }
         #- { Squares.subkind class }
         class Squares:
-            #- { @__init__ defines/binding vname("test_data.py3_test_grammar.GrammarTests.testFor.<local>.Squares.__init__", _, _, _, python) }
+            #- { @__init__ defines/binding vname("pykythe.test_data.py3_test_grammar.GrammarTests.testFor.<local>.Squares.__init__", _, _, _, python) }
             def __init__(self, max):
                 self.max = max
                 self.sofar = []

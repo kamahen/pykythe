@@ -31,6 +31,9 @@ TESTGITHUB=$(HOME)/tmp/test-github
 TESTOUTDIR=/tmp/pykythe_test
 BROWSE_PORT=8002
 PYTHON3_EXE:=$(shell which python3.6)
+KYTHE_CORPUS_ROOT_OPT=--kythe-corpus='test-corpus' --kythe-root='test-root'
+PARSECMD_OPT=--parsecmd="$(PYTHON3_EXE) -B -m pykythe"
+PYTHONPATH_OPT=--pythonpath='./pykythe:../typeshed/stdlib/3.7:../typeshed/stdlib/3.6:../typeshed/stdlib/3.5:../typeshed/stdlib/3.4:../typeshed/stdlib/3.3:../typeshed/stdlib/3:../typeshed/stdlib/2and3'
 SWIPL_EXE:=$(shell which swipl)
 # COVERAGE=/usr/local/bin/coverage
 # COVERAGE:=$(shell type -p coverage)  # doesn't work because "type" isn't a command
@@ -38,8 +41,9 @@ COVERAGE:=$(shell which coverage)
 TIME=time
 
 all_tests: test test_grammar test test_grammar  # pykythe_http_server
+all_tests2: $(TESTOUTDIR)/builtins-kythe.json  # DO NOT SUBMIT
 
-all_tests_plus: all_tests pyformat mypy
+all_tests_plus: all_tests all_tests2 pyformat mypy
 
 test: tests/test_pykythe.py \
 		pykythe/ast_raw.py \
@@ -131,11 +135,23 @@ $(TESTOUTDIR)/%-kythe.json: \
 	@# ... without that, it'll stop, waiting for input
 	@# If you add --quiet, you might be confused by this situation
 	$(TIME) $(SWIPL_EXE) -O -s pykythe/pykythe.pl \
-	    --parsecmd="$(PYTHON3_EXE) -B -m pykythe" \
-	    --corpus='test-corpus' \
-	    --root='test-root' \
+	    $(PARSECMD_OPT) $(KYTHE_CORPUS_ROOT_OPT) \
+	    --rootpath=.. $(PYTHONPATH_OPT) \
 	    "$<" >"$@" 2>"$@-error" </dev/null
 	cat "$@-error"
+	@# for the following, see the rule for %-.json-decoded
+	$(PYTHON3_EXE) -B scripts/decode_json.py <"$@" >"$@-decoded"
+
+# TODO: delete the following once we're processing builtins properly
+$(TESTOUTDIR)/builtins-kythe.json: FORCE
+	mkdir -p $(TESTOUTDIR)
+	$(TIME) $(SWIPL_EXE) -O -s pykythe/pykythe.pl \
+	    $(PARSECMD_OPT) $(KYTHE_CORPUS_ROOT_OPT) \
+	    --rootpath=.. $(PYTHONPATH_OPT) \
+	    "../typeshed/stdlib/3/builtins.pyi" >"$@" 2>"$@-error" </dev/null
+	cat "$@-error"
+	@# for the following, see the rule for %-.json-decoded
+	$(PYTHON3_EXE) -B scripts/decode_json.py <"$@" >"$@-decoded"
 
 %.json-decoded: %.json scripts/decode_json.py
 	$(PYTHON3_EXE) -B scripts/decode_json.py <"$<" >"$@"
@@ -160,7 +176,7 @@ prep_server: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).nq.gz
 	$(WRITE_TABLES_EXE) -graphstore=$(TESTOUTDIR)/graphstore -out=$(TESTOUTDIR)/tables
 	$(TRIPLES_EXE) "$<" | \
 		gzip >"$@"
-	# 	$(TRIPLES_EXE) -graphstore $(TESTOUTDIR)/graphstore
+	@# 	$(TRIPLES_EXE) -graphstore $(TESTOUTDIR)/graphstore
 
 
 run_server: prep_server
@@ -190,7 +206,7 @@ push_to_github:
 	@# The following is not needed ("git clone" sets this up):
 	@#   git remote add origin https://github.com/kamahen/pykythe.git
 	cd $(TESTGITHUB)/pykythe && git pull
-	rsync -aAHX --exclude .git \
+	rsync -aAHX --delete --exclude .git \
 		--exclude .coverage --exclude htmlcov --exclude __pykythe__ \
 		--exclude snippets.py \
 		./ $(TESTGITHUB)/pykythe/
@@ -216,7 +232,7 @@ coverage:
 	-# TODO: use the variables in the rule for $(TESTOUTDIR)/%-kythe.json
 	-# TODO: run test_pykythe.py and add to coverage results
 	$(PYTHON3_EXE) $(COVERAGE) run --branch -m pykythe \
-		--corpus='test-corpus' --root='test-root' \
+		$(KYTHE_CORPUS_ROOT_OPT) \
 		--src="$(TEST_GRAMMAR_DIR)/py3_test_grammar.py" \
 		--out_kythe=/dev/null --out_fqn_expr=/dev/null
 	-# $(PYTHON3_EXE) $(COVERAGE) run --branch tests/test_pykythe.py
