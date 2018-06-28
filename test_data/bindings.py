@@ -5,11 +5,11 @@
 # TODO: These only test Python 3; need similar tests for Python2
 # (e.g., list comprehensions "leak" in PYthon2)
 
-#- // Pkg=vname("test_data.py3_test_grammar", _, _, _, python).node/kind package
+#- Pkg=vname("pykythe.test_data.bindings", "test-corpus", "test-root", "", python).node/kind package
 #- { File=vname("", "test-corpus", "test-root", "pykythe/test_data/bindings.py", "").node/kind file }
-#- // File childof Pkg
+#- File childof Pkg
 #- { File.text _ }  // The contents of this file
-#- // File.text/encoding "utf-8"
+#- File.text/encoding "utf-8"
 
 
 def testLhsTrailer():

@@ -24,14 +24,11 @@ TODO: remove all "#- //" lines (these are "to be implemented" syntactic items).
 # regression test, the filterwarnings() call has been added to
 # regrtest.py.
 
-#- // TODO: fix the vname's corpus, root
-#- //       vname(Signature?, Corpus?, Root?, Path?, Language?)
-
-#- // Pkg=vname("pykythe.test_data.py3_test_grammar", _, _, _, python).node/kind package
+#- Pkg=vname("pykythe.test_data.py3_test_grammar", "test-corpus", "test-root", "", python).node/kind package
 #- { File=vname("", "test-corpus", "test-root", "pykythe/test_data/py3_test_grammar.py", "").node/kind file }
-#- // File childof Pkg
+#- File childof Pkg
 #- { File.text _ }  // The contents of this file
-#- // File.text/encoding "utf-8"
+#- File.text/encoding "utf-8"
 
 
 #- // @#0test ref vname("Lib.test", _, _, _, python)

@@ -53,7 +53,7 @@ def main() -> int:
         src_file = ast.File(
             path=args.src,
             content=src_content,
-            encoding='utf-8')  # TODO: get encoding from parse
+            encoding='utf-8')  # TODO: get encoding from lib2to3.pgen2.tokenize.detect_encoding
         parse_tree = ast_raw.parse(src_content, args.python_version)
 
     # b64encode returns bytes, so use decode() to turn it into a
@@ -63,7 +63,8 @@ def main() -> int:
         kythe_root=args.kythe_root,
         path=args.src,
         language='python',
-        contents_b64=base64.b64encode(src_content).decode('ascii'))
+        contents_b64=base64.b64encode(src_content).decode('ascii'),
+        encoding=src_file.encoding)
 
     logging.debug('RAW= %r', parse_tree)
     cooked_nodes = ast_raw.cvt_parse_tree(

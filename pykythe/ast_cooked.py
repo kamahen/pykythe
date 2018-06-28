@@ -1375,6 +1375,8 @@ class Meta(pod.PlainOldDataExtended):
     path: Text
     language: Text
     contents_b64: Text
+    encoding: Text
 
     __slots__ = [
-        'kythe_corpus', 'kythe_root', 'path', 'language', 'contents_b64']
+        'kythe_corpus', 'kythe_root', 'path', 'language', 'contents_b64',
+        'encoding']
