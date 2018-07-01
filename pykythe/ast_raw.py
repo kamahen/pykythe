@@ -178,7 +178,7 @@ def cvt_argument(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             logging.warning(
                 'argument not in form name=expr: %r', node)  # pragma: no cover
             return cvt(node.children[2], ctx)  # pragma: no cover
-        assert node.children[1].type == SYMS_COMP_FOR
+        assert node.children[1].type in SYMS_COMP_FOR
         assert len(node.children) == 2
         # the arg is a generator
         return ast_cooked.DictGenListSetMakerCompForNode(
@@ -329,7 +329,9 @@ def cvt_classdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 
 
 def cvt_comp_for(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
-    """comp_for: [ASYNC] 'for' exprlist 'in' testlist_safe [comp_iter]"""
+    """comp_for: [ASYNC] 'for' exprlist 'in' or_test [comp_iter]
+    old_comp_for: [ASYNC] 'for' exprlist 'in' testlist_safe [old_comp_iter]
+    """
     assert ctx.name_ctx is NameCtx.REF, [node]
     ch0 = xcast(pytree.Leaf, node.children[0])
     if ch0.value == 'async':
@@ -357,7 +359,9 @@ def cvt_comp_for(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 
 
 def cvt_comp_if(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
-    """comp_if: 'if' old_test [comp_iter]"""
+    """comp_if: 'if' old_test [comp_iter]
+    old_comp_if: 'if' old_test [old_comp_iter]
+    """
     assert ctx.name_ctx is NameCtx.REF, [node]
     if len(node.children) == 2:
         return cvt(node.children[1], ctx)
@@ -368,7 +372,9 @@ def cvt_comp_if(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 
 
 def cvt_comp_iter(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
-    """comp_iter: comp_for | comp_if"""
+    """comp_iter: comp_for | comp_if
+    old_comp_iter: old_comp_for | old_comp_if
+    """
     assert ctx.name_ctx is NameCtx.REF, [node]
     return cvt(node.children[0], ctx)
 
@@ -465,7 +471,7 @@ def cvt_dictsetmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     if len(node.children) == 1:
         return ast_cooked.DictSetMakerNode(items=[cvt(node.children[0], ctx)])
     if (len(node.children) == 4 and node.children[1].type == token.COLON and
-            node.children[3].type == SYMS_COMP_FOR):
+            node.children[3].type in SYMS_COMP_FOR):
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=ast_cooked.DictKeyValue(
                 items=[cvt(node.children[0], ctx),
@@ -474,13 +480,13 @@ def cvt_dictsetmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
                            cvt(node.children[3], ctx)))
     if (len(node.children) == 3 and
             node.children[0].type == token.DOUBLESTAR and
-            node.children[2].type == SYMS_COMP_FOR):
+            node.children[2].type in SYMS_COMP_FOR):
         # TODO: test case
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=cvt(node.children[1], ctx),  # ignore '**'
             comp_for=xcast(ast_cooked.CompForNode,
                            cvt(node.children[2], ctx)))
-    if node.children[1] == SYMS_COMP_FOR:
+    if node.children[1] in SYMS_COMP_FOR:
         # TODO: test case
         assert len(node.children) == 2
         return ast_cooked.DictGenListSetMakerCompForNode(
@@ -809,9 +815,9 @@ def cvt_lambdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 
 
 def cvt_listmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
-    """listmaker: (test|star_expr) ( comp_for | (',' (test|star_expr))* [','] )"""
+    """listmaker: (test|star_expr) ( old_comp_for | (',' (test|star_expr))* [','] )"""
     assert ctx.name_ctx is NameCtx.REF, [node]
-    if len(node.children) > 1 and node.children[1].type == SYMS_COMP_FOR:
+    if len(node.children) > 1 and node.children[1].type in SYMS_COMP_FOR:
         assert len(node.children) == 2
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=cvt(node.children[0], ctx),
@@ -1053,10 +1059,10 @@ def cvt_testlist1(
 
 
 def cvt_testlist_gexp(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
-    """testlist_gexp: (test|star_expr) ( comp_for | (',' (test|star_expr))* [','] )"""
+    """testlist_gexp: (test|star_expr) ( old_comp_for | (',' (test|star_expr))* [','] )"""
     # Can appear on left of assignment
     # Similar to cvt_listmaker
-    if len(node.children) > 1 and node.children[1].type == SYMS_COMP_FOR:
+    if len(node.children) > 1 and node.children[1].type in SYMS_COMP_FOR:
         assert len(node.children) == 2
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=cvt(node.children[0], ctx),
@@ -1318,7 +1324,6 @@ _DISPATCH = {
     token.NAME: cvt_token_name,
     token.NUMBER: cvt_token_number,
     token.STRING: cvt_token_string,
-    syms.file_input: cvt_file_input,
     syms.and_expr: cvt_binary_op,
     syms.and_test: cvt_binary_op,
     syms.annassign: cvt_annassign,
@@ -1355,6 +1360,7 @@ _DISPATCH = {
     syms.expr_stmt: cvt_expr_stmt,
     syms.exprlist: cvt_exprlist,
     syms.factor: cvt_unary_op,
+    syms.file_input: cvt_file_input,
     syms.flow_stmt: cvt_flow_stmt,
     syms.for_stmt: cvt_for_stmt,
     syms.funcdef: cvt_funcdef,
@@ -1368,6 +1374,9 @@ _DISPATCH = {
     syms.lambdef: cvt_lambdef,
     syms.listmaker: cvt_listmaker,
     syms.not_test: cvt_unary_op,
+    syms.old_comp_for: cvt_comp_for,  # for Python 3.7
+    syms.old_comp_if: cvt_comp_if,  # for Python 3.7
+    syms.old_comp_iter: cvt_comp_iter,  # for Python 3.7
     syms.old_lambdef: cvt_lambdef,  # not cvt_old_lambdef
     syms.old_test: cvt_test,  # not cvt_old_test
     syms.or_test: cvt_binary_op,
@@ -1389,8 +1398,8 @@ _DISPATCH = {
     syms.suite: cvt_suite,
     syms.term: cvt_binary_op,
     syms.test: cvt_test,
-    syms.testlist: cvt_testlist,
     syms.testlist1: cvt_testlist1,
+    syms.testlist: cvt_testlist,
     syms.testlist_gexp: cvt_testlist_gexp,
     syms.testlist_safe: cvt_testlist_safe,
     syms.testlist_star_expr: cvt_testlist_star_expr,
@@ -1417,7 +1426,6 @@ _DISPATCH = {
 
 SYMS_ANNASSIGN = syms.annassign
 SYMS_AUGASSIGN = syms.augassign
-SYMS_COMP_FOR = syms.comp_for
 SYMS_FACTOR = syms.factor
 SYMS_SIMPLE_STMT = syms.simple_stmt
 SYMS_SLICEOP = syms.sliceop
@@ -1428,6 +1436,13 @@ SYMS_STMT = syms.stmt
 SYMS_TEST = syms.test
 SYMS_TRAILER = syms.trailer
 SYMS_TNAMES = frozenset([syms.tfpdef, syms.vfpdef, syms.tname, syms.vname])
+
+# In Python 3.7, the grammar for comp_for was changed a bit. To handle
+# this, all references to syms.comp_for were changed to
+# (syms.comp_for, syms.old_comp_for).  In some cases, only one or the
+# other are needed, but it doesn't hurt to check for both (except for
+# infintesimal performance degradation).
+SYMS_COMP_FOR = (syms.comp_for, syms.old_comp_for)
 
 # pylint: enable=no-member
 

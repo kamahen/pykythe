@@ -32,7 +32,7 @@ out (on Linux):
   [Kythe repository](https://github.com/google/kythe/releases) and copy the binaries
   into `/opt/kythe`.
 
-* Install `python3.6`
+* Install `python3.7`
 
 * Install [SWI-Prolog](http://www.swi-prolog.org/Download.html). You
   need at least version 7.7.13 (earlier versions have a bug in how
@@ -54,7 +54,7 @@ out (on Linux):
   --upgrade .`) (`pytype` is special -- see its installation
   instructions).
   * You might need to symlink `mypy_extensions` into
-    `/usr/local/lib/python3.6/dist-packages`.
+    `/usr/local/lib/python3.7/dist-packages`.
 
 * Optional:
 
@@ -113,7 +113,7 @@ The code is processed with `mypy` (using the `Makefile` rule `mypy`) and
   implemented) some details of name scope, such as for list
   comprehensions).
 
-* Requires Python 3.6
+* Requires Python 3.7
 
 * Outputs JSON and expects `entrystream --read_json` to convert to the
   form that `write_tables` expects (it would be more efficient to

@@ -39,6 +39,7 @@ semantic node, identified by `C.f1`). For the latter, we capture that
 and we can therefore deduce that `c` is also of type `class(C)`.
 """
 
+from __future__ import annotations
 import collections
 import dataclasses
 from dataclasses import dataclass
@@ -102,7 +103,7 @@ class Base(pod.PlainOldDataExtended):
         for attr, value in kwargs.items():
             setattr(self, attr, value)  # pragma: no cover
 
-    def add_fqns(self, ctx: FqnCtx) -> 'Base':
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         """Generate a new tree with FQNs filled in.
 
         This defines the generic form, using self.__slots__.  In a few
@@ -135,7 +136,6 @@ class Base(pod.PlainOldDataExtended):
           A new node that transforms names to FQNs. Usually it is the
           same type as the original node but in a few cases (e.g., NameNode),
           something different is returned.
-
         """
         attr_values = {
             attr: self.attr_add_fqns(attr, ctx)
@@ -143,7 +143,7 @@ class Base(pod.PlainOldDataExtended):
         # TODO: https://github.com/python/mypy/issues/4602
         return self.__class__(**attr_values)  # type: ignore
 
-    def attr_add_fqns(self, attr: Text, ctx: FqnCtx) -> 'Base':
+    def attr_add_fqns(self, attr: Text, ctx: FqnCtx) -> Base:
         # TODO: inline this when fully debugged
         try:
             return xcast(Base, getattr(self, attr).add_fqns(ctx))
@@ -151,7 +151,7 @@ class Base(pod.PlainOldDataExtended):
             raise RuntimeError(
                 '%r node=%r:%r' % (exc, attr, getattr(self, attr))) from exc
 
-    def atom_trailer_node(self, atom: 'Base') -> 'Base':
+    def atom_trailer_node(self, atom: Base) -> Base:
         """For processing atom, trailer part of power.
 
         This is implemented only for nodes that are the result of the
@@ -456,7 +456,7 @@ class Class(Base):
 class ClassDefStmt(Base):
     """Corresponds to `classdef`."""
 
-    name: 'NameBindsNode'
+    name: NameBindsNode
     bases: Sequence[Base]
     suite: Base
     scope_bindings: Mapping[Text, None]
@@ -516,6 +516,7 @@ class CompForNode(Base):
             return ctx
         for_fqn_dot = '{}<comp_for>[{:d},{:d}].'.format(
             ctx.fqn_dot, self.for_astn.start, self.for_astn.end)
+        assert for_fqn_dot != 'pykythe.test_data.bindings.testListFor.<local>.<comp_for>[2567,2570].', [for_fqn_dot, ctx]  # DO NOT SUBMIT
         return xcast(FqnCtx, dataclasses.replace(
             ctx,
             fqn_dot=for_fqn_dot,
@@ -666,7 +667,7 @@ class DotNameTrailerNode(Base):
     # TODO: Remove binds and instead: DotNameTrailerNode{Binds,Ref}
     #       similar to Name{Binds,Ref}Fqn
 
-    name: 'NameRawNode'
+    name: NameRawNode
     binds: bool
 
     __slots__ = ['name', 'binds']
@@ -805,7 +806,7 @@ class FuncDefStmt(Base):
     subclass of Base and not of Base.
     """
 
-    name: 'NameBindsNode'
+    name: NameBindsNode
     parameters: Sequence[Base]
     return_type: Base
     suite: Base
@@ -898,7 +899,7 @@ class ImportDottedAsNameFqn(Base):
     """Created by ImportDottedAsNameNode.add_fqns."""
 
     dotted_name: DottedNameNode
-    as_name: 'NameBindsFqn'
+    as_name: NameBindsFqn
 
     __slots__ = ['dotted_name', 'as_name']
 
@@ -915,13 +916,13 @@ class ImportDottedAsNameNode(Base):
     """
 
     dotted_name: DottedNameNode
-    as_name: 'NameBindsNode'
+    as_name: NameBindsNode
 
     __slots__ = ['dotted_name', 'as_name']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return ImportDottedAsNameFqn(
-            dotted_name=xcast(DottedNameNode, 
+            dotted_name=xcast(DottedNameNode,
                 _add_fqns_wrap(self.dotted_name, ctx)),
             as_name=xcast(NameBindsFqn,
                 _add_fqns_wrap(self.as_name, ctx)))
@@ -1064,7 +1065,6 @@ class NameRawNode(Base):
     Attributes:
         astn: The AST node of the name (a Leaf node) - the name
               is self.astn.value
-
     """
 
     name: ast.Astn
@@ -1292,7 +1292,7 @@ class TryStmt(ListBase):
 class TypedArgNode(Base):
     """Corresponds to `typedargslist` `tfpdef ['=' test]` and similar."""
 
-    tname: 'TnameNode'
+    tname: TnameNode
     expr: Base
 
     __slots__ = ['tname', 'expr']

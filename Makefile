@@ -30,7 +30,7 @@ TEST_GRAMMAR_DIR=test_data
 TESTGITHUB=$(HOME)/tmp/test-github
 TESTOUTDIR=/tmp/pykythe_test
 BROWSE_PORT=8002
-PYTHON3_EXE:=$(shell which python3.6)
+PYTHON3_EXE:=$(shell which python3.7)
 KYTHE_CORPUS_ROOT_OPT=--kythe-corpus='test-corpus' --kythe-root='test-root'
 PARSECMD_OPT=--parsecmd="$(PYTHON3_EXE) -B -m pykythe"
 PYTHONPATH_OPT=--pythonpath='./pykythe:../typeshed/stdlib/3.7:../typeshed/stdlib/3.6:../typeshed/stdlib/3.5:../typeshed/stdlib/3.4:../typeshed/stdlib/3.3:../typeshed/stdlib/3:../typeshed/stdlib/2and3'
