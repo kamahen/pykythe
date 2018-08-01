@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.6
+#!/usr/bin/env python3.7
 """Read the base64-encoded Kythe JSON and decode it.
 
 This assumes that the JSON is a single item per line and that the

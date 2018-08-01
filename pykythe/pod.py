@@ -90,5 +90,5 @@ def _as_json_dict_full(value: Any) -> Any:
                                           for key, value in value.items()))
     if value is None:
         return collections.OrderedDict(kind='None')
-    return collections.OrderedDict(
-        NOT_POD=value.__class__.__name__, value=value)
+    raise NotImplementedError(
+        '{}: Unknown value: {!r}'.format(value.__class__.__name__, value))

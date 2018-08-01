@@ -12,7 +12,6 @@ import base64
 import collections
 import json
 import logging
-import os.path
 import sys
 from typing import List  # pylint: disable=unused-import
 from .typing_debug import cast as xcast

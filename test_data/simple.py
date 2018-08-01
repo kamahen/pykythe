@@ -4,36 +4,60 @@ This code is for development debugging and will change a lot over time
 (and eventually disappear).
 """
 
+#- { @#0os ref/file XXX2? }  // vname("", "test-corpus", "test-root", "${ROOT_DIR}/typeshed/stdlib/3/os/__init__.py", "")
+#- // { @#0path ref OsPath1? }  // TODO
+from os import path as os_path
+
 # TODO - remove these import's
 #- { @foo4 defines/binding Foo4?  } // TODO: needs to be implemented
 #- { @foo_bar5 defines/binding Foo5?  } // TODO: needs to be implemented
-from ....yyy import foo4, foo5 as foo_bar5
+#- { @". . . . yyy .zot" ref/file vname("", "test-corpus", "test-root", "${ROOT_DIR}/test_data/simple/../../../yyy/zot", "") }
+#- // TODO: should we have a node/kind fact for referenced files, even
+#- //       if they don't exist?
+#- //       { DotDotDotDotYyyZot.node/kind file }  // TODO: remove this?
+from . . . . yyy .zot import foo4, foo5 as foo_bar5
+
+#- { @"os.path" ref/file vname("", "test-corpus", "test-root", "${TYPESHED_DIR}/stdlib/3/os/path.pyi", "") }
 #- { @sep defines/binding Sep? }
+#- { @sep ref/imports OS_PATH_SEP? }
 from os.path import sep
+
+#- { @".xxx" ref/file vname("", "test-corpus", "test-root", "${ROOT_DIR}/test_data/simple/xxx", "") }
 #- { @foo3 defines/binding Foo3? }
 from .xxx import foo3
+
+#- { @".." ref/file vname("", "test-corpus", "test-root", "${ROOT_DIR}/test_data/simple/..", "") }
 #- { @foo1 defines/binding Foo1? }
+#- // { @foo1 ref/imports vname("${ROOT_FQN}.test_data.foo1", _, _, "", python) }
+#- { @foo1 ref/imports FOO1? }
 from .. import foo1
-#- { @foo2 defines/binding Foo2? }
+
+#- { @"." ref/file vname("", "test-corpus", "test-root", "${ROOT_DIR}/test_data/simple.py", "") }
+#- { @foo2 defines/binding vname("${ROOT_FQN}.test_data.simple.foo2", _, _, "", python) }
+#- { @foo2 ref/imports FOO2? } // TODO: is ${ROOT_DIR}/test_data/simple.py.foo2 should be ${ROOT_FQN}.test_data.simple.test_data.foo2
 from . import foo2
+
 #- { @os defines/binding Os? }  // TODO: needs full implementation
 import os
+
 #- // !{ @path defines/binding _ }  // TODO: check that there's no anchor either, also for other "from" and "import"
 #- { @os defines/binding _Os2?}  // TODO: check that there's no anchor either
 import os.path
+
 #- { @os_path defines/binding OsPath? }  // TODO: needs full implementation
 import os.path2 as os_path
 
-#- @foo4 ref Foo4?
+#- @foo4 ref Foo4=vname("${ROOT_FQN}.test_data.simple.foo4", _, _, "", python)
 foo4
 
-#- @foo4 ref Foo4?
-#- @x ref Foo4X?
+#- @foo4 ref Foo4
+#- // TODO - Foo4X = App(vname, (/tmp/pykythe_test/SUBST/test_data/simple/../../../yyy/zot/foo4::x, test-corpus, test-root, "", python))
+#- @x ref Foo4X?  // vname("${ROOT_FQN}.test_data.simple.foo4.x", _, _, "", python)
 foo4.x
 
 fff = foo4
 
-#- @x ref Foo4X?
+#- @x ref Foo4X
 fff.x
 
 # TODO: add some simple tests of the imports (e.g. foo4.bar, foo_bar5.bar)

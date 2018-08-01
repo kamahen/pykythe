@@ -42,7 +42,7 @@ class File(pod.PlainOldData):
         self.numlines = lineno - 1
 
     def astn_to_range(self, astn: pytree.Base) -> Astn:
-        """Get the Kythe anchor range from a AST leaf node."""
+        """Get the Kythe anchor range from an AST leaf node."""
         astn = xcast(pytree.Leaf, astn)
         offset = self.line_offsets[astn.lineno] + astn.column
         return Astn(

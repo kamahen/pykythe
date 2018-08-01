@@ -73,7 +73,7 @@ class TestPlainOldData(unittest.TestCase):
         self.assertEqual(repr(a_node), 'SomeData(a=1, b=2, c=3)')
         self.assertEqual(repr(b_node), 'SomeData(a=999, b=2, c=3)')
 
-        if False:  # TODO: this fails for b_unpickl because it's frozen
+        if False:  # TODO: this fails for b_unpickle because it's frozen
             b_pickle = pickle.dumps(b_node, protocol=pickle.HIGHEST_PROTOCOL)
             b_unpickle = pickle.loads(b_pickle)
             self.assertEqual(repr(b_unpickle), 'SomeData(a=999, b=2, c=3)')

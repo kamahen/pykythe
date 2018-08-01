@@ -5,11 +5,11 @@
 # TODO: These only test Python 3; need similar tests for Python2
 # (e.g., list comprehensions "leak" in PYthon2)
 
-#- Pkg=vname("pykythe.test_data.bindings", "test-corpus", "test-root", "", python).node/kind package
-#- { File=vname("", "test-corpus", "test-root", "pykythe/test_data/bindings.py", "").node/kind file }
-#- File childof Pkg
+#- { Pkg=vname("${ROOT_FQN}.test_data.bindings", "test-corpus", "test-root", "", python).node/kind package }
+#- { File=vname("", "test-corpus", "test-root", "${ROOT_DIR}/test_data/bindings.py", "").node/kind file }
+#- { File childof Pkg }
 #- { File.text _ }  // The contents of this file
-#- File.text/encoding "utf-8"
+#- { File.text/encoding "utf-8" }
 
 
 def testLhsTrailer():
@@ -40,7 +40,7 @@ testDictFor()
 
 #- { @testDictFor defines/binding TestDictFor }
 def testDictFor():
-    #- { @x defines/binding TestDictForLocalX=vname("pykythe.test_data.bindings.testDictFor.<local>.x", _, _, "", python) }
+    #- { @x defines/binding TestDictForLocalX=vname("${ROOT_FQN}.test_data.bindings.testDictFor.<local>.x", _, _, "", python) }
     #- { TestDictForLocalX.node/kind variable }
     x = 100
     #- { @#3x ref TestDictForLocalX }
@@ -132,7 +132,7 @@ def testGexpFor():
 def testForLoop():
     #- { @for_range defines/binding TestForLoopForRange }
     for_range = [1, 2, 3]
-    #- { @x defines/binding TestForLoopX=vname("pykythe.test_data.bindings.testForLoop.<local>.x", _, _, "", python) }
+    #- { @x defines/binding TestForLoopX=vname("${ROOT_FQN}.test_data.bindings.testForLoop.<local>.x", _, _, "", python) }
     #- { @i_num defines/binding TestForLoopINum }
     #- @for_range ref TestForLoopForRange
     for i_num, x in enumerate(for_range):

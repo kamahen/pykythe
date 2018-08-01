@@ -145,14 +145,14 @@ def cvt_annassign(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         expr = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
     else:
         expr = cvt(node.children[3], ctx)
-    return ast_cooked.AnnAssignNode(
+    return ast_cooked.RawAnnAssignNode(
         left_annotation=cvt(node.children[1], ctx), expr=expr)
 
 
 def cvt_arglist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """arglist: argument (',' argument)* [',']"""
     assert ctx.name_ctx is NameCtx.REF, [node]
-    return ast_cooked.ArgListNode(args=cvt_children_skip_commas(node, ctx))
+    return ast_cooked.RawArgListNode(args=cvt_children_skip_commas(node, ctx))
 
 
 def cvt_argument(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -316,7 +316,7 @@ def cvt_classdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         if node.children[3].type == token.RPAR:
             bases = []  # type: Sequence[ast_cooked.Base]
         else:
-            bases = xcast(ast_cooked.ArgListNode,
+            bases = xcast(ast_cooked.RawArgListNode,
                           cvt(node.children[3], ctx_class)).args
     else:
         bases = []
@@ -438,7 +438,8 @@ def cvt_decorator(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         if node.children[3].type == token.RPAR:
             arglist = []  # type: Sequence[ast_cooked.Base]
         else:
-            arglist = xcast(ast_cooked.ArgListNode, cvt(
+            # TODO: need test case
+            arglist = xcast(ast_cooked.RawArgListNode, cvt(
                 node.children[3], ctx)).args
     else:
         arglist = []
@@ -600,7 +601,8 @@ def cvt_expr_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         assert node.children[1].type == SYMS_ANNASSIGN
         # Treat as binding even if there's no `=` in the annassign,
         # because it's sort of a binding (defines the type).
-        annassign = xcast(ast_cooked.AnnAssignNode, cvt(node.children[1], ctx))
+        annassign = xcast(ast_cooked.RawAnnAssignNode,
+                          cvt(node.children[1], ctx))
         return ast_cooked.AnnAssignStmt(
             left=cvt_name_ctx(NameCtx.BINDING, node.children[0], ctx),
             left_annotation=annassign.left_annotation,
@@ -680,7 +682,7 @@ def cvt_funcdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     ctx.scope_bindings[name.name.value] = None
     # start a new set of bindings for the parameters, suite
     ctx_func = new_ctx_from(ctx)
-    parameters = xcast(ast_cooked.TypedArgsListNode,
+    parameters = xcast(ast_cooked.RawTypedArgsListNode,
                        cvt(node.children[2], ctx_func))
     if node.children[3].type == token.RARROW:
         return_type = cvt(node.children[4], ctx)
@@ -762,7 +764,8 @@ def cvt_import_from(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             break
         if child.type == token.DOT:
             # TODO: test case
-            from_name.append(ast_cooked.ImportDotNode())
+            from_name.append(ast_cooked.ImportDotNode(
+                ctx.src_file.astn_to_range(child)))
         else:
             from_name.append(cvt_name_ctx(NameCtx.RAW, child, ctx))
     # pylint: disable=undefined-loop-variable
@@ -800,11 +803,11 @@ def cvt_lambdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
                  cvt_name_ctx(NameCtx.BINDING, node.children[0], ctx))
     ctx_func = new_ctx_from(ctx)
     if len(node.children) == 4:
-        parameters = xcast(ast_cooked.TypedArgsListNode,
+        parameters = xcast(ast_cooked.RawTypedArgsListNode,
                            cvt(node.children[1], ctx_func))
         suite = cvt(node.children[3], ctx_func)
     else:
-        parameters = ast_cooked.TypedArgsListNode(args=[])
+        parameters = ast_cooked.RawTypedArgsListNode(args=[])
         suite = cvt(node.children[2], ctx_func)
     return ast_cooked.FuncDefStmt(
         name=name,
@@ -831,7 +834,7 @@ def cvt_parameters(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     assert ctx.name_ctx is NameCtx.REF, [node]
     if len(node.children) > 2:
         return cvt(node.children[1], ctx)
-    return ast_cooked.TypedArgsListNode(args=[])
+    return ast_cooked.RawTypedArgsListNode(args=[])
 
 
 def cvt_pass_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -868,7 +871,9 @@ def cvt_power(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     trailers = [cvt(ch, trailer_ctx) for ch in children[1:-1]]
     if len(children) > 1:
         trailers.append(cvt(children[-1], ctx))
-    trailer = ast_cooked.atom_trailer_node(atom, trailers)
+    typing_debug.assert_all_isinstance(ast_cooked.BaseAtomTrailer, trailers)
+    trailer = ast_cooked.atom_trailer_node(
+        atom, typing.cast(Sequence[ast_cooked.BaseAtomTrailer], trailers))
     if doublestar_factor:
         return ast_cooked.OpNode(
             op_astns=[ctx.src_file.astn_to_range(node.children[-2])],
@@ -1009,7 +1014,7 @@ def cvt_subscript(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 def cvt_subscriptlist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """subscriptlist: subscript (',' subscript)* [',']"""
     # Can appear on left of assignment
-    return ast_cooked.SubscriptListNode(
+    return ast_cooked.RawSubscriptListNode(
         subscripts=cvt_children_skip_commas(
             node, dataclasses.replace(ctx, name_ctx=NameCtx.REF)))
 
@@ -1127,12 +1132,12 @@ def cvt_trailer(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     # Can appear on left of assignment - cvt_power will set ctx.left_binds appropriately
     if node.children[0].type == token.LPAR:
         if node.children[1].type == token.RPAR:
-            return ast_cooked.ArgListNode(args=[])
+            return ast_cooked.RawArgListNode(args=[])
         else:
-            return xcast(ast_cooked.ArgListNode,
+            return xcast(ast_cooked.RawArgListNode,
                          cvt_name_ctx(NameCtx.REF, node.children[1], ctx))
     if node.children[0].type == token.LSQB:
-        return xcast(ast_cooked.SubscriptListNode,
+        return xcast(ast_cooked.RawSubscriptListNode,
                      cvt_name_ctx(NameCtx.REF, node.children[1], ctx))
     assert node.children[0].type == token.DOT
     return ast_cooked.DotNameTrailerNode(
@@ -1193,7 +1198,7 @@ def cvt_typedargslist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             assert ch0.type in (token.STAR, token.DOUBLESTAR), [i, ch0, node]
             # Don't care about '*' or '**'
             i += 1
-    return ast_cooked.TypedArgsListNode(args=args)
+    return ast_cooked.RawTypedArgsListNode(args=args)
 
 
 def cvt_while_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:

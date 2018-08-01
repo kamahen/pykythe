@@ -1,14 +1,22 @@
 """Representation of nodes, for further processing.
 
 ast_raw.cvt traverses an AST (in the lib2to3.pytree format) and puts
-it into a more easy to process form. While traversing, it also marks
-binding and non-biding uses of all the namnes (including handling of
-names that were marked "global" or "nonlocal").
+it into a more easily processed form. While traversing, it also marks
+binding and non-biding uses of all the names (including handling of
+names that were marked "global" or "nonlocal"), and resolves most
+names to fully qualified names (FQNs).
+
+The basic usage is:
+    parse_tree = ast_raw.parse(src_content, python_version)
+    cooked_nodes = ast_raw.cvt_parse_tree(parse_tree, python_version, src_file)
+    add_fqns = cooked_nodes.add_fqns(fqn_ctx)
+    print(add_fqns.as_json_str())
 
 Each node is a subclass of Base.
 
-Here is an example of how this data is used to generate
-cross-reference information. Suppose we have in m.py:
+Here is an example of how these nodes are used to generate
+cross-reference information. Suppose we have in m.py (annotated with
+Kythe verifier comments):
 
     #- @C defines/binding C=vname("m.C", _, _, "", python)
     #- C.node/kind record
@@ -30,13 +38,14 @@ cross-reference information. Suppose we have in m.py:
     print(c.f1)
 
 To generate these facts, we need to record all the assignment
-information in the program and then compute types. In this example, we
+information in the program, resolve the names, and compute types
+(which are also used for further name resolution). In this example, we
 need to mark that `self` in C.__init__ is of type `C` and so is `c` in
 the main program (in both cases, the `f1` will refer to the same Kythe
 semantic node, identified by `C.f1`). For the latter, we capture that
 `c` is defined by the expression `call(id('m.C'))` -- when we
-"evaluate" this later, we see that `m.C` is defined by `class(C)`,
-and we can therefore deduce that `c` is also of type `class(C)`.
+"evaluate" this later, we see that `m.C` is defined by `class(C)`, and
+we can therefore deduce that `c` is also of type `class(C)`.
 """
 
 from __future__ import annotations
@@ -46,7 +55,8 @@ from dataclasses import dataclass
 import functools
 import logging  # pylint: disable=unused-import
 from typing import (  # pylint: disable=unused-import
-    Any, Mapping, MutableMapping, Iterable, List, Optional, Sequence, Text)
+    Any, Mapping, MutableMapping, Iterable, List, Optional, Sequence,
+    Text, TypeVar)
 import typing
 from mypy_extensions import Arg  # pylint: disable=unused-import
 
@@ -64,7 +74,7 @@ class FqnCtx(pod.PlainOldData):
 
     Attributes:
       fqn_dot: The Fully Qualifed Name of this scope
-          (module/function/class), followed by a '.'
+               (module/function/class), followed by a '.'
       bindings: mappings of names to FQNs at this scope
       class_fqn: either None if not within a class or the
                  FQN of the enclosing class.
@@ -81,6 +91,9 @@ class FqnCtx(pod.PlainOldData):
     __slots__ = [
         'fqn_dot', 'bindings', 'class_fqn', 'class_astn', 'python_version']
 
+    def __post__init(self) -> None:
+        assert self.python_version in (2, 3)
+
 
 class Base(pod.PlainOldDataExtended):
     """Base class for data from AST nodes.
@@ -89,7 +102,7 @@ class Base(pod.PlainOldDataExtended):
     with some modifications. Some of them are generated from the
     add_fqns() method.
 
-    This class should not be called directly.
+    This class must not be called directly.
     """
 
     # TODO: https://github.com/python/mypy/issues/4547
@@ -99,23 +112,25 @@ class Base(pod.PlainOldDataExtended):
     def __init__(self, **kwargs: Any) -> None:
         # pylint: disable=super-init-not-called
         # pylint: disable=unidiomatic-typecheck
-        assert type(self) is not Base, "Must not instantiate ast_cooked.Node"
+        assert type(self) is not Base, (
+            "Must not directly instantiate ast_cooked.Node")
         for attr, value in kwargs.items():
             setattr(self, attr, value)  # pragma: no cover
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         """Generate a new tree with FQNs filled in.
 
-        This defines the generic form, using self.__slots__.  In a few
-        cases (e.g., those that have an attr that is Sequence[Base]),
-        this method is overriden.
+        This code defines the generic form of the `add_fqns` method,
+        using self.__slots__.  In a few cases (e.g., those that have
+        an attr that is Sequence[Base]), this method is overriden.
 
         A Kythe "anchor" is a pointer to a piece of source code
         (typically, a "name" of some kind in Python) to which semantic
         information is attached.
 
-        In most cases, this method simply recursively calls `add_fqns on its
-        contents and returns a new node with the results.
+        In most cases, `add_fqns` simply recursively calls `add_fqns`
+        on its contents and returns a new node that combines the
+        results of the recursive calls to the contents.
 
         A few nodes are special, such as `FuncDefStmt` and
         `NameRefNode`. These generate fully qualified names (FQNs)
@@ -133,17 +148,19 @@ class Base(pod.PlainOldDataExtended):
           ctx: The context for generating the FQN information (mainly
                the FQN of the enclosing scope).
         Returns:
-          A new node that transforms names to FQNs. Usually it is the
-          same type as the original node but in a few cases (e.g., NameNode),
-          something different is returned.
+          A new node that with names resolved to FQNs. Usually it is
+          the same type as the original node but in a few cases (e.g.,
+          NameBindsNode), something different is returned (e.g.,
+          NameBindsFqn).
         """
         attr_values = {
-            attr: self.attr_add_fqns(attr, ctx)
+            attr: self._attr_add_fqns(attr, ctx)
             for attr in self.__slots__}
         # TODO: https://github.com/python/mypy/issues/4602
-        return self.__class__(**attr_values)  # type: ignore
+        #       and then use self.__class__(**attr_values)
+        return type(self)(**attr_values)
 
-    def attr_add_fqns(self, attr: Text, ctx: FqnCtx) -> Base:
+    def _attr_add_fqns(self, attr: Text, ctx: FqnCtx) -> Base:
         # TODO: inline this when fully debugged
         try:
             return xcast(Base, getattr(self, attr).add_fqns(ctx))
@@ -151,22 +168,70 @@ class Base(pod.PlainOldDataExtended):
             raise RuntimeError(
                 '%r node=%r:%r' % (exc, attr, getattr(self, attr))) from exc
 
-    def atom_trailer_node(self, atom: Base) -> Base:
-        """For processing atom, trailer part of power.
 
-        This is implemented only for nodes that are the result of the
-        grammar rule `power: [AWAIT] atom trailer* ['**' factor]`.
-        """
-        # The following code stops pylint abstract-method from triggering
-        # in the classes that don't define it.
-        if False:  # pylint: disable=using-constant-test
-            raise NotImplementedError(self)  # pragma: no cover
-        return Base(atom=atom)  # pragma: no cover
+class BaseNoOutput(Base):
+    """Base that is never output for further processing."""
+
+    def as_json_str(self) -> Text:
+        return _not_implemeted(self, '***ERROR***')
+
+    def as_json_dict(self) -> Mapping[Text, Any]:
+        return _not_implemented(self, {'ERROR': None})
+
+
+class BaseNoFqnProcessing(Base):
+    """Base that doesn't implement add_fqns.
+
+    Typically, this is because a node isn't reprocessed for FQNs. For
+    example, it's created by a `add_fqns` method solely for output.
+    """
+
+    def add_fqns(self, ctx: FqnCtx) -> Base:
+        return _not_implemented(self, self)
+
+class BaseNoFqnProcessingNoOutput(BaseNoOutput):
+    """Base that doesn't implement add_fqns and isn't output.
+
+    For example, the node is only used internally within as_raw.
+    """
+
+    def add_fqns(self, ctx: FqnCtx) -> Base:
+        return _not_implemented(self, self)
+
+
+_T = TypeVar('_T')
+
+
+def _not_implemented(obj: Base, fake_value: _T) -> _T:
+    # The following code stops pylint abstract-method from triggering
+    # in the classes that don't define it.
+    if True:  # pylint: disable=using-constant-test
+        raise NotImplementedError(obj)  # pragma: no cover
+    return _fake_value  # pragma: no cover
+
+
+
+class BaseAtomTrailer(BaseNoFqnProcessingNoOutput):
+    """Extension of Base for atom, trailer part of power (in ast_raw).
+
+    Only for nodes that are the result of the grammar rule `power:
+    [AWAIT] atom trailer* ['**' factor]`.
+    """
+
+    def atom_trailer_node(self, atom: Base) -> Base:
+        """For processing atom, trailer part of power (in ast_raw)."""
+        raise NotImplementedError(self)  # pragma: no cover
 
 
 @dataclass(frozen=True)
 class ListBase(Base):
-    """A convenience class for AST nodes (expr) that contain a single list."""
+    """A convenience class for AST nodes (expr) that contain a single list.
+
+    A ListBase node does not necessarily correspond to a repeated node
+    in the grammar; for example, AssertStmt is a subclass of ListBase,
+    with one or two items (the test and the optional argument to
+    AssertionError).
+    """
 
     items: Sequence[Base]
 
@@ -175,10 +240,12 @@ class ListBase(Base):
     def __post_init__(self) -> None:
         # pylint: disable=unidiomatic-typecheck
         assert type(self) is not ListBase, (
-            "Must not instantiate ast_cooked.ListBase")
+            "Must not directly instantiate ast_cooked.ListBase")
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
-        return self.__class__(  # type: ignore  # TODO: https://github.com/python/mypy/issues/4602
+        # TODO: https://github.com/python/mypy/issues/4602
+        #       and then use self.__class__(**attr_values)
+        return type(self)(
             items=[_add_fqns_wrap(item, ctx) for item in self.items])
 
 
@@ -201,8 +268,10 @@ def _add_fqns_wrap(item: Base, ctx: FqnCtx) -> Base:
 
 
 @dataclass(frozen=True)
-class AnnAssignNode(Base):
+class RawAnnAssignNode(BaseNoFqnProcessingNoOutput):
     """Corresponds to `annassign` (expr can be OmittedNode).
+
+    annassign: ':' test ['=' test]
 
     This is only used when processing an annassign statement;
     ast_raw.cvt_expr_stmt directly uses the contents of this node.
@@ -215,10 +284,6 @@ class AnnAssignNode(Base):
     expr: Base
 
     __slots__ = ['left_annotation', 'expr']
-
-    def add_fqns(self, ctx: FqnCtx) -> Base:
-        # Not used anywhere
-        raise NotImplementedError(self)  # pragma: no cover
 
 
 @dataclass(frozen=True)
@@ -239,10 +304,10 @@ class AnnAssignStmt(Base):
 
 
 @dataclass(frozen=True)
-class ArgListNode(Base):
+class RawArgListNode(BaseAtomTrailer):
     """Corresponds to `arglist`.
 
-    This is only usesd when processing a `decorator`, `classdef`, or
+    This is only used when processing a `decorator`, `classdef`, or
     `trailers`, and is incorporated directly into the appropriate node.
     """
 
@@ -252,10 +317,6 @@ class ArgListNode(Base):
 
     def atom_trailer_node(self, atom: Base) -> Base:
         return AtomCallNode(atom=atom, args=self.args)
-
-    def add_fqns(self, ctx: FqnCtx) -> Base:
-        # Not used anywhere
-        raise NotImplementedError(self)  # pragma: no cover
 
 
 @dataclass(frozen=True)
@@ -286,18 +347,17 @@ class AsNameNode(Base):
 
 
 @dataclass(frozen=True)
-class AssignExprStmt(Base):
-    """Corresponds to a single assignment from AssignMultipleExprStmt (q.v.)."""
+class AssignExprStmt(BaseNoFqnProcessing):
+    """Corresponds to a single assignment from AssignMultipleExprStmt (q.v.).
+
+    Disallows reprocessing, which could change things if a `left`
+    contains something that's in the `expr`.
+    """
 
     left: Base
     expr: Base
 
     __slots__ = ['left', 'expr']
-
-    def add_fqns(self, ctx: FqnCtx) -> Base:
-        # disallow reprocessing, which could change things if a `left` contains
-        # something that's in the `expr`.
-        raise NotImplementedError(self)  # pragma: no cover
 
 
 @dataclass(frozen=True)
@@ -325,8 +385,8 @@ class AssignMultipleExprStmt(Base):
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         expr = _add_fqns_wrap(self.expr, ctx)
-        # add_fqns(ctx) can modify the bindings in ctx, so need to be
-        # careful to do things in the right order.
+        # add_fqns(ctx) can modify the bindings in ctx, so order of
+        # processing matters.
         left_add_fqns = list(
             reversed([
                 _add_fqns_wrap(item, ctx)
@@ -343,7 +403,7 @@ class AssertStmt(ListBase):
     """Corresponds to `assert_stmt`."""
 
 
-def atom_trailer_node(atom: Base, trailers: Sequence[Base]) -> Base:
+def atom_trailer_node(atom: Base, trailers: Sequence[BaseAtomTrailer]) -> Base:
     """Create the appropriate AtomXXX nodes."""
     return functools.reduce(
         lambda atom, trailer: trailer.atom_trailer_node(atom), trailers, atom)
@@ -400,16 +460,12 @@ class AtomSubscriptNode(Base):
 
 
 @dataclass(frozen=True)
-class AugAssignNode(Base):
+class AugAssignNode(BaseNoFqnProcessing):
     """Corresponds to `augassign`."""
 
     op: ast.Astn
 
     __slots__ = ['op']
-
-    def add_fqns(self, ctx: FqnCtx) -> Base:
-        # Not used anywhere
-        raise NotImplementedError(self)  # pragma: no cover
 
 
 @dataclass(frozen=True)
@@ -438,7 +494,7 @@ class BreakStmt(EmptyBase):
 
 
 @dataclass(frozen=True)
-class Class(Base):
+class Class(BaseNoFqnProcessing):
     """Created by ClassDefStmt.add_fqns()."""
 
     fqn: Text
@@ -446,10 +502,6 @@ class Class(Base):
     bases: Sequence[Base]
 
     __slots__ = ['fqn', 'name', 'bases']
-
-    def add_fqns(self, ctx: FqnCtx) -> Base:
-        # Not reprocessed.
-        raise NotImplementedError(self)  # pragma: no cover
 
 
 @dataclass(frozen=True)
@@ -516,7 +568,6 @@ class CompForNode(Base):
             return ctx
         for_fqn_dot = '{}<comp_for>[{:d},{:d}].'.format(
             ctx.fqn_dot, self.for_astn.start, self.for_astn.end)
-        assert for_fqn_dot != 'pykythe.test_data.bindings.testListFor.<local>.<comp_for>[2567,2570].', [for_fqn_dot, ctx]  # DO NOT SUBMIT
         return xcast(FqnCtx, dataclasses.replace(
             ctx,
             fqn_dot=for_fqn_dot,
@@ -544,7 +595,7 @@ class CompForNode(Base):
 
 
 @dataclass(frozen=True)
-class CompFor(Base):
+class CompFor(BaseNoFqnProcessing):
     """Created by CompForNode."""
 
     for_astn: ast.Astn
@@ -553,10 +604,6 @@ class CompFor(Base):
     comp_iter: Base
 
     __slots__ = ['for_astn', 'for_exprlist', 'in_testlist', 'comp_iter']
-
-    def add_fqns(self, ctx: FqnCtx) -> Base:
-        # Not reprocessed.
-        raise NotImplementedError(self)  # pragma: no cover
 
 
 @dataclass(frozen=True)
@@ -622,18 +669,13 @@ class DictSetMakerNode(ListBase):
 
 
 @dataclass(frozen=True)
-class DictGenListSetMakerCompFor(Base):
+class DictGenListSetMakerCompFor(BaseNoFqnProcessing):
     """Created by DictGenListSetMakerCompForNode.add_fqns()."""
 
     value_expr: Base
     comp_for: CompFor
 
     __slots__ = ['value_expr', 'comp_for']
-
-
-    def add_fqns(self, ctx: FqnCtx) -> Base:
-        # Not reprocessed.
-        raise NotImplementedError(self)  # pragma: no cover
 
 
 @dataclass(frozen=True)
@@ -657,7 +699,7 @@ class DictGenListSetMakerCompForNode(Base):
 
 
 @dataclass(frozen=True)
-class DotNameTrailerNode(Base):
+class DotNameTrailerNode(BaseAtomTrailer):
     """Corresponds to '.' NAME in trailer.
 
     This is only used when processing a trailer and is incorporated
@@ -675,10 +717,6 @@ class DotNameTrailerNode(Base):
     def atom_trailer_node(self, atom: Base) -> Base:
         return AtomDotNode(
             atom=atom, attr_name=self.name.name, binds=self.binds)
-
-    def add_fqns(self, ctx: FqnCtx) -> Base:
-        # Not used anywhere
-        raise NotImplementedError(self)  # pragma: no cover
 
 
 class DottedNameNode(ListBase):
@@ -708,16 +746,15 @@ class ExprListNode(ListBase):
 
 
 @dataclass(frozen=True)
-class ExprStmt(Base):
-    """Corresponds an expr-only from AssignMultipleExprStmt (q.v.)."""
+class ExprStmt(BaseNoFqnProcessing):
+    """Corresponds an expr-only from AssignMultipleExprStmt (q.v.).
+
+    Doesn't allow reprocessing, even though probably benign (see AssignExprStmt).
+    """
 
     expr: Base
 
     __slots__ = ['expr']
-
-    def add_fqns(self, ctx: FqnCtx) -> Base:
-        # disallow reprocessing, even though probably benign (see AssignExprStmt).
-        raise NotImplementedError(self)  # pragma: no cover
 
 
 @dataclass(frozen=True)
@@ -782,7 +819,7 @@ class ForStmt(Base):
 
 
 @dataclass(frozen=True)
-class Func(Base):
+class Func(BaseNoFqnProcessing):
     """Created by FuncDefStmt.add_fqns()."""
 
     fqn: Text
@@ -791,10 +828,6 @@ class Func(Base):
     return_type: Base
 
     __slots__ = ['fqn', 'name', 'parameters', 'return_type']
-
-    def add_fqns(self, ctx: FqnCtx) -> Base:
-        # Not reprocessed.
-        raise NotImplementedError(self)  # pragma: no cover
 
 
 @dataclass(frozen=True)
@@ -814,8 +847,6 @@ class FuncDefStmt(Base):
 
     __slots__ = [
         'name', 'parameters', 'return_type', 'suite', 'scope_bindings']
-
-    # attr_add_fqns not needed because add_fqns() method is overriden.
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Similar to ClassDefStmt.add_fqns
@@ -889,9 +920,18 @@ class ImportAsNamesNode(ListBase):
 
 @dataclass(frozen=True)
 class ImportDotNode(Base):
-    """Corresponds to a DOT in `import_from`."""
+    """Corresponds to a DOT in `import_from`.
 
-    __slots__ = []
+    Attributes:
+        dot: The AST node for the token ('.').
+    """
+
+    dot: ast.Astn
+
+    __slots__ = ['dot']
+
+    def add_fqns(self, ctx: FqnCtx) -> Base:
+        return self
 
 
 @dataclass(frozen=True)
@@ -923,9 +963,9 @@ class ImportDottedAsNameNode(Base):
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return ImportDottedAsNameFqn(
             dotted_name=xcast(DottedNameNode,
-                _add_fqns_wrap(self.dotted_name, ctx)),
+                              _add_fqns_wrap(self.dotted_name, ctx)),
             as_name=xcast(NameBindsFqn,
-                _add_fqns_wrap(self.as_name, ctx)))
+                          _add_fqns_wrap(self.as_name, ctx)))
 
 
 class ImportDottedAsNamesFqn(ListBase):
@@ -1014,17 +1054,13 @@ class ListMakerNode(ListBase):
 
 
 @dataclass(frozen=True)
-class NameBindsFqn(Base):
+class NameBindsFqn(BaseNoFqnProcessing):
     """Created by NameBindsNode.add_fqns."""
 
     name: ast.Astn
     fqn: Text
 
     __slots__ = ['name', 'fqn']
-
-    def add_fqns(self, ctx: FqnCtx) -> Base:
-        # Not reprocessed.
-        raise NotImplementedError(self)  # pragma: no cover
 
 
 @dataclass(frozen=True)
@@ -1103,7 +1139,7 @@ class NameRefNode(Base):
 
 
 @dataclass(frozen=True)
-class NameRefFqn(Base):
+class NameRefFqn(BaseNoFqnProcessing):
     """Created by NameRefNode.add_fqns."""
 
     name: ast.Astn
@@ -1111,13 +1147,9 @@ class NameRefFqn(Base):
 
     __slots__ = ['name', 'fqn']
 
-    def add_fqns(self, ctx: FqnCtx) -> Base:
-        # Not reprocessed.
-        raise NotImplementedError(self)  # pragma: no cover
-
 
 @dataclass(frozen=True)
-class NameRefGenerated(Base):
+class NameRefGenerated(BaseNoFqnProcessing):
     """Like NameRef, but for `self` type nodes.
 
     This is used to distinguish between nodes that should generate
@@ -1128,10 +1160,6 @@ class NameRefGenerated(Base):
     fqn: Text
 
     __slots__ = ['fqn']
-
-    def add_fqns(self, ctx: FqnCtx) -> Base:
-        # Not reprocessed.
-        raise NotImplementedError(self)  # pragma: no cover
 
 
 class NonLocalStmt(ListBase):
@@ -1241,7 +1269,7 @@ class SubscriptNode(Base):
 
 
 @dataclass(frozen=True)
-class SubscriptListNode(Base):
+class RawSubscriptListNode(BaseAtomTrailer):
     """Corresponds to `subscript_list`.
 
     This is only used when processing trailers and is incorporated
@@ -1258,10 +1286,6 @@ class SubscriptListNode(Base):
 
     def atom_trailer_node(self, atom: Base) -> Base:
         return AtomSubscriptNode(atom=atom, subscripts=self.subscripts)
-
-    def add_fqns(self, ctx: FqnCtx) -> Base:
-        # Not used anywhere
-        raise NotImplementedError(self)  # pragma: no cover
 
 
 class TestListNode(ListBase):
@@ -1299,21 +1323,16 @@ class TypedArgNode(Base):
 
 
 @dataclass(frozen=True)
-class TypedArgsListNode(Base):
+class RawTypedArgsListNode(BaseNoFqnProcessingNoOutput):
     """Corresponds to `typedargslist`.
 
     This is only used when processing a funcdef; the args are given
-    directly to FuncDefStmt, which is why add_fqns() isn't
-    defined for TypedArgsListNode.
+    directly to FuncDefStmt.
     """
 
     args: Sequence[TypedArgNode]
 
     __slots__ = ['args']
-
-    def add_fqns(self, ctx: FqnCtx) -> Base:
-        # Not used anywhere
-        raise NotImplementedError(self)  # pragma: no cover
 
 
 @dataclass(frozen=True)

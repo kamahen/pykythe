@@ -13,8 +13,39 @@
 :- meta_predicate must_once(4, ?, ?, ?, ?).
 :- meta_predicate must_once(5, ?, ?, ?, ?, ?).
 
-% Like once/1, but also works with EDCGs.
+% Like once/1, throws an exception on failure.
+% Also works with works with EDCGs.
 % You must add edcg:pred_info(must_once, 1, ...) facts in the using module.
+
+% TODO: write a user:term_expansion that transforms
+%         :- det_pred(foo/_).
+%         foo(X, Y, Z) :- % clause 1 ...
+%         foo(X, Y, Z) :- % clause 2 ...
+%       into
+%         foo(X, Y, Z) :-
+%             (  'foo must_once'(X, Y, Z)
+%             -> true
+%             ;  throw(error(failed(X, Y, Z), _))
+%         ).
+%         'foo must_once'(X, Y, Z) :- % clause 1 ...
+%         'foo must_once'(X, Y, Z) :- % clause 2 ...
+%       and similar for -->> clauses.
+
+% TODO: something like this, to detect non-determinism
+%% deterministic(Goal) :-
+%%     setup_call_cleanup(true, Goal, Deterministic = true),
+%%     (  var(Deterministic)
+%%     -> !,
+%%        throw(error(failed(Goal), _))
+%%     ;  true
+%%     ).
+%% deterministic(Goal, Deterministic) :-
+%%     setup_call_cleanup(true, Goal, Deterministic = true),
+%%     (  var(Deterministic)
+%%     -> Deterministic = false
+%%     ;  true
+%%     ),
+%%     !.
 
 %! must_once(:Goal) is det.
 %  Throws an error if Goal doesn't succeed.
