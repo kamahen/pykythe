@@ -26,7 +26,7 @@ out (on Linux):
 
 * Follow the instructions for building `kythe` (including installing Bazel).
 
-* Following the instructions at
+* Follow the instructions at
   [Kythe - getting started](https://github.com/google/kythe#getting-started )
   to download the latest tarball from the
   [Kythe repository](https://github.com/google/kythe/releases) and copy the binaries
@@ -46,26 +46,26 @@ out (on Linux):
     echo 'pack_install(edcg).' | swipl
     ```
 
-* Install (using `pip`) `dataclasses`. (This is a backport
-  of `dataclasses` from Python 3.7.)
+* `git clone https://github.com/python/typeshed.git`
 
-* Install `mypy` and `pytype` (using `pip`, or by cloning the git
-  repository, `cd`-ing into it, then running `sudo -H pip3 install
-  --upgrade .`) (`pytype` is special -- see its installation
-  instructions).
-  * You might need to symlink `mypy_extensions` into
-    `/usr/local/lib/python3.7/dist-packages`.
+* Optional (and don't work with Python 3.7):
+
+  * Install `mypy` and `pytype` (using `pip`, or by cloning the git
+    repository, `cd`-ing into it, then running `sudo -H pip3 install
+    --upgrade .`) (`pytype` is special -- see its installation
+    instructions).
+    * You might need to symlink `mypy_extensions` into
+      `/usr/local/lib/python3.7/dist-packages`.
 
 * Optional:
 
-	* `git clone https://github.com/python/typeshed.git`
 	* `git clone https://github.com/google/pytype`
 	* `git clone https://github.com/python/mypy.git`
 	* `git clone https://github.com/google/yapf.git`
 
-* `make -C <pkgdir> all_tests`
+* `make -C <pkgdir> all_tests all_tests2`
 
-* You can see the generated facts in `/tmp/pykythe_test/py3_test_grammar.json-decoded`
+* You can see the generated facts in `/tmp/pykythe_test/KYTHE/pykythe/test_data/*.json-decoded`
 
 ## Code formatting
 
@@ -73,6 +73,8 @@ All the Python code is formatted using `yapf` configured with `.style.yapf`.
 You can either install it from [github](https://github.com/google/yapf)
 or using [pip](https://pypi.python.org/pypi/yapf).
 The `Makefile` has a rule `pyformat` that formats everything.
+
+  * Currently this doesn't work because `yapf` doesn't support some Python 3.7 features.
 
 Prolog code is formatted according to the recommendations in
 [plcoding.pdf](http://www.covingtoninnovations.com/mc/plcoding.pdf)
@@ -82,6 +84,9 @@ with an extension for EDCGs that shows the accumulators.
 
 The code is processed with `mypy` (using the `Makefile` rule `mypy`) and
 `pylint`. It is intended to also be processed by `pytype`.
+
+  * Currently this doesn't work because `mypy` doesn't support Python 3.7
+    `dataclasses`
 
 
 ## Known issues
@@ -115,8 +120,8 @@ The code is processed with `mypy` (using the `Makefile` rule `mypy`) and
 
 * Requires Python 3.7
 
-* Outputs JSON and expects `entrystream --read_json` to convert to the
-  form that `write_tables` expects (it would be more efficient to
-  output protobufs directly).
+* Outputs JSON and expects `entrystream --read_format=json` to convert
+  to the form that `write_tables` expects (it would be more efficient
+  to output protobufs directly).
 
 * Packaging of pykythe is incomplete and possibly wrong.
