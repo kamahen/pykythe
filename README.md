@@ -39,12 +39,13 @@ out (on Linux):
   they handle command line arguments), so as of 2018-06-08, this means
   using the "devel" download or PPA.
 
-  After installing:
+  After installing, add the packages
+  [edcg](https://github.com/mndrix/edcg) and
+  [rdel](https://github.com/rla/rdet)
+  by these commands:
 
-  * [edcg](https://github.com/mndrix/edcg):
-    ```
-    echo 'pack_install(edcg).' | swipl
-    ```
+  `echo 'pack_install(edcg, [interactive(false)]).' | swipl`<br>
+  `echo 'pack_install(rdet, [interactive(false)]).' | swipl`
 
 * `git clone https://github.com/python/typeshed.git`
 

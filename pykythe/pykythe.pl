@@ -11,26 +11,37 @@
 % TODO: :- use_module(library(protobufs)).  % instead of input/output JSON
 %        ... handling JSON seems to be the most expensive thing,
 %            according to profile/1 (it also seems to be the main
-%            contributor to garbage collection; the base64
-%            manipulation is also expensive).
+%            contributor to garbage collection; base64 manipulation is
+%            also expensive).
 
 % There are two passes:
 
-% 1. Read in the "cooked" ASTN (see ast_cooked.Base), transform them
-%    into a simpler form, and produce (using accumulators):
+% 0. [run_parse_cmd] Create a "cooked" AST (Python program specified
+%    by --parsecmd which generates a JSON data structures of the AST
+% 1. [process_nodes] Read in the "cooked" AST (see ast_cooked.Base),
+%    transform them into a simpler form, and produce (using
+%    accumulators):
 %    - Kythe facts (e.g., anchors) for all the variables and
 %      parameters in the code (but not the attributes)
 %    - references and assignments (in the assign/2 facts).
 %    Each predicate also returns a "type" result that is used to
 %    populate the right-hand-side of assign/2 facts (for statements,
 %    a expr/1 term is returned for completeness.  For more details,
-%    see node_anchors//2.
-% 2. Process the assign/2 and expr/1 facts, by intepreting the
-%    expressions and recording the results in a symtab (symbol table),
-%    then outputting Kythe facts for the attributes, calls, etc.  Note
-%    that expr([]) is a no-op.
+%    see kynode//2.
 
-% A word on "types" and "eval".
+% 2. [assign_exprs] Process the assign/2 and expr/1 facts, by
+%    interpreting the expressions and recording the results in a
+%    symtab (symbol table), then outputting Kythe facts for the
+%    attributes, calls, etc.  Note that expr([]) is a no-op.
+
+% Names:
+%  'astn' is an AST (Abstract Syntax Tree) node.
+%  'fqn' is fully qualified name
+%  'ky' as prefix means 'kythe' (e.g. kyfact instead of kythe_fact)
+%  'symtab' is symbol table
+%  'symrej' is symbol table (symtab) + rejects
+
+% "types" and "eval" ...
 
 % The input consists of a list of simplified items from the AST.
 % For example, this Python line (in class C2's __init__):
@@ -46,7 +57,7 @@
 %               binds: bool("True") } }
 %
 % When this is read in, it is simplified to something like this:
-%   assign(dot([fqn('test_data.simple.C2.__init__.<local>.self')],
+%   assign([dot(fqn('test_data.simple.C2.__init__.<local>.self')],
 %              astn(1156,1157, "x"),
 %              '/kythe/edge/defines/binding'),
 %          [class('typeshed.stdlib.3.builtin.str', [])])
@@ -70,8 +81,8 @@
 % and return []).  For the left-hand-side of an assignment, the lookup
 % isn't done.
 %   (Implementation detail: this is done using
-%        [ Fqn-Result ]:sym_rej
-%   which calls sym_rej_accum/3.
+%        [ Fqn-Result ]:symrej
+%   which calls symrej_accum/3.
 %
 % All types are unions (represented as an ordset); [] means that
 % there's no information and is effectively "Any". Many of the
@@ -94,100 +105,259 @@
 % reprocessed until no more changes (in practice, only one or two
 % passes are needed).
 
-% TODO: can we remove the kythe_fact accumulator from the first pass
+% TODO: can we remove the kyfact accumulator from the first pass
 %       and generate all the Kythe information from the second pass?
 
 % TODO: Use QLF: http://www.swi-prolog.org/pldoc/man?section=qlf
 
+%% :- module(pykythe, [pykythe_main/0]).  %% TODO
 
 :- use_module(library(aggregate), [aggregate_all/3, foreach/2]).
+:- use_module(library(apply), [maplist/2, maplist/3, maplist/4, foldl/4, convlist/3]).
+:- use_module(library(assoc), [is_assoc/1]).
+:- use_module(library(base64), [base64/2]).
+:- use_module(library(debug), [assertion/1, debug/3]).
 :- use_module(library(edcg)).  % requires: ?- pack_install(edcg).
 :- use_module(library(filesex), [relative_file_name/3]).
 :- use_module(library(http/json), [json_read_dict/2, json_write_dict/3]).
+:- use_module(library(lists), [append/3, list_to_set/2, member/2, select/3]).
 :- use_module(library(optparse), [opt_arguments/3]).
 :- use_module(library(ordsets), [list_to_ord_set/2, ord_empty/1, ord_union/3, ord_add_element/3]).
+:- use_module(library(pcre), [re_replace/4]).
 :- use_module(library(pprint), [print_term/2]).
+:- use_module(library(yall)).
+%% :- use_module(library(apply_macros).  % TODO: for performance
 :- use_module(must_once, [must_once/1,
                           must_once_msg/3,
-                          must_once/4 as must_once_kythe_fact_meta,
-                          must_once/6 as must_once_kythe_fact_expr_meta,
-                          must_once/6 as must_once_fqn_sym_rej_meta
+                          must_once/4 as must_once_kyfact,
+                          must_once/6 as must_once_kyfact_expr,
+                          must_once/6 as must_once_fqn_symrej
                          ]).
+
+:- meta_predicate
+       maplist_kyfact(2, +, +, -, +),
+       maplist_kyfact(3, +, -, +, -, +),
+       maplist_kyfact_symrej(5, +, -, +, -, +, -, +),
+       maplist_kyfact_expr(5, +, +, -, +, -, +),
+       maplist_kyfact_expr(5, +, -, +, -, +, -, +),
+       maplist_foldl_kyfact_expr(5, +, -, +, -, +, -, +),
+       maplist_foldl_kyfact_symrej(5, +, +, -, +, -, +, -, +).
 
 :- style_check(+singleton).
 :- style_check(+no_effect).
-:- style_check(+var_branches).
 :- style_check(+discontiguous).
+:- set_prolog_flag(autoload, false).  % See below json:term_to_dict/3
+:- set_prolog_flag(report_error, true).          % TODO: remove
+:- set_prolog_flag(backtrace, true).             % TODO: remove
+:- set_prolog_flag(backtrace_show_lines, true).  % TODO: remove
+:- set_prolog_flag(backtrace_show_lines, true).  % TODO: remove
 % :- set_prolog_flag(generate_debug_info, false).
 
-% "kythe_fact" accumulator gets FQN anchor facts, in an ordinary list
+:- use_module(library(rdet), [rdet/1]).
+%% Note: library(rdet) expands a call to
+%%       ( Call -> true ; throw(...) )
+%%       which causes a warning about variable not introduced in all branches
+%%       if the Call instantiates something that's used later.
+%%       Therefore, we don't enable style_check(+var_branches)
+:- style_check(-var_branches).
+
+% TODO: there are too many rdet declarations, and they slow things down
+%       (although this might be only compilation).
+
+% Higher-level predicates that we use deterministically:
+:- rdet(maplist/2).
+:- rdet(maplist/3).
+:- rdet(maplist/4).
+:- rdet(foldl/4).
+:- rdet(convlist/3).
+
+% Other imported predicates:
+:- rdet(aggregate_all/3).
+:- rdet(foreach/2).
+:- rdet(base64/2).
+:- rdet(json_read_dict/2).
+:- rdet(json_write_dict/3).
+:- rdet(list_to_ord_set/2).
+:- rdet(list_to_set/2).
+:- rdet(opt_arguments/3).
+:- rdet(list_to_ord_set/2).
+
+% Deterministic predicates in this module
+% You can generate an approximation of these by:
+%     forall(current_predicate(user:Pred), format('>>> ~q~n', [Pred])),
+
+:- rdet('ImportDottedAsNamesFqn_impl'/5).
+:- rdet('ImportFromStmt_impl'/6).
+:- rdet('ImportNameFqn_impl'/5).
+:- rdet(absolute_dir/2).
+:- rdet(add_rej_to_symtab/3).
+:- rdet(assign_expr_eval/6).
+:- rdet(assign_exprs/5).
+:- rdet(assign_exprs_count/6).
+:- rdet(assign_exprs_count_impl/6).
+:- rdet(assign_normalized/7).
+%% builtin_name/1
+:- rdet(builtin_names/1).
+%% rdet(canonical_path/2).
+:- rdet(do_if/2).
+:- rdet(dot_edge_name/2).
+:- rdet(dotted_name_raw/2).
+:- rdet(dump_term/2).
+:- rdet(dump_term/3).
+:- rdet(eval_atom_call_single/9).
+:- rdet(eval_atom_call_single_of_type/9).
+:- rdet(eval_atom_call_union/8).
+:- rdet(eval_atom_dot_single/10).
+:- rdet(eval_atom_dot_union/9).
+:- rdet(eval_atom_dot_union_of_type/10).
+:- rdet(eval_lookup/7).
+:- rdet(eval_lookup_single/7).
+:- rdet(eval_single_type/7).
+:- rdet(eval_single_type_and_lookup/7).
+:- rdet(eval_union_type/7).
+:- rdet(eval_union_type_and_lookup/7).
+%% rdet(expand_filepath/2).
+%% rdet(expr_from_symtab/2).
+:- rdet(expr_normalized/6).
+:- rdet(file_and_token/3).
+:- rdet(file_search_path/2).
+:- rdet(from_dotted_name/2).
+:- rdet(from_import_dot_or_name/3).
+:- rdet(from_import_dot_or_name_pieces/3).
+:- rdet(from_import_dots/3).
+:- rdet(from_import_dots0/4).
+:- rdet(from_import_dots_to_name/3).
+:- rdet(from_import_part/7).
+:- rdet(full_path/3).
+:- rdet(full_path_prefixed/4).
+:- rdet(import_dots_file/7).
+:- rdet(import_dots_file_as_single_node/5).
+:- rdet(initial_symtab/1).
+:- rdet(json_read_dict/2).
+:- rdet(json_write_dict/3).
+:- rdet(kyanchor/6).
+:- rdet(kyedge/6).
+:- rdet(kyedge_fqn/6).
+:- rdet(kyfact/6).
+:- rdet(kyfact_b64/6).
+:- rdet(kyfile/4).
+:- rdet(process_nodes/5).
+:- rdet(process_nodes/7).
+:- rdet(lookup_module/2).
+:- rdet(maplist_assign_expr_eval/6).
+:- rdet(maplist_foldl_eval_lookup/8).
+:- rdet(maplist_foldl_eval_union_type/8).
+:- rdet(maplist_foldl_kyfact_expr/9).
+:- rdet(maplist_foldl_kyfact_symrej/9).
+:- rdet(maplist_kyfact/5).
+:- rdet(maplist_kyfact/6).
+:- rdet(maplist_kyfact_expr/7).
+:- rdet(maplist_kyfact_expr/8).
+:- rdet(maplist_kyfact_symrej/8).
+:- rdet(maplist_kynode/7).
+:- rdet(name_piece/3).
+:- rdet(kynode/7).
+:- rdet(output_kyfact/2).
+:- rdet(parse_and_process_module/2).
+%% rdet(path_to_python_module/2).
+:- rdet(path_to_python_module_or_unknown/2).
+:- rdet(print_term_cleaned/3).
+%% rdet(py_ext/2).
+%% rdet(py_ext_ext/1).
+%% rdet(pykythe_main/0).
+%% rdet(pythonpath_prefix/2).
+:- rdet(read_nodes/3).
+:- rdet(ref_import/4).
+:- rdet(relative_file_name/3).
+:- rdet(remove_last_component/3).
+:- rdet(remove_suffix_star/3).
+:- rdet(resolve_comb_import/3).
+:- rdet(run_parse_cmd/4).
+:- rdet(signature_node/3).
+:- rdet(signature_source/3).
+:- rdet(simplify_json/2).
+:- rdet(simplify_json_slot_pair/2).
+:- rdet(simplify_meta/2).
+:- rdet(split_atom/4).
+:- rdet(split_path_string/3).
+:- rdet(symrej_accum/3).
+:- rdet(symtab_as_kyfact/3).
+:- rdet(zip_merge/3).
+
+% "kyfact" accumulator gets FQN anchor facts, in an ordinary list
 % with each value being a dict to be output in JSON. The list may
 % contain duplicates, which are removed before output. Duplicates can
 % arise if a variable is redefined in the Python source; our de-dup
 % keeps the first such definition.
 % TODO: check for duplicate edge facts, which indicate a bug.
-edcg:acc_info(kythe_fact, T, Out, In, Out=[T|In]).
+edcg:acc_info(kyfact, T, Out, In, Out=[T|In]).
 
 % "expr" accumulator gets expressions that need interpreting.
 edcg:acc_info(expr, T, Out, In, Out=[T|In]).
 
-% "sym_rej" accumulator is for symtab + items that need reprocessing.
-edcg:acc_info(sym_rej, FqnType, In, Out, sym_rej_accum(FqnType, In, Out)).
+% "symrej" accumulator is for symtab + items that need reprocessing.
+edcg:acc_info(symrej, FqnType, In, Out, symrej_accum(FqnType, In, Out)).
 
 % "file_meta" passed arg contains meta-info about the current file.
 edcg:pass_info(file_meta).
 
-edcg:pred_info(must_once_fqn_sym_rej_meta, 1,      [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(must_once_kythe_fact_meta, 1,       [kythe_fact, file_meta]).
-edcg:pred_info(must_once_kythe_fact_expr_meta, 1,  [kythe_fact, expr, file_meta]).
+edcg:pred_info(must_once_fqn_symrej, 1,          [kyfact, symrej, file_meta]).
+edcg:pred_info(must_once_kyfact, 1,              [kyfact, file_meta]).
+edcg:pred_info(must_once_kyfact_expr, 1,         [kyfact, expr, file_meta]).
 
-edcg:pred_info('ImportDottedAsNamesFqn_impls', 2,  [kythe_fact, file_meta]).
-edcg:pred_info('ImportFromStmt_impl', 3,           [kythe_fact, file_meta]).
-edcg:pred_info('ImportNameFqn_impl', 2,            [kythe_fact, file_meta]).
-edcg:pred_info(from_import_part, 4,                [kythe_fact, file_meta]).
-edcg:pred_info(import_dots_file, 4,                [kythe_fact, file_meta]).
-edcg:pred_info(kythe_anchor, 3,                    [kythe_fact, file_meta]).
-edcg:pred_info(kythe_edge_fqn, 3,                  [kythe_fact, file_meta]).
-edcg:pred_info(kythe_fact, 3,                      [kythe_fact, file_meta]).
-edcg:pred_info(kythe_fact_b64, 3,                  [kythe_fact, file_meta]).
-edcg:pred_info(kythe_file, 1,                      [kythe_fact, file_meta]).
-edcg:pred_info(ref_import, 1,                      [kythe_fact, file_meta]).
-edcg:pred_info(ref_imports, 1,                     [kythe_fact, file_meta]).
+edcg:pred_info(maplist_kyfact, 2,                [kyfact, file_meta]).
+edcg:pred_info(maplist_kyfact, 3,                [kyfact, file_meta]).
 
-edcg:pred_info(assign_normalized, 2,               [kythe_fact, expr, file_meta]).
-edcg:pred_info(expr_normalized, 1,                 [kythe_fact, expr, file_meta]).
-edcg:pred_info(kythe_json, 2,                      [kythe_fact, expr, file_meta]).
-edcg:pred_info(node_anchors, 2,                    [kythe_fact, expr, file_meta]).
-edcg:pred_info(node_anchors_impl, 2,               [kythe_fact, expr, file_meta]).
-edcg:pred_info(node_anchors_expr_list, 1,          [kythe_fact, expr, file_meta]).
-edcg:pred_info(node_anchors_import_from, 1,        [kythe_fact, expr, file_meta]).
-edcg:pred_info(node_anchors_list, 2,               [kythe_fact, expr, file_meta]).
+edcg:pred_info('ImportDottedAsNamesFqn_impl', 2, [kyfact, file_meta]).
+edcg:pred_info('ImportFromStmt_impl', 3,         [kyfact, file_meta]).
+edcg:pred_info('ImportNameFqn_impl', 2,          [kyfact, file_meta]).
+edcg:pred_info(from_import_part, 4,              [kyfact, file_meta]).
+edcg:pred_info(import_dots_file, 4,              [kyfact, file_meta]).
+edcg:pred_info(kyanchor, 3,                      [kyfact, file_meta]).
+edcg:pred_info(kyedge_fqn, 3,                    [kyfact, file_meta]).
+edcg:pred_info(kyfact, 3,                        [kyfact, file_meta]).
+edcg:pred_info(kyfact_b64, 3,                    [kyfact, file_meta]).
+edcg:pred_info(kyfile, 1,                        [kyfact, file_meta]).
+edcg:pred_info(ref_import, 1,                    [kyfact, file_meta]).
+edcg:pred_info(ref_imports, 1,                   [kyfact, file_meta]).
 
-edcg:pred_info(assign_expr_eval, 1,                [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(assign_exprs_count, 2,              [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(assign_exprs_eval_list, 1,          [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(eval_atom_call_single, 4,           [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(eval_atom_call_single_list, 4,      [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(eval_atom_call_union, 3,            [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(eval_atom_dot_single, 7,            [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(eval_atom_dot_single_list, 5,       [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(eval_atom_dot_union, 4,             [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(eval_atom_dot_union, 5,             [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(eval_lookup, 2,                     [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(eval_lookup, 3,                     [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(eval_lookup_single, 2,              [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(eval_single_type, 2,                [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(eval_single_type_and_lookup, 2,     [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(eval_union_type, 2,                 [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(eval_union_type, 3,                 [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(eval_union_type_and_lookup, 2,      [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(eval_union_type_and_lookup_list, 2, [kythe_fact, sym_rej, file_meta]).
-edcg:pred_info(eval_union_type_list, 2,            [kythe_fact, sym_rej, file_meta]).
+edcg:pred_info(maplist_foldl_kyfact_expr, 4,     [kyfact, expr, file_meta]).
+edcg:pred_info(maplist_kyfact_expr, 2,           [kyfact, expr, file_meta]).
+edcg:pred_info(maplist_kyfact_expr, 3,           [kyfact, expr, file_meta]).
 
-edcg:pred_info(kythe_edge, 3,                      [kythe_fact, file_meta]).
+edcg:pred_info(assign_normalized, 2,             [kyfact, expr, file_meta]).
+edcg:pred_info(expr_normalized, 1,               [kyfact, expr, file_meta]).
+edcg:pred_info(import_from, 1,                   [kyfact, expr, file_meta]).
+edcg:pred_info(kynode, 2,                        [kyfact, expr, file_meta]).
+edcg:pred_info(kynode_impl, 2,                   [kyfact, expr, file_meta]).
+edcg:pred_info(maplist_kynode, 2,                [kyfact, expr, file_meta]).
+edcg:pred_info(process_nodes, 2,                 [kyfact, expr, file_meta]).
 
-edcg:pred_info(signature_node, 2,                  [file_meta]).
-edcg:pred_info(signature_source, 2,                [file_meta]).
+edcg:pred_info(maplist_foldl_kyfact_symrej, 4,   [kyfact, symrej, file_meta]).
+edcg:pred_info(maplist_kyfact_symrej, 3,         [kyfact, symrej, file_meta]).
+
+edcg:pred_info(assign_expr_eval, 1,              [kyfact, symrej, file_meta]).
+edcg:pred_info(assign_exprs_count, 2,            [kyfact, symrej, file_meta]).
+edcg:pred_info(eval_atom_call_single, 4,         [kyfact, symrej, file_meta]).
+edcg:pred_info(eval_atom_call_single_of_type, 4, [kyfact, symrej, file_meta]).
+edcg:pred_info(eval_atom_call_union, 3,          [kyfact, symrej, file_meta]).
+edcg:pred_info(eval_atom_dot_single, 5,          [kyfact, symrej, file_meta]).
+edcg:pred_info(eval_atom_dot_union, 4,           [kyfact, symrej, file_meta]).
+edcg:pred_info(eval_atom_dot_union_of_type, 5,   [kyfact, symrej, file_meta]).
+edcg:pred_info(eval_lookup, 2,                   [kyfact, symrej, file_meta]).
+edcg:pred_info(eval_lookup_single, 2,            [kyfact, symrej, file_meta]).
+edcg:pred_info(eval_single_type, 2,              [kyfact, symrej, file_meta]).
+edcg:pred_info(eval_single_type_and_lookup, 2,   [kyfact, symrej, file_meta]).
+edcg:pred_info(eval_union_type, 2,               [kyfact, symrej, file_meta]).
+edcg:pred_info(eval_union_type_and_lookup, 2,    [kyfact, symrej, file_meta]).
+edcg:pred_info(maplist_assign_expr_eval, 1,      [kyfact, symrej, file_meta]).
+edcg:pred_info(maplist_foldl_eval_lookup, 3,     [kyfact, symrej, file_meta]).
+edcg:pred_info(maplist_foldl_eval_union_type, 3, [kyfact, symrej, file_meta]).
+
+edcg:pred_info(kyedge, 3,                        [kyfact, file_meta]).
+
+edcg:pred_info(signature_node, 2,                [file_meta]).
+edcg:pred_info(signature_source, 2,              [file_meta]).
 
 % TODO: process typeshed builtins.
 %       also module special attributes:
@@ -258,13 +428,15 @@ initial_symtab(Symtab) :-
                  'builtin.Number'-[class('builtin.Number', [])]
                 | SymtabPairs]).
 
-:- initialization main.
+:- initialization(pykythe_main, main).
 
 %! main is det.
 %  The main predicate, run during initialization.
-main :-
+%  See also library(main)'s definition of main
+pykythe_main :-
     % set_prolog_flag(gc, true),  % TODO: tune GC for performance
     % set_prolog_flag(agc_margin, 0),  % TODO: tune GC for performance
+    on_signal(int, _, interrupt),
     current_prolog_flag(version, PrologVersion),
     must_once_msg(PrologVersion >= 70713, 'SWI-Prolog version is too old', []),  % Sync this with README.md
     % TODO: optparse has a bug if a longflags contains '_', so using '-' for now.
@@ -282,11 +454,9 @@ main :-
     ],
     opt_arguments(OptsSpec, Opts0, PositionalArgs),
     must_once_msg(PositionalArgs = [Src], 'Missing/extra positional args', []),
-    must_once(split_path_string(pythonpath, Opts0, Opts)),
+    split_path_string(pythonpath, Opts0, Opts),
     path_to_python_module_or_unknown(Src, SrcFqn),
-    must_once(
-        parse_and_process_module(SrcFqn, Opts)),
-    halt.
+    parse_and_process_module(SrcFqn, Opts).
 
 %! split_path_string0(+OptName:atom, +Opts0:list, -Opts:list) is det.
 %  Find the option given by OptName in Opts0, split the value into
@@ -296,7 +466,7 @@ split_path_string(OptName, Opts0, [NewOpt|Opts1]) :-
     Opt =.. [OptName, PathStr],
     select(Opt, Opts0, Opts1),
     split_atom(PathStr, ':', '', PathList0),
-    must_once(maplist(absolute_dir, PathList0, PathList)),
+    maplist(absolute_dir, PathList0, PathList),
     NewOpt =.. [OptName, PathList].
 
 %! absolute_dir(+Path0:atom, -AbsPath:atom) is det.
@@ -311,15 +481,8 @@ absolute_dir(Path0, AbsPath) :-
 %! split_atom(+Atom:atom, +SepChars:atom, +PadChars:atom, -SubAtoms:list(atom)) is det.
 %  Like split_string, but result is a list of atoms.
 split_atom(Atom, SepChars, PadChars, SubAtoms) :-
-    split_string(Atom, SepChars, PadChars, SubString),
-    string_list_atom_list(SubString, SubAtoms).
-
-%! string_list_atom_list(+Strings:list(string), -Atoms:list(atom)) is det.
-%  Convert a list of strings to a list of atoms.
-string_list_atom_list([], []).
-string_list_atom_list([S|Ss], [A|As]) :-
-    atom_string(A, S),
-    string_list_atom_list(Ss, As).
+    split_string(Atom, SepChars, PadChars, SubStrings),
+    maplist([S,A]>>atom_string(A,S), SubStrings, SubAtoms).
 
 %! remove_suffix_star(+Full:atom, +Suffix:atom, -NoSuffix:atom) is det.
 %  Repeatedly removes suffix if present.
@@ -356,28 +519,36 @@ module_name_as_path(Module, Path) :-
        py_ext(Path1, Path)
     ).
 
+%! path_to_python_module_or_unknown(+Path, -Fqn) is det.
+% Get the Fqn for the Python module corresponding to Path or
+% a '<unknown>...' atom.
 path_to_python_module_or_unknown(Path, Fqn) :-
     (  path_to_python_module(Path, Fqn)
     -> true
     ;  atomic_list_concat(['<unknown>', Path], ':', Fqn)
     ).
 
+%! path_to_python_module_or_unknown(+Path, -Fqn) is semidet.
+% Get the Fqn for the Python module corresponding to Path or fail.
 path_to_python_module(Path, Fqn) :-
     canonical_path(Path, CanonicalPath),
     py_ext(CanonicalPath0, CanonicalPath),
     split_atom(CanonicalPath0, '/', '', FqnParts),
     atomic_list_concat(FqnParts, '.', Fqn).
 
+%! canonical_path(+Path, -CanonicalPath) is semidet.
+% Get a Path into a canonical (absolute) form.
+% Fails if the file doesn't exist.
 canonical_path(Path, CanonicalPath) :-
     % TODO: besides being slightly less efficient, this doesn't do
-    %       quite what we want -- probably want to refactore
-    %       expand_filepath to use py_ext/2 for files and to use the
-    %       given file name for directories. However, it's unlikely
-    %       that anyone would notice the subtlely different semantics
-    %       -- e.g., we allow a directory whose name ends in '.py' or
-    %       a file without a '.py' extension, but these wouldn't be
-    %       allowed by the Python interpreter, so the extra
-    %       permissivity is shouldn't be a problem.
+    %       quite what we want -- probably want to change 
+    %       expand_filepath/2 to use py_ext/2 for files and to use
+    %       the given file name for directories. However, it's
+    %       unlikely that anyone would notice the subtlely different
+    %       semantics -- e.g., we allow a directory whose name ends in
+    %       '.py' or a file without a '.py' extension, but these
+    %       wouldn't be allowed by the Python interpreter, so the
+    %       extra permissivity is shouldn't be a problem.
     (  absolute_file_name(Path, AbsPath, [access(read), file_errors(fail)])
     -> true
     ;  absolute_file_name(Path, AbsPath, [access(read), file_type(directory), file_errors(fail)])
@@ -389,33 +560,33 @@ canonical_path(Path, CanonicalPath) :-
 %  encodes the AST nodes with FQNs), output Kythe JSON to current
 %  output stream.
 parse_and_process_module(SrcFqn, Opts) :-
-    member(pythonpath(PythonPaths), Opts),
-    do_if(false, dump_term('PYTHONPATHS', PythonPaths)),  % TODO: delete
+    member(pythonpath(Pythonpaths), Opts),
+    do_if(false, dump_term('PYTHONPATHS', Pythonpaths)),  % TODO: delete
     lookup_module(SrcFqn, Src),
     SrcInfo = src{src_fqn: SrcFqn,
                   src: Src},
-    must_once(
-        run_parse_cmd(Opts, Src, SrcFqn, ParsedFile)),
-    must_once(
-        read_nodes(ParsedFile, Nodes, Meta0)),
+    run_parse_cmd(Opts, Src, SrcFqn, ParsedFile),
+    current_prolog_flag(autoload, AutoloadFlag),
+    % TODO: fix library(http/json): use_module(library(lists)).
+    set_prolog_flag(autoload, true),  % TODO: Otherwise gets error: json:term_to_dict/3 - undefined select/3
+    read_nodes(ParsedFile, Nodes, Meta0),
+    set_prolog_flag(autoload, AutoloadFlag),
     do_if(false,
           dump_term('NODES', Nodes)),
-    put_dict(pythonpaths, Meta0, PythonPaths, Meta),
-    must_once(
-        kythe_json(Nodes, SrcInfo, KytheFacts, Exprs, Meta)),
+    put_dict(pythonpaths, Meta0, Pythonpaths, Meta),
+    process_nodes(Nodes, SrcInfo, KytheFacts, Exprs, Meta),
     do_if(false,
           dump_term('EXPRS', Exprs, [indent_arguments(auto),
                                      right_margin(72)])),
-    must_once(
-        assign_exprs(Exprs, Meta, SrcFqn, Symtab, KytheFacts2)),
+    assign_exprs(Exprs, Meta, SrcFqn, Symtab, KytheFacts2),
     do_if(false,
           dump_term('SYMTAB', Symtab)),
     current_output(KytheStream),
     % write(KytheStream, "%% === Kythe ==="), nl(KytheStream),
-    symtab_as_kythe_fact(Symtab, Meta, SymtabKytheFact),
-    output_kythe_fact(SymtabKytheFact, KytheStream),
-    output_kythe_facts(KytheFacts, KytheStream),
-    output_kythe_facts(KytheFacts2, KytheStream).
+    symtab_as_kyfact(Symtab, Meta, SymtabKytheFact),
+    output_kyfact(SymtabKytheFact, KytheStream),
+    maplist({KytheStream}/[KytheFact]>>output_kyfact(KytheFact, KytheStream), KytheFacts),
+    maplist({KytheStream}/[KytheFact]>>output_kyfact(KytheFact, KytheStream), KytheFacts2).
 
 %! run_parse_cmd(+Opts, +Src, +SrcFqn, -OutFile) is det.
 %  Run the parse command into a temporary file. (The temp file is
@@ -425,9 +596,9 @@ parse_and_process_module(SrcFqn, Opts) :-
 %  and is a bit more difficult to debug.
 run_parse_cmd(Opts, Src, SrcFqn, OutFile) :-
     must_once_msg(ground(Opts), 'Invalid command line options', []),
-    memberchks([python_version(PythonVersion), parsecmd(ParseCmd),
-                kythe_corpus(KytheCorpus), kythe_root(KytheRoot)],
-               Opts),
+    maplist({Opts}/[X]>>memberchk(X, Opts),
+            [python_version(PythonVersion), parsecmd(ParseCmd),
+             kythe_corpus(KytheCorpus), kythe_root(KytheRoot)]),
     must_once_msg(memberchk(PythonVersion, [2, 3]), 'Invalid Python version: ~q', [PythonVersion]),
     tmp_file_stream(OutFile, OutFileStream, [encoding(binary), extension('fqn-json')]),
     close(OutFileStream),
@@ -443,23 +614,18 @@ run_parse_cmd(Opts, Src, SrcFqn, OutFile) :-
     do_if(false, dump_term('CMD', Cmd)),
     must_once_msg(shell(Cmd, 0), 'Parse failed', []).
 
-memberchks([], _).
-memberchks([X|Xs], List) :-
-    memberchk(X, List),
-    memberchks(Xs, List).
-
-%! symtab_as_kythe_fact(+Symtab, +Meta, -KytheFactAsJsonDict) is det.
+%! symtab_as_kyfact(+Symtab, +Meta, -KytheFactAsJsonDict) is det.
 %  Convert the symtab into a Kythe fact.
-symtab_as_kythe_fact(Symtab, Meta,
-                     json{source: Source,
-                          fact_name: '/kythe/x-symtab',
-                          fact_value: SymtabStr64}) :-
+symtab_as_kyfact(Symtab, Meta,
+                 json{source: Source,
+                      fact_name: '/kythe/x-symtab',
+                      fact_value: SymtabStr64}) :-
     print_term_cleaned(Symtab,
                        [tab_width(0),
                         indent_arguments(2),
                         right_margin(100)],
                        SymtabStr),
-    % TODO: the following is dup-ed from kythe_file//0 but
+    % TODO: the following is dup-ed from kyfile//0 but
     %       with Language specified
     base64(SymtabStr, SymtabStr64),
     Source = json{path: Meta.path, language: Meta.language}.
@@ -477,7 +643,7 @@ read_nodes(FqnExprPath, Nodes, Meta) :-
         dump_term('JSON_DICT', JsonDict)),
     simplify_json(JsonDict, Nodes).
 
-%! simplify_meta(+MetaDictJson:dict, +Opts:list, -Meta:dict) is det.
+%! simplify_meta(+MetaDictJson:dict, -Meta:dict) is det.
 %  Simplify the file meta-data. The argument is the Prolog dict form
 %  of the first JSON item (see ast_cooked.Meta).
 simplify_meta(MetaDictJson, Meta) :-
@@ -523,46 +689,46 @@ simplify_json(_{kind: Kind, slots: Slots}, Value) :-
 simplify_json_slot_pair(Key-Value, Key-Value2) :-
     simplify_json(Value, Value2).
 
-%! kythe_json(+Nodes, +SrcInfo:dict, -KytheFacts:list, -Exprs:list, +Meta:dict) is det.
-%  Wrapper for kythe_json//1.
+%! process_nodes(+Nodes, +SrcInfo:dict, -KytheFacts:list, -Exprs:list, +Meta:dict) is det.
+%  Wrapper for process_nodes//[kyfact, expr, file_meta].
 %  TODO: separate KytheFacts into those that require de-duping and
 %  those that can be simply appended, to minimize the final de-dup.
-kythe_json(Node, SrcInfo, KytheFacts, Exprs, Meta) :-
-    kythe_json(Node, SrcInfo, KytheFacts1, [], Exprs, [], Meta),  % phrase(kythe_json(Node), KytheFacts, Exprs, Meta)
-    % TODO: if we don't care about the order (for debugging), can use sort/2 for dedup:
+process_nodes(Node, SrcInfo, KytheFacts, Exprs, Meta) :-
+    process_nodes(Node, SrcInfo, KytheFacts1, [], Exprs, [], Meta),  % phrase(process_nodes(Node), KytheFacts, Exprs, Meta)
+    % TODO: don't preserve order (for debugging) - use sort/2 to dedup:
     list_to_set(KytheFacts1, KytheFacts).
 
-%! kythe_json(+Nodes)//[kythe_fact, expr, file_meta] is det.
+%! process_nodes(+Nodes)//[kyfact, expr, file_meta] is det.
 %  Traverse the Nodes, accumulating in KytheFacts (mostly anchors)
 %  and Expr (which will be traversed later, to fill in dynamically
 %  created attribtes (e.g., self.foo).
-kythe_json(Node, SrcInfo) -->>
-    kythe_file(SrcInfo),
-    node_anchors(Node, _Expr).
+process_nodes(Node, SrcInfo) -->>
+    kyfile(SrcInfo),
+    kynode(Node, _Expr).
 
-%! kythe_file//[kythe_fact, file_meta] is det.
+%! kyfile//[kyfact, file_meta] is det.
 %  Generate the KytheFacts at the file level.
-kythe_file(SrcInfo) -->>
+kyfile(SrcInfo) -->>
     % TODO: output x-numlines, x-html ?
     Meta/file_meta,
     { must_once(Meta.path == SrcInfo.src) },
     { Source = json{path: Meta.path} },
-    kythe_fact(Source, '/kythe/node/kind', 'file'),
-    kythe_fact_b64(Source, '/kythe/text', Meta.file_contents_b64),
+    kyfact(Source, '/kythe/node/kind', 'file'),
+    kyfact_b64(Source, '/kythe/text', Meta.file_contents_b64),
     signature_node(SrcInfo.src_fqn, Module),
-    kythe_fact(Module, '/kythe/node/kind', 'package'),
-    kythe_edge_fqn(Source, '/kythe/edge/childof', SrcInfo.src_fqn),
-    kythe_fact(Source, '/kythe/text/encoding', Meta.encoding).
+    kyfact(Module, '/kythe/node/kind', 'package'),
+    kyedge_fqn(Source, '/kythe/edge/childof', SrcInfo.src_fqn),
+    kyfact(Source, '/kythe/text/encoding', Meta.encoding).
 
-%! node_anchors(+Node:json_dict, -Type)//[kythe_fact, expr, file_meta] is det.
+%! kynode(+Node:json_dict, -Type)//[kyfact, expr, file_meta] is det.
 %  Extract anchors (with FQNs) from the the AST nodes.  The anchors go
-%  into accumulator 'kythe_fact' and the expressions (for further
+%  into accumulator 'kyfact' and the expressions (for further
 %  processing) go into accumulator 'expr'. The predicate returns a
 %  "type", which is used to populate the right-hand-sides of assign/2
 %  terms in the 'expr' accumulator.
 
 %   For descriptions of the various types of Node, and how they relate
-%   to the raw ASTN, see ast_cooked.py.
+%   to the raw AST, see ast_cooked.py.
 
 %   [], [_|_], bool(_), dict(_), int(_), none, str(_), 'Astn'{...}'
 %   are all handled by higher-level nodes.
@@ -570,12 +736,11 @@ kythe_file(SrcInfo) -->>
 %     in node_astn/4, which is uesd by 'ArgumentNode', 'AtomDotNode', etc.;
 %     str(_) is used by 'Class', 'Func', etc.)
 
-%   assign/2 facts are made up of a left-hand-side (a list) and a
-%   right-hand-side (a singleton list or an empty list). These
-%   correspond to the LHS and RHS of an expression, and have a few
-%   variants:
-%     assign(a, [b]) corresponds to the statement `a = b`
-%     assign(a, []) corresponds to the definition of a name, e.g. `def foo(a)`
+%   assign/2 facts are made up of a left-hand-side (assigned-to) and a
+%   right-hand-side (expression. These correspond to the LHS and RHS
+%   of an expression, and have a few variants:
+%     assign([a], [b]) corresponds to the statement `a = b`
+%     assign([a], []) corresponds to the definition of a name, e.g. `def foo(a)`
 %   expr/1 are like assign/2 but with nothing to assign to (expr([]) is a no-op).
 
 %   See comments at the top of this file on union and single types.
@@ -584,332 +749,322 @@ kythe_file(SrcInfo) -->>
 %     AsNameNode
 %     NameRawNode  (from DottedNameNode, ImportFromStmt, etc.)
 %     NameNode
-node_anchors(Node, Type) -->>
-    must_once_kythe_fact_expr_meta(
-        node_anchors_impl(Node, Type)).
-
-%! node_anchors_impl(+Node:json_dict, -ExprType)//[kythe_fact, expr, file_meta] is det.
-%  Implementation of node_anchors//[kythe_fact, expr]
-node_anchors_impl('AnnAssignStmt'{left_annotation: LeftAnnotation,
-                                  expr: Expr,
-                                  left: Left},
-                  stmt(annassign)) -->>
+kynode('AnnAssignStmt'{left_annotation: LeftAnnotation,
+                       expr: Expr,
+                       left: Left},
+             [stmt(annassign)]) -->>
     % Corresponds to `expr_stmt: testlist_star_expr annassign`.
     expr_normalized(Expr),
     assign_normalized(Left, LeftAnnotation).
-node_anchors_impl('ArgumentNode'{name: NameAstn, arg: Arg},
-                  todo_arg(Name, ArgType)) -->>
+kynode('ArgumentNode'{name: NameAstn, arg: Arg},
+       [todo_arg(Name, ArgType)]) -->>
     % Corresponds to `argument: test '=' test`.
     % ast_raw creates ArgumentNode only for `test '=' test`; all other cases
     % just generate the expr (or similar)
     % TODO: match Name to func def param
     { node_astn(NameAstn, _, _, Name) },
-    node_anchors(Arg, ArgType).
-node_anchors_impl('AssertStmt'{items: Items},
-                  stmt(assert)) -->>
+    kynode(Arg, ArgType).
+kynode('AssertStmt'{items: Items},
+       [stmt(assert)]) -->>
      % Corresponds to `assert_stmt`.
-     node_anchors_expr_list(Items).
-node_anchors_impl('AssignExprStmt'{expr: Expr, left: Left},
-                  stmt(assign)) -->>
+     maplist_kyfact_expr(expr_normalized, Items).
+kynode('AssignExprStmt'{expr: Expr, left: Left},
+       [stmt(assign)]) -->>
     assign_normalized(Left, Expr).
-node_anchors_impl('AtomCallNode'{args: Args, atom: Atom},
-                  call([AtomType], ArgsType)) -->>
-    node_anchors(Atom, AtomType),
-    node_anchors_list(Args, ArgsType).
-node_anchors_impl('AtomDotNode'{atom: Atom, binds: bool(Binds),
-                                attr_name: AttrNameAstn},
-                  dot([AtomType], astn(Start, End, AttrName), DotEdgeName)) -->>
+kynode('AtomCallNode'{args: Args, atom: Atom},
+       [call(AtomType, ArgsType)]) -->>
+    kynode(Atom, AtomType),
+    maplist_kynode(Args, ArgsType).
+kynode('AtomDotNode'{atom: Atom, binds: bool(Binds),
+                           attr_name: AttrNameAstn},
+       [dot(AtomType, astn(Start, End, AttrName), DotEdgeName)]) -->>
     { dot_edge_name(Binds, DotEdgeName) },
     { node_astn(AttrNameAstn, Start, End, AttrName) },
-    node_anchors(Atom, AtomType).
-node_anchors_impl('AtomSubscriptNode'{atom: Atom,
-                                      subscripts: Subscripts},
-                  todo_subscr([AtomType])) -->>
-    node_anchors(Atom, AtomType),
-    node_anchors_list(Subscripts, _).
-node_anchors_impl('AugAssignStmt'{augassign: _OpAstn,
-                                  expr: Expr,
-                                  left: Left},
-                  stmt(augassign)) -->>
+    kynode(Atom, AtomType).
+kynode('AtomSubscriptNode'{atom: Atom,
+                           subscripts: Subscripts},
+       [todo_subscr(AtomType)]) -->>
+    kynode(Atom, AtomType),
+    maplist_kynode(Subscripts, _).
+kynode('AugAssignStmt'{augassign: _OpAstn,
+                       expr: Expr,
+                       left: Left},
+       [stmt(augassign)]) -->>
     % { node_astn(OpAstn, _, _, _Op) },
     expr_normalized(Left),
     expr_normalized(Expr).
-node_anchors_impl('BreakStmt'{},
-                  stmt(break)) -->> [ ].
-node_anchors_impl('Class'{bases: Bases, fqn: str(Fqn), name: NameAstn},
-                  class(FqnAtom, BasesType)) -->>
+kynode('BreakStmt'{},
+       [stmt(break)]) -->> [ ].
+kynode('Class'{bases: Bases, fqn: str(Fqn), name: NameAstn},
+       [class(FqnAtom, BasesType)]) -->>
     { atom_string(FqnAtom, Fqn) },
     { node_astn(NameAstn, Start, End, _Token) },
     signature_node(FqnAtom, Vname),
-    kythe_anchor(Start, End, Source),
-    kythe_edge_fqn(Source, '/kythe/edge/defines/binding', FqnAtom),
-    kythe_fact(Vname, '/kythe/node/kind', 'record'),
-    kythe_fact(Vname, '/kythe/subkind', 'class'),
-    node_anchors_list(Bases, BasesType),
+    kyanchor(Start, End, Source),
+    kyedge_fqn(Source, '/kythe/edge/defines/binding', FqnAtom),
+    kyfact(Vname, '/kythe/node/kind', 'record'),
+    kyfact(Vname, '/kythe/subkind', 'class'),
+    maplist_kynode(Bases, BasesType),
     [ class(FqnAtom, BasesType) ]:expr.
-node_anchors_impl('CompFor'{for_astn: _ForAstn,
-                            for_exprlist: ForExprlist,
-                            in_testlist: InTestlist,
+kynode('CompFor'{for_astn: _ForAstn,
+                 for_exprlist: ForExprlist,
+                 in_testlist: InTestlist,
+                 comp_iter: CompIter},
+       [todo_compfor(iter:CompIterType, for:ForExprlistType, in:InTestlistType)]) -->>
+    kynode(ForExprlist, ForExprlistType),
+    kynode(InTestlist, InTestlistType),
+    kynode(CompIter, CompIterType).
+kynode('CompIfCompIterNode'{value_expr: ValueExpr,
                             comp_iter: CompIter},
-                  todo_compfor(iter:CompIterType, for:ForExprlistType, in:InTestlistType)) -->>
-    node_anchors(ForExprlist, ForExprlistType),
-    node_anchors(InTestlist, InTestlistType),
-    node_anchors(CompIter, CompIterType).
-node_anchors_impl('CompIfCompIterNode'{value_expr: ValueExpr,
-                                       comp_iter: CompIter},
-                  todo_compifcompiter(ValueExprType, CompIterType)) -->>
-    node_anchors(ValueExpr, ValueExprType),
-    node_anchors(CompIter, CompIterType).
-node_anchors_impl('ContinueStmt'{},
-                  stmt(continue)) -->> [ ].
-node_anchors_impl('DecoratedStmt'{items: Items},
-                  todo_decorated(ItemsType)) -->>
-                 node_anchors_list(Items, ItemsType).
-node_anchors_impl('DecoratorDottedNameNode'{items: Items},
-                  todo_decorator_dottedname(ItemsType)) -->>
-    from_dotted_names(Items, ItemsType).
-node_anchors_impl('DecoratorsNode'{items: Items},
-                  todo_decorators(ItemsType)) -->>
-    node_anchors_list(Items, ItemsType).
-node_anchors_impl('DelStmt'{items: Items},
-                  stmt(del)) -->>
-    node_anchors_expr_list(Items).
-node_anchors_impl('DictGenListSetMakerCompFor'{value_expr: ValueExpr,
-                                               comp_for: CompFor},
-                  todo_dictgen(ValueExprType, CompForType)) -->>
-    node_anchors(ValueExpr, ValueExprType),
-    node_anchors(CompFor, CompForType).
-node_anchors_impl('DictKeyValue'{items: Items},
-                  todo_dictkeyvaluelist(ItemsType)) -->>
-    node_anchors_list(Items, ItemsType).
-node_anchors_impl('DictSetMakerNode'{items: Items},
-                  todo_dictset(ItemsType)) -->>
-    node_anchors_list(Items, ItemsType).
-node_anchors_impl('EllipsisNode'{}, ellipsis) -->> [ ].
-node_anchors_impl('ExceptClauseNode'{expr: Expr,
-                                     as_item: AsItem},
-                  stmt(except)) -->>
-    node_anchors(Expr, ExprType),
-    node_anchors(AsItem, AsItemType),
-    (  { AsItem = omitted }
-    -> [ expr([ExprType]) ]:expr
-    ;  [ assign(AsItemType, [ExprType]) ]:expr
+       [todo_compifcompiter(ValueExprType, CompIterType)]) -->>
+    kynode(ValueExpr, ValueExprType),
+    kynode(CompIter, CompIterType).
+kynode('ContinueStmt'{},
+       [stmt(continue)]) -->> [ ].
+kynode('DecoratedStmt'{items: Items},
+       [todo_decorated(ItemsType)]) -->>
+    maplist_kynode(Items, ItemsType).
+kynode('DecoratorDottedNameNode'{items: Items},
+       [todo_decorator_dottedname(ItemsType)]) -->>
+    maplist(from_dotted_name, Items, ItemsType).
+kynode('DecoratorsNode'{items: Items},
+       [todo_decorators(ItemsType)]) -->>
+    maplist_kynode(Items, ItemsType).
+kynode('DelStmt'{items: Items},
+       [stmt(del)]) -->>
+    maplist_kyfact_expr(expr_normalized, Items).
+kynode('DictGenListSetMakerCompFor'{value_expr: ValueExpr, comp_for: CompFor},
+       [todo_dictgen(ValueExprType, CompForType)]) -->>
+    kynode(ValueExpr, ValueExprType),
+    kynode(CompFor, CompForType).
+kynode('DictKeyValue'{items: Items},
+       [todo_dictkeyvaluelist(ItemsType)]) -->>
+    maplist_kynode(Items, ItemsType).
+kynode('DictSetMakerNode'{items: Items},
+       [todo_dictset(ItemsType)]) -->>
+    maplist_kynode(Items, ItemsType).
+kynode('EllipsisNode'{},
+       [ellipsis]) -->> [ ].
+kynode('ExceptClauseNode'{expr: Expr,
+                          as_item: AsItem},
+       [stmt(except)]) -->>
+    kynode(Expr, ExprType),
+    kynode(AsItem, AsItemType),
+    (  { AsItemType = omitted }
+    -> [ expr(ExprType) ]:expr
+    ;  [ assign(AsItemType, ExprType) ]:expr
     ).
-node_anchors_impl('ExprListNode'{items: Items},
-                  todo_exprlist(ItemsType)) -->>
-    node_anchors_list(Items, ItemsType).
-node_anchors_impl('ExprStmt'{expr: Expr},
-                  stmt(assign)) -->>
-    node_anchors(Expr, ExprType),
-    [ expr([ExprType]) ]:expr.
-node_anchors_impl('FileInput'{scope_bindings: _ScopeBindings,
-                              stmts: Stmts,
-                              path: _Path},
-                  stmt(file)) -->>
-    %% node_anchors(ScopeBindings, _),
-    node_anchors_list(Stmts, _).
-node_anchors_impl('ForStmt'{for_exprlist:
-                            ForExprlist,
-                            in_testlist: InTestlist,
-                            suite: Suite,
-                            else_suite: ElseSuite},
-                  stmt(for)) -->>
-    node_anchors(ElseSuite, _),  % node_anchors(ElseSuite, stmt(_))
-    node_anchors(ForExprlist, _),
-    node_anchors(InTestlist, _),
-    node_anchors(Suite, _).
-node_anchors_impl('Func'{fqn: str(Fqn),
-                         name: NameAstn,
-                         parameters: Parameters,
-                         return_type: ReturnType},
-                  func(FqnAtom, [ReturnTypeType])) -->>
+kynode('ExprListNode'{items: Items},
+       [todo_exprlist(ItemsType)]) -->>
+    maplist_kynode(Items, ItemsType).
+kynode('ExprStmt'{expr: Expr},
+       [stmt(assign)]) -->>
+    kynode(Expr, ExprType),
+    [ expr(ExprType) ]:expr.
+kynode('FileInput'{scope_bindings: _ScopeBindings,
+                   stmts: Stmts,
+                   path: _Path},
+       [stmt(file)]) -->>
+    %% kynode(ScopeBindings, _),
+    maplist_kynode(Stmts, _).
+kynode('ForStmt'{for_exprlist:
+                 ForExprlist,
+                 in_testlist: InTestlist,
+                 suite: Suite,
+                 else_suite: ElseSuite},
+       [stmt(for)]) -->>
+    kynode(ElseSuite, _),  % kynode(ElseSuite, [stmt(_)])
+    kynode(ForExprlist, _),
+    kynode(InTestlist, _),
+    kynode(Suite, _).
+kynode('Func'{fqn: str(Fqn),
+                    name: NameAstn,
+                    parameters: Parameters,
+                    return_type: ReturnType},
+       [func(FqnAtom, [ReturnTypeType])]) -->>
     { atom_string(FqnAtom, Fqn) },
     { node_astn(NameAstn, Start, End, _Token) },
     signature_node(FqnAtom, Vname),
-    kythe_anchor(Start, End, Source),
-    kythe_edge_fqn(Source, '/kythe/edge/defines/binding', FqnAtom),
-    kythe_fact(Vname, '/kythe/node/kind', 'function'),
-    node_anchors_list(Parameters, _),
-    node_anchors(ReturnType, ReturnTypeType),
-    [ func(FqnAtom, [ReturnTypeType]) ]:expr.
-node_anchors_impl('GlobalStmt'{items: Items},
-                  stmt(global)) -->>
-    node_anchors_expr_list(Items).
-node_anchors_impl('IfStmt'{items: Items},
-                  stmt(if)) -->>
-    node_anchors_list(Items, _).
-node_anchors_impl('ImportFromStmt'{from_name: DotsAndDottedName,
-                                   import_part: 'ImportAsNamesNode'{items: ImportPartItems}},
-                  unused_importfrom(CombImportPart)) -->>
-    must_once_kythe_fact_meta(
-        'ImportFromStmt_impl'(DotsAndDottedName, ImportPartItems, CombImportPart)),
-    node_anchors_import_from(CombImportPart).
-node_anchors_impl('ImportFromStmt'{from_name: DotsAndDottedName,
-                                   import_part: 'StarNode'{}},
-                  unused_importfrom_star) -->>
-    must_once_kythe_fact_meta(
-        'ImportFromStmt_impl'(DotsAndDottedName, '*', _CombImportPart)),
+    kyanchor(Start, End, Source),
+    kyedge_fqn(Source, '/kythe/edge/defines/binding', FqnAtom),
+    kyfact(Vname, '/kythe/node/kind', 'function'),
+    maplist_kynode(Parameters, _),
+    kynode(ReturnType, ReturnTypeType),
+    [ func(FqnAtom, ReturnTypeType) ]:expr.
+kynode('GlobalStmt'{items: Items},
+       [stmt(global)]) -->>
+    maplist_kyfact_expr(expr_normalized, Items).
+kynode('IfStmt'{items: Items},
+       [stmt(if)]) -->>
+    maplist_kynode(Items, _).
+kynode('ImportFromStmt'{from_name: DotsAndDottedName,
+                        import_part: 'ImportAsNamesNode'{items: ImportPartItems}},
+       [unused_importfrom(CombImportPart)]) -->>
+      'ImportFromStmt_impl'(DotsAndDottedName, ImportPartItems, CombImportPart),
+    maplist_kyfact_expr(import_from, CombImportPart).
+kynode('ImportFromStmt'{from_name: DotsAndDottedName,
+                        import_part: 'StarNode'{}},
+       [unused_importfrom_star]) -->>
+    'ImportFromStmt_impl'(DotsAndDottedName, '*', _CombImportPart),
     % TODO: expand '*'
     [ ].
-node_anchors_impl('ImportNameFqn'{dotted_as_names: 'ImportDottedAsNamesFqn'{items: DottedAsNames}},
-                  unused_import(DottedAsNamesType)) -->>
-    must_once_kythe_fact_meta(
-        'ImportNameFqn_impl'(DottedAsNames, DottedAsNamesType)).
-node_anchors_impl('ListMakerNode'{items: Items},
-                  todo_list(ItemsType)) -->>
-    node_anchors_list(Items, ItemsType).
+kynode('ImportNameFqn'{dotted_as_names: 'ImportDottedAsNamesFqn'{items: DottedAsNames}},
+       [unused_import(DottedAsNamesType)]) -->>
+    'ImportNameFqn_impl'(DottedAsNames, DottedAsNamesType).
+kynode('ListMakerNode'{items: Items},
+       [todo_list(ItemsType)]) -->>
+    maplist_kynode(Items, ItemsType).
 % 'NameBindsFqn' is only for 'AssignExprStmt' -- for import statements,
 % it's handled separately.
 % TODO: special case this within processing of AssignExprStmt?  IMPORTANT
-node_anchors_impl('NameBindsFqn'{fqn: str(Fqn), name: NameAstn},
-                  fqn(FqnAtom)) -->>  %% result is same as NameRefFqn
+kynode('NameBindsFqn'{fqn: str(Fqn), name: NameAstn},
+       [fqn(FqnAtom)]) -->>  %% result is same as NameRefFqn
     { atom_string(FqnAtom, Fqn) },
     { node_astn(NameAstn, Start, End, _Token) },
     signature_node(FqnAtom, Vname),
-    kythe_anchor(Start, End, Source),
-    kythe_edge_fqn(Source, '/kythe/edge/defines/binding', FqnAtom),  %% only difference from NameRef
-    kythe_fact(Vname, '/kythe/node/kind', 'variable').
-node_anchors_impl('NameRefFqn'{fqn: str(Fqn), name: NameAstn},
-                  fqn(FqnAtom)) -->>  %% result is same as NameBinds
+    kyanchor(Start, End, Source),
+    kyedge_fqn(Source, '/kythe/edge/defines/binding', FqnAtom),  %% only difference from NameRef
+    kyfact(Vname, '/kythe/node/kind', 'variable').
+kynode('NameRefFqn'{fqn: str(Fqn), name: NameAstn},
+       [fqn(FqnAtom)]) -->>  %% result is same as NameBinds
     { atom_string(FqnAtom, Fqn) },
     { node_astn(NameAstn, Start, End, _Token) },
-    kythe_anchor(Start, End, Source),
-    kythe_edge_fqn(Source, '/kythe/edge/ref', FqnAtom).  %% only difference from NameBindsFqn
-node_anchors_impl('NameRefGenerated'{fqn: str(Fqn)},
-                  fqn(FqnAtom)) -->>  %% result is same as NameBinds
+    kyanchor(Start, End, Source),
+    kyedge_fqn(Source, '/kythe/edge/ref', FqnAtom).  %% only difference from NameBindsFqn
+kynode('NameRefGenerated'{fqn: str(Fqn)},
+       [fqn(FqnAtom)]) -->>  %% result is same as NameBinds
     { atom_string(FqnAtom, Fqn) }.
-node_anchors_impl('NonLocalStmt'{items: Items},
-                  stmt(nonlocal)) -->>
-    node_anchors_expr_list(Items).
-node_anchors_impl('NumberNode'{astn: _Astn},
-                  class('builtin.Number', [])) -->> [ ].
-node_anchors_impl('OmittedNode'{}, omitted) -->> [ ].
-node_anchors_impl('OpNode'{args: Args, op_astns: OpAstns},
-                  call_op(OpAstns, ArgsType)) -->>
-    node_anchors_list(Args, ArgsType).
-node_anchors_impl('PassStmt'{},
-                  stmt(break)) -->> [ ].
-node_anchors_impl('RaiseStmt'{items: Items},
-                  stmt(raise)) -->>
-    node_anchors_list(Items, _).
-node_anchors_impl('StarNode'{},
-                  star) -->> [ ].  % TODO: can we get rid of this in ast_cooked?
-node_anchors_impl('Stmts'{items: Items},
-                  todo_expr(stmts)) -->>
-    node_anchors_list(Items, _).
-node_anchors_impl('StringNode'{astns: _Astns},
-                  class('builtin.str', [])) -->> [ ].
-node_anchors_impl('SubscriptNode'{expr1: Expr1, expr2: Expr2, expr3: Expr3},
-                  subscr([Expr1Type, Expr2Type, Expr3Type])) -->>
-    node_anchors(Expr1, Expr1Type),
-    node_anchors(Expr2, Expr2Type),
-    node_anchors(Expr3, Expr3Type).
-node_anchors_impl('TnameNode'{name: Name, type_expr: TypeType},
-                  stmt(tname)) -->>
+kynode('NonLocalStmt'{items: Items},
+       [stmt(nonlocal)]) -->>
+    maplist_kyfact_expr(expr_normalized, Items).
+kynode('NumberNode'{astn: _Astn},
+       [class('builtin.Number', [])]) -->> [ ].
+kynode('OmittedNode'{},
+       [omitted]) -->> [ ].
+kynode('OpNode'{args: Args, op_astns: OpAstns},
+       [call_op(OpAstns, ArgsType)]) -->>
+    maplist_kynode(Args, ArgsType).
+kynode('PassStmt'{},
+       [stmt(break)]) -->> [ ].
+kynode('RaiseStmt'{items: Items},
+       [stmt(raise)]) -->>
+    maplist_kynode(Items, _).
+kynode('StarNode'{},
+       [star]) -->> [ ].  % TODO: can we get rid of this in ast_cooked?
+kynode('Stmts'{items: Items},
+       [todo_expr(stmts)]) -->>
+    maplist_kynode(Items, _).
+kynode('StringNode'{astns: _Astns},
+       [class('builtin.str', [])]) -->> [ ].
+kynode('SubscriptNode'{expr1: Expr1, expr2: Expr2, expr3: Expr3},
+       [todo_subscr(Expr1Type, Expr2Type, Expr3Type)]) -->>
+    kynode(Expr1, Expr1Type),
+    kynode(Expr2, Expr2Type),
+    kynode(Expr3, Expr3Type).
+kynode('TnameNode'{name: Name, type_expr: TypeType},
+       [stmt(tname)]) -->>
     assign_normalized(Name, TypeType).
-node_anchors_impl('TryStmt'{items: Items},
-                  stmt(try)) -->>
-    node_anchors_list(Items, _).
-node_anchors_impl('TypedArgNode'{tname: 'TnameNode'{name: Name,
-                                                    type_expr: TypeExpr},
-                                 expr: Expr},
-                  todo_typedarg()) -->>
+kynode('TryStmt'{items: Items},
+       [stmt(try)]) -->>
+    maplist_kynode(Items, _).
+kynode('TypedArgNode'{tname: 'TnameNode'{name: Name,
+                                         type_expr: TypeExpr},
+                      expr: Expr},
+       [todo_typedarg()]) -->>
     assign_normalized(Name, TypeExpr),
     expr_normalized(Expr).  %% assign_normalized(Name, Expr) would cause duplicate facts
-node_anchors_impl('WhileStmt'{else_suite: ElseSuite,
-                              suite: Suite,
-                              test: Test},
-                  stmt(while)) -->>
-    node_anchors(ElseSuite, _),
-    node_anchors(Suite, _),
-    node_anchors(Test, _).
-node_anchors_impl('WithItemNode'{item: Item,
-                                 as_item: AsItem},
-                  stmt(with_item)) -->>
-    node_anchors(Item, ItemType),
-    node_anchors(AsItem, AsItemType),
-    (  { AsItemType = omitted }
-    -> [ expr([ItemType]) ]:expr
-    ;  [ assign(AsItemType, [ItemType]) ]:expr
+kynode('WhileStmt'{else_suite: ElseSuite,
+                   suite: Suite,
+                   test: Test},
+       [stmt(while)]) -->>
+    kynode(ElseSuite, _),
+    kynode(Suite, _),
+    kynode(Test, _).
+kynode('WithItemNode'{item: Item,
+                      as_item: AsItem},
+       [stmt(with_item)]) -->>
+    kynode(Item, ItemType),
+    kynode(AsItem, AsItemType),
+    (  { AsItemType = [omitted] }
+    -> [ expr(ItemType) ]:expr
+    ;  [ assign(AsItemType, ItemType) ]:expr
     ).
-node_anchors_impl('WithStmt'{items: Items, suite: Suite},
-                  stmt(with)) -->>
-    node_anchors_list(Items, _),  % handled by WithItemNode
-    node_anchors(Suite, _).
+kynode('WithStmt'{items: Items, suite: Suite},
+       [stmt(with)]) -->>
+    maplist_kynode(Items, _),  % handled by WithItemNode
+    kynode(Suite, _).
 
-%! 'ImportNameFqn_impl(+DottedAsNames:list, -DottedAsNamesType)//[kythe_fact, file_meta] is det.
+%! 'ImportNameFqn_impl(+DottedAsNames:list, -DottedAsNamesType)//[kyfact, file_meta] is det.
 % Corresponds to: `import_name: 'import' dotted_as_names`
 % TODO: finish this - similar to ImportFromStmt_impl
 'ImportNameFqn_impl'(DottedAsNames, todo_dottedName(DottedAsNamesType)) -->>
-    'ImportDottedAsNamesFqn_impls'(DottedAsNames, DottedAsNamesType),
+    maplist_kyfact('ImportDottedAsNamesFqn_impl',
+                   DottedAsNames, DottedAsNamesType),
     { zip_merge(DottedAsNames, DottedAsNamesType, Zipped),
-      do_if(false, dump_term('IMPORT_NAME_FQN', Zipped)) }.  % TODO: delete
+      do_if(true, dump_term('IMPORT_NAME_FQN', Zipped)) }.  % TODO: delete
 
-'ImportDottedAsNamesFqn_impls'([], []) -->> [ ].
-'ImportDottedAsNamesFqn_impls'(['DottedNameNode'{items: Items}|Ds], [todo_dottedname(DottedNameType)|Ts]) -->>
-    { must_once(
-          dotted_name_raw(Items, DottedNameType)) },
-    % TODO: IMPORTANT-- following needs to define binding for first part of DottedName
-    'ImportDottedAsNamesFqn_impls'(Ds, Ts).
-'ImportDottedAsNamesFqn_impls'(['ImportDottedAsNameFqn'{dotted_name: 'DottedNameNode'{items:Items},
-                                                        as_name: 'NameBindsFqn'{fqn: str(Fqn), name: NameAstn}}|Ds],
-                  [unused_importdotted(DottedNameType, FqnAtom)|Ts]) -->>
-    { must_once(
-        dotted_name_raw(Items, DottedNameType)) },
+%! 'ImportDottedAsNameFqn_impl(+DottedAsNames:list, -DottedAsNamesType)//[kyfact, file_meta] is det.
+% TODO: Finish this
+'ImportDottedAsNamesFqn_impl'('DottedNameNode'{items: Items}, todo_dottedname(DottedNameType)) -->>
+    % TODO: IMPORTANT-- needs to define binding for first part of DottedName
+    { maplist(dotted_name_raw, Items, DottedNameType) }.
+'ImportDottedAsNamesFqn_impl'('ImportDottedAsNameFqn'{dotted_name: 'DottedNameNode'{items:Items},
+                                                      as_name: 'NameBindsFqn'{fqn: str(Fqn), name: NameAstn}},
+                              unused_importdotted(DottedNameType, FqnAtom)) -->>
+    { maplist(dotted_name_raw, Items, DottedNameType) },
     % TODO: IMPORTANT -- following needs to define binding for first part of DottedName
     { atom_string(FqnAtom, Fqn) },
     { node_astn(NameAstn, Start, End, _Token) },
     signature_node(FqnAtom, Vname),
-    kythe_anchor(Start, End, Source),
-    kythe_edge_fqn(Source, '/kythe/edge/defines/binding', FqnAtom),
-    kythe_fact(Vname, '/kythe/node/kind', 'variable'),
-    'ImportDottedAsNamesFqn_impls'(Ds, Ts).
+    kyanchor(Start, End, Source),
+    kyedge_fqn(Source, '/kythe/edge/defines/binding', FqnAtom),
+    kyfact(Vname, '/kythe/node/kind', 'variable').
 
-%! 'ImportFromStmt_impl'(+DotsAndDottedName, +ImportPart, -CombImportPart)//[kythe_fact, file_meta] is det.
+%! 'ImportFromStmt_impl'(+DotsAndDottedName, +ImportPart, -CombImportPart)//[kyfact, file_meta] is det.
 %  The name is zero or more ImportDotNode's followed by zero or one
 %  DottedNameNode. If there are no ImportDotNode's, then the result is
 %  $PYTHONPATH/Path/To/From/Pat/ImportPart. If there are ImportDotNode's,
 %  then the result is FilePath/ImportPart, where FilePath is derived
 %  from the Meta information for the file, followed by '/..' as
 %  needed.
-'ImportFromStmt_impl'(DotsAndDottedName, ImportPart, ResolvedImportPart) -->>
+'ImportFromStmt_impl'(DotsAndDottedName, ImportPart, ResolvedImportParts) -->>
     Meta/file_meta,
-    { do_if(false,  % TODO: delete
+    { do_if(true,  % TODO: delete
           dump_term('IMPORT_DOTS_AND_DOTTED', [dots_and=DotsAndDottedName, import=ImportPart])) },
     { must_once(
           py_ext(PathBase, Meta.path)) },
     { from_import_dots(DotsAndDottedName, PathBase, FromFileOrDir) },
     { from_import_dot_or_name(DotsAndDottedName, FromAstns, FromToken) },
-    { do_if(false, dump_term('FROMFILEORDIR', [FromFileOrDir, 'FromToken'=FromToken])) },  % TODO: delete
+    { do_if(true, dump_term('FROMFILEORDIR', [FromFileOrDir, 'FromToken'=FromToken])) },  % TODO: delete
     import_dots_file(FromToken, FromAstns, FromFileOrDir, FromAstnDotsAndName),
-    from_import_part(ImportPart, FromFileOrDir, FromAstnDotsAndName, CombImportPart),
-    { must_once(
-          resolve_comb_imports(CombImportPart, Meta.pythonpaths, ResolvedImportPart)) },
-    ref_imports(ResolvedImportPart),
-    { do_if(false,  % TODO: delete
+    from_import_part(ImportPart, FromFileOrDir, FromAstnDotsAndName, CombImportParts),
+    { Pythonpaths = Meta.pythonpaths },
+    { maplist(resolve_comb_import(Pythonpaths), CombImportParts, ResolvedImportParts) },
+    maplist_kyfact(ref_import, ResolvedImportParts),
+    { do_if(true,  % TODO: delete
             dump_term('IMPORT_DOTS', [
                           'DotsAndDottedName'=DotsAndDottedName,
                           'ImportPart'=ImportPart,
                           'FromFileOrDir'=FromFileOrDir,
-                          'CombImportPart'=CombImportPart,
-                          'ResolvedImportPart'=ResolvedImportPart,
+                          'CombImportParts'=CombImportParts,
+                          'ResolvedImportParts'=ResolvedImportParts,
                           'FromAstnDotsAndName'=FromAstnDotsAndName])) }.
 
-%! import_dots_file(+FromToken, +FromAstns, +FromFileOrDir, -FromAstnDotsAndName)//[kythe_fact, file_meta] is det.
+%! import_dots_file(+FromToken, +FromAstns, +FromFileOrDir, -FromAstnDotsAndName)//[kyfact, file_meta] is det.
 %  Generate the Kythe ref/file fact for the "from" part of an import.
 import_dots_file(FromToken, FromAstns, FromFileOrDir, FromAstnDotsAndName) -->>
     Meta/file_meta,
-    { must_once(full_path(FromFileOrDir, Meta.pythonpaths, file(ResolvedFromFileOrDir))) },
+    { full_path(FromFileOrDir, Meta.pythonpaths, file(ResolvedFromFileOrDir)) },
     { import_dots_file_as_single_node(FromToken, FromAstns, FromAstnDotsAndName,
                                       FromStart, FromEnd) },
-    kythe_anchor(FromStart, FromEnd, FromSource),
-    kythe_edge(FromSource, '/kythe/edge/ref/file',
+    kyanchor(FromStart, FromEnd, FromSource),
+    kyedge(FromSource, '/kythe/edge/ref/file',
                json{path: ResolvedFromFileOrDir}).
 
 %! import_dots_file_as_single_node(+FromToken, +FromAstns,
 %!                                 -FromAstnDotsAndName, -FromStart, -FromEnd) is det.
-%  For the "from" part of an import, generate a list of ASTNs, plus the
-%  start end end positions of those ASTNs.
+%  For the "from" part of an import, generate a ASTNs plus the
+%  start end end positions of the ASTN.
 import_dots_file_as_single_node(FromToken, FromAstns,
                                 FromAstnDotsAndName, FromStart, FromEnd) :-
     FromAstns = [FromAstnFirst|_],
@@ -920,24 +1075,17 @@ import_dots_file_as_single_node(FromToken, FromAstns,
     % necessarily match what the file has in FromStart:FromEnd.
     node_astn(FromAstnDotsAndName, FromStart, FromEnd, FromToken).
 
-%! ref_imports(+RefImports:list)//[kythe_fact, file_meta] is det.
-% TODO: rename and document
-ref_imports([]) -->> [ ].
-ref_imports([RefImport|RIs]) -->>
-    ref_import(RefImport),
-    ref_imports(RIs).
-
-%! ref_import(+RefImport)//[kythe_fact, file_meta] is det.
+%! ref_import(+RefImport)//[kyfact, file_meta] is det.
 % TODO: rename and document
 ref_import(path_fqn_vname(file_and_token(File,Token),_Var,VarVname)) -->>
     { atomic_list_concat([File, Token], '.', FileAndToken) },
     { path_to_python_module_or_unknown(File, Module) },  % TODO: delete
-    { do_if(false, dump_term('FILE_AND_TOKEN', [var_vname=VarVname, file=File, module=Module, token=Token, concat=FileAndToken])) },  % TODO: delete
-    kythe_edge_fqn(VarVname, '/kythe/edge/ref/imports', FileAndToken).
+    { do_if(true, dump_term('FILE_AND_TOKEN', [var_vname=VarVname, file=File, module=Module, token=Token, concat=FileAndToken])) },  % TODO: delete
+    kyedge_fqn(VarVname, '/kythe/edge/ref/imports', FileAndToken).
 ref_import(path_fqn_vname(file(File),_Var,VarVname)) -->>
     { path_to_python_module_or_unknown(File, Module) },  % TODO: delete
-    { do_if(false, dump_term('FILE', [var_vname=VarVname, file=File, module=Module])) },  % TODO: delete
-    kythe_edge_fqn(VarVname, '/kythe/edge/ref/imports', Module).
+    { do_if(true, dump_term('FILE', [var_vname=VarVname, file=File, module=Module])) },  % TODO: delete
+    kyedge_fqn(VarVname, '/kythe/edge/ref/imports', Module).
 % TODO: handle refs for 'from ... import *'
 ref_import(path_star(_File)) -->> [ ].
 % TODO: the following should have been converted to path_star, but
@@ -945,14 +1093,11 @@ ref_import(path_star(_File)) -->> [ ].
 ref_import(from_star(_File)) -->> [ ].
 
 % TODO: rename and document
-resolve_comb_imports([], _, []).
-resolve_comb_imports([from_star(Import)|IVs], PythonPaths, [from_star(Import)|RIVs]) :-  % TODO: implement
-    resolve_comb_imports(IVs, PythonPaths, RIVs).
-resolve_comb_imports([path_fqn_vname(Import,Var,VarVname)|IVs], PythonPaths, [path_fqn_vname(ResolvedAndToken,Var,VarVname)|RIVs]) :-
-    full_path(Import, PythonPaths, ResolvedAndToken),
-    resolve_comb_imports(IVs, PythonPaths, RIVs).
+resolve_comb_import(_Pythonpaths, from_star(Import), from_star(Import)).  % TODO: implement
+resolve_comb_import(Pythonpaths, path_fqn_vname(Import,Var,VarVname), path_fqn_vname(ResolvedAndToken,Var,VarVname)) :-
+    full_path(Import, Pythonpaths, ResolvedAndToken).
 
-% TODO: rename and document
+% TODO: rename and document  is det
 full_path(Path, Prefixes, ResolvedAndToken) :-
     (  pythonpath_prefix(Path, Deprefix)
     -> full_path_prefixed(Path, Deprefix, Prefixes, ResolvedAndToken)
@@ -961,7 +1106,7 @@ full_path(Path, Prefixes, ResolvedAndToken) :-
     ;  ResolvedAndToken = file(Path)
     ).
 
-% TODO: rename and document
+% TODO: rename and document    is det
 full_path_prefixed(Path, Deprefix, Prefixes, ResolvedAndToken) :-
     (  member(Prefix, Prefixes),
        atom_concat(Prefix, Deprefix, Path0),
@@ -970,7 +1115,7 @@ full_path_prefixed(Path, Deprefix, Prefixes, ResolvedAndToken) :-
     ;  ResolvedAndToken = file(Path)
     ).
 
-% TODO: rename and document
+% TODO: rename and document  is semidet.
 expand_filepath(Path0, ResolvedAndToken) :-
     (  Path1 = Path0,
        ResolvedAndToken = file(Expanded)
@@ -980,16 +1125,16 @@ expand_filepath(Path0, ResolvedAndToken) :-
     py_ext(Path1, Path),
     canonical_path(Path, Expanded).
 
-% TODO: rename and document
+% TODO: rename and document   is det
 file_and_token(Expanded, '*', path_star(Expanded)) :- !.
 file_and_token(Expanded, LookupToken, file_and_token(Expanded, LookupToken)).
 
-% TODO: rename and document
+% TODO: rename and document   is det.
 remove_last_component(Path, FirstPart, Tail) :-
     (  split_atom(Path, '/', '', Split),
        Split = [_,_|_],  % at least two components
-       append(FirstPathList, [Tail], Split)
-    -> atomic_list_concat(FirstPathList, '/', FirstPart)
+       append(FirstPathPieces, [Tail], Split)
+    -> atomic_list_concat(FirstPathPieces, '/', FirstPart)
     ).
 
 %! pythonpath_prefix(+Full: atom, -Rest: atom) is semidet.
@@ -1008,7 +1153,7 @@ from_import_dots(DotsAndDottedName, PathBase, FromFileOrDir) :-
     from_import_dots_to_name(Dots, DottedNames, FromFileOrDirPieces),
     atomic_list_concat(FromFileOrDirPieces, '/', FromFileOrDir).
 
-%! from_import_dots0(+ImportPart:list, +PathBase:atom, -Dots:list, -ResolvedImportPart:list) is det.
+%! from_import_dots0(+ImportPart:list, +PathBase:atom, -Dots:list, -ResolvedImportParts:list) is det.
 %  Handle the 'from' part of the import_from rule in the Grammar:
 %      import_from: ('from' ('.'* dotted_name | '.'+) 'import' ...
 %  (the stuff after the 'import' is handled elsewhere)
@@ -1016,14 +1161,12 @@ from_import_dots0([], _PathBase, [], []) :- !.
 from_import_dots0(['ImportDotNode'{dot:_}|Ds], PathBase, [PathBase|Dots], DottedNames) :- !,
     from_import_dots0(Ds, '..', Dots, DottedNames).
 from_import_dots0(['DottedNameNode'{items: Ds}], _, [], DottedNames) :-
-    from_dotted_names(Ds, DottedNames).
+    maplist(from_dotted_name, Ds, DottedNames).
 
-%! from_dotted_names(+DottedNameItems:list, -DottedNames:list) is det.
-%  Process a list of NameRawNode nodes into a list of names
-from_dotted_names([], []).
-from_dotted_names(['NameRawNode'{name: NameAstn}|Ns], [Name|Names]) :-
-    node_astn(NameAstn, _, _, Name),
-    from_dotted_names(Ns, Names).
+%! from_dotted_name(+DottedNameItem, -DottedName) is det.
+%  Process a NameRawNode node into a name
+from_dotted_name('NameRawNode'{name: NameAstn}, Name) :-
+    node_astn(NameAstn, _, _, Name).
 
 %! from_import_dots_to_name(+Dots:list(atom), +DottedNames:list(atom), -FromFileOrDirPieces:list(atom)) is det.
 %  Given a list of dots and names (that is, a list of 'ImportDotNode's
@@ -1035,7 +1178,7 @@ from_import_dots_to_name([], DottedNames, ['$PYTHONPATH'|DottedNames]) :- !.
 from_import_dots_to_name(Dots, DottedNames, FromFileOrDirPieces) :-
     append(Dots, DottedNames, FromFileOrDirPieces).
 
-%! from_import_dot_or_name(+Dots:list(atom), +DottedNames:list(atom), -FromFileOrDir:atom) is det.
+%! from_import_dot_or_name(+Dots:list, +DottedNames:list(atom), -FromFileOrDir:atom) is det.
 %  Given a list of dots and names (that is, a list of 'ImportDotNode's
 %  followed by a list of 'DottedNameNode' (either of which can be
 %  empty), generate the compressed module name of the file or directory
@@ -1045,7 +1188,7 @@ from_import_dot_or_name(DotsAndDottedName, FromAstns, FromToken) :-
     from_import_dot_or_name_pieces(DotsAndDottedName, FromAstns, FromTokens),
     atomic_list_concat(FromTokens, FromToken).
 
-%! from_import_dot_or_name_pieces(+Dots:list(atom), +DottedNames:list(atom), -FromFileOrDirPieces:list(atom)) is det.
+%! from_import_dot_or_name_pieces(+Dots:list, +DottedNames:list(atom), -FromFileOrDirPieces:list(atom)) is det.
 %  Helper predicate for from_import_dots_to_name/3 which generates a
 %  list of pieces that are then concatenated to form the FromToken;
 %  also generate the ASTNs for the pieces.
@@ -1054,19 +1197,17 @@ from_import_dot_or_name_pieces(['ImportDotNode'{dot:Astn}|Ds], [Astn|Astns], [To
     node_astn(Astn, _, _, Token),
     from_import_dot_or_name_pieces(Ds, Astns, Tokens).
 from_import_dot_or_name_pieces(['DottedNameNode'{items:Items}|Ds], Astns, [Tokens0Join|Tokens]) :-
-    name_pieces(Items, Astns0, Tokens0),
+    maplist(name_piece, Items, Astns0, Tokens0),
     atomic_list_concat(Tokens0, '.', Tokens0Join),
     from_import_dot_or_name_pieces(Ds, Astns1, Tokens),
     append(Astns0, Astns1, Astns).
 
-%! name_pieces(+Raws:list(dict), -Astns:list(astn), -Tokens:list(atom)) is det.
-%  Input a list of dicts that had a 'name' item (which is an ASTN), outputting a list
-%  of the ASTns and the tokens that they contain.
-name_pieces([], [], []).
-name_pieces([Raw|Raws], [NameAstn|Astns], [Token|Tokens]) :-
+%! name_piece(+Raw:dict, -Astn:astn, -Token:atom) is det.
+%  Input a dicts that had a 'name' item (which is an ASTN), outputting
+%  the ASTns and the token that it contains.
+name_piece(Raw, NameAstn, Token) :-
     NameAstn = Raw.name,  % the field 'name' is not a string or atom; it's an ASTN
-    node_astn(NameAstn, _, _, Token),
-    name_pieces(Raws, Astns, Tokens).
+    node_astn(NameAstn, _, _, Token).
 
 %! py_ext(+Path:atom, -PathBase:atom is nondet.
 %! py_ext(-Path:atom, +PathBase:atom is nondet.
@@ -1076,7 +1217,7 @@ py_ext(PathBase, Path) :-
     % TODO: verify order of testing which file(s) exists.
     % TODO: allow more than one "hit" (e.g., if there are both a .py and .pyi,
     %       then use the .pyi to get type info for the .py and possibly create
-    %       kythe_anchors in both)
+    %       kyanchors in both)
     py_ext_ext(Ext),
     atom_concat(PathBase, Ext, Path),
     % for 'foo/__init__.py', only return 'foo' and not 'foo/__init__':
@@ -1092,10 +1233,10 @@ py_ext_ext('.py').
 py_ext_ext('.pyi').
 py_ext_ext('').  % For directories
 
-%! from_import_part(+ImportPart, +FullFromName:atom, +AstnDotsAndName:atom, -CombImportPart)//[kythe_fact, file_meta] is det.
-%  Used by ImportFromStmt (via 'ImportFromStmt_impl'): extracts from
-%  individual AsNameNode items and combines it with the FullFromName
-%  and outputs a list of name-name pairs.
+%! from_import_part(+ImportPart, +FullFromName:atom, +AstnDotsAndName:atom, -CombImportParts)//[kyfact, file_meta] is det.
+%  Used by 'ImportFromStmt_impl': extracts from individual AsNameNode
+%  items and combines it with the FullFromName and outputs a list of
+%  name-name pairs.
 from_import_part('*', FullFromName, _AstnDotsAndName, [from_star(ConcatName)]) -->>
     % TODO: anchor for '*', with defines/bindings for all imported names
     { atomic_list_concat([FullFromName, '/*'], ConcatName) }.
@@ -1109,65 +1250,56 @@ from_import_part(['AsNameNode'{as_name: 'NameBindsFqn'{fqn: str(AsName), name: A
     { node_astn(AsNameAstn, Start, End, _) },
     { atomic_list_concat([FullFromName, '/', Name], ConcatName) },
     { atom_string(AsNameAtom, AsName) },
-    kythe_anchor(Start, End, Source),
-    kythe_edge_fqn(Source, '/kythe/edge/defines/binding', AsName),
+    kyanchor(Start, End, Source),
+    kyedge_fqn(Source, '/kythe/edge/defines/binding', AsName),
     from_import_part(Ns, FullFromName, AstnDotsAndName, NANs).
 
-%! node_anchors_import_from(+PathFqn:list(pair)//[kythe_fact, expr, file_meta] is det.
+%! import_from(+PathFqn)//[kyfact, expr, file_meta] is det.
 %  Used by ImportFromStmt to process the Path-Fqn pairs generated by
 %  from_import_part.
-node_anchors_import_from([]) -->> [ ].
-node_anchors_import_from([path_fqn_vname(Path,Fqn,_VarVname)|AsItems]) -->>
-    { do_if(false, dump_term('IMPORT_FROM', Path-Fqn)) },  % TODO: delete
-    [ import_from(Path, Fqn) ]:expr,
-    node_anchors_import_from(AsItems).
+import_from(path_fqn_vname(Path,Fqn,_VarVname)) -->>
+    { do_if(true, dump_term('IMPORT_FROM', Path-Fqn)) },  % TODO: delete
+    [ import_from(Path, Fqn) ]:expr.
 
-%! dotted_name_raw(+Nodes:list, -Astns:list) is det.
+%! dotted_name_raw(+Node, -Astn) is det.
 %  Used by DottedNameNode to process a list of NameRawNode.
 % TODO: needs some file resolution
-dotted_name_raw([], []).
-dotted_name_raw(['NameRawNode'{name: NameAstn}|Raws], [astn(Start, End, Name)|Astns]) :-
-    node_astn(NameAstn, Start, End, Name),
-    dotted_name_raw(Raws, Astns).
+dotted_name_raw('NameRawNode'{name: NameAstn}, astn(Start, End, Name)) :-
+    node_astn(NameAstn, Start, End, Name).
 
-%! node_anchors_list(+Nodes:list, -NodeTypes:list)//[kythe_fact, expr, file_meta] is det.
-%  maplist(node_anchors, Nodes, NodeTypes)
-node_anchors_list([], []) -->> [ ].
-node_anchors_list([Node|Nodes], [[NodeType]|NodeTypes]) -->>
-    node_anchors(Node, NodeType),
-    node_anchors_list(Nodes, NodeTypes).
+%! maplist_kynode(+Nodes:list, -NodeTypes:list)//[kyfact, expr, file_meta] is det.
+%  maplist_kyfact_expr(kynode, Nodes, NodeTypes)
+%  TODO: for some reason this fails when maplist meta-predicate is used
+%        (maybe due to handling of _? in a meta-call?)
+maplist_kynode([], []) -->> [ ].
+maplist_kynode([Node|Nodes], [NodeTypeWrap|NodeTypes]) -->>
+    kynode(Node, NodeTypeWrap),
+    maplist_kynode(Nodes, NodeTypes).
 
-%! node_anchors_expr_list(NodeTypes:list)//[kythe_fact, expr, file_meta] is det.
-%  maplist(expr_normalized, NodeTypes)
-node_anchors_expr_list([]) -->> [ ].
-node_anchors_expr_list([Type|Types]) -->>
-    expr_normalized(Type),
-    node_anchors_expr_list(Types).
-
-%! assign_normalized(+Left, +Right)//[kythe_fact, expr, file_meta] is det.
+%! assign_normalized(+Left, +Right)//[kyfact, expr, file_meta] is det.
 %  Process the Left and Right parts of an assign/2 term, handling
 %  things like `omitted` and `ellipsis`.
 assign_normalized(Left, Right) -->>
-    node_anchors(Left, LeftType),
-    node_anchors(Right, RightType),
-    (  { LeftType = omitted }
+    kynode(Left, LeftType),
+    kynode(Right, RightType),
+    (  { LeftType = [omitted] }
     -> [ ]
-    ;  { RightType = omitted ; RightType = ellipsis }
+    ;  { RightType = [omitted] ; RightType = [ellipsis] }
     -> [ assign(LeftType, []) ]:expr  % TODO: Right is left uninstantiated
-    ;  [ assign(LeftType, [RightType]) ]:expr
+    ;  [ assign(LeftType, RightType) ]:expr
     ).
 
-%! expr_normalized(+Right)//[kythe_fact, expr, file_meta] is det.
+%! expr_normalized(+Right)//[kyfact, expr, file_meta] is det.
 %  Process the Right parts of an expr/1 term, handling
 %  things like `omitted` and `ellipsis`.
 expr_normalized(Right) -->>
-    node_anchors(Right, RightType),
-    (  { RightType = [omitted] ; RightType = [ellipsis] }
+    kynode(Right, [RightType]),
+    (  { RightType = omitted ; RightType = ellipsis }
     -> [ ]
     ;  [ expr([RightType]) ]:expr
     ).
 
-%! node_astn(+AstnNode, -Start, -End, -Value) is det.
+%! node_astn(+AstnNode, -Start, -End, -Value) is semidet.
 %! node_astn(-AstnNode, +Start, +End, +Value) is det.
 %  Access the inner parts of an Astn node.
 %  See also portray/1 rule for 'Astn' (uses node_astn/4).
@@ -1179,46 +1311,46 @@ node_astn('Astn'{start: int(Start), end: int(End), value: str(Value)},
 dot_edge_name("False", '/kythe/edge/ref').
 dot_edge_name("True", '/kythe/edge/defines/binding').
 
-%! kythe_anchor(+Start, +End, -Source)//[kythe_fact, file_meta] is det.
+%! kyanchor(+Start, +End, -Source)//[kyfact, file_meta] is det.
 %  Create the Kythe facts for an anchor. Source gets the source signature.
-kythe_anchor(Start, End, Source) -->>
+kyanchor(Start, End, Source) -->>
     { format(string(Signature), '@~d:~d', [Start, End]) },
     signature_source(Signature, Source),
-    kythe_fact(Source, '/kythe/node/kind', 'anchor'),
-    kythe_fact(Source, '/kythe/loc/start', Start),
-    kythe_fact(Source, '/kythe/loc/end', End).
+    kyfact(Source, '/kythe/node/kind', 'anchor'),
+    kyfact(Source, '/kythe/loc/start', Start),
+    kyfact(Source, '/kythe/loc/end', End).
 
-%! kythe_edge_fqn(+Source, +EdgeKind:atom, +Fqn:atom)//[kythe_fact, file_meta] is det.
+%! kyedge_fqn(+Source, +EdgeKind:atom, +Fqn:atom)//[kyfact, file_meta] is det.
 %  High-level create a Kythe edge fact to a target identified by an FQN.
-kythe_edge_fqn(Source, EdgeKind, Fqn) -->>
+kyedge_fqn(Source, EdgeKind, Fqn) -->>
     signature_node(Fqn, Target),
-    kythe_edge(Source, EdgeKind, Target).
+    kyedge(Source, EdgeKind, Target).
 
-%! kythe_edge(+Source, +EdgeKind:atom, +Target:atom)//{kythe_fact] is det.
+%! kyedge(+Source, +EdgeKind:atom, +Target:atom)//{kyfact, file_meta] is det.
 %  Low-level create a Kythe edge fact -- for both Source and Target,
 %  corpus and root are filled in from file_meta.
-kythe_edge(Source, EdgeKind, Target) -->>
+kyedge(Source, EdgeKind, Target) -->>
     Meta/file_meta,
     [ json{source: Source.put(corpus, Meta.kythe_corpus).put(root, Meta.kythe_root),
            edge_kind: EdgeKind,
            target: Target.put(corpus, Meta.kythe_corpus).put(root, Meta.kythe_root),
-           fact_name: '/'} ]:kythe_fact.
+           fact_name: '/'} ]:kyfact.
 
-%! kythe_fact(+Source, FactName, FactValue//[kythe_fact, file_meta] is det.
+%! kyfact(+Source, FactName, FactValue//[kyfact, file_meta] is det.
 %  Low-level create a Kythe fact or edge -- for Source, corpus and root
 %  are filled in from file_meta.
-kythe_fact(Source, FactName, FactValue) -->>
+kyfact(Source, FactName, FactValue) -->>
     { base64(FactValue, FactBase64) },
-    kythe_fact_b64(Source, FactName, FactBase64).
+    kyfact_b64(Source, FactName, FactBase64).
 
-%! kythe_fact_64(+Source, +FactName, +FactBase64)//[kythe_fact, file_meta] is det.
+%! kyfact_64(+Source, +FactName, +FactBase64)//[kyfact, file_meta] is det.
 %  Low-level create a Kythe fact or edge inputting the base64 of the
 %  fact value -- for Source, corpus and root are filled in from file_meta.
 %  The accumulator takes care of duplicate removal.
-kythe_fact_b64(Source, FactName, FactBase64) -->>
+kyfact_b64(Source, FactName, FactBase64) -->>
     Meta/file_meta,
     [ json{source: Source.put(corpus, Meta.kythe_corpus).put(root, Meta.kythe_root),
-           fact_name: FactName, fact_value: FactBase64} ]:kythe_fact.
+           fact_name: FactName, fact_value: FactBase64} ]:kyfact.
 
 %! signature_source(+Signature:string, -Source)//[file_meta] is det.
 %  Create a Kythe "source" tuple from a Signature string.
@@ -1232,17 +1364,9 @@ signature_node(Signature, Vname) -->>
     Meta/file_meta,
     { Vname = json{signature: Signature, language: Meta.language} }.
 
-%! output_kythe_facts(+Anchors:list, +KytheStream:stream) is det.
-%  Output the Kythe facts to a specified stream.
-output_kythe_facts([], _KytheStream).
-output_kythe_facts([Anchor|Anchors], KytheStream) :-
-    must_once(
-        output_kythe_fact(Anchor, KytheStream)),
-    output_kythe_facts(Anchors, KytheStream).
-
-%! output_kythe_fact(+AnchorAsDict:json_dict, +KytheStream:stream) is det.
+%! output_kyfact(+AnchorAsDict:json_dict, +KytheStream:stream) is det.
 %  Output a single Kythe fact.
-output_kythe_fact(AnchorAsDict, KytheStream) :-
+output_kyfact(AnchorAsDict, KytheStream) :-
     % The tags are ignored unless option tag(type) is specified (which
     % it isn't). All dicts should have the tag 'json', for simplicity.
     json_write_dict(KytheStream, AnchorAsDict, [width(0)]),
@@ -1267,7 +1391,7 @@ assign_exprs(Exprs, Meta, ModuleFqn, Symtab, KytheFacts) :-
 % TODO: Improved output when too many passes are needed.
 % TODO: Parameterize max number of passes.
 assign_exprs_count(Count, Exprs, Meta, Symtab0, Symtab, KytheFacts) :-
-    do_if(false,
+    do_if(false,  % TODO: delete
           format(user_error, '% === EXPRS === ~q~n~n', [Count])),
     assign_exprs_count_impl(Exprs, Meta, Symtab0, Symtab1, Rej, KytheFacts1),  % phrase(assign_exprs_count(...))
     length(Rej, RejLen),
@@ -1284,37 +1408,35 @@ assign_exprs_count(Count, Exprs, Meta, Symtab0, Symtab, KytheFacts) :-
 %  Helper for assign_exprs_count, which does the actual processing.
 assign_exprs_count_impl(Exprs, Meta, Symtab0, SymtabWithRej, Rej, KytheFacts) :-
     dict_pairs(Symtab0, symtab, SymtabPairs0),
-    exprs_from_symtab(SymtabPairs0, ExprsFromSymtab1),
+    convlist(expr_from_symtab, SymtabPairs0, ExprsFromSymtab1),
     sort(ExprsFromSymtab1, ExprsFromSymtab),  % remove dups
     append(ExprsFromSymtab, Exprs, ExprsCombined),  %% TODO: difference list
-    must_once(
-        assign_exprs_eval_list(ExprsCombined, KytheFacts1, [], Symtab0-[], SymtabAfterEval-Rej, Meta)),  % phrase(assign_exprs_eval_list(...))
+    maplist_assign_expr_eval(ExprsCombined, KytheFacts1, [], Symtab0-[], SymtabAfterEval-Rej, Meta),  % phrase(assign_exprs_eval_list(...))
     % TODO: if we don't care about the order (for debugging), can use sort/2 for dedup:
     list_to_set(KytheFacts1, KytheFacts),
     do_if(false,
           dump_term('REJ', Rej)),
-    must_once(
-        add_rej_to_symtab(Rej, SymtabAfterEval, SymtabWithRej)).
+    foldl(add_rej_to_symtab, Rej, SymtabAfterEval, SymtabWithRej).
 
-%! assign_exprs_eval_list(+Assign:list)//[kythe_fact, sym_rej, file_meta] is det.
+%! maplist_assign_exprs_eval_list(+Assign:list)//[kyfact, symrej, file_meta] is det.
 %  Process a list of assign or eval nodes.
-assign_exprs_eval_list([]) -->> [ ].
-assign_exprs_eval_list([Assign|Assigns]) -->>
-    SymtabRej/sym_rej,  %% TODO: delete (it's only used for debug logging)
+maplist_assign_expr_eval([]) -->> [ ].
+maplist_assign_expr_eval([Assign|Assigns]) -->>
+    SymtabRej/symrej,  %% TODO: delete (it's only used for debug logging)
     { do_if(false,
             dump_term('', SymtabRej)) },
     { do_if(false,
             dump_term('', Assign, [indent_arguments(auto),
                                    right_margin(60)])) },
-    must_once_fqn_sym_rej_meta(
-        assign_expr_eval(Assign)),
-    assign_exprs_eval_list(Assigns).
+    assign_expr_eval(Assign),
+    maplist_assign_expr_eval(Assigns).
 
-%! assign_expr_eval(+Node)//[kythe_fact, sym_rej, file_meta] is det.
+%! assign_expr_eval(+Node)//[kyfact, symrej, file_meta] is det.
 %  Process a single assign/2 or expr/1 node.
 assign_expr_eval(assign(Left, Right)) -->>
     eval_union_type_and_lookup(Right, RightEval),
-    eval_single_type(Left, LeftEval),
+    { must_once(Left = [LeftSingle]) },  % TODO: Can Left by a union with more than one type?
+    eval_single_type(LeftSingle, LeftEval),  % if so - eval_union_type([Left]
     (  { LeftEval = [LeftEvalSingle] }
     -> eval_lookup_single(LeftEvalSingle, RightEval)
     ;  [ ]
@@ -1323,41 +1445,40 @@ assign_expr_eval(expr(Right)) -->>
     %% TODO: do we need _and_lookup (for processing anchors)?
     eval_union_type_and_lookup(Right, _RightEval).
 assign_expr_eval(class(Fqn, Bases)) -->>
-    [ Fqn-[class(Fqn, Bases)] ]:sym_rej.
+    [ Fqn-[class(Fqn, Bases)] ]:symrej.
 assign_expr_eval(func(Fqn, ReturnType)) -->>
-    [ Fqn-[func(Fqn, ReturnType)] ]:sym_rej.
+    [ Fqn-[func(Fqn, ReturnType)] ]:symrej.
 assign_expr_eval(import_from(Path, Fqn)) -->>
-    [ Fqn-[import(Fqn, Path)] ]: sym_rej.
+    [ Fqn-[import(Fqn, Path)] ]: symrej.
 
-%! eval_union_type(+Type:ordset, -EvalType:ordset)//[kythe_fact, sym_rej, file_meta] is det.
+%! eval_union_type(+Type:ordset, -EvalType:ordset)//[kyfact, symrej, file_meta] is det.
 %  Evaluate a Type, generating a new (union) EvalType.
 eval_union_type(Type, EvalType) -->>
     { ord_empty(EvalType0) },
-    eval_union_type(Type, EvalType0, EvalType).
+    maplist_foldl_eval_union_type(Type, EvalType0, EvalType).
 
-%! eval_union_type(+Type:ordset, -EvalType:ordset)//[kythe_fact, sym_rej, file_meta] is det.
+%! eval_union_type(+Type:ordset, -EvalType:ordset)//[kyfact, symrej, file_meta] is det.
 %  Evaluate a Type, generating a new (union) EvalType, using an explicit
-%  accumuilator (UnionSoFar).
-eval_union_type([], UnionSofar, UnionSofar) -->> [ ].
-eval_union_type([T|Ts], UnionSoFar, EvalTypes) -->>
-    must_once_fqn_sym_rej_meta(
-        eval_single_type_and_lookup(T, ET)),
+%  accumulator (UnionSoFar).
+maplist_foldl_eval_union_type([], UnionSofar, UnionSofar) -->> [ ].
+maplist_foldl_eval_union_type([T|Ts], UnionSoFar, EvalTypes) -->>
+    eval_single_type_and_lookup(T, ET),
     { ord_union(UnionSoFar, ET, UnionSoFar2) },
-    eval_union_type(Ts, UnionSoFar2, EvalTypes).
+    maplist_foldl_eval_union_type(Ts, UnionSoFar2, EvalTypes).
 
-%! eval_union_type_and_lookup(+Expr, -UnionEvalType)//[kythe_fact, sym_rej, file_meta] is det.
+%! eval_union_type_and_lookup(+Expr, -UnionEvalType)//[kyfact, symrej, file_meta] is det.
 %  Evaluate (union) Expr and look it up in the symtab.
 eval_union_type_and_lookup(Expr, UnionEvalType) -->>
     eval_union_type(Expr, UnionEvalType0),
     eval_lookup(UnionEvalType0, UnionEvalType).
 
-%! eval_single_type_and_lookup(+Expr, -UnionEvalType)//[kythe_fact, sym_rej]
+%! eval_single_type_and_lookup(+Expr, -UnionEvalType)//[kyfact, symrej, file_meta] is det.
 %  Evaluate (non-union) Expr and look it up in the symtab.
 eval_single_type_and_lookup(Expr, UnionEvalType) -->>
     eval_single_type(Expr, UnionEvalType0),
     eval_lookup(UnionEvalType0, UnionEvalType).
 
-%! eval_lookup(+UnionType, -UnionEvalType)//[kythe_fact, sym_rej, file_meta] is det.
+%! eval_lookup(+UnionType, -UnionEvalType)//[kyfact, symrej, file_meta] is det.
 %  Look up an evaluated union type, generating a union UnionEvalType.
 % TODO: handle [string], [number], etc.
 %       (this is a nice-to-do, for when we add more support for Kythe's
@@ -1365,22 +1486,21 @@ eval_single_type_and_lookup(Expr, UnionEvalType) -->>
 %       functions (calls) and classes/imports (',' operation))
 eval_lookup(UnionType, UnionEvalType) -->>
     { ord_empty(UnionEvalType0) },
-    eval_lookup(UnionType, UnionEvalType0, UnionEvalType).
+    maplist_foldl_eval_lookup(UnionType, UnionEvalType0, UnionEvalType).
 
-%! eval_lookup(+Types:ordset, -UnionEvalType:ordset)//[kythe_fact, sym_rej, file_meta] is det.
-%  eval_lookup_single to items in Types, combining into UnionEvalType.
-eval_lookup([], UnionEvalType, UnionEvalType) -->> [ ].
-eval_lookup([X|Xs], UnionEvalType0, UnionEvalType) -->>
+%! maplist_foldl_eval_lookup(+Types:ordset, +UnionEvalType0:ordset, -UnionEvalType:ordset)//[kyfact, symrej, file_meta] is det.
+maplist_foldl_eval_lookup([], UnionEvalType, UnionEvalType) -->> [ ].
+maplist_foldl_eval_lookup([X|Xs], UnionEvalType0, UnionEvalType) -->>
     eval_lookup_single(X, Y),
     { ord_union(UnionEvalType0, Y, UnionEvalType1) },
-    eval_lookup(Xs, UnionEvalType1, UnionEvalType).
+    maplist_foldl_eval_lookup(Xs, UnionEvalType1, UnionEvalType).
 
-%! eval_lookup_single(+Type, -UnionEvalType:ordset) -->> [kythe_fact, sym_rej, file_meta] is det.
+%! eval_lookup_single(+Type, -UnionEvalType:ordset) -->> [kyfact, symrej, file_meta] is det.
 eval_lookup_single(fqn(Fqn), UnionEvalType) -->> !,
-    [ Fqn-UnionEvalType ]:sym_rej.
+    [ Fqn-UnionEvalType ]:symrej.
 eval_lookup_single(class(ClassName, Bases0),
                    [class(ClassName, Bases)]) -->> !,
-    eval_union_type_and_lookup_list(Bases0, Bases).
+    maplist_kyfact_symrej(eval_union_type_and_lookup, Bases0, Bases).
 eval_lookup_single(func(FuncName, ReturnType0),
                    [func(FuncName, ReturnType)]) -->> !,
     eval_lookup(ReturnType0, ReturnType).
@@ -1391,7 +1511,7 @@ eval_lookup_single(var(Fqn),
                    [var(Fqn)]) -->> !, [ ].
 eval_lookup_single(_EvalType, []) -->> [ ].
 
-%! eval_single_type(+Type, -EvalType:ordset)//[kythe_fact, sym_rej, file_meta] is det.
+%! eval_single_type(+Type, -EvalType:ordset)//[kyfact, symrej, file_meta] is det.
 eval_single_type(fqn(Fqn), [fqn(Fqn)]) -->> [ ].
 eval_single_type(dot(Atom, Astn, DotEdgeName), EvalType) -->>
     eval_union_type_and_lookup(Atom, AtomEval),
@@ -1399,12 +1519,12 @@ eval_single_type(dot(Atom, Astn, DotEdgeName), EvalType) -->>
     eval_atom_dot_union(AtomEval, Astn, DotEdgeName, EvalType).
 eval_single_type(call(Atom, Parms), EvalType) -->>
     eval_union_type_and_lookup(Atom, AtomEval),
-    eval_union_type_list(Parms, ParmsEval),
-    eval_atom_call_union(AtomEval, ParmsEval, EvalType).
+    maplist_kyfact_symrej(eval_union_type, Parms, ParmsEval),
+    eval_atom_call_union(ParmsEval, AtomEval, EvalType).
 eval_single_type(call_op(OpAstns, ArgsType), [call_op(OpAstns, ArgsTypeEval)]) -->>
-    eval_union_type_list(ArgsType, ArgsTypeEval).
+    maplist_kyfact_symrej(eval_union_type, ArgsType, ArgsTypeEval).
 eval_single_type(class(Name, Bases), [class(Name, BasesEval)]) -->>
-    eval_union_type_list(Bases, BasesEval).
+    maplist_kyfact_symrej(eval_union_type, Bases, BasesEval).
 eval_single_type(import(Fqn, Path), [import(Fqn, Path)]) -->>
     [ ].  % TODO: look-up
 eval_single_type(func(Name, ReturnType), [func(Name, ReturnTypeEval)]) -->>
@@ -1414,141 +1534,102 @@ eval_single_type(module(Fqn, Path), [module(Fqn, Path)]) -->> [ ].
 eval_single_type(omitted, []) -->> [ ].
 
 % TODO: implement the following:
-eval_single_type(todo_compfor(iter:_CompIterType, for:_ForExprlistType, in:_InTestlistType), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_compifcompiter(_ValueExprType, _CompIterType), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_decorated(_ItemsType), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_decorator_dottedname(_ItemsType), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_decorators(_ItemsType), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_dictgen(_ValueExprType, _CompForType), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_dictkeyvaluelist(_ItemsType), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_dictset(_ItemsType), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_dottedname(_ItemsType), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_expr(stmts), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_typedarg(), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_subscr(_), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_arg(_, _), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_list(_), []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_single_type(todo_exprlist(_), []) -->> [ ].  % [kythe_fact, sym_rej]
+eval_single_type(todo_compfor(iter:_CompIterType, for:_ForExprlistType, in:_InTestlistType), []) -->> [ ].  % [kyfact, symrej, file_meta]
+eval_single_type(todo_compifcompiter(_ValueExprType, _CompIterType), []) -->> [ ].  % [kyfact, symrej, file_meta]
+eval_single_type(todo_decorated(_ItemsType), []) -->> [ ].  % [kyfact, symrej, file_meta]
+eval_single_type(todo_decorator_dottedname(_ItemsType), []) -->> [ ].  % [kyfact, symrej, file_meta]
+eval_single_type(todo_decorators(_ItemsType), []) -->> [ ].  % [kyfact, symrej, file_meta]
+eval_single_type(todo_dictgen(_ValueExprType, _CompForType), []) -->> [ ].  % [kyfact, symrej, file_meta]
+eval_single_type(todo_dictkeyvaluelist(_ItemsType), []) -->> [ ].  % [kyfact, symrej, file_meta]
+eval_single_type(todo_dictset(_ItemsType), []) -->> [ ].  % [kyfact, symrej, file_meta]
+eval_single_type(todo_dottedname(_ItemsType), []) -->> [ ].  % [kyfact, symrej, file_meta]
+eval_single_type(todo_expr(stmts), []) -->> [ ].  % [kyfact, symrej, file_meta]
+eval_single_type(todo_typedarg(), []) -->> [ ].  % [kyfact, symrej, file_meta]
+eval_single_type(todo_subscr(_), []) -->> [ ].  % [kyfact, symrej, file_meta]
+eval_single_type(todo_arg(_, _), []) -->> [ ].  % [kyfact, symrej, file_meta]
+eval_single_type(todo_list(_), []) -->> [ ].  % [kyfact, symrej, file_meta]
+eval_single_type(todo_exprlist(_), []) -->> [ ].  % [kyfact, symrej, file_meta]
 
-%! eval_atom_dot_union(+AtomEval:ordset, +Astn, +DotEdgeName:atom, -EvalType:ordset)//[kythe_fact, sym_rej]
+%! eval_atom_dot_union(+AtomEval:ordset, +Astn, +DotEdgeName:atom, -EvalType:ordset)//[kyfact, symrej, file_meta]
 %  Helper for eval(dot(Atom, Astn, DotEdgeName)), which loops over the
 %  individual types in the (union) AtomEval and creates a union type
 %  of all the possibilities.
 eval_atom_dot_union(AtomEval, Astn, DotEdgeName, EvalType) -->>
     { ord_empty(EvalType0) },
-    eval_atom_dot_union(AtomEval, Astn, DotEdgeName, EvalType0, EvalType).
+    maplist_foldl_kyfact_symrej(
+        eval_atom_dot_union_of_type(Astn, DotEdgeName), AtomEval, EvalType0, EvalType).
 
-%! eval_atom_dot_union(+Types:list, +Astn, +DotEdgeName:atom, +EvalType0:ordset, +EvalType:ordset)//[kythe_fact, sym_rej, file_meta] is det.
-%  eval_atom_dot_union with explicit accumulator (EvalType0, EvalType).
-eval_atom_dot_union([], _Astn, _DotEdgeName, EvalType, EvalType) -->> [ ].
-eval_atom_dot_union([T|Ts], Astn, DotEdgeName, EvalType0, EvalType) -->>
+eval_atom_dot_union_of_type(Astn, DotEdgeName, T, EvalType0, EvalType) -->>
     eval_single_type(T, ET0),
-    eval_atom_dot_single_list(ET0, Astn, DotEdgeName, EvalType0, EvalType1),
-    eval_atom_dot_union(Ts, Astn, DotEdgeName, EvalType1, EvalType).
+    maplist_foldl_kyfact_symrej(
+            eval_atom_dot_single(Astn, DotEdgeName), ET0, EvalType0, EvalType).
 
-%! eval_atom_dot_single_list(+Types:list, +Astn, +DotEdgeName:atom, +EvalType0:ordset, -EvalType:ordset)//[kythe_fact, sym_rej]//[kythe_fact, sym_rej, file_meta]) is det.
-%  maplist_combine(eval_atom_dot_single, Types, Astn, DotEdgeName, EvalType0, EvalType).
-eval_atom_dot_single_list([], _Astn, _DotEdgeName, EvalType, EvalType) -->> [ ].
-eval_atom_dot_single_list([T|Ts], Astn, DotEdgeName, EvalType0, EvalType) -->>
-    Astn = astn(Start, End, Attr),
-    eval_atom_dot_single(T, Start, End, Attr, DotEdgeName, EvalType0, EvalType1),
-    eval_atom_dot_single_list(Ts, Astn, DotEdgeName, EvalType1, EvalType).
-
-%! eval_atom_dot_single(+Type, +Start, +End, +Attr, +DotEdgeName:atom, +EvalType0:ordset, -EvalType:ordset)//[kythe_fact, sym_rej, file_meta] is det.
+%! eval_atom_dot_single(+Astn, +DotEdgeName:atom, +Type, +EvalType0:ordset, -EvalType:ordset)//[kyfact, symrej, file_meta] is det.
 %  Process a single type-dot-attr, adding to EvalType
 % TODO: also allow func(...).attr (currently only allows class(...).attr
-eval_atom_dot_single(class(ClassName, _), Start, End, Attr, DotEdgeName, EvalType0, EvalType) -->> !,
+eval_atom_dot_single(astn(Start, End, Attr), DotEdgeName, class(ClassName, _), EvalType0, EvalType) -->> !,
     { atomic_list_concat([ClassName, '.', Attr], FqnAttr) },
     { ord_add_element(EvalType0, fqn(FqnAttr), EvalType) },
-    kythe_anchor(Start, End, Source),
-    kythe_edge_fqn(Source, DotEdgeName, FqnAttr).
-eval_atom_dot_single(import(_Fqn, Path), Start, End, Attr, DotEdgeName, EvalType0, EvalType) -->> !,
-    kythe_anchor(Start, End, Source),
+    kyanchor(Start, End, Source),
+    kyedge_fqn(Source, DotEdgeName, FqnAttr).
+eval_atom_dot_single(astn(Start, End, Attr), DotEdgeName, import(_Fqn, Path), EvalType0, EvalType) -->> !,
+    kyanchor(Start, End, Source),
     { must_once(Path = file(Path0)) },
     { atomic_list_concat([Path0, '::', Attr], FqnAttr) },  % TODO: need to resolve path
     %% { path_to_python_module_or_unknown(Path0, Module) },  % TODO: delete
     %% { dump_term('DOT_SINGLE_IMPORT', [fqn=_Fqn, path=Path0, module=Module, attr=Attr, DotEdgeName]) },  % TODO: delete
-    { do_if(false, dump_term('DOT_SINGLE_IMPORT-edge', [Source, DotEdgeName, FqnAttr])) },  % TODO: remove
-    kythe_edge_fqn(Source, DotEdgeName, FqnAttr),  % TODO: does this belong here?
+    { do_if(true, dump_term('DOT_SINGLE_IMPORT-edge', [Source, DotEdgeName, FqnAttr])) },  % TODO: delete
+    kyedge_fqn(Source, DotEdgeName, FqnAttr),  % TODO: does this belong here?
     { EvalType = EvalType0 }.
-eval_atom_dot_single(_, _Start, _End, _Attr, _DotEdgeName, EvalType, EvalType) -->> [ ].
+eval_atom_dot_single(_Astn, _DotEdgeName, _Type, EvalType, EvalType) -->> [ ].
 
-%! eval_atom_call_union(+AtomEval:ordset, +Parms, -EvalType:ordset)//[kythe_fact, sym_rej, file_meta] is det.
+%! eval_atom_call_union(+Parms, +AtomEval:ordset, -EvalType:ordset)//[kyfact, symrej, file_meta] is det.
 %  Helper for eval_single_type(call(Atom, Parms)), which loops over
 %  the individual types in the (union) AtomEval and creates a union
 %  type of all the possibilities.
-eval_atom_call_union(AtomEval, Parms, EvalType) -->>
-   { ord_empty(EvalType0) },
-    eval_atom_call_union(AtomEval, Parms, EvalType0, EvalType).
+eval_atom_call_union(Parms, AtomEval, EvalType) -->>
+    { ord_empty(EvalType0) },
+    maplist_foldl_kyfact_symrej(
+        eval_atom_call_single_of_type(Parms), AtomEval, EvalType0, EvalType).
 
-% eval_atom_call_union(+Types:ordset, +Parms, +EvalType0:ordset, +EvalType:ordset)//[kythe_fact, sym_rej, file_meta] is det.
-% eval_atom_call_union with explicit accumulator (EvalType0, EvalType).
-eval_atom_call_union([], _Parms, EvalType, EvalType) -->> [ ].
-eval_atom_call_union([T|Ts], Parms, EvalType0, EvalType) -->>
-    eval_single_type(T, ET0),
-    eval_atom_call_single_list(ET0, Parms, EvalType0, EvalType1),
-    eval_atom_call_union(Ts, Parms, EvalType1, EvalType).
+%! eval_atom_call_single_of_type(+Parms, +Type, +EvalType0, -EvalType) is det.
+% Helper for eval_atom_call_union
+eval_atom_call_single_of_type(Parms, Type, EvalType0, EvalType) -->>
+    eval_single_type(Type, TypeEval),
+    maplist_foldl_kyfact_symrej(
+        eval_atom_call_single(Parms), TypeEval, EvalType0, EvalType).
 
-%! eval_atom_call_single_list(+Types:list, +Parms, +EvalType0, -EvalType)//[kythe_fact, sym_rej, file_meta] is det.
-%  maplist_combine(eval_atom_call_single, Types, Parms, EvalType0, EvalType).
-eval_atom_call_single_list([], _Parms, EvalType, EvalType) -->> [ ].
-eval_atom_call_single_list([T|Ts], Parms, EvalType0, EvalType) -->>
-    eval_atom_call_single(T, Parms, EvalType0, EvalType1),
-    eval_atom_call_single_list(Ts, Parms, EvalType1, EvalType).
-
-%! eval_atom_call_single(+Type, +Parms, +EvalType0:ordset, -EvalType:ordset)//[kythe_fact, sym_rej, file_meta] is det.
+%! eval_atom_call_single(+Parms, +Type, +EvalType0:ordset, -EvalType:ordset)//[kyfact, symrej, file_meta] is det.
 %  Process a single call, adding to EvalType
-eval_atom_call_single(class(Fqn, Bases), _Parms, EvalType0, EvalType) -->>  !,
+eval_atom_call_single(_Parms, class(Fqn, Bases), EvalType0, EvalType) -->>  !,
     % TODO: MRO for__init__ and output ref to it
     { ord_add_element(EvalType0, class(Fqn, Bases), EvalType) }.
-eval_atom_call_single(func(_, ReturnType), _Parms, EvalType0, EvalType) -->>  !,
+eval_atom_call_single(_Parms, func(_, ReturnType), EvalType0, EvalType) -->>  !,
     % ord_union because ReturnTYpe is a union type
     { ord_union(EvalType0, ReturnType, EvalType) }.
-eval_atom_call_single(T, Parms, EvalType0, EvalType) -->>
+eval_atom_call_single(Parms, T, EvalType0, EvalType) -->>
     { ord_add_element(EvalType0, func(T, Parms), EvalType) }.
 
-%! eval_union_type_list(Types:list, +EvalTypes:list)//[kythe_fact, sym_rej, file_meta] is det.
-%  maplist(eval_union_type, Ts, ETs).
-eval_union_type_list([], []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_union_type_list([T|Ts], [ET|ETs]) -->>  % [kythe_fact, sym_rej]
-    eval_union_type(T, ET),
-    eval_union_type_list(Ts, ETs).
+%! exprs_from_symtab(+SymtabPair:pair, -Exprs) is semidet.
+%  Using the Fqn-Type pairs dict_pairs, get expr if it has a non-[] type.
+expr_from_symtab(_Fqn-Type, expr(Type)) :-
+    Type = [_|_].
 
-%! eval_union_type_list_and_lookup(Types:list, +EvalTypes:list)//[kythe_fact, sym_rej, file_meta] is det.
-%  maplist(eval_union_type_and_lookup, Ts, ETs).
-eval_union_type_and_lookup_list([], []) -->> [ ].  % [kythe_fact, sym_rej]
-eval_union_type_and_lookup_list([T|Ts], [ET|ETs]) -->>  % [kythe_fact, sym_rej]
-    eval_union_type_and_lookup(T, ET),
-    eval_union_type_and_lookup_list(Ts, ETs).
-
-%! exprs_from_symtab(+SymtabPairs:list(pair), -Exprs:list) is det.
-%  Using the Fqn-Type pairs dict_pairs, get exprs into a list of expr(_) items.
-exprs_from_symtab([], []).
-exprs_from_symtab([_Fqn-Type|FTs], Exprs) :-
-    (  Type = []
-    -> Exprs = Exprs2
-    ;  Exprs = [expr(Type)|Exprs2]
-    ),
-    exprs_from_symtab(FTs, Exprs2).
-
-%! add_rej_to_symtab(+FqnRejTypes:list(pair), +Symtab0, -Symtab) is det.
+%! add_rej_to_symtab(+FqnRejType:pair, +Symtab0, -Symtab) is det.
 %  For Fqn-RejType pairs in FqnRejTypes, add to symtab.
-add_rej_to_symtab([], Symtab, Symtab).
-add_rej_to_symtab([Fqn-RejType|FTs], Symtab0, Symtab) :-
-    must_once(
-        get_dict(Fqn, Symtab0, FqnType)),
+add_rej_to_symtab(Fqn-RejType, Symtab0, Symtab) :-
+    get_dict(Fqn, Symtab0, FqnType),
     ord_union(FqnType, RejType, CombinedType),
-    put_dict(Fqn, Symtab0, CombinedType, Symtab1),
-    add_rej_to_symtab(FTs, Symtab1, Symtab).
+    put_dict(Fqn, Symtab0, CombinedType, Symtab).
 
-%! sym_rej_accum(+FqnType:pair, +Symtab0Rej0:pair, +SymtabRej:pair) is det.
-%  The accumulator for 'sym_rej'.
+%! symrej_accum(+FqnType:pair, +Symtab0Rej0:pair, +SymtabRej:pair) is det.
+%  The accumulator for 'symrej'.
 %  Tries to unify Key-Type unifies with what's already in symtab;
 %  if that fails because it's not in the symtab, adds it; otherwise
 %  adds it Rej.
 % TODO: use library(assoc) or library(rbtrees) or trie or hash
 %       instead of dict for Symtab (performance)
-sym_rej_accum(Fqn-Type, Symtab0-Rej0, Symtab-Rej) :-
+symrej_accum(Fqn-Type, Symtab0-Rej0, Symtab-Rej) :-
     (  get_dict(Fqn, Symtab0, TypeSymtab)
     -> Symtab = Symtab0,
        (  Type = TypeSymtab  %% in case Type is not instantiated (i.e., a lookup)
@@ -1603,7 +1684,7 @@ portray(meta{kythe_corpus: KytheCorpus,
              language: _Language,
              encoding: _Encoding,
              file_contents_b64: _ContentsB64,
-             pythonpaths: _PythonPaths}) :-
+             pythonpaths: _Pythonpaths}) :-
     format('meta{~q, ~q, ~q}',
            [KytheCorpus, KytheRoot, Path]).
 portray('$VAR'('_')) :- !,  % work around a bug in print_term
@@ -1630,14 +1711,6 @@ do_if(Cond, Pred) :-
     -> call(Pred)
     ;  true
     ).
-
-%! map_match(+Pattern, +Xs:list) is semidet.
-%  Check that all items in a list can unify without instantiating
-%  anything in the pattern.
-map_match(_Pattern, []).
-map_match(Pattern, [X|Xs]) :-
-    \+ \+ Pattern = X,
-    map_match(Pattern, Xs).
 
 %! dump_term(+Msg:atom, +Term) is det.
 % TODO: Delete this debugging code
@@ -1674,3 +1747,54 @@ print_term_cleaned(Term, Options, TermStr) :-
 zip_merge([], [], []).
 zip_merge([X|Xs], [Y|Ys], [X-Y, XYs]) :-
     zip_merge(Xs, Ys, XYs).
+
+% Variants on maplist, foldl (and combinations of them) for EDCGs
+
+%! maplist_kyfact(:Pred, +L:list)//[kyfact, file_meta] is det.
+% maplist/2 for EDCG [kyfact, file_meta]
+maplist_kyfact(_Pred, []) -->> [ ].
+maplist_kyfact(Pred, [X|Xs]) -->>
+    call(Pred, X):[kyfact,file_meta],
+    maplist_kyfact(Pred, Xs).
+
+%! maplist_kyfact(:Pred, +L0:list, -L:list)//[kyfact, file_meta] is det.
+% maplist/3 for EDCG [kyfact, file_meta]
+maplist_kyfact(_Pred, [], []) -->> [ ].
+maplist_kyfact(Pred, [X|Xs], [Y|Ys]) -->>
+    call(Pred, X, Y):[kyfact,file_meta],
+    maplist_kyfact(Pred, Xs, Ys).
+
+%! maplist_kyfact_symrej(:Pred, +L0:list, -L:list)//[kyfact, symrej, file_meta] is det.
+% maplist/3 for EDCG [kyfact, symrej, file_meta]
+maplist_kyfact_symrej(_Pred, [], []) -->> [ ].
+maplist_kyfact_symrej(Pred, [X|Xs], [Y|Ys]) -->>
+    call(Pred, X, Y):[kyfact,symrej,file_meta],
+    maplist_kyfact_symrej(Pred, Xs, Ys).
+
+%! maplist_kyfact_expr(:Pred, +L0:list)//[kyfact, expr, file_meta] is det.
+% maplist/2 for EDCG [kyfact, expr, file_meta]
+maplist_kyfact_expr(_Pred, []) -->> [ ].
+maplist_kyfact_expr(Pred, [X|Xs]) -->>
+    call(Pred, X):[kyfact,expr,file_meta],
+    maplist_kyfact_expr(Pred, Xs).
+
+%! maplist_kyfact_expr(:Pred, +L0:list, -L:list)//[kyfact, expr, file_meta] is det.
+% maplist/3 for EDCG [kyfact, expr, file_meta]
+maplist_kyfact_expr(_Pred, [], []) -->> [ ].
+maplist_kyfact_expr(Pred, [X|Xs], [Y|Ys]) -->>
+    call(Pred, X, Y):[kyfact,expr,file_meta],
+    maplist_kyfact_expr(Pred, Xs, Ys).
+
+%! maplist_kyfact_expr(:Pred, +L0:list, -L:list)//[kyfact, expr, file_meta] is det.
+% maplist/2 plus fold/4 for EDCG [kyfact, expr, file_meta]
+maplist_foldl_kyfact_expr(_Pred, [], V, V) -->> [ ].
+maplist_foldl_kyfact_expr(Pred, [X|Xs], V0, V) -->>
+    call(Pred, X, V0, V1):[kyfact,expr,file_meta],
+    maplist_foldl_kyfact_expr(Pred, Xs, V1, V).
+
+%! maplist_foldl_kyfact_symrej(:Pred, -L0:list, +L:list, -V0, +V) is det.
+% maplist/2 plus foldl/4 for EDCG [kyfact, symrej, file_meta]
+maplist_foldl_kyfact_symrej(_Pred, [], V, V) -->> [ ].
+maplist_foldl_kyfact_symrej(Pred, [X|Xs], V0, V) -->>
+    call(Pred, X, V0, V1):[kyfact,symrej,file_meta],
+    maplist_foldl_kyfact_symrej(Pred, Xs, V1, V).

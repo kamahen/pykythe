@@ -159,8 +159,8 @@ $(TESTOUT_PYKYTHEDIR)/test_data/%-kythe.json: \
 	$(TIME) $(SWIPL_EXE) -O -s pykythe/pykythe.pl \
 	    $(PARSECMD_OPT) $(KYTHE_CORPUS_ROOT_OPT) \
 	    $(PYTHONPATH_OPT) \
-	    "$<" >"$@" 2>"$@-error" </dev/null
-	cat "$@-error"
+	    "$<" >"$@" </dev/null  #  2>"$@-error"
+	@# cat "$@-error"
 	@# for the following, see the rule for %-.json-decoded
 	$(PYTHON3_EXE) -B scripts/decode_json.py <"$@" >"$@-decoded"
 
@@ -244,7 +244,7 @@ push_to_github:
 		--exclude .coverage --exclude htmlcov --exclude __pykythe__ \
 		--exclude snippets.py \
 		./ $(TESTGITHUB)/pykythe/
-	rsync -aAHX --delete ../kythe $(TESTGITHUB)/
+	rsync -aAHX --delete ../kythe ../typeshed $(TESTGITHUB)/
 	-cd $(TESTGITHUB)/pykythe && git status
 	-cd $(TESTGITHUB)/pykythe && git difftool --no-prompt --tool=tkdiff
 	@echo '# pushd $(TESTGITHUB)/pykythe && git commit -mCOMMIT-MSG' -a

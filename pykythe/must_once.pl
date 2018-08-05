@@ -6,16 +6,19 @@
                       must_once/4,
                       must_once/5,
                       must_once/6]).
-:- meta_predicate must_once(1).
-:- meta_predicate must_once_msg(1, +, +).
-:- meta_predicate must_once(2, ?, ?).
-:- meta_predicate must_once(3, ?, ?, ?).
-:- meta_predicate must_once(4, ?, ?, ?, ?).
-:- meta_predicate must_once(5, ?, ?, ?, ?, ?).
+:- meta_predicate
+       must_once(0),
+       must_once_msg(0, +, +),
+       must_once(4, ?, ?),
+       must_once(5, ?, ?, ?),
+       must_once(6, ?, ?, ?, ?),
+       must_once(7, ?, ?, ?, ?, ?).
 
 % Like once/1, throws an exception on failure.
 % Also works with works with EDCGs.
 % You must add edcg:pred_info(must_once, 1, ...) facts in the using module.
+
+% TODO: throw(error(must_once_failed(Goal))) without the extra "_" arg?
 
 % TODO: write a user:term_expansion that transforms
 %         :- det_pred(foo/_).
@@ -25,7 +28,7 @@
 %         foo(X, Y, Z) :-
 %             (  'foo must_once'(X, Y, Z)
 %             -> true
-%             ;  throw(error(failed(X, Y, Z), _))
+%             ;  throw(error(must_once_failed(foo(X, Y, Z)), _))
 %         ).
 %         'foo must_once'(X, Y, Z) :- % clause 1 ...
 %         'foo must_once'(X, Y, Z) :- % clause 2 ...
@@ -36,7 +39,7 @@
 %%     setup_call_cleanup(true, Goal, Deterministic = true),
 %%     (  var(Deterministic)
 %%     -> !,
-%%        throw(error(failed(Goal), _))
+%%        throw(error(must_once_failed(Goal), _))
 %%     ;  true
 %%     ).
 %% deterministic(Goal, Deterministic) :-
@@ -52,7 +55,7 @@
 must_once(Goal) :-
     (  call(Goal)
     -> true
-    ;  throw(error(failed(Goal), _))
+    ;  throw(error(must_once_failed(Goal), _))
     ).
 
 must_once_msg(Goal, Msg, MsgArgs) :-
@@ -60,7 +63,7 @@ must_once_msg(Goal, Msg, MsgArgs) :-
     -> true
      ; functor(Goal, Pred, Arity),
        format(string(MsgStr), Msg, MsgArgs),
-       throw(error(failed(Goal), context(Pred/Arity, MsgStr)))
+       throw(error(must_once_failed(Goal), context(Pred/Arity, MsgStr)))
     ).
 
 % edcg doesn't understand the meta-pred "call", so expand -->> by hand.
@@ -70,23 +73,30 @@ must_once_msg(Goal, Msg, MsgArgs) :-
 must_once(Goal, AccumA0, AccumA) :-
     (  call(Goal, AccumA0, AccumA)
     -> true
-    ;  throw(error(failed(Goal), _))
+    ;  throw(error(must_once_failed(Goal), _))
     ).
 
 must_once(Goal, AccumA0, AccumA, PassA) :-
     (  call(Goal, AccumA0, AccumA, PassA)
     -> true
-    ;  throw(error(failed(Goal), _))
+    ;  throw(error(must_once_failed(Goal), _))
     ).
 
 must_once(Goal, AccumA0, AccumA, AccumB0, AccumB) :-
     (  call(Goal, AccumA0, AccumA, AccumB0, AccumB)
     -> true
-    ;  throw(error(failed(Goal), _))
+    ;  throw(error(must_once_failed(Goal), _))
     ).
 
 must_once(Goal, AccumA0, AccumA, AccumB0, AccumB, PassA) :-
     (  call(Goal, AccumA0, AccumA, AccumB0, AccumB, PassA)
     -> true
-    ;  throw(error(failed(Goal), _))
+    ;  throw(error(must_once_failed(Goal), _))
     ).
+
+
+% TODO: (taken from library(rdet))
+%   % TODO: message_hook instead of prolog:message?
+%   :- multifile(prolog:message//1).
+%   prolog:message(error(must_once_failed(Goal), _)) -->
+%       ['Goal failed: ~w'-[Goal]].
