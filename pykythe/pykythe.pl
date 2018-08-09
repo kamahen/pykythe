@@ -186,9 +186,7 @@
 % You can generate an approximation of these by:
 %     forall(current_predicate(user:Pred), format('>>> ~q~n', [Pred])),
 
-:- rdet('ImportDottedAsNamesFqn_impl'/5).
-:- rdet('ImportFromStmt_impl'/6).
-:- rdet('ImportNameFqn_impl'/5).
+:- rdet('NameRawNode_astn_and_name'/3).
 :- rdet(absolute_dir/2).
 :- rdet(add_rej_to_symtab/3).
 :- rdet(assign_expr_eval/6).
@@ -201,7 +199,7 @@
 %% rdet(canonical_path/2).
 :- rdet(do_if/2).
 :- rdet(dot_edge_name/2).
-:- rdet(dotted_name_raw/2).
+:- rdet(kyNameRawNode/2).
 :- rdet(dump_term/2).
 :- rdet(dump_term/3).
 :- rdet(eval_atom_call_single/9).
@@ -221,12 +219,6 @@
 :- rdet(expr_normalized/6).
 :- rdet(file_and_token/3).
 :- rdet(file_search_path/2).
-:- rdet(from_dotted_name/2).
-:- rdet(from_import_dot_or_name/3).
-:- rdet(from_import_dot_or_name_pieces/3).
-:- rdet(from_import_dots/3).
-:- rdet(from_import_dots0/4).
-:- rdet(from_import_dots_to_name/3).
 :- rdet(from_import_part/7).
 :- rdet(full_path/3).
 :- rdet(full_path_prefixed/4).
@@ -235,14 +227,18 @@
 :- rdet(initial_symtab/1).
 :- rdet(json_read_dict/2).
 :- rdet(json_write_dict/3).
+:- rdet(kyImportDottedAsNamesFqn/5).
+:- rdet(kyImportFromStmt/6).
+:- rdet(kyImportFromStmt_from_name/6).
+:- rdet(kyImportFromStmt_from_name_pieces/6).
+:- rdet(kyImportNameFqn/5).
 :- rdet(kyanchor/6).
 :- rdet(kyedge/6).
 :- rdet(kyedge_fqn/6).
 :- rdet(kyfact/6).
 :- rdet(kyfact_b64/6).
 :- rdet(kyfile/4).
-:- rdet(process_nodes/5).
-:- rdet(process_nodes/7).
+:- rdet(kynode/7).
 :- rdet(lookup_module/2).
 :- rdet(maplist_assign_expr_eval/6).
 :- rdet(maplist_foldl_eval_lookup/8).
@@ -256,12 +252,13 @@
 :- rdet(maplist_kyfact_symrej/8).
 :- rdet(maplist_kynode/7).
 :- rdet(name_piece/3).
-:- rdet(kynode/7).
 :- rdet(output_kyfact/2).
 :- rdet(parse_and_process_module/2).
 %% rdet(path_to_python_module/2).
 :- rdet(path_to_python_module_or_unknown/2).
 :- rdet(print_term_cleaned/3).
+:- rdet(process_nodes/5).
+:- rdet(process_nodes/7).
 %% rdet(py_ext/2).
 %% rdet(py_ext_ext/1).
 %% rdet(pykythe_main/0).
@@ -308,9 +305,9 @@ edcg:pred_info(must_once_kyfact_expr, 1,         [kyfact, expr, file_meta]).
 edcg:pred_info(maplist_kyfact, 2,                [kyfact, file_meta]).
 edcg:pred_info(maplist_kyfact, 3,                [kyfact, file_meta]).
 
-edcg:pred_info('ImportDottedAsNamesFqn_impl', 2, [kyfact, file_meta]).
-edcg:pred_info('ImportFromStmt_impl', 3,         [kyfact, file_meta]).
-edcg:pred_info('ImportNameFqn_impl', 2,          [kyfact, file_meta]).
+edcg:pred_info(kyImportDottedAsNamesFqn, 2,      [kyfact, file_meta]).
+edcg:pred_info(kyImportFromStmt, 3,              [kyfact, file_meta]).
+edcg:pred_info(kyImportNameFqn, 2,               [kyfact, file_meta]).
 edcg:pred_info(from_import_part, 4,              [kyfact, file_meta]).
 edcg:pred_info(import_dots_file, 4,              [kyfact, file_meta]).
 edcg:pred_info(kyanchor, 3,                      [kyfact, file_meta]).
@@ -410,7 +407,7 @@ builtin_name(Name) :-
 
 %! initial_symtab(-Symtab:dict) is det.
 %  creates a symtab with the contents of typeshed/stdlib/3/builtins.pyi
-%  TODO: implement this fully
+% TODO: implement this fully
 initial_symtab(Symtab) :-
     (  bagof(BuiltinName-Type,
             (builtin_name(Name),
@@ -493,7 +490,7 @@ remove_suffix_star(Full, Suffix, NoSuffix) :-
     ).
 
 %! lookup_module(+Module:atom, -FullPath:atom) is det.
-%  TODO: document this.
+% TODO: document this.
 lookup_module(Module, FullPath) :-
     module_name_as_path(Module, CanonicalPath),
     atom_string(FullPath, CanonicalPath),  % TODO - use string instead of atom
@@ -520,8 +517,8 @@ module_name_as_path(Module, Path) :-
     ).
 
 %! path_to_python_module_or_unknown(+Path, -Fqn) is det.
-% Get the Fqn for the Python module corresponding to Path or
-% a '<unknown>...' atom.
+%  Get the Fqn for the Python module corresponding to Path or
+%  a '<unknown>...' atom.
 path_to_python_module_or_unknown(Path, Fqn) :-
     (  path_to_python_module(Path, Fqn)
     -> true
@@ -529,7 +526,7 @@ path_to_python_module_or_unknown(Path, Fqn) :-
     ).
 
 %! path_to_python_module_or_unknown(+Path, -Fqn) is semidet.
-% Get the Fqn for the Python module corresponding to Path or fail.
+%  Get the Fqn for the Python module corresponding to Path or fail.
 path_to_python_module(Path, Fqn) :-
     canonical_path(Path, CanonicalPath),
     py_ext(CanonicalPath0, CanonicalPath),
@@ -537,8 +534,8 @@ path_to_python_module(Path, Fqn) :-
     atomic_list_concat(FqnParts, '.', Fqn).
 
 %! canonical_path(+Path, -CanonicalPath) is semidet.
-% Get a Path into a canonical (absolute) form.
-% Fails if the file doesn't exist.
+%  Get a Path into a canonical (absolute) form.
+%  Fails if the file doesn't exist.
 canonical_path(Path, CanonicalPath) :-
     % TODO: besides being slightly less efficient, this doesn't do
     %       quite what we want -- probably want to change 
@@ -691,7 +688,7 @@ simplify_json_slot_pair(Key-Value, Key-Value2) :-
 
 %! process_nodes(+Nodes, +SrcInfo:dict, -KytheFacts:list, -Exprs:list, +Meta:dict) is det.
 %  Wrapper for process_nodes//[kyfact, expr, file_meta].
-%  TODO: separate KytheFacts into those that require de-duping and
+% TODO: separate KytheFacts into those that require de-duping and
 %  those that can be simply appended, to minimize the final de-dup.
 process_nodes(Node, SrcInfo, KytheFacts, Exprs, Meta) :-
     process_nodes(Node, SrcInfo, KytheFacts1, [], Exprs, [], Meta),  % phrase(process_nodes(Node), KytheFacts, Exprs, Meta)
@@ -786,9 +783,7 @@ kynode('AtomSubscriptNode'{atom: Atom,
        [todo_subscr(AtomType)]) -->>
     kynode(Atom, AtomType),
     maplist_kynode(Subscripts, _).
-kynode('AugAssignStmt'{augassign: _OpAstn,
-                       expr: Expr,
-                       left: Left},
+kynode('AugAssignStmt'{augassign: _OpAstn, expr: Expr, left: Left},
        [stmt(augassign)]) -->>
     % { node_astn(OpAstn, _, _, _Op) },
     expr_normalized(Left),
@@ -810,7 +805,9 @@ kynode('CompFor'{for_astn: _ForAstn,
                  for_exprlist: ForExprlist,
                  in_testlist: InTestlist,
                  comp_iter: CompIter},
-       [todo_compfor(iter:CompIterType, for:ForExprlistType, in:InTestlistType)]) -->>
+       [todo_compfor(iter:CompIterType,
+                     for:ForExprlistType,
+                     in:InTestlistType)]) -->>
     kynode(ForExprlist, ForExprlistType),
     kynode(InTestlist, InTestlistType),
     kynode(CompIter, CompIterType).
@@ -826,7 +823,7 @@ kynode('DecoratedStmt'{items: Items},
     maplist_kynode(Items, ItemsType).
 kynode('DecoratorDottedNameNode'{items: Items},
        [todo_decorator_dottedname(ItemsType)]) -->>
-    maplist(from_dotted_name, Items, ItemsType).
+    maplist('NameRawNode_astn_and_name', Items, _, ItemsType).
 kynode('DecoratorsNode'{items: Items},
        [todo_decorators(ItemsType)]) -->>
     maplist_kynode(Items, ItemsType).
@@ -845,8 +842,7 @@ kynode('DictSetMakerNode'{items: Items},
     maplist_kynode(Items, ItemsType).
 kynode('EllipsisNode'{},
        [ellipsis]) -->> [ ].
-kynode('ExceptClauseNode'{expr: Expr,
-                          as_item: AsItem},
+kynode('ExceptClauseNode'{expr: Expr, as_item: AsItem},
        [stmt(except)]) -->>
     kynode(Expr, ExprType),
     kynode(AsItem, AsItemType),
@@ -897,20 +893,20 @@ kynode('GlobalStmt'{items: Items},
 kynode('IfStmt'{items: Items},
        [stmt(if)]) -->>
     maplist_kynode(Items, _).
-kynode('ImportFromStmt'{from_name: DotsAndDottedName,
+kynode('ImportFromStmt'{from_name: FromName,
                         import_part: 'ImportAsNamesNode'{items: ImportPartItems}},
        [unused_importfrom(CombImportPart)]) -->>
-      'ImportFromStmt_impl'(DotsAndDottedName, ImportPartItems, CombImportPart),
+    kyImportFromStmt(FromName, ImportPartItems, CombImportPart),
     maplist_kyfact_expr(import_from, CombImportPart).
-kynode('ImportFromStmt'{from_name: DotsAndDottedName,
+kynode('ImportFromStmt'{from_name: FromName,
                         import_part: 'StarNode'{}},
        [unused_importfrom_star]) -->>
-    'ImportFromStmt_impl'(DotsAndDottedName, '*', _CombImportPart),
+    kyImportFromStmt(FromName, '*', _CombImportPart),
     % TODO: expand '*'
     [ ].
 kynode('ImportNameFqn'{dotted_as_names: 'ImportDottedAsNamesFqn'{items: DottedAsNames}},
        [unused_import(DottedAsNamesType)]) -->>
-    'ImportNameFqn_impl'(DottedAsNames, DottedAsNamesType).
+    kyImportNameFqn(DottedAsNames, DottedAsNamesType).
 kynode('ListMakerNode'{items: Items},
        [todo_list(ItemsType)]) -->>
     maplist_kynode(Items, ItemsType).
@@ -967,8 +963,7 @@ kynode('TnameNode'{name: Name, type_expr: TypeType},
 kynode('TryStmt'{items: Items},
        [stmt(try)]) -->>
     maplist_kynode(Items, _).
-kynode('TypedArgNode'{tname: 'TnameNode'{name: Name,
-                                         type_expr: TypeExpr},
+kynode('TypedArgNode'{tname: 'TnameNode'{name: Name, type_expr: TypeExpr},
                       expr: Expr},
        [todo_typedarg()]) -->>
     assign_normalized(Name, TypeExpr),
@@ -980,8 +975,7 @@ kynode('WhileStmt'{else_suite: ElseSuite,
     kynode(ElseSuite, _),
     kynode(Suite, _),
     kynode(Test, _).
-kynode('WithItemNode'{item: Item,
-                      as_item: AsItem},
+kynode('WithItemNode'{item: Item, as_item: AsItem},
        [stmt(with_item)]) -->>
     kynode(Item, ItemType),
     kynode(AsItem, AsItemType),
@@ -994,24 +988,24 @@ kynode('WithStmt'{items: Items, suite: Suite},
     maplist_kynode(Items, _),  % handled by WithItemNode
     kynode(Suite, _).
 
-%! 'ImportNameFqn_impl(+DottedAsNames:list, -DottedAsNamesType)//[kyfact, file_meta] is det.
-% Corresponds to: `import_name: 'import' dotted_as_names`
+%! kyImportNameFqn(+DottedAsNames:list, -DottedAsNamesType)//[kyfact, file_meta] is det.
+%  Corresponds to: `import_name: 'import' dotted_as_names`
 % TODO: finish this - similar to ImportFromStmt_impl
-'ImportNameFqn_impl'(DottedAsNames, todo_dottedName(DottedAsNamesType)) -->>
-    maplist_kyfact('ImportDottedAsNamesFqn_impl',
+kyImportNameFqn(DottedAsNames, todo_dottedName(DottedAsNamesType)) -->>
+    maplist_kyfact(kyImportDottedAsNamesFqn,
                    DottedAsNames, DottedAsNamesType),
     { zip_merge(DottedAsNames, DottedAsNamesType, Zipped),
       do_if(true, dump_term('IMPORT_NAME_FQN', Zipped)) }.  % TODO: delete
 
-%! 'ImportDottedAsNameFqn_impl(+DottedAsNames:list, -DottedAsNamesType)//[kyfact, file_meta] is det.
+%! kyImportDottedAsNameFqn(+DottedAsNames:list, -DottedAsNamesType)//[kyfact, file_meta] is det.
 % TODO: Finish this
-'ImportDottedAsNamesFqn_impl'('DottedNameNode'{items: Items}, todo_dottedname(DottedNameType)) -->>
+kyImportDottedAsNamesFqn('DottedNameNode'{items: Items}, todo_dottedname(DottedNameAstns)) -->>
     % TODO: IMPORTANT-- needs to define binding for first part of DottedName
-    { maplist(dotted_name_raw, Items, DottedNameType) }.
-'ImportDottedAsNamesFqn_impl'('ImportDottedAsNameFqn'{dotted_name: 'DottedNameNode'{items:Items},
-                                                      as_name: 'NameBindsFqn'{fqn: str(Fqn), name: NameAstn}},
-                              unused_importdotted(DottedNameType, FqnAtom)) -->>
-    { maplist(dotted_name_raw, Items, DottedNameType) },
+    { maplist(kyNameRawNode, Items, DottedNameAstns) }.
+kyImportDottedAsNamesFqn('ImportDottedAsNameFqn'{dotted_name: 'DottedNameNode'{items:Items},
+                                                 as_name: 'NameBindsFqn'{fqn: str(Fqn), name: NameAstn}},
+                         unused_importdotted(DottedNameAstns, FqnAtom)) -->>
+    { maplist(kyNameRawNode, Items, DottedNameAstns) },
     % TODO: IMPORTANT -- following needs to define binding for first part of DottedName
     { atom_string(FqnAtom, Fqn) },
     { node_astn(NameAstn, Start, End, _Token) },
@@ -1020,21 +1014,21 @@ kynode('WithStmt'{items: Items, suite: Suite},
     kyedge_fqn(Source, '/kythe/edge/defines/binding', FqnAtom),
     kyfact(Vname, '/kythe/node/kind', 'variable').
 
-%! 'ImportFromStmt_impl'(+DotsAndDottedName, +ImportPart, -CombImportPart)//[kyfact, file_meta] is det.
-%  The name is zero or more ImportDotNode's followed by zero or one
+%! kyImportFromStmt(+FromName, +ImportPart, -CombImportPart)//[kyfact, file_meta] is det.
+%  Corresponds to import_from: 'from' ... 'import' ...
+%  The FromName is zero or more ImportDotNode's followed by zero or one
 %  DottedNameNode. If there are no ImportDotNode's, then the result is
 %  $PYTHONPATH/Path/To/From/Pat/ImportPart. If there are ImportDotNode's,
 %  then the result is FilePath/ImportPart, where FilePath is derived
 %  from the Meta information for the file, followed by '/..' as
 %  needed.
-'ImportFromStmt_impl'(DotsAndDottedName, ImportPart, ResolvedImportParts) -->>
+kyImportFromStmt(FromName, ImportPart, ResolvedImportParts) -->>
     Meta/file_meta,
     { do_if(true,  % TODO: delete
-          dump_term('IMPORT_DOTS_AND_DOTTED', [dots_and=DotsAndDottedName, import=ImportPart])) },
+          dump_term('IMPORT_DOTS_AND_DOTTED', [from_name=FromName, import=ImportPart])) },
     { must_once(
           py_ext(PathBase, Meta.path)) },
-    { from_import_dots(DotsAndDottedName, PathBase, FromFileOrDir) },
-    { from_import_dot_or_name(DotsAndDottedName, FromAstns, FromToken) },
+    { kyImportFromStmt_from_name(FromName, PathBase, FromFileOrDir, FromAstns, FromToken) },
     { do_if(true, dump_term('FROMFILEORDIR', [FromFileOrDir, 'FromToken'=FromToken])) },  % TODO: delete
     import_dots_file(FromToken, FromAstns, FromFileOrDir, FromAstnDotsAndName),
     from_import_part(ImportPart, FromFileOrDir, FromAstnDotsAndName, CombImportParts),
@@ -1043,12 +1037,49 @@ kynode('WithStmt'{items: Items, suite: Suite},
     maplist_kyfact(ref_import, ResolvedImportParts),
     { do_if(true,  % TODO: delete
             dump_term('IMPORT_DOTS', [
-                          'DotsAndDottedName'=DotsAndDottedName,
+                          'FromName'=FromName,
                           'ImportPart'=ImportPart,
                           'FromFileOrDir'=FromFileOrDir,
                           'CombImportParts'=CombImportParts,
                           'ResolvedImportParts'=ResolvedImportParts,
                           'FromAstnDotsAndName'=FromAstnDotsAndName])) }.
+
+%! kyImportFromStmt_from_name(+FromName:list, +PathBase:atom, -FromFileOrDir:atom, -FromAstns:list(atom), -FromToken:atom) :-
+%  Given a list of dots and names (that is, a list of 'ImportDOtNode's
+%  followed by a list of 'DottedNameNode' (either of which can be
+%  empty), generate the file (or directory) and the compressed module
+%  name of the file or directory (including leading dots), and the
+%  ASTNs for the components.  PathBase is used as the "base" for
+%  relative names and replaced by $PYTHONPATH if this isn't a relative
+%  name (that is, no leading '.'s).
+kyImportFromStmt_from_name(FromName, PathBase, FromFileOrDir, FromAstns, FromToken) :-
+    kyImportFromStmt_from_name_pieces(FromName, PathBase, Dots, DottedNames, FromAstns, FromTokens),
+    (  Dots = []
+    -> FromFileOrDirPieces = ['$PYTHONPATH'|DottedNames]
+    ;  append(Dots, DottedNames, FromFileOrDirPieces)
+    ),
+    atomic_list_concat(FromFileOrDirPieces, '/', FromFileOrDir),
+    atomic_list_concat(FromTokens, FromToken).
+
+%! kyImportFromStmt_from_name_pieces(+FromName:list, +PathBase:atom, -Dots:list, -DottedNames:list(atom), -FromAstns:list(astn), -FromFileOrDirPieces:list(atom)) is det.
+%  Handle the 'from' part of the import_from rule in the Grammar:
+%      import_from: ('from' ('.'* dotted_name | '.'+) 'import' ...
+%  (the stuff after the 'import' is handled elsewhere). Generates a
+%  list of leading "dots" (for relative paths), pieces that are then
+%  concatenated to form the FromFileOrDirPiece; also generate the ASTNs for the
+%  pieces.
+kyImportFromStmt_from_name_pieces([], _PathBase, [], [], [], []).
+kyImportFromStmt_from_name_pieces(['ImportDotNode'{dot:Astn}|Ds], PathBase, [PathBase|Dots], DottedNames, [Astn|Astns], [FromFileOrDirPiece|FromFileOrDirPieces]) :-
+    node_astn(Astn, _, _, FromFileOrDirPiece),
+    kyImportFromStmt_from_name_pieces(Ds, '..', Dots, DottedNames, Astns, FromFileOrDirPieces).
+kyImportFromStmt_from_name_pieces(['DottedNameNode'{items: Items}], _PathBase, [], DottedNames, Astns, [FromFileOrDirPiece]) :-
+    maplist('NameRawNode_astn_and_name', Items, Astns, DottedNames),
+    atomic_list_concat(DottedNames, '.', FromFileOrDirPiece).
+
+%! 'NameRawNode_astn_and_name'(+DottedNameItem, -DottedName) is det.
+%  Process a NameRawNode node into a name
+'NameRawNode_astn_and_name'('NameRawNode'{name: NameAstn}, NameAstn, Name) :-
+    node_astn(NameAstn, _, _, Name).
 
 %! import_dots_file(+FromToken, +FromAstns, +FromFileOrDir, -FromAstnDotsAndName)//[kyfact, file_meta] is det.
 %  Generate the Kythe ref/file fact for the "from" part of an import.
@@ -1142,73 +1173,6 @@ remove_last_component(Path, FirstPart, Tail) :-
 pythonpath_prefix(Full, Rest) :-
     atom_concat('$PYTHONPATH/', Rest, Full).
 
-%! from_import_dots(+DotsAndDottedName:list, +PathBase:atom, -FromFileOrDir:atom) is det.
-%  Given a list of dots and names (that is, a list of 'ImportDotNode's
-%  followed by a list of 'DottedNameNode' (either of which can be
-%  empty), generate the file (or directory). PathBase is used as the
-%  "base" for relative names and replaced by $PYTHONPATH if the this
-%  isn't a relative name (that is, if there are no leading '.'s).
-from_import_dots(DotsAndDottedName, PathBase, FromFileOrDir) :-
-    from_import_dots0(DotsAndDottedName, PathBase, Dots, DottedNames),
-    from_import_dots_to_name(Dots, DottedNames, FromFileOrDirPieces),
-    atomic_list_concat(FromFileOrDirPieces, '/', FromFileOrDir).
-
-%! from_import_dots0(+ImportPart:list, +PathBase:atom, -Dots:list, -ResolvedImportParts:list) is det.
-%  Handle the 'from' part of the import_from rule in the Grammar:
-%      import_from: ('from' ('.'* dotted_name | '.'+) 'import' ...
-%  (the stuff after the 'import' is handled elsewhere)
-from_import_dots0([], _PathBase, [], []) :- !.
-from_import_dots0(['ImportDotNode'{dot:_}|Ds], PathBase, [PathBase|Dots], DottedNames) :- !,
-    from_import_dots0(Ds, '..', Dots, DottedNames).
-from_import_dots0(['DottedNameNode'{items: Ds}], _, [], DottedNames) :-
-    maplist(from_dotted_name, Ds, DottedNames).
-
-%! from_dotted_name(+DottedNameItem, -DottedName) is det.
-%  Process a NameRawNode node into a name
-from_dotted_name('NameRawNode'{name: NameAstn}, Name) :-
-    node_astn(NameAstn, _, _, Name).
-
-%! from_import_dots_to_name(+Dots:list(atom), +DottedNames:list(atom), -FromFileOrDirPieces:list(atom)) is det.
-%  Given a list of dots and names (that is, a list of 'ImportDotNode's
-%  followed by a list of 'DottedNameNode' (either of which can be
-%  empty), generate an appropriate list of pieces (if no dots, it's
-%  absolute, so prepend '$PYTHONPATH'; otherwise concatenate dots and
-%  names).
-from_import_dots_to_name([], DottedNames, ['$PYTHONPATH'|DottedNames]) :- !.
-from_import_dots_to_name(Dots, DottedNames, FromFileOrDirPieces) :-
-    append(Dots, DottedNames, FromFileOrDirPieces).
-
-%! from_import_dot_or_name(+Dots:list, +DottedNames:list(atom), -FromFileOrDir:atom) is det.
-%  Given a list of dots and names (that is, a list of 'ImportDotNode's
-%  followed by a list of 'DottedNameNode' (either of which can be
-%  empty), generate the compressed module name of the file or directory
-%  (including leading dots) and the ASTNs for the components.
-%  TODO: combine this with from_import_dots/3.
-from_import_dot_or_name(DotsAndDottedName, FromAstns, FromToken) :-
-    from_import_dot_or_name_pieces(DotsAndDottedName, FromAstns, FromTokens),
-    atomic_list_concat(FromTokens, FromToken).
-
-%! from_import_dot_or_name_pieces(+Dots:list, +DottedNames:list(atom), -FromFileOrDirPieces:list(atom)) is det.
-%  Helper predicate for from_import_dots_to_name/3 which generates a
-%  list of pieces that are then concatenated to form the FromToken;
-%  also generate the ASTNs for the pieces.
-from_import_dot_or_name_pieces([], [], []).
-from_import_dot_or_name_pieces(['ImportDotNode'{dot:Astn}|Ds], [Astn|Astns], [Token|Tokens]) :-
-    node_astn(Astn, _, _, Token),
-    from_import_dot_or_name_pieces(Ds, Astns, Tokens).
-from_import_dot_or_name_pieces(['DottedNameNode'{items:Items}|Ds], Astns, [Tokens0Join|Tokens]) :-
-    maplist(name_piece, Items, Astns0, Tokens0),
-    atomic_list_concat(Tokens0, '.', Tokens0Join),
-    from_import_dot_or_name_pieces(Ds, Astns1, Tokens),
-    append(Astns0, Astns1, Astns).
-
-%! name_piece(+Raw:dict, -Astn:astn, -Token:atom) is det.
-%  Input a dicts that had a 'name' item (which is an ASTN), outputting
-%  the ASTns and the token that it contains.
-name_piece(Raw, NameAstn, Token) :-
-    NameAstn = Raw.name,  % the field 'name' is not a string or atom; it's an ASTN
-    node_astn(NameAstn, _, _, Token).
-
 %! py_ext(+Path:atom, -PathBase:atom is nondet.
 %! py_ext(-Path:atom, +PathBase:atom is nondet.
 %  Path unifies with all permutations of PathBase plus {.py,.pyi} and
@@ -1234,7 +1198,7 @@ py_ext_ext('.pyi').
 py_ext_ext('').  % For directories
 
 %! from_import_part(+ImportPart, +FullFromName:atom, +AstnDotsAndName:atom, -CombImportParts)//[kyfact, file_meta] is det.
-%  Used by 'ImportFromStmt_impl': extracts from individual AsNameNode
+%  Used by kyImportFromStmt: extracts from individual AsNameNode
 %  items and combines it with the FullFromName and outputs a list of
 %  name-name pairs.
 from_import_part('*', FullFromName, _AstnDotsAndName, [from_star(ConcatName)]) -->>
@@ -1261,15 +1225,15 @@ import_from(path_fqn_vname(Path,Fqn,_VarVname)) -->>
     { do_if(true, dump_term('IMPORT_FROM', Path-Fqn)) },  % TODO: delete
     [ import_from(Path, Fqn) ]:expr.
 
-%! dotted_name_raw(+Node, -Astn) is det.
+%! kyNameRawNode(+Node, -Astn) is det.
 %  Used by DottedNameNode to process a list of NameRawNode.
 % TODO: needs some file resolution
-dotted_name_raw('NameRawNode'{name: NameAstn}, astn(Start, End, Name)) :-
+kyNameRawNode('NameRawNode'{name: NameAstn}, astn(Start, End, Name)) :-
     node_astn(NameAstn, Start, End, Name).
 
 %! maplist_kynode(+Nodes:list, -NodeTypes:list)//[kyfact, expr, file_meta] is det.
 %  maplist_kyfact_expr(kynode, Nodes, NodeTypes)
-%  TODO: for some reason this fails when maplist meta-predicate is used
+% TODO: for some reason this fails when maplist meta-predicate is used
 %        (maybe due to handling of _? in a meta-call?)
 maplist_kynode([], []) -->> [ ].
 maplist_kynode([Node|Nodes], [NodeTypeWrap|NodeTypes]) -->>
@@ -1593,7 +1557,7 @@ eval_atom_call_union(Parms, AtomEval, EvalType) -->>
         eval_atom_call_single_of_type(Parms), AtomEval, EvalType0, EvalType).
 
 %! eval_atom_call_single_of_type(+Parms, +Type, +EvalType0, -EvalType) is det.
-% Helper for eval_atom_call_union
+%  Helper for eval_atom_call_union
 eval_atom_call_single_of_type(Parms, Type, EvalType0, EvalType) -->>
     eval_single_type(Type, TypeEval),
     maplist_foldl_kyfact_symrej(
@@ -1743,7 +1707,7 @@ print_term_cleaned(Term, Options, TermStr) :-
     re_replace(" *\n"/g, "\n", TermStr0, TermStr).
 
 %! zip_merge(+Xs:list, Ys:list, -XYs:list) is det
-% zip_merge([a,b], [1,2,], [a-1, b-2])
+%  zip_merge([a,b], [1,2,], [a-1, b-2])
 zip_merge([], [], []).
 zip_merge([X|Xs], [Y|Ys], [X-Y, XYs]) :-
     zip_merge(Xs, Ys, XYs).
@@ -1765,35 +1729,35 @@ maplist_kyfact(Pred, [X|Xs], [Y|Ys]) -->>
     maplist_kyfact(Pred, Xs, Ys).
 
 %! maplist_kyfact_symrej(:Pred, +L0:list, -L:list)//[kyfact, symrej, file_meta] is det.
-% maplist/3 for EDCG [kyfact, symrej, file_meta]
+%  maplist/3 for EDCG [kyfact, symrej, file_meta]
 maplist_kyfact_symrej(_Pred, [], []) -->> [ ].
 maplist_kyfact_symrej(Pred, [X|Xs], [Y|Ys]) -->>
     call(Pred, X, Y):[kyfact,symrej,file_meta],
     maplist_kyfact_symrej(Pred, Xs, Ys).
 
 %! maplist_kyfact_expr(:Pred, +L0:list)//[kyfact, expr, file_meta] is det.
-% maplist/2 for EDCG [kyfact, expr, file_meta]
+%  maplist/2 for EDCG [kyfact, expr, file_meta]
 maplist_kyfact_expr(_Pred, []) -->> [ ].
 maplist_kyfact_expr(Pred, [X|Xs]) -->>
     call(Pred, X):[kyfact,expr,file_meta],
     maplist_kyfact_expr(Pred, Xs).
 
 %! maplist_kyfact_expr(:Pred, +L0:list, -L:list)//[kyfact, expr, file_meta] is det.
-% maplist/3 for EDCG [kyfact, expr, file_meta]
+%  maplist/3 for EDCG [kyfact, expr, file_meta]
 maplist_kyfact_expr(_Pred, [], []) -->> [ ].
 maplist_kyfact_expr(Pred, [X|Xs], [Y|Ys]) -->>
     call(Pred, X, Y):[kyfact,expr,file_meta],
     maplist_kyfact_expr(Pred, Xs, Ys).
 
 %! maplist_kyfact_expr(:Pred, +L0:list, -L:list)//[kyfact, expr, file_meta] is det.
-% maplist/2 plus fold/4 for EDCG [kyfact, expr, file_meta]
+%  maplist/2 plus fold/4 for EDCG [kyfact, expr, file_meta]
 maplist_foldl_kyfact_expr(_Pred, [], V, V) -->> [ ].
 maplist_foldl_kyfact_expr(Pred, [X|Xs], V0, V) -->>
     call(Pred, X, V0, V1):[kyfact,expr,file_meta],
     maplist_foldl_kyfact_expr(Pred, Xs, V1, V).
 
 %! maplist_foldl_kyfact_symrej(:Pred, -L0:list, +L:list, -V0, +V) is det.
-% maplist/2 plus foldl/4 for EDCG [kyfact, symrej, file_meta]
+%  maplist/2 plus foldl/4 for EDCG [kyfact, symrej, file_meta]
 maplist_foldl_kyfact_symrej(_Pred, [], V, V) -->> [ ].
 maplist_foldl_kyfact_symrej(Pred, [X|Xs], V0, V) -->>
     call(Pred, X, V0, V1):[kyfact,symrej,file_meta],
