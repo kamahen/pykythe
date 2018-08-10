@@ -5,6 +5,7 @@
 # //...` and that the latest Kythe tarball has been downloaded and
 # installed in /opt/kythe.
 
+SHELL:=/bin/bash
 KYTHE=../kythe
 KYTHE_BIN=$(KYTHE)/bazel-bin
 VERIFIER_EXE=$(KYTHE_BIN)/kythe/cxx/verifier/verifier
@@ -23,7 +24,7 @@ KYTHE_EXE=$(KYTHE_BIN)/kythe/go/serving/tools/kythe/linux_amd64_stripped/kythe
 # https://github.com/google/kythe/releases/download/v0.0.26/kythe-v0.0.26.tar.gz
 HTTP_SERVER_RESOURCES=/opt/kythe/web/ui
 # TODO: use an array for TEST_GRAMMAR_FILES
-TEST_GRAMMAR_FILE=py3_test_grammar
+TEST_GRAMMAR_FILE1=py3_test_grammar
 TEST_GRAMMAR_FILE2=bindings
 TEST_GRAMMAR_FILE3=simple
 TEST_GRAMMAR_FILE4=imports1
@@ -49,6 +50,13 @@ COVERAGE:=$(shell which coverage)
 TIME=time
 TEST_DATA_FILES=$(shell find test_data -type f)
 TEST_DATA_SUBST_FILES=$(shell find test_data -type f | sed 's!^!$(SUBST_PYKYTHEDIR)/!')
+TEST_DATA_IMPORTS_DIR1_FILES=$(shell find test_data/imports_dir1 -type f -name '*.py' | sed 's!^!$(TESTOUT_PYKYTHEDIR)/!')
+
+.PHONY: verify-%
+.SECONDARY: # %.entries %.json-decoded %.json
+
+# TODO: why doesn't the following work?
+verify-%: $(TESTOUT_PYKYTHEDIR)/test_data/%.verifier
 
 all_tests: test test_grammar  # pykythe_http_server
 all_tests2: $(TESTOUT_TYPESHEDDIR)/stdlib/3/builtins-kythe.json  # TODO: delete when builtins are handled properly
@@ -66,10 +74,11 @@ test_imports1:  # run imports code, to ensure that it behaves as expected
 
 # Test that all syntactic forms are processed:
 test_grammar: \
-	verify-$(TEST_GRAMMAR_FILE4) \
-	verify-$(TEST_GRAMMAR_FILE3) \
-	verify-$(TEST_GRAMMAR_FILE2) \
-	verify-$(TEST_GRAMMAR_FILE)
+	$(TESTOUT_PYKYTHEDIR)/test_data/$(TEST_GRAMMAR_FILE4).verifier \
+	$(TESTOUT_PYKYTHEDIR)/test_data/$(TEST_GRAMMAR_FILE3).verifier \
+	$(TESTOUT_PYKYTHEDIR)/test_data/$(TEST_GRAMMAR_FILE2).verifier \
+	$(TESTOUT_PYKYTHEDIR)/test_data/$(TEST_GRAMMAR_FILE1).verifier \
+	$(foreach file,$(TEST_DATA_IMPORTS_DIR1_FILES),$(patsubst %.py,%.verifier,$(file)))
 
 # Reformat all the source code (uses .style.yapf)
 pyformat:
@@ -183,10 +192,8 @@ $(TESTOUT_TYPESHEDDIR)/stdlib/3/builtins-kythe.json: FORCE
 	mkdir -p $(dir $<)
 	$(ENTRYSTREAM_EXE) --read_format=json <"$<" >"$@"
 
-.PHONY: verify-%
-.SECONDARY: # %.entries %.json-decoded %.json
-
 $(SUBSTDIR) $(TEST_DATA_SUBST_FILES): scripts/fix_for_verifier.py $(TEST_DATA_FILES)
+	@# TODO: this removes too much stuff and causes unnecessary re-runs
 	$(RM) $(TEST_DATA_SUBST_FILES)
 	$(PYTHON3_EXE) -B scripts/fix_for_verifier.py test_data $(SUBST_PYKYTHEDIR)/test_data ../typeshed
 	chmod a-w $(TEST_DATA_SUBST_FILES)
@@ -196,9 +203,9 @@ $(SUBST_PYKYTHEDIR)/test_data: $(SUBSTDIR)
 
 $(SUBST_PYKYTHEDIR)/test_data/simple.py: $(SUBST_PYKYTHEDIR)/test_data
 
-verify-%: $(TESTOUT_PYKYTHEDIR)/test_data/%-kythe.entries $(SUBST_PYKYTHEDIR)/test_data/%.py
+$(TESTOUT_PYKYTHEDIR)/test_data/%.verifier: $(TESTOUT_PYKYTHEDIR)/test_data/%-kythe.entries $(SUBST_PYKYTHEDIR)/test_data/%.py
 	@# TODO: --ignore_dups
-	$(VERIFIER_EXE) -check_for_singletons -goal_prefix='#-' "$(word 2,$^)" <"$(word 1,$^)"
+	set -o pipefail; $(VERIFIER_EXE) -check_for_singletons -goal_prefix='#-' "$(word 2,$^)" <"$(word 1,$^)" | tee "$@"
 
 prep_server: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).nq.gz
 

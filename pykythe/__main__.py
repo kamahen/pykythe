@@ -49,7 +49,7 @@ def main() -> int:
     with open(args.src, 'rb') as src_f:
         src_content = xcast(bytes, src_f.read())
         # TODO: add to ast.File: args.root, args.corpus (even though in Meta)
-        src_file = ast.File(
+        src_file = ast.make_file(
             path=args.src,
             content=src_content,
             encoding='utf-8')  # TODO: get encoding from lib2to3.pgen2.tokenize.detect_encoding

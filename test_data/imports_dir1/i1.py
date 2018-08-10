@@ -1,4 +1,4 @@
-#- @loc defines/binding I1_loc
+#- @loc defines/binding I1_loc?
 loc = "pykythe/test_data/imports_dir/i1.py"
 
 print("Entering " + loc + " ... " + __file__)
@@ -15,6 +15,7 @@ from pykythe.test_data.imports_dir1.i1_sub import i4 as i4_b
 
 assert i4 == i4_b
 
+#- @loc ref I3_loc?
 assert i3.loc == "pykythe/test_data/imports_dir/i3.py"
 assert i3_b.loc == "pykythe/test_data/imports_dir/i3.py"
 

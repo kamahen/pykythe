@@ -997,15 +997,17 @@ class ImportDottedAsNamesNode(ListBase):
 class ImportFromStmt(Base):
     """Corresponds to `import_name`."""
 
-    from_name: Sequence[Base]
+    from_dots: Sequence[Base]
+    from_name: Optional[Base]
     import_part: Base
 
-    __slots__ = ['from_name', 'import_part']
+    __slots__ = ['from_dots', 'from_name', 'import_part']
 
     def __post_init__(self) -> None:
-        typing_debug.assert_all_isinstance((DottedNameNode, ImportDotNode),
-                                           self.from_name)
-        # self.from_name = typing.cast(Sequence[DottedNameNode], from_name)
+        typing_debug.assert_all_isinstance(ImportDotNode, self.from_dots)
+        assert self.from_name is None or isinstance(self.from_name, DottedNameNode), [self]
+        # self.from_dots = typing.cast(Sequence[ImportDotNode], self.from_dots)
+        # self.from_name = typing.cast(Sequence[DottedNameNode], self.from_name)
         assert isinstance(
             self.import_part, (ImportAsNamesNode, StarNode))
         # TODO: self.import_part = typing.cast(Union[ImportAsNamesNode, StarNode], import_part)
@@ -1014,8 +1016,10 @@ class ImportFromStmt(Base):
         # ast_raw.cvt_import_from has made sure that the names in
         # import_part are NameBindsNode, so we don't need to do
         # anything special about them.
+        # TODO: don't need add_fqns (nor for ImportDotNode, DottedNameNode)
         return ImportFromStmt(
-            from_name=[_add_fqns_wrap(name, ctx) for name in self.from_name],
+            from_dots=[_add_fqns_wrap(dot, ctx) for dot in self.from_dots],
+            from_name=_add_fqns_wrap(self.from_name, ctx) if self.from_name else self.from_name,
             import_part=_add_fqns_wrap(self.import_part, ctx))
 
 

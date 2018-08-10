@@ -143,14 +143,14 @@ class TestAnchor(unittest.TestCase):
         for python_version in 3, 2:
             parse_tree = ast_raw.parse(content, python_version)
             logging.debug('RAW= %r', parse_tree)
-            src_file = ast.File('<>', content, 'utf-8')
+            src_file = ast.make_file('<>', content, 'utf-8')
             self.assertEqual(content.decode('utf-8'), str(parse_tree))
             self.assertEqual(
                 str(parse_tree), ''.join(
                     str(node)
                     for node in parse_tree.pre_order()
                     if isinstance(node, pytree.Leaf)))
-            anchor_file = ast.File('<>', content, 'utf-8')
+            anchor_file = ast.make_file('<>', content, 'utf-8')
             leaf_nodes = [
                 node for node in parse_tree.pre_order() if
                 isinstance(node, pytree.Leaf) and node.type in expected_types]

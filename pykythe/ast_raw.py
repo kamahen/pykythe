@@ -756,7 +756,8 @@ def cvt_import_from(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
                   'import' ('*' | '(' import_as_names ')' | import_as_names))
     """
     assert ctx.name_ctx is NameCtx.REF, [node]
-    from_name = []  # type: List[ast_cooked.Base]
+    from_dots = []  # type: List[ast_cooked.Base]
+    from_name = None  # type: Optional[ast_cooked.Base]
     for i, child in enumerate(node.children):
         if child.type == token.NAME and child.value == 'from':  # type: ignore
             continue
@@ -764,10 +765,11 @@ def cvt_import_from(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             break
         if child.type == token.DOT:
             # TODO: test case
-            from_name.append(ast_cooked.ImportDotNode(
+            from_dots.append(ast_cooked.ImportDotNode(
                 ctx.src_file.astn_to_range(child)))
         else:
-            from_name.append(cvt_name_ctx(NameCtx.RAW, child, ctx))
+            assert not from_name
+            from_name = cvt_name_ctx(NameCtx.RAW, child, ctx)
     # pylint: disable=undefined-loop-variable
     assert (node.children[i].type == token.NAME and
             node.children[i].value == 'import')  # type: ignore
@@ -780,7 +782,7 @@ def cvt_import_from(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     else:
         import_part = cvt_name_ctx(NameCtx.BINDING, node.children[i], ctx)
     return ast_cooked.ImportFromStmt(
-        from_name=from_name, import_part=import_part)
+        from_dots=from_dots, from_name=from_name, import_part=import_part)
 
 
 def cvt_import_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
