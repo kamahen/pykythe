@@ -507,10 +507,10 @@ def cvt_dotted_as_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
                         cvt_name_ctx(NameCtx.RAW, node.children[0], ctx))
     if len(node.children) == 1:
         # `import os.path` creates a binding for `os`.
+        # TODO: new ast_cooked class ImportDottedNode for as_name=None
         return ast_cooked.ImportDottedAsNameNode(
             dotted_name=dotted_name,
-            as_name=ast_cooked.NameBindsNode(
-                name=xcast(ast_cooked.NameRawNode, dotted_name.items[0]).name))
+            as_name=None)
     # TODO: test case `dotted_name 'as' NAME`
     return ast_cooked.ImportDottedAsNameNode(
         dotted_name=dotted_name,

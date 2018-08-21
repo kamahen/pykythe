@@ -4,8 +4,10 @@ This code is for development debugging and will change a lot over time
 (and eventually disappear).
 """
 
-#- { @#0os ref/file XXX2? }  // vname("", "test-corpus", "test-root", "${ROOT_DIR}/typeshed/stdlib/3/os/__init__.py", "")
-#- // { @#0path ref OsPath1? }  // TODO
+# TODO: remove the "import", "from"tests that exist elsewher
+
+#- { @#0os ref/file vname("", _, _, "${TYPESHED_DIR}/stdlib/3/os/__init__.pyi", "") }
+#- { @os_path ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
 from os import path as os_path
 
 # TODO - remove these import's

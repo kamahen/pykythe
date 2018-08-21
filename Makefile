@@ -59,7 +59,9 @@ TEST_DATA_IMPORTS_DIR1_FILES=$(shell find test_data/imports_dir1 -type f -name '
 verify-%: $(TESTOUT_PYKYTHEDIR)/test_data/%.verifier
 
 all_tests: test test_grammar  # pykythe_http_server
-all_tests2: $(TESTOUT_TYPESHEDDIR)/stdlib/3/builtins-kythe.json  # TODO: delete when builtins are handled properly
+all_tests2: $(TESTOUT_TYPESHEDDIR)/stdlib/3/builtins.kythe.json  # TODO: delete when builtins are handled properly
+
+zzz: /tmp/pykythe_test/KYTHE/pykythe/test_data/imports_dir1/i1_sub/i4.verifier # DO NOT SUBMIT
 
 all_tests_plus: all_tests all_tests2 pyformat mypy
 
@@ -151,7 +153,7 @@ clean:
 	-# $(RM) -r $(TESTOUTDIR)
 	-# find $(TESTOUTDIR) -type f
 
-$(TESTOUT_PYKYTHEDIR)/test_data/%-kythe.json: \
+$(TESTOUT_PYKYTHEDIR)/test_data/%.kythe.json: \
 		$(SUBST_PYKYTHEDIR)/test_data/%.py  \
 		pykythe/pykythe.pl pykythe/must_once.pl \
 		pykythe/__main__.py \
@@ -174,7 +176,7 @@ $(TESTOUT_PYKYTHEDIR)/test_data/%-kythe.json: \
 	$(PYTHON3_EXE) -B scripts/decode_json.py <"$@" >"$@-decoded"
 
 # TODO: delete the following once we're processing builtins properly
-$(TESTOUT_TYPESHEDDIR)/stdlib/3/builtins-kythe.json: FORCE
+$(TESTOUT_TYPESHEDDIR)/stdlib/3/builtins.kythe.json: FORCE
 	mkdir -p $(TESTOUT_TYPESHEDDIR)/stdlib/3
 	mkdir -p $(TESTOUTDIR)/SUBST  # Needed by pythonpath
 	$(TIME) $(SWIPL_EXE) -O -s pykythe/pykythe.pl \
@@ -188,7 +190,7 @@ $(TESTOUT_TYPESHEDDIR)/stdlib/3/builtins-kythe.json: FORCE
 %.json-decoded: %.json scripts/decode_json.py
 	$(PYTHON3_EXE) -B scripts/decode_json.py <"$<" >"$@"
 
-%-kythe.entries: %-kythe.json
+%.kythe.entries: %.kythe.json
 	mkdir -p $(dir $<)
 	$(ENTRYSTREAM_EXE) --read_format=json <"$<" >"$@"
 
@@ -203,7 +205,7 @@ $(SUBST_PYKYTHEDIR)/test_data: $(SUBSTDIR)
 
 $(SUBST_PYKYTHEDIR)/test_data/simple.py: $(SUBST_PYKYTHEDIR)/test_data
 
-$(TESTOUT_PYKYTHEDIR)/test_data/%.verifier: $(TESTOUT_PYKYTHEDIR)/test_data/%-kythe.entries $(SUBST_PYKYTHEDIR)/test_data/%.py
+$(TESTOUT_PYKYTHEDIR)/test_data/%.verifier: $(TESTOUT_PYKYTHEDIR)/test_data/%.kythe.entries $(SUBST_PYKYTHEDIR)/test_data/%.py
 	@# TODO: --ignore_dups
 	set -o pipefail; $(VERIFIER_EXE) -check_for_singletons -goal_prefix='#-' "$(word 2,$^)" <"$(word 1,$^)" | tee "$@"
 
@@ -259,10 +261,10 @@ push_to_github:
 
 triples: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).nq.gz
 
-pykythe_http_server: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE)-kythe.json scripts/pykythe_http_server.pl FORCE
+pykythe_http_server: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).kythe.json scripts/pykythe_http_server.pl FORCE
 	scripts/pykythe_http_server.pl \
 		--port 8008 \
-		--kythe $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE)-kythe.json
+		--kythe $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).kythe.json
 
 FORCE:
 .PHONY: FORCE
@@ -270,7 +272,7 @@ FORCE:
 
 coverage:
 	-# file:///home/peter/src/pykythe/htmlcov/index.html
-	-# TODO: use the variables in the rule for $(TESTOUTDIR)/%-kythe.json
+	-# TODO: use the variables in the rule for $(TESTOUTDIR)/%.kythe.json
 	-# TODO: run test_pykythe.py and add to coverage results
 	$(PYTHON3_EXE) $(COVERAGE) run --branch -m pykythe \
 		$(KYTHE_CORPUS_ROOT_OPT) \

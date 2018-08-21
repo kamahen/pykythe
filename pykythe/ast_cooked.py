@@ -936,7 +936,10 @@ class ImportDotNode(Base):
 
 @dataclass(frozen=True)
 class ImportDottedAsNameFqn(Base):
-    """Created by ImportDottedAsNameNode.add_fqns."""
+    """Created by ImportDottedAsNameNode.add_fqns (when there's an 'as').
+
+    See ImportDottedFqn for the case when there's no 'as').
+    """
 
     dotted_name: DottedNameNode
     as_name: NameBindsFqn
@@ -949,23 +952,27 @@ class ImportDottedAsNameFqn(Base):
 
 @dataclass(frozen=True)
 class ImportDottedAsNameNode(Base):
-    """Corresponds to `dotted_as_name`.
+    """Corresponds to `dotted_as_name` (from `import_name`). """
 
-    This is only used by `import_name`, so if the `as` is missing,
-    then the first item in the `dotted_name` gets marked as "binds".
-    """
+    # TODO: new ast_cooked class ImportDottedNode for as_name=None
 
     dotted_name: DottedNameNode
-    as_name: NameBindsNode
+    as_name: Optional[NameBindsNode]
 
     __slots__ = ['dotted_name', 'as_name']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
-        return ImportDottedAsNameFqn(
-            dotted_name=xcast(DottedNameNode,
-                              _add_fqns_wrap(self.dotted_name, ctx)),
-            as_name=xcast(NameBindsFqn,
-                          _add_fqns_wrap(self.as_name, ctx)))
+        dotted_name = xcast(DottedNameNode,
+                            _add_fqns_wrap(self.dotted_name, ctx))
+        if self.as_name:
+            return ImportDottedAsNameFqn(
+                dotted_name=dotted_name,
+                as_name=xcast(NameBindsFqn,
+                              _add_fqns_wrap(self.as_name, ctx)))
+        return ImportDottedFqn(
+            dotted_name=dotted_name,
+            top_name=_add_fqns_wrap(
+                NameBindsNode(name=self.dotted_name.items[0].name), ctx))
 
 
 class ImportDottedAsNamesFqn(ListBase):
@@ -974,7 +981,7 @@ class ImportDottedAsNamesFqn(ListBase):
     def __post_init__(self) -> None:
         # self.items = typing.cast(Sequence[ImportDottedAsNameFqn], items)
         typing_debug.assert_all_isinstance(
-            ImportDottedAsNameFqn, self.items)  # TODO: remove
+            (ImportDottedAsNameFqn, ImportDottedFqn), self.items)  # TODO: remove
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self  # The components have already been processed
@@ -994,8 +1001,29 @@ class ImportDottedAsNamesNode(ListBase):
 
 
 @dataclass(frozen=True)
+class ImportDottedFqn(Base):
+    """Created by ImportDottedAsNameNode.add_fqns (when there's no 'as').
+
+    This is only used by `import_name`. The statement "import foo.bar"
+    creates a binding for "foo", which is in `top_name` (compare
+    "import foo.bar as z", which binds "z" in
+    ImportDottedAsNameNode.as_name).
+    """
+
+    dotted_name: DottedNameNode
+    top_name: NameBindsFqn
+
+    __slots__ = ['dotted_name', 'top_name']
+
+    def add_fqns(self, ctx: FqnCtx) -> Base:
+        return self  # The components have already been processed
+
+
+@dataclass(frozen=True)
 class ImportFromStmt(Base):
     """Corresponds to `import_name`."""
+
+    # TODO: new ast_cooked class ImportDottedNode for from_name=None ?
 
     from_dots: Sequence[Base]
     from_name: Optional[Base]
