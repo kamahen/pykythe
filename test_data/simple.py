@@ -4,7 +4,7 @@ This code is for development debugging and will change a lot over time
 (and eventually disappear).
 """
 
-# TODO: remove the "import", "from"tests that exist elsewher
+# TODO: remove the "import", "from" tests that exist elsewhere
 
 #- { @#0os ref/file vname("", _, _, "${TYPESHED_DIR}/stdlib/3/os/__init__.pyi", "") }
 #- { @os_path ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
@@ -13,7 +13,7 @@ from os import path as os_path
 # TODO - remove these import's
 #- { @foo4 defines/binding Foo4?  } // TODO: needs to be implemented
 #- { @foo_bar5 defines/binding Foo5?  } // TODO: needs to be implemented
-#- { @". . . . yyy .zot" ref/file vname("", "test-corpus", "test-root", "${ROOT_DIR}/test_data/simple/../../../yyy/zot", "") }
+#- { @". . . . yyy .zot" ref/file vname("", "test-corpus", "test-root", "${ROOT_DIR}/test_data/../../../yyy/zot", "") }
 #- // TODO: should we have a node/kind fact for referenced files, even
 #- //       if they don't exist?
 #- //       { DotDotDotDotYyyZot.node/kind file }  // TODO: remove this?
@@ -24,19 +24,13 @@ from . . . . yyy .zot import foo4, foo5 as foo_bar5
 #- { @sep ref/imports OS_PATH_SEP? }
 from os.path import sep
 
-#- { @".xxx" ref/file vname("", "test-corpus", "test-root", "${ROOT_DIR}/test_data/simple/xxx", "") }
+#- { @".xxx" ref/file vname("", "test-corpus", "test-root", "${ROOT_DIR}/test_data/xxx", "") }
 #- { @foo3 defines/binding Foo3? }
 from .xxx import foo3
 
-#- { @".." ref/file vname("", "test-corpus", "test-root", "${ROOT_DIR}/test_data/simple/..", "") }
-#- { @foo1 defines/binding Foo1? }
-#- // { @foo1 ref/imports vname("${ROOT_FQN}.test_data.foo1", _, _, "", python) }
-#- { @foo1 ref/imports FOO1? }
-from .. import foo1
-
-#- { @"." ref/file vname("", "test-corpus", "test-root", "${ROOT_DIR}/test_data/simple.py", "") }
+#- { @"." ref/file vname("", "test-corpus", "test-root", "${ROOT_DIR}/test_data", "") }
 #- { @foo2 defines/binding vname("${ROOT_FQN}.test_data.simple.foo2", _, _, "", python) }
-#- { @foo2 ref/imports FOO2? } // TODO: is ${ROOT_DIR}/test_data/simple.py.foo2 should be ${ROOT_FQN}.test_data.simple.test_data.foo2
+#- { @foo2 ref/imports vname("${ROOT_DIR}/test_data.foo2", _, _, "", python) }
 from . import foo2
 
 #- { @os defines/binding Os? }  // TODO: needs full implementation

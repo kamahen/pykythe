@@ -20,7 +20,7 @@ there are other top-level directories, such as typeshed).
 
 print("Entering imports1.py: " + __file__)
 
-#- { @"pykythe.test_data.imports_dir1" ref/file  vname("", "test-corpus", "test-root", "${ROOT_DIR}/test_data/imports_dir1", "") }
+#- { @"pykythe.test_data.imports_dir1" ref/file vname("", "test-corpus", "test-root", "${ROOT_DIR}/test_data/imports_dir1", "") }
 #- { @i1 defines/binding Imports1_i1=vname("${ROOT_FQN}.test_data.imports1.i1", _, _, "", python) }
 #- { @i1 ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i1", _, _, "", python) }
 from pykythe.test_data.imports_dir1 import (i1,

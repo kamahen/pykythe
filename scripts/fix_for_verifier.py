@@ -1,9 +1,12 @@
 #!/usr/bin/env python3.7
 """Read files and do substitutions that make it suitable for Kythe verifier.
 
-Takes three arguments: from_dir to_dir typeshed_dir
+Takes three arguments: from_dir to_dir typeshed_dir from_file
 
-Does a copy from from_dir to to_dir, with substitutions.
+Does a copy from from_dir to to_dir, with substitutions. The output
+files are made read-only. Output is only done if a file has changed or
+it doesn't exist -- this is so that Make doesn't get confused by new
+file modification timestamps.
 
 The 'root path' is the absolute form of one directory up from to_dir
 (that is, root_dir is the absolute form of 'to_dir/..'). This
@@ -19,14 +22,13 @@ It uses ${TYPESHED_DIR} and ${TYPESHED_FQN} for substitutions.
    "${TYPESHED_DIR}/
    "${TYPESHED_FQN}.
 )
+
 """
 
-import os
-import sys
+import os, stat, sys
 
-FROM_DIR = os.path.abspath(sys.argv[1])
-TO_DIR = os.path.abspath(sys.argv[2])
-TYPESHED_DIR = os.path.abspath(sys.argv[3])
+FROM_DIR, TO_DIR, TYPESHED_DIR, FROM_FILE, TO_FILE = map(
+    os.path.abspath, sys.argv[1:])
 
 ROOT_DIR = os.path.abspath(os.path.join(TO_DIR, '..'))
 ROOT_DIR_PAT = '"${ROOT_DIR}' + '/'
@@ -47,6 +49,7 @@ TYPESHED_FQN_REPL = '"' + TYPESHED_FQN + '.'
 assert not FROM_DIR.endswith('/')
 assert not TO_DIR.endswith('/')
 
+
 def cp_file(path_in, path_out):
     """Copy file, making subsitutions."""
     dir_out = os.path.dirname(path_out)
@@ -60,12 +63,24 @@ def cp_file(path_in, path_out):
     contents = contents.replace(ROOT_FQN_PAT, ROOT_FQN_REPL)
     contents = contents.replace(TYPESHED_DIR_PAT, TYPESHED_DIR_REPL)
     contents = contents.replace(TYPESHED_FQN_PAT, TYPESHED_FQN_REPL)
-    with open(path_out, 'w') as file_out:
-        file_out.write(contents)
+    try:
+        with open(path_out, 'r') as file_orig:
+            contents_orig = file_orig.read()
+            contents_same = (contents_orig == contents)
+    except FileNotFoundError:
+        contents_same = False
+    if not contents_same:
+        try:
+            os.remove(path_out)
+        except FileNotFoundError:
+            pass
+        with open(path_out, 'w') as file_out:
+            file_out.write(contents)
+            os.chmod(
+                path_out,
+                os.stat(path_out).st_mode &
+                ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))
 
-FROM_DIR_LEN = len(FROM_DIR) + 1  # +1 for trailing '/'
-for root, _dir, files in os.walk(FROM_DIR):
-    assert root.startswith(FROM_DIR)
-    root_rest = root[FROM_DIR_LEN:]
-    for file in files:
-        cp_file(os.path.join(root, file), os.path.join(TO_DIR, root_rest, file))
+
+if __name__ == '__main__':
+    cp_file(FROM_FILE, TO_FILE)

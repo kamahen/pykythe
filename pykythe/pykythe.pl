@@ -505,13 +505,14 @@ lookup_module(Module, FullPath) :-
 %  solutions. At least one of Module and Path must be instantiated.
 module_name_as_path(Module, Path) :-
     (  var(Module)
-    -> py_ext(Path0, Path),
+    -> py_ext(Path0, Path2),
        split_atom(Path0, '/', '', ModuleParts),
        atomic_list_concat(ModuleParts, '.', Module)
     ;  split_atom(Module, '.', '', ModuleParts),
        atomic_list_concat(ModuleParts, '/', Path1),
-       py_ext(Path1, Path)
-    ).
+       py_ext(Path1, Path2)
+    ),
+    canonical_path(Path2, Path).
 
 %! path_to_python_module_or_unknown(+Path, -Fqn) is det.
 %  Get the Fqn for the Python module corresponding to Path or
@@ -1069,7 +1070,8 @@ kyImportDottedAsNamesFqn_comb(Fqn, NameAstn, Names, FqnAtom, ResolvedPath) -->>
 kyImportFromStmt(FromDots, FromName, ImportPart, ResolvedImportParts) -->>
     Meta/file_meta,
     { must_once(
-          py_ext(PathBase, Meta.path)) },
+          py_ext(PathBase0, Meta.path)) },
+    { file_directory_name(PathBase0, PathBase) },
     { kyImportFromStmt_from_name(FromDots, FromName, PathBase, FromFileOrDir, FromAstns, FromToken) },
     kyImportFromStmt_dots_file(FromToken, FromAstns, FromFileOrDir, FromAstnDotsAndName),
     kyImportFromStmt_import_part(ImportPart, FromFileOrDir, FromAstnDotsAndName, CombImportParts),
@@ -1174,6 +1176,8 @@ full_path(Path, Prefixes, ResolvedAndToken) :-
     -> full_path_prefixed(Path, Deprefix, Prefixes, ResolvedAndToken)
     ;  expand_filepath(Path, ResolvedAndToken)
     -> true
+    ;  canonical_path(Path, ExpandedPath)
+    -> ResolvedAndToken = file(ExpandedPath)
     ;  ResolvedAndToken = file(Path)
     ).
 
