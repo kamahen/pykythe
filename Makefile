@@ -32,6 +32,7 @@ TESTOUT_TARGETS:=$(shell $(FIND_EXE) $(TEST_GRAMMAR_DIR) -name '*.py' | sort | \
     sed -e 's!^!$(KYTHEOUTDIR)$(SUBSDIR_PWD_REAL)/!' -e 's!\.py$$!.verifier!')
 TESTOUT_TYPESHED:=$(KYTHEOUTDIR)$(shell realpath ../typeshed)
 KYTHE_CORPUS_ROOT_OPT:=--kythe-corpus='test-corpus' --kythe-root='test-root'
+PYKYTHEOUT_OPT:=--kytheout='$(KYTHEOUTDIR)'
 PYTHONPATH_OPT:=--pythonpath='$(PYTHONPATH_DOT):../typeshed/stdlib/3.7:../typeshed/stdlib/3.6:../typeshed/stdlib/3.5:../typeshed/stdlib/3:../typeshed/stdlib/2and3:/usr/lib/python3.7'
 TIME:=time
 
@@ -70,8 +71,8 @@ $(KYTHEOUTDIR)%.kythe.json: %.py \
 	mkdir -p $(dir $@)
 	@# TODO: make this into a script (with a saved state - qsave_program/2 stand_alone).
 	$(TIME) $(SWIPL_EXE) -O -s pykythe/pykythe.pl \
-	    $(PARSECMD_OPT) $(KYTHE_CORPUS_ROOT_OPT) $(PYTHONPATH_OPT) \
-	    "$<" >"$@" </dev/null
+	    $(PYKYTHEOUT_OPT) $(PARSECMD_OPT) $(KYTHE_CORPUS_ROOT_OPT) $(PYTHONPATH_OPT) \
+	    "$<" </dev/null
 
 # TODO: delete the following once we're processing builtins properly
 #       (also, this doesn't work right now - bug in Makefile)
@@ -79,8 +80,8 @@ $(TESTOUT_TYPESHED)/%.kythe.json: ../typeshed/%.pyi
 	mkdir -p $(dir $@)
 	mkdir -p $(TESTOUTDIR)/SUBST  # Needed by pythonpath
 	$(TIME) $(SWIPL_EXE) -O -s pykythe/pykythe.pl \
-	    $(PARSECMD_OPT) $(KYTHE_CORPUS_ROOT_OPT) $(PYTHONPATH_OPT) \
-	    "$<" >"$@" </dev/null
+	    $(PYKYTHEOUT_OPT) $(PARSECMD_OPT) $(KYTHE_CORPUS_ROOT_OPT) $(PYTHONPATH_OPT) \
+	    "$<" </dev/null
 
 %.json-decoded: %.json scripts/decode_json.py
 	$(PYTHON3_EXE) -B scripts/decode_json.py <"$<" >"$@"

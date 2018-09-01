@@ -119,7 +119,7 @@
 :- use_module(library(debug), [assertion/1, debug/3]).
 :- use_module(library(edcg)).  % requires: ?- pack_install(edcg).
 :- use_module(library(error), [type_error/2]).
-:- use_module(library(filesex), [relative_file_name/3]).
+:- use_module(library(filesex), [relative_file_name/3, make_directory_path/1]).
 :- use_module(library(http/json), [json_read_dict/2, json_write_dict/3]).
 :- use_module(library(lists), [append/3, list_to_set/2, member/2, select/3]).
 :- use_module(library(optparse), [opt_arguments/3]).
@@ -247,7 +247,7 @@
                   %% must_once_msg/3,
                   %% node_astn/4,
                   output_kyfact/2,
-                  parse_and_process_module/2,
+                  parse_and_process_module/3,
                   %% path_to_python_module/2,
                   path_to_python_module_or_unknown/2,
                   print_term_cleaned/3,
@@ -428,7 +428,7 @@ pykythe_main :-
     on_signal(int, _, interrupt),
     pykythe_opts(Src, Opts),
     path_to_python_module_or_unknown(Src, SrcFqn),
-    parse_and_process_module(SrcFqn, Opts).
+    parse_and_process_module(Src, SrcFqn, Opts).
 
 %! pykythe_opts(-Src:atom, -Opts:list(pair)) is det.
 %  Process the command line, getting the source file and options.
@@ -445,11 +445,16 @@ pykythe_opts(Src, Opts) :-
          help('Value of "root" in Kythe facts')],
         [opt(pythonpath), type(atom), default(''), longflags(['pythonpath']),
          help('Similar to $PYTHONPATH for resolving imports (":"-separated paths)')],
+        [opt(kytheout), type(atom), default(''), longflags(['kytheout']),
+         help('Directory for output of imported files (including "main" file)')],
+        [opt(kytheout_suffix), type(atom), default('.kythe.json'), longflags(['kythout-suffix']),
+         help('Suffix (extension including leading ".") for output files')],
         [opt(python_version), type(integer), default(3), longflags(python_version),
          help('Python major version')]
     ],
     opt_arguments(OptsSpec, Opts0, PositionalArgs),
-    must_once_msg(PositionalArgs = [Src], 'Missing/extra positional args', []),
+    must_once_msg(PositionalArgs = [Src0], 'Missing/extra positional args', []),
+    absolute_file_name(Src0, Src),
     split_path_string(pythonpath, Opts0, Opts).
 
 %! split_path_string0(+OptName:atom, +Opts0:list, -Opts:list) is det.
@@ -536,7 +541,7 @@ path_to_python_module(Path, Fqn) :-
 %  Fails if the file doesn't exist.
 canonical_path(Path, CanonicalPath) :-
     % TODO: besides being slightly less efficient, this doesn't do
-    %       quite what we want -- probably want to change 
+    %       quite what we want -- probably want to change
     %       expand_filepath/2 to use py_ext/2 for files and to use
     %       the given file name for directories. However, it's
     %       unlikely that anyone would notice the subtlely different
@@ -550,12 +555,15 @@ canonical_path(Path, CanonicalPath) :-
     ),
     atom_string(CanonicalPath, AbsPath).  % TODO: use string
 
-%! parse_and_process_module(+SrcFqn:atom, +Opts) is det.
+%! parse_and_process_module(+Src:atom, +SrcFqn:atom, +Opts) is det.
 %  Read in a single file (JSON output from pykythe module, which
 %  encodes the AST nodes with FQNs), output Kythe JSON to current
-%  output stream.
-parse_and_process_module(SrcFqn, Opts) :-
-    member(pythonpath(Pythonpaths), Opts),
+%  output stream. Src is assumed to be in absolute form (leading '/').
+parse_and_process_module(Src, SrcFqn, Opts) :-
+    must_once(is_absolute_file_name(Src)),
+    memberchk(pythonpath(Pythonpaths), Opts),
+    memberchk(kytheout(KytheOutDir), Opts),
+    memberchk(kytheout_suffix(KytheOutSuffix), Opts),
     do_if(false, dump_term('PYTHONPATHS', Pythonpaths)),  % TODO: delete
     lookup_module(SrcFqn, Src),
     run_parse_cmd(Opts, Src, SrcFqn, ParsedFile),
@@ -575,12 +583,20 @@ parse_and_process_module(SrcFqn, Opts) :-
     assign_exprs(Exprs, Meta, SrcFqn, Symtab, KytheFacts2),
     do_if(false,
           dump_term('SYMTAB', Symtab)),
-    current_output(KytheStream),
+    (  atom_concat(SrcBase, '.py', Src)
+    -> true
+    ;  atom_concat(SrcBase, '.pyi', Src)
+    -> true
+    ;  type_error(file_name_not_ending_in_py_or_pyi, Src)
+    ),
+    atomic_list_concat([KytheOutDir, SrcBase, KytheOutSuffix], KytheFile),
+    open(KytheFile, write, KytheStream),
     % write(KytheStream, "%% === Kythe ==="), nl(KytheStream),
     symtab_as_kyfact(Symtab, Meta, SymtabKytheFact),
     output_kyfact(SymtabKytheFact, KytheStream),
     maplist({KytheStream}/[KytheFact]>>output_kyfact(KytheFact, KytheStream), KytheFacts),
-    maplist({KytheStream}/[KytheFact]>>output_kyfact(KytheFact, KytheStream), KytheFacts2).
+    maplist({KytheStream}/[KytheFact]>>output_kyfact(KytheFact, KytheStream), KytheFacts2),
+    close(KytheStream).
 
 %! run_parse_cmd(+Opts, +Src, +SrcFqn, -OutFile) is det.
 %  Run the parse command into a temporary file. (The temp file is
