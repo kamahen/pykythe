@@ -336,11 +336,11 @@ def cvt_comp_for(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     ch0 = xcast(pytree.Leaf, node.children[0])
     if ch0.value == 'async':
         # TODO: test case
-        children = node.children[1:]  # Don't care about ASYNC
+        children = node.children[1:]  # ignore ASYNC
     else:
         children = node.children
     in_testlist = cvt(children[3], ctx)  # outside the `for`
-    ctx_for = (ctx if ctx.python_version == 2 else
+    ctx_for = (ctx if ctx.python_version == 2 else  # TODO: Python 2 test case
                dataclasses.replace(
                    ctx, scope_bindings=collections.OrderedDict()))
     for_exprlist = cvt_name_ctx(NameCtx.BINDING, children[1], ctx_for)
@@ -348,7 +348,7 @@ def cvt_comp_for(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         comp_iter = cvt(children[4], ctx_for)  # evaluated in context of `for`
     else:
         comp_iter = ast_cooked.OMITTED_NODE
-    if ctx.python_version == 2:  # TODO: is this needed?
+    if ctx.python_version == 2:  # TODO: Python2 test case
         ctx.scope_bindings.update(ctx_for.scope_bindings)  # pragma: no cover
     return ast_cooked.CompForNode(
         for_astn=ctx.src_file.astn_to_range(children[0]),
@@ -850,7 +850,7 @@ def cvt_power(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     # Can appear on left of assignment
     if (node.children[0].type == token.NAME and
             node.children[0].value == 'await'):  # type: ignore
-        # Don't care about AWAIT
+        # ignore AWAIT
         # TODO: test case
         children = node.children[1:]
     else:
@@ -1198,7 +1198,7 @@ def cvt_typedargslist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
                 i += 1
         else:
             assert ch0.type in (token.STAR, token.DOUBLESTAR), [i, ch0, node]
-            # Don't care about '*' or '**'
+            # ignore '*' or '**'
             i += 1
     return ast_cooked.RawTypedArgsListNode(args=args)
 
@@ -1250,7 +1250,7 @@ def cvt_yield_arg(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """yield_arg: 'from' test | testlist"""
     # TODO: test case
     assert ctx.name_ctx is NameCtx.REF, [node]
-    # Don't care about FROM
+    # ignore FROM
     if len(node.children) == 2:
         return cvt(node.children[1], ctx)
     return cvt(node.children[0], ctx)
@@ -1529,6 +1529,7 @@ def parse(src_bytes: bytes, python_version: int) -> pytree.Base:
     """Parse a byte string."""
     # See lib2to3.refactor.RefactoringTool._read_python_source
     # TODO: add detect_encoding to typeshed: lib2to3/pgen2/tokenize.pyi
+    # TODO: (non-ascii testcase) 網目錦蛇=1
     with io.BytesIO(src_bytes) as src_f:
         encoding, _ = tokenize.detect_encoding(src_f.readline)  # type: ignore
     src_str = codecs.decode(src_bytes, encoding)

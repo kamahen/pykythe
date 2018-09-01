@@ -9,11 +9,10 @@
 
 TESTOUTDIR=/tmp/pykythe_test
 SHELL:=/bin/bash
-PYTHON3_EXE:=$(shell type -p python3.7)
-FIND_EXE:=$(shell type -p find)
-SWIPL_EXE:=$(shell type -p swipl)
-# COVERAGE:=/usr/local/bin/coverage
-COVERAGE:=$(shell type -p coverage)
+PYTHON3_EXE:=$(shell type -p python3.7)  # /usr/bin/python3.7
+FIND_EXE:=$(shell type -p find)          # /usr/bin/find
+SWIPL_EXE:=$(shell type -p swipl)        # /usr/bin/swipl
+COVERAGE:=$(shell type -p coverage)      # /usr/local/bin/coverage
 
 TEST_GRAMMAR_DIR:=test_data
 TESTGITHUB:=$(HOME)/tmp/test-github
@@ -21,17 +20,16 @@ PARSECMD_OPT:=--parsecmd="$(PYTHON3_EXE) -B -m pykythe"
 # PYTHONPATH starts at .., so "absolute" paths in test_data should be
 #            of the form "pykythe.test_data.___"
 #            (see also fix_for_verifier.py and ${ROOT_DIR} etc. substitutions
-PWD_REAL:=$(realpath .)
+PWD_REAL:=$(shell realpath .)
 SUBSTDIR:=$(TESTOUTDIR)/SUBST
 SUBSDIR_PWD_REAL:=$(shell echo $(SUBSTDIR) | sed "s:$$:$(PWD_REAL):")
 KYTHEOUTDIR:=$(TESTOUTDIR)/KYTHE
 KYTHEOUTDIR_PWD_REAL:=$(shell echo $(KYTHEOUTDIR) | sed "s:$$:$(PWD_REAL):")
-PYTHONPATH_TEST_DATA:=$(shell realpath $(TEST_GRAMMAR_DIR) | sed 's!^/!$(SUBSTDIR)/!')
 PYTHONPATH_DOT:=$(shell realpath .. | sed 's!^/!$(SUBSTDIR)/!')
 TESTOUT_SRCS:=$(shell $(FIND_EXE) $(TEST_GRAMMAR_DIR) -name '*.py' | sort | \
     sed -e 's!^!$(SUBSDIR_PWD_REAL)/!')
 TESTOUT_TARGETS:=$(shell $(FIND_EXE) $(TEST_GRAMMAR_DIR) -name '*.py' | sort | \
-    sed -e 's!^!$(KYTHEOUTDIR_PWD_REAL)/!' -e 's!\.py$$!.verifier!')
+    sed -e 's!^!$(KYTHEOUTDIR)$(SUBSDIR_PWD_REAL)/!' -e 's!\.py$$!.verifier!')
 TESTOUT_TYPESHED:=$(KYTHEOUTDIR)$(shell realpath ../typeshed)
 KYTHE_CORPUS_ROOT_OPT:=--kythe-corpus='test-corpus' --kythe-root='test-root'
 PYTHONPATH_OPT:=--pythonpath='$(PYTHONPATH_DOT):../typeshed/stdlib/3.7:../typeshed/stdlib/3.6:../typeshed/stdlib/3.5:../typeshed/stdlib/3:../typeshed/stdlib/2and3:/usr/lib/python3.7'
@@ -57,18 +55,17 @@ KYTHE_EXE:=$(KYTHE_BIN)/kythe/go/serving/tools/kythe/linux_amd64_stripped/kythe
 # https://github.com/google/kythe/releases/download/v0.0.26/kythe-v0.0.26.tar.gz
 HTTP_SERVER_RESOURCES:=/opt/kythe/web/ui
 
-$(SUBSDIR_PWD_REAL)/$(TEST_GRAMMAR_DIR)/%: $(TEST_GRAMMAR_DIR)/% scripts/fix_for_verifier.py
-	mkdir -p $(dir $@)
-	$(PYTHON3_EXE) -B scripts/fix_for_verifier.py $(TEST_GRAMMAR_DIR) "$(SUBSTDIR)/$(realpath $(TEST_GRAMMAR_DIR))" "../typeshed" "$<" "$@"
+$(SUBSDIR_PWD_REAL)/%: % scripts/fix_for_verifier.py
+	@# FROM_DIR TO_DIR TYPESHED_DIR FROM_FILE TO_FILE
+	$(PYTHON3_EXE) -B scripts/fix_for_verifier.py "$(TEST_GRAMMAR_DIR)" "$(SUBSTDIR)$(shell realpath $(TEST_GRAMMAR_DIR))" "$(shell realpath ../typeshed)" "$(shell realpath $<)" "$@"
 
-# TODO: this requires all the SUBST files because it's too complicated
-#       to get Make to be more specific; but this should be limited
-#       to only a subset of targets
-$(KYTHEOUTDIR_PWD_REAL)/%.kythe.json: $(SUBSDIR_PWD_REAL)/%.py \
-	        $(TESTOUT_SRCS) \
-		pykythe/pykythe.pl pykythe/must_once.pl \
-		pykythe/__main__.py \
-		pykythe/*.py \
+# TODO: this rule requires all the SUBST files ($(TESTOUT_SRCS))
+#       because it isn't easy to write more specific Make fules (and
+#       what about circular imports?):
+$(KYTHEOUTDIR)%.kythe.json: %.py \
+		$(TESTOUT_SRCS) \
+		pykythe/pykythe.pl pykythe/*.pl \
+		pykythe/__main__.py pykythe/*.py \
 		Makefile
 	mkdir -p $(dir $@)
 	@# TODO: make this into a script (with a saved state - qsave_program/2 stand_alone).
@@ -92,7 +89,7 @@ $(TESTOUT_TYPESHED)/%.kythe.json: ../typeshed/%.pyi
 	mkdir -p $(dir $@)
 	$(ENTRYSTREAM_EXE) --read_format=json <"$<" >"$@"
 
-$(KYTHEOUTDIR_PWD_REAL)/%.verifier: $(KYTHEOUTDIR_PWD_REAL)/%.kythe.entries $(SUBSDIR_PWD_REAL)/%.py
+%.verifier: %.kythe.entries
 	@# TODO: --ignore_dups
 	set -o pipefail; $(VERIFIER_EXE) -check_for_singletons -goal_prefix='#-' "$(word 2,$^)" <"$(word 1,$^)" | tee "$@"
 

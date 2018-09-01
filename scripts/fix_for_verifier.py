@@ -22,7 +22,6 @@ It uses ${TYPESHED_DIR} and ${TYPESHED_FQN} for substitutions.
    "${TYPESHED_DIR}/
    "${TYPESHED_FQN}.
 )
-
 """
 
 import os, stat, sys
