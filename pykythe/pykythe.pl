@@ -119,7 +119,7 @@
 :- use_module(library(debug), [assertion/1, debug/3]).
 :- use_module(library(edcg)).  % requires: ?- pack_install(edcg).
 :- use_module(library(error), [type_error/2]).
-:- use_module(library(filesex), [relative_file_name/3, make_directory_path/1]).
+:- use_module(library(filesex), [make_directory_path/1, directory_file_path/3]).
 :- use_module(library(http/json), [json_read_dict/2, json_write_dict/3]).
 :- use_module(library(lists), [append/3, list_to_set/2, member/2, select/3]).
 :- use_module(library(optparse), [opt_arguments/3]).
@@ -186,6 +186,7 @@
                   %% builtin_name/1,
                   builtin_names/1,
                   %% canonical_path/2,
+                  directory_file_path/3,
                   do_if/2,
                   dot_edge_name/2,
                   dump_term/2,
@@ -231,6 +232,7 @@
                   kyfile/4,
                   kynode/7,
                   lookup_module/2,
+                  make_directory_path/1,
                   maplist_assign_expr_eval/6,
                   maplist_foldl_eval_lookup/8,
                   maplist_foldl_eval_union_type/8,
@@ -260,7 +262,6 @@
                   %% pythonpath_prefix/2,
                   read_nodes/3,
                   ref_import/4,
-                  relative_file_name/3,
                   %% remove_last_component/3,
                   remove_suffix_star/3,
                   resolve_file_comb_import/3,
@@ -590,6 +591,8 @@ parse_and_process_module(Src, SrcFqn, Opts) :-
     ;  type_error(file_name_not_ending_in_py_or_pyi, Src)
     ),
     atomic_list_concat([KytheOutDir, SrcBase, KytheOutSuffix], KytheFile),
+    directory_file_path(KytheFileDir, _, KytheFile),
+    make_directory_path(KytheFileDir),
     open(KytheFile, write, KytheStream),
     % write(KytheStream, "%% === Kythe ==="), nl(KytheStream),
     symtab_as_kyfact(Symtab, Meta, SymtabKytheFact),

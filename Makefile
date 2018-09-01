@@ -68,7 +68,6 @@ $(KYTHEOUTDIR)%.kythe.json: %.py \
 		pykythe/pykythe.pl pykythe/*.pl \
 		pykythe/__main__.py pykythe/*.py \
 		Makefile
-	mkdir -p $(dir $@)
 	@# TODO: make this into a script (with a saved state - qsave_program/2 stand_alone).
 	$(TIME) $(SWIPL_EXE) -O -s pykythe/pykythe.pl \
 	    $(PYKYTHEOUT_OPT) $(PARSECMD_OPT) $(KYTHE_CORPUS_ROOT_OPT) $(PYTHONPATH_OPT) \
@@ -77,8 +76,6 @@ $(KYTHEOUTDIR)%.kythe.json: %.py \
 # TODO: delete the following once we're processing builtins properly
 #       (also, this doesn't work right now - bug in Makefile)
 $(TESTOUT_TYPESHED)/%.kythe.json: ../typeshed/%.pyi
-	mkdir -p $(dir $@)
-	mkdir -p $(TESTOUTDIR)/SUBST  # Needed by pythonpath
 	$(TIME) $(SWIPL_EXE) -O -s pykythe/pykythe.pl \
 	    $(PYKYTHEOUT_OPT) $(PARSECMD_OPT) $(KYTHE_CORPUS_ROOT_OPT) $(PYTHONPATH_OPT) \
 	    "$<" </dev/null
@@ -87,7 +84,6 @@ $(TESTOUT_TYPESHED)/%.kythe.json: ../typeshed/%.pyi
 	$(PYTHON3_EXE) -B scripts/decode_json.py <"$<" >"$@"
 
 %.kythe.entries: %.kythe.json %.kythe.json-decoded
-	mkdir -p $(dir $@)
 	$(ENTRYSTREAM_EXE) --read_format=json <"$<" >"$@"
 
 %.verifier: %.kythe.entries
