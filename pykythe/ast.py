@@ -38,6 +38,7 @@ class File(pod.PlainOldData):
         return Astn(
             value=astn.value, start=offset, end=offset + len(astn.value))
 
+
 def make_file(path: Text, content: Text, encoding: Text) -> File:
     line_offsets = {1: 0}
     # TODO: this only works with ASCII right now ... need to instead
@@ -49,4 +50,9 @@ def make_file(path: Text, content: Text, encoding: Text) -> File:
         if char == '\n':
             lineno += 1
             line_offsets[lineno] = offset + 1
-    return File(path=path, content=content, encoding=encoding, line_offsets=line_offsets, numlines=lineno - 1)
+    return File(
+        path=path,
+        content=content,
+        encoding=encoding,
+        line_offsets=line_offsets,
+        numlines=lineno - 1)

@@ -1,11 +1,13 @@
 % -*- mode: Prolog -*-
 
 :- module(must_once, [must_once/1,
+                      must_once_msg/2,
                       must_once_msg/3,
                       must_once/3,
                       must_once/4,
                       must_once/5,
-                      must_once/6]).
+                      must_once/6,
+                      fail/1]).
 :- meta_predicate
        must_once(0),
        must_once_msg(0, +, +),
@@ -58,6 +60,9 @@ must_once(Goal) :-
     ;  throw(error(must_once_failed(Goal), _))
     ).
 
+must_once_msg(Goal, Msg) :-
+    must_once_msg(Goal, Msg,  []).
+
 must_once_msg(Goal, Msg, MsgArgs) :-
     (  call(Goal)
     -> true
@@ -66,9 +71,10 @@ must_once_msg(Goal, Msg, MsgArgs) :-
        throw(error(must_once_failed(Goal), context(Pred/Arity, MsgStr)))
     ).
 
-% edcg doesn't understand the meta-pred "call", so expand -->> by hand.
-% The arg names are suggestive of use; in reallity, these work with
-% any combination of extra params that givde the appropriate arity.
+%% edcg doesn't understand the meta-pred "call", so expand -->> by
+%% hand. Arg names AccumA0, etc. are suggestive of use; in reality,
+%% these predicates work with any combination of extra params that
+%% give the appropriate arity.
 
 must_once(Goal, AccumA0, AccumA) :-
     (  call(Goal, AccumA0, AccumA)
@@ -93,6 +99,9 @@ must_once(Goal, AccumA0, AccumA, AccumB0, AccumB, PassA) :-
     -> true
     ;  throw(error(must_once_failed(Goal), _))
     ).
+
+fail(_) :-
+    fail.
 
 
 % TODO: (taken from library(rdet))

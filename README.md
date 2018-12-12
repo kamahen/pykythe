@@ -34,15 +34,21 @@ out (on Linux):
 
 * Install `python3.7`
 
+  This needs the *latest* version of Python 3.7.
+
+  If you get an error in `DISPATCH[node.type]`, then it probably means
+  that there's a conflict with Ubuntu package `python3-lib2to3`. The easiest
+  way to fix this is to clone `cprolog` from github and then
+  `sudo cp -r --preserve=mode,timestamps cpython/Lib/lib2to3/* /usr/lib/python3.7/lib2to3/`
+
 * Install [SWI-Prolog](http://www.swi-prolog.org/Download.html). You
-  need at least version 7.7.13 (earlier versions have a bug in how
-  they handle command line arguments), so as of 2018-06-08, this means
+  need at least version 7.7.20 (earlier versions have a bug in how
+  they handle command line arguments), so as of 2018-11-07, this means
   using the "devel" download or PPA.
 
   After installing, add the packages
   [edcg](https://github.com/mndrix/edcg) and
-  [rdel](https://github.com/rla/rdet)
-  by these commands:
+  [rdel](https://github.com/rla/rdet) by these commands:
 
   `echo 'pack_install(edcg, [interactive(false)]).' | swipl`<br>
   `echo 'pack_install(rdet, [interactive(false)]).' | swipl`

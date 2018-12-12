@@ -178,13 +178,12 @@ def cvt_argument(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             logging.warning(
                 'argument not in form name=expr: %r', node)  # pragma: no cover
             return cvt(node.children[2], ctx)  # pragma: no cover
-        assert node.children[1].type in SYMS_COMP_FOR
+        assert node.children[1].type == syms.comp_for
         assert len(node.children) == 2
         # the arg is a generator
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=cvt(node.children[0], ctx),
-            comp_for=xcast(ast_cooked.CompForNode,
-                           cvt(node.children[1], ctx)))
+            comp_for=xcast(ast_cooked.CompForNode, cvt(node.children[1], ctx)))
     if node.children[0].type == token.DOUBLESTAR:
         return cvt(node.children[1], ctx)  # Ignore the `**`
     assert node.children[0].type == SYMS_STAR_EXPR, dict(
@@ -329,8 +328,7 @@ def cvt_classdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 
 
 def cvt_comp_for(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
-    """comp_for: [ASYNC] 'for' exprlist 'in' or_test [comp_iter]
-    old_comp_for: [ASYNC] 'for' exprlist 'in' testlist_safe [old_comp_iter]
+    """comp_for: [ASYNC] 'for' exprlist 'in' test_list_safe [comp_iter]
     """
     assert ctx.name_ctx is NameCtx.REF, [node]
     ch0 = xcast(pytree.Leaf, node.children[0])
@@ -340,9 +338,9 @@ def cvt_comp_for(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     else:
         children = node.children
     in_testlist = cvt(children[3], ctx)  # outside the `for`
-    ctx_for = (ctx if ctx.python_version == 2 else  # TODO: Python 2 test case
-               dataclasses.replace(
-                   ctx, scope_bindings=collections.OrderedDict()))
+    ctx_for = (
+        ctx if ctx.python_version == 2 else  # TODO: Python 2 test case
+        dataclasses.replace(ctx, scope_bindings=collections.OrderedDict()))
     for_exprlist = cvt_name_ctx(NameCtx.BINDING, children[1], ctx_for)
     if len(children) == 5:
         comp_iter = cvt(children[4], ctx_for)  # evaluated in context of `for`
@@ -360,7 +358,6 @@ def cvt_comp_for(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 
 def cvt_comp_if(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """comp_if: 'if' old_test [comp_iter]
-    old_comp_if: 'if' old_test [old_comp_iter]
     """
     assert ctx.name_ctx is NameCtx.REF, [node]
     if len(node.children) == 2:
@@ -373,7 +370,6 @@ def cvt_comp_if(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 
 def cvt_comp_iter(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """comp_iter: comp_for | comp_if
-    old_comp_iter: old_comp_for | old_comp_if
     """
     assert ctx.name_ctx is NameCtx.REF, [node]
     return cvt(node.children[0], ctx)
@@ -439,8 +435,8 @@ def cvt_decorator(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             arglist = []  # type: Sequence[ast_cooked.Base]
         else:
             # TODO: need test case
-            arglist = xcast(ast_cooked.RawArgListNode, cvt(
-                node.children[3], ctx)).args
+            arglist = xcast(ast_cooked.RawArgListNode,
+                            cvt(node.children[3], ctx)).args
     else:
         arglist = []
     return ast_cooked.DecoratorNode(name=name, args=arglist)
@@ -472,28 +468,25 @@ def cvt_dictsetmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     if len(node.children) == 1:
         return ast_cooked.DictSetMakerNode(items=[cvt(node.children[0], ctx)])
     if (len(node.children) == 4 and node.children[1].type == token.COLON and
-            node.children[3].type in SYMS_COMP_FOR):
+            node.children[3].type == syms.comp_for):
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=ast_cooked.DictKeyValue(
                 items=[cvt(node.children[0], ctx),
                        cvt(node.children[2], ctx)]),
-            comp_for=xcast(ast_cooked.CompForNode,
-                           cvt(node.children[3], ctx)))
+            comp_for=xcast(ast_cooked.CompForNode, cvt(node.children[3], ctx)))
     if (len(node.children) == 3 and
             node.children[0].type == token.DOUBLESTAR and
-            node.children[2].type in SYMS_COMP_FOR):
+            node.children[2].type == syms.comp_for):
         # TODO: test case
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=cvt(node.children[1], ctx),  # ignore '**'
-            comp_for=xcast(ast_cooked.CompForNode,
-                           cvt(node.children[2], ctx)))
-    if node.children[1] in SYMS_COMP_FOR:
+            comp_for=xcast(ast_cooked.CompForNode, cvt(node.children[2], ctx)))
+    if node.children[1] == syms.comp_for:
         # TODO: test case
         assert len(node.children) == 2
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=cvt(node.children[0], ctx),
-            comp_for=xcast(ast_cooked.CompForNode,
-                           cvt(node.children[1], ctx)))
+            comp_for=xcast(ast_cooked.CompForNode, cvt(node.children[1], ctx)))
     return ast_cooked.DictSetMakerNode(items=[
         cvt(ch, ctx)
         for ch in node.children
@@ -509,8 +502,7 @@ def cvt_dotted_as_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         # `import os.path` creates a binding for `os`.
         # TODO: new ast_cooked class ImportDottedNode for as_name=None
         return ast_cooked.ImportDottedAsNameNode(
-            dotted_name=dotted_name,
-            as_name=None)
+            dotted_name=dotted_name, as_name=None)
     # TODO: test case `dotted_name 'as' NAME`
     return ast_cooked.ImportDottedAsNameNode(
         dotted_name=dotted_name,
@@ -765,8 +757,8 @@ def cvt_import_from(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             break
         if child.type == token.DOT:
             # TODO: test case
-            from_dots.append(ast_cooked.ImportDotNode(
-                ctx.src_file.astn_to_range(child)))
+            from_dots.append(
+                ast_cooked.ImportDotNode(ctx.src_file.astn_to_range(child)))
         else:
             assert not from_name
             from_name = cvt_name_ctx(NameCtx.RAW, child, ctx)
@@ -776,7 +768,9 @@ def cvt_import_from(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     i += 1
     # pylint: enable=undefined-loop-variable
     if node.children[i].type == token.STAR:
-        import_part = ast_cooked.StarNode()  # type: ast_cooked.Base
+        import_part = ast_cooked.StarNode(
+            star=ctx.src_file.astn_to_range(
+                node.children[i]))  # type: ast_cooked.Base
     elif node.children[i].type == token.LPAR:
         import_part = cvt_name_ctx(NameCtx.BINDING, node.children[i + 1], ctx)
     else:
@@ -820,14 +814,13 @@ def cvt_lambdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 
 
 def cvt_listmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
-    """listmaker: (test|star_expr) ( old_comp_for | (',' (test|star_expr))* [','] )"""
+    """listmaker: (test|star_expr) ( comp_for | (',' (test|star_expr))* [','] )"""
     assert ctx.name_ctx is NameCtx.REF, [node]
-    if len(node.children) > 1 and node.children[1].type in SYMS_COMP_FOR:
+    if len(node.children) > 1 and node.children[1].type == syms.comp_for:
         assert len(node.children) == 2
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=cvt(node.children[0], ctx),
-            comp_for=xcast(ast_cooked.CompForNode,
-                           cvt(node.children[1], ctx)))
+            comp_for=xcast(ast_cooked.CompForNode, cvt(node.children[1], ctx)))
     return ast_cooked.ListMakerNode(items=cvt_children_skip_commas(node, ctx))
 
 
@@ -1066,15 +1059,14 @@ def cvt_testlist1(
 
 
 def cvt_testlist_gexp(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
-    """testlist_gexp: (test|star_expr) ( old_comp_for | (',' (test|star_expr))* [','] )"""
+    """testlist_gexp: (test|star_expr) ( comp_for | (',' (test|star_expr))* [','] )"""
     # Can appear on left of assignment
     # Similar to cvt_listmaker
-    if len(node.children) > 1 and node.children[1].type in SYMS_COMP_FOR:
+    if len(node.children) > 1 and node.children[1].type == syms.comp_for:
         assert len(node.children) == 2
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=cvt(node.children[0], ctx),
-            comp_for=xcast(ast_cooked.CompForNode,
-                           cvt(node.children[1], ctx)))
+            comp_for=xcast(ast_cooked.CompForNode, cvt(node.children[1], ctx)))
     return cvt_children_skip_commas_tuple(node, ctx)
 
 
@@ -1381,9 +1373,6 @@ _DISPATCH = {
     syms.lambdef: cvt_lambdef,
     syms.listmaker: cvt_listmaker,
     syms.not_test: cvt_unary_op,
-    syms.old_comp_for: cvt_comp_for,  # for Python 3.7
-    syms.old_comp_if: cvt_comp_if,  # for Python 3.7
-    syms.old_comp_iter: cvt_comp_iter,  # for Python 3.7
     syms.old_lambdef: cvt_lambdef,  # not cvt_old_lambdef
     syms.old_test: cvt_test,  # not cvt_old_test
     syms.or_test: cvt_binary_op,
@@ -1444,20 +1433,14 @@ SYMS_TEST = syms.test
 SYMS_TRAILER = syms.trailer
 SYMS_TNAMES = frozenset([syms.tfpdef, syms.vfpdef, syms.tname, syms.vname])
 
-# In Python 3.7, the grammar for comp_for was changed a bit. To handle
-# this, all references to syms.comp_for were changed to
-# (syms.comp_for, syms.old_comp_for).  In some cases, only one or the
-# other are needed, but it doesn't hurt to check for both (except for
-# infintesimal performance degradation).
-SYMS_COMP_FOR = (syms.comp_for, syms.old_comp_for)
-
 # pylint: enable=no-member
 
 # pylint: disable=dangerous-default-value,invalid-name
 
 # Explanation for the following: https://github.com/python/mypy/issues/4530
-_DISPATCH_TYPE = Dict[int, Callable[[
-    Arg(pytree.Base, 'node'), Arg(Ctx, 'ctx')], ast_cooked.Base, ]]
+_DISPATCH_TYPE = Dict[
+    int, Callable[[Arg(pytree.Base, 'node'
+                      ), Arg(Ctx, 'ctx')], ast_cooked.Base, ]]
 
 
 def cvt(node: pytree.Base, ctx: Ctx,
@@ -1576,8 +1559,9 @@ _EXPR_NODES = typing.cast(
 # pylint: enable=no-member
 
 
-def _convert(grammar: pgen2_grammar.Grammar, raw_node: Tuple[int, Text, Tuple[
-        Text, int, int], Optional[List[Union[pytree.Node, pytree.Leaf]]]]
+def _convert(grammar: pgen2_grammar.Grammar,
+             raw_node: Tuple[int, Text, Tuple[Text, int, int], Optional[List[
+                 Union[pytree.Node, pytree.Leaf]]]]
             ) -> Union[pytree.Leaf, pytree.Node]:
     """Convert raw node information to a Node or Leaf instance.
 

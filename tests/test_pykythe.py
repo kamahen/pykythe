@@ -1,4 +1,8 @@
-"""Test pykythe."""
+"""Basic unit tests for pykythe.
+
+Most of the tests are done using the Kythe verifier. These are mainly
+low-level tests that were used early in development.
+"""
 
 import collections
 import dataclasses

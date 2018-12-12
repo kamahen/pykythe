@@ -1,6 +1,11 @@
 # Simple scripts for testing etc.
 
-# make -C ~/src/pykythe test_imports1 clean all_tests
+# make -C ~/src/pykythe clean test
+
+# ("clean" shouldn't be necessary, but the dependencies are fairly
+# complicated, so it's possible that "make test" doesn't run
+# everything.  In particular, pykythe doesn't check its "version" when
+# reusing an import.
 
 # Assume that ../kythe has been cloned from
 # https://github.com/google/kythe and has been built with `bazel build
@@ -22,16 +27,18 @@ PARSECMD_OPT:=--parsecmd="$(PYTHON3_EXE) -B -m pykythe"
 #            (see also fix_for_verifier.py and ${ROOT_DIR} etc. substitutions
 PWD_REAL:=$(shell realpath .)
 SUBSTDIR:=$(TESTOUTDIR)/SUBST
+SUBST_PYKYTHEDIR=$(SUBSTDIR)/pykythe
+TESTOUT_PYKYTHEDIR=$(TESTOUTDIR)/KYTHE/pykythe
 SUBSDIR_PWD_REAL:=$(shell echo $(SUBSTDIR) | sed "s:$$:$(PWD_REAL):")
 KYTHEOUTDIR:=$(TESTOUTDIR)/KYTHE
 KYTHEOUTDIR_PWD_REAL:=$(shell echo $(KYTHEOUTDIR) | sed "s:$$:$(PWD_REAL):")
 PYTHONPATH_DOT:=$(shell realpath .. | sed 's!^/!$(SUBSTDIR)/!')
-TESTOUT_SRCS:=$(shell $(FIND_EXE) $(TEST_GRAMMAR_DIR) -name '*.py' | sort | \
+TESTOUT_SRCS:=$(shell $(FIND_EXE) $(TEST_GRAMMAR_DIR) -name '*.py'  | sort | \
     sed -e 's!^!$(SUBSDIR_PWD_REAL)/!')
 TESTOUT_TARGETS:=$(shell $(FIND_EXE) $(TEST_GRAMMAR_DIR) -name '*.py' | sort | \
     sed -e 's!^!$(KYTHEOUTDIR)$(SUBSDIR_PWD_REAL)/!' -e 's!\.py$$!.verifier!')
 TESTOUT_TYPESHED:=$(KYTHEOUTDIR)$(shell realpath ../typeshed)
-KYTHE_CORPUS_ROOT_OPT:=--kythe-corpus='test-corpus' --kythe-root='test-root'
+KYTHE_CORPUS_ROOT_OPT:=--kythe_corpus='test-corpus' --kythe_root='test-root'
 PYKYTHEOUT_OPT:=--kytheout='$(KYTHEOUTDIR)'
 PYTHONPATH_OPT:=--pythonpath='$(PYTHONPATH_DOT):../typeshed/stdlib/3.7:../typeshed/stdlib/3.6:../typeshed/stdlib/3.5:../typeshed/stdlib/3:../typeshed/stdlib/2and3:/usr/lib/python3.7'
 TIME:=time
@@ -41,7 +48,7 @@ KYTHE:=../kythe
 KYTHE_BIN:=$(KYTHE)/bazel-bin
 VERIFIER_EXE:=$(KYTHE_BIN)/kythe/cxx/verifier/verifier
 # VERIFIER_EXE:=/opt/kythe/tools/verifier
-ENTRYSTREAM_EXE:=$(KYTHE_BIN)/kythe/go/platform/tools/entrystream/linux_amd64_stripped/entrystream
+ENTRYSTREAM_EXE:=$(KYTHE_BIN)/kythe/go/platform/tools/entrystream/entrystream
 # ENTRYSTREAM_EXE:=/opt/kythe/tools/entrystream
 WRITE_ENTRIES_EXE:=$(KYTHE_BIN)/kythe/go/storage/tools/write_entries/linux_amd64_stripped/write_entries
 WRITE_TABLES_EXE:=$(KYTHE_BIN)/kythe/go/serving/tools/write_tables/linux_amd64_stripped/write_tables
@@ -58,7 +65,8 @@ HTTP_SERVER_RESOURCES:=/opt/kythe/web/ui
 
 $(SUBSDIR_PWD_REAL)/%: % scripts/fix_for_verifier.py
 	@# FROM_DIR TO_DIR TYPESHED_DIR FROM_FILE TO_FILE
-	$(PYTHON3_EXE) -B scripts/fix_for_verifier.py "$(TEST_GRAMMAR_DIR)" "$(SUBSTDIR)$(shell realpath $(TEST_GRAMMAR_DIR))" "$(shell realpath ../typeshed)" "$(shell realpath $<)" "$@"
+	@echo "fix >$@"
+	@$(PYTHON3_EXE) -B scripts/fix_for_verifier.py "$(TEST_GRAMMAR_DIR)" "$(SUBSTDIR)$(shell realpath $(TEST_GRAMMAR_DIR))" "$(shell realpath ../typeshed)" "$(shell realpath $<)" "$@"
 
 # TODO: this rule requires all the SUBST files ($(TESTOUT_SRCS))
 #       because it isn't easy to write more specific Make fules (and
@@ -69,16 +77,22 @@ $(KYTHEOUTDIR)%.kythe.json: %.py \
 		pykythe/__main__.py pykythe/*.py \
 		Makefile
 	@# TODO: make this into a script (with a saved state - qsave_program/2 stand_alone).
-	$(TIME) $(SWIPL_EXE) -O -s pykythe/pykythe.pl \
+	@#       maybe?: set_prolog_flag(generate_debug_info, false)
+	@# Note that -O changes the order of some directives (see the comment in
+	@# pykythe/pykythe.pl with the last `set_prolog_flag(autoload, false)`.
+	@# The following is to get nice error messages that integrate
+	@# with emacs *compilation*. When not needed, reinstate the
+	@# :- initialization directive and remove the --no-tty:
+	set -o pipefail; echo "pykythe:pykythe_main." | $(TIME) $(SWIPL_EXE) --no-tty -q -O pykythe/pykythe.pl -- \
 	    $(PYKYTHEOUT_OPT) $(PARSECMD_OPT) $(KYTHE_CORPUS_ROOT_OPT) $(PYTHONPATH_OPT) \
-	    "$<" </dev/null
+	    "$<" # </dev/null
 
 # TODO: delete the following once we're processing builtins properly
 #       (also, this doesn't work right now - bug in Makefile)
-$(TESTOUT_TYPESHED)/%.kythe.json: ../typeshed/%.pyi
-	$(TIME) $(SWIPL_EXE) -O -s pykythe/pykythe.pl \
-	    $(PYKYTHEOUT_OPT) $(PARSECMD_OPT) $(KYTHE_CORPUS_ROOT_OPT) $(PYTHONPATH_OPT) \
-	    "$<" </dev/null
+# $(TESTOUT_TYPESHED)/%.kythe.json: ../typeshed/%.pyi
+# 	$(TIME) $(SWIPL_EXE) -O -s pykythe/pykythe.pl \
+# 	    $(PYKYTHEOUT_OPT) $(PARSECMD_OPT) $(KYTHE_CORPUS_ROOT_OPT) $(PYTHONPATH_OPT) \
+# 	    "$<" </dev/null
 
 %.json-decoded: %.json scripts/decode_json.py
 	$(PYTHON3_EXE) -B scripts/decode_json.py <"$<" >"$@"
@@ -86,9 +100,9 @@ $(TESTOUT_TYPESHED)/%.kythe.json: ../typeshed/%.pyi
 %.kythe.entries: %.kythe.json %.kythe.json-decoded
 	$(ENTRYSTREAM_EXE) --read_format=json <"$<" >"$@"
 
-%.verifier: %.kythe.entries
+$(KYTHEOUTDIR)/%.verifier: $(KYTHEOUTDIR)/%.kythe.entries $(SUBSDIR)/%.py # etags
 	@# TODO: --ignore_dups
-	set -o pipefail; $(VERIFIER_EXE) -check_for_singletons -goal_prefix='#-' "$(word 2,$^)" <"$(word 1,$^)" | tee "$@"
+	set -o pipefail; $(VERIFIER_EXE) -check_for_singletons -goal_prefix='#-' "$(word 2,$^)" <"$(word 1,$^)" | tee "$@" || (rm "$@" ; exit 1)
 
 .PHONY: verify-%
 .SECONDARY: # %.entries %.json-decoded %.json
@@ -96,14 +110,34 @@ $(TESTOUT_TYPESHED)/%.kythe.json: ../typeshed/%.pyi
 # TODO: make the following work:
 verify-%: $(KYTHEOUTDIR_PWD_REAL)/$(TEST_GRAMMAR_DIR)/%.verifier
 
-all_tests: test test_grammar  # pykythe_http_server
+etags: pykythe/TAGS
 
-test: tests/test_pykythe.py \
+pykythe/TAGS: pykythe/TAGS-py pykythe/TAGS-pl
+	cat pykythe/TAGS-pl pykythe/TAGS-py >$@
+
+pykythe/TAGS-pl: pykythe/*.pl
+	cd pykythe ; etags -l prolog -o ../$@ *.pl
+
+pykythe/TAGS-py: pykythe/*.py
+	cd pykythe ; etags -l python -o ../$@ *.py
+
+test: all_tests
+
+all_tests: unit_tests test_imports1 test_grammar  # pykythe_http_server
+
+unit_tests: tests/test_pykythe.py \
 		pykythe/ast_raw.py \
 		pykythe/pod.py
 	$(PYTHON3_EXE) -B tests/test_pykythe.py
 
-test_grammar: $(TESTOUT_TARGETS) test_grammar2
+test_imports1:  # run imports code, to ensure that it behaves as expected
+	cd .. && PYTHONPATH=. python3.7 -B pykythe/test_data/imports1.py
+	cd test_data && PYTHONPATH=../.. python3.7 -B imports1.py
+
+test_grammar: $(TESTOUT_TARGETS) # TODO: test_grammar2
+
+# TODO: The following needs something like this added to TESTOUT_SRCS:
+#        realpath ../typeshed/stdlib/3/builtins.pyi
 
 test_grammar2: $(TESTOUT_TYPESHED)/stdlib/3/builtins.kythe.json
 
@@ -164,7 +198,7 @@ mypy:
 lint: pylint
 
 clean:
-	$(RM) -r $(TESTOUTDIR)
+	$(RM) -r $(TESTOUTDIR) pykythe/TAGS*
 
 #@#@# prep_server: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).nq.gz
 
@@ -191,7 +225,7 @@ snapshot:
 	git gc
 	cd .. && tar --create --exclude=.cayley_history --exclude=.mypy_cache --exclude=__pycache__ --gzip --file \
 		$(HOME)/Downloads/pykythe_$$(date +%Y-%m-%d-%H-%M).tgz pykythe
-	ls -lh $(HOME)/Downloads/pykythe_*.tgz
+	@# ls -lh $(HOME)/Downloads/pykythe_*.tgz
 
 #@#@# ls_uris:
 #@#@# 	$(KYTHE_EXE) -api $(TESTOUTDIR)/tables ls -uris
@@ -224,8 +258,8 @@ push_to_github:
 #@#@# 		--port 8008 \
 #@#@# 		--kythe $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).kythe.json
 
-#@#@# FORCE:
-#@#@# .PHONY: FORCE
+FORCE:
+.PHONY: FORCE
 
 
 #@#@# coverage:

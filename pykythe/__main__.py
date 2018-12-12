@@ -24,19 +24,23 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description='Parse Python file, generating Kythe facts')
     # TODO: allow nargs='+' for multiple inputs?
-    parser.add_argument('--src', required=True, help='Input file')
-    parser.add_argument('--module', required=True,
-                        help='FQN of module corresponding to --src')
+    parser.add_argument('--srcpath', required=True, help='Input file')
+    parser.add_argument(
+        '--module', required=True, help='FQN of module corresponding to --src')
     parser.add_argument(
         '--out_fqn_expr',
         required=True,
         help=('output file for fqn_expr JSON facts. '
               'These are post-processed to further resolve names.'))
     parser.add_argument(
-        '--kythe-corpus', dest='kythe_corpus', default='',
+        '--kythe_corpus',
+        dest='kythe_corpus',
+        default='',
         help='Value of "corpus" in Kythe facts')
     parser.add_argument(
-        '--kythe-root', dest='kythe_root', default='',
+        '--kythe_root',
+        dest='kythe_root',
+        default='',
         help='Value of "root" in Kythe facts')
     parser.add_argument(
         '--python_version',
@@ -46,13 +50,12 @@ def main() -> int:
         help='Python major version')
     args = parser.parse_args()
 
-    with open(args.src, 'rb') as src_f:
+    with open(args.srcpath, 'rb') as src_f:
         src_content = xcast(bytes, src_f.read())
         # TODO: add to ast.File: args.root, args.corpus (even though in Meta)
         src_file = ast.make_file(
-            path=args.src,
-            content=src_content,
-            encoding='utf-8')  # TODO: get encoding from lib2to3.pgen2.tokenize.detect_encoding
+            path=args.srcpath, content=src_content, encoding='utf-8'
+        )  # TODO: get encoding from lib2to3.pgen2.tokenize.detect_encoding
         parse_tree = ast_raw.parse(src_content, args.python_version)
 
     # b64encode returns bytes, so use decode() to turn it into a
@@ -60,7 +63,7 @@ def main() -> int:
     meta = ast_cooked.Meta(
         kythe_corpus=args.kythe_corpus,
         kythe_root=args.kythe_root,
-        path=args.src,
+        path=args.srcpath,
         language='python',
         contents_b64=base64.b64encode(src_content).decode('ascii'),
         encoding=src_file.encoding)

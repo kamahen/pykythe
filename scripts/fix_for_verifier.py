@@ -15,13 +15,6 @@ subsitution, except with '.'s instead of '/s'.
 
 The 'typeshed path' is the absolute form of typeshed_dir.
 It uses ${TYPESHED_DIR} and ${TYPESHED_FQN} for substitutions.
-
-(To limit mistakes, the substitutions use the contexts:
-   "${ROOT_DIR}/
-   "${ROOT_FQN}.
-   "${TYPESHED_DIR}/
-   "${TYPESHED_FQN}.
-)
 """
 
 import os, stat, sys
@@ -29,21 +22,28 @@ import os, stat, sys
 FROM_DIR, TO_DIR, TYPESHED_DIR, FROM_FILE, TO_FILE = map(
     os.path.abspath, sys.argv[1:])
 
+# In the following, ROOT_FQN_REPL is the same as ROOT_FQN.  This is
+# because we used to check for a double-quote ('"') before the
+# pattern, assuming that it was in something like
+# 'vname("${ROOT_FQN}.foo.bar", ...)'. But this is not always the case
+# (e.g., 'vname("<unknown>.{${ROOT_DIR}...", ...)', so this slight bit
+# of extra safety has been removed.
+
 ROOT_DIR = os.path.abspath(os.path.join(TO_DIR, '..'))
-ROOT_DIR_PAT = '"${ROOT_DIR}' + '/'
-ROOT_DIR_REPL = '"' + ROOT_DIR + '/'
+ROOT_DIR_PAT = '${ROOT_DIR}'  # followed by nothing or '/'
+ROOT_DIR_REPL = ROOT_DIR
 
 ROOT_FQN = ROOT_DIR.replace('/', '.')
-ROOT_FQN_PAT = '"${ROOT_FQN}' + '.'
-ROOT_FQN_REPL = '"' + ROOT_FQN + '.'
+ROOT_FQN_PAT = '${ROOT_FQN}'  # followed by nothing or '.'
+ROOT_FQN_REPL = ROOT_FQN
 
 TYPESHED_DIR = os.path.abspath(TYPESHED_DIR)
-TYPESHED_DIR_PAT = '"${TYPESHED_DIR}' + '/'
-TYPESHED_DIR_REPL = '"' + TYPESHED_DIR + '/'
+TYPESHED_DIR_PAT = '${TYPESHED_DIR}'  # followed by nothing or '/'
+TYPESHED_DIR_REPL = TYPESHED_DIR
 
 TYPESHED_FQN = TYPESHED_DIR.replace('/', '.')
-TYPESHED_FQN_PAT = '"${TYPESHED_FQN}' + '.'
-TYPESHED_FQN_REPL = '"' + TYPESHED_FQN + '.'
+TYPESHED_FQN_PAT = '${TYPESHED_FQN}'  # followed by nothing or '.'
+TYPESHED_FQN_REPL = TYPESHED_FQN
 
 assert not FROM_DIR.endswith('/')
 assert not TO_DIR.endswith('/')
