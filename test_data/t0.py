@@ -31,7 +31,7 @@ else:
     #- { @Sized ref Sized }
     print(Sized)
 
-o#- { @Sized ref Sized }
+#- { @Sized ref Sized }
 #- { @xxrange defines/binding Xxrange }
 #- { Xxrange./pykythe/type "[class_type('${ROOT_FQN}.test_data.t0.xxrange',[[module_type(module_and_token('${TYPESHED_FQN}.stdlib.3.typing','${TYPESHED_DIR}/stdlib/3/typing.pyi','Sized'))]])]" }
 class xxrange(Sized): pass

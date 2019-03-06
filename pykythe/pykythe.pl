@@ -1510,9 +1510,9 @@ kynode_if_stmt(['EvalResult'{exception:_Exc}|Results], [Cond,Item|Items]) -->> %
     kynode_if_stmt(Results, Items).
 
 %! if_stmt_elses(+Items, -ElseItems) is det.
-%% Extract the "else" items from an IfStmt (removing the "cond"s and "then"s).
+%% Extract the "conds" from an IfStmt (removing the "then"s and "else"s)
 if_stmt_elses([], []).
-if_stmt_elses([ElseItem], [ElseItem]).
+if_stmt_elses([_ElseItem], []).
 if_stmt_elses([Cond,_ThenItem|ElseItems], [Cond|ElseItemsConds]) :-
     if_stmt_elses(ElseItems, ElseItemsConds).
 
@@ -1902,7 +1902,7 @@ assign_exprs_count(Count, Exprs, Meta, Symtab0, Symtab, KytheFacts) :-
     -> Symtab = Symtab1,
        KytheFacts = KytheFacts1,
        pairs_keys(Rej, RejKeys),
-       log_if(Rej \= [], 'Max pass count exceeded: ~d leaving unprocessed ~q', [CountIncr, RejKeys])
+       log_if(Rej \= [], 'Max pass count exceeded: ~d leaving ~d unprocessed: ~q', [CountIncr, RejLen, RejKeys])
        %% log_if(Rej \= [], 'Rejected: ~q', [Rej])
     ;  assign_exprs_count(CountIncr, Exprs, Meta, Symtab1, Symtab, KytheFacts)
     ).

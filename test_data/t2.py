@@ -12,7 +12,7 @@ iii = 0
 
 # TODO: validate that the following is *exactly* what typeshed has, with all the conditional executions:
 #- { @ABC defines/binding ABC }
-#- { ABC./pykythe/type "[class_type('${TYPESHED_FQN}.stdlib.2and3.builtins.str',[[class_type('${TYPESHED_FQN}.stdlib.2and3.builtins.basestring',[]),class_type('${TYPESHED_FQN}.stdlib.2and3.builtins.object',[])]])]" }
+#- { ABC./pykythe/type "[class_type('${TYPESHED_FQN}.stdlib.2and3.builtins.str',[[class_type('${TYPESHED_FQN}.stdlib.2and3.builtins.object',[])]])]" }
 ABC = " abc "
 
 #- { @ABC ref ABC }
