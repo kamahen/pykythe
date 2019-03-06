@@ -19,8 +19,9 @@ It uses ${TYPESHED_DIR} and ${TYPESHED_FQN} for substitutions.
 
 import os, stat, sys
 
+VERSION = sys.argv[1]
 FROM_DIR, TO_DIR, TYPESHED_DIR, FROM_FILE, TO_FILE = map(
-    os.path.abspath, sys.argv[1:])
+    os.path.abspath, sys.argv[2:])
 
 # In the following, ROOT_FQN_REPL is the same as ROOT_FQN.  This is
 # because we used to check for a double-quote ('"') before the
@@ -28,6 +29,9 @@ FROM_DIR, TO_DIR, TYPESHED_DIR, FROM_FILE, TO_FILE = map(
 # 'vname("${ROOT_FQN}.foo.bar", ...)'. But this is not always the case
 # (e.g., 'vname("<unknown>.{${ROOT_DIR}...", ...)', so this slight bit
 # of extra safety has been removed.
+
+VERSION_PAT = '${VERSION}'
+VERSION_REPL = VERSION
 
 ROOT_DIR = os.path.abspath(os.path.join(TO_DIR, '..'))
 ROOT_DIR_PAT = '${ROOT_DIR}'  # followed by nothing or '/'
@@ -58,6 +62,7 @@ def cp_file(path_in, path_out):
         pass
     with open(path_in, 'r') as file_in:
         contents = file_in.read()
+    contents = contents.replace(VERSION_PAT, VERSION_REPL)
     contents = contents.replace(ROOT_DIR_PAT, ROOT_DIR_REPL)
     contents = contents.replace(ROOT_FQN_PAT, ROOT_FQN_REPL)
     contents = contents.replace(TYPESHED_DIR_PAT, TYPESHED_DIR_REPL)
@@ -77,8 +82,8 @@ def cp_file(path_in, path_out):
             file_out.write(contents)
             os.chmod(
                 path_out,
-                os.stat(path_out).st_mode &
-                ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))
+                os.stat(path_out).st_mode
+                & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))
 
 
 if __name__ == '__main__':

@@ -6,6 +6,9 @@ into an easier format. While doing this, we also mark all bindings
 the first pass).
 """
 
+# TODO: perhaps use a variant of lib2to3 that has __slots__
+#       defined in pytree.{Base,Node,Leaf} for performance/space?
+
 # pylint: disable=too-many-lines
 # pylint: disable=too-many-public-methods
 
@@ -16,6 +19,8 @@ import dataclasses
 import enum
 import io
 import logging
+import re
+import sys
 from lib2to3 import pygram
 from lib2to3 import pytree
 from lib2to3.pygram import python_symbols as syms
@@ -31,6 +36,11 @@ from mypy_extensions import Arg
 
 from . import ast, ast_cooked, pod, typing_debug
 from .typing_debug import cast as xcast
+
+# TODO: use __main__.args.python_version (and change that to be a triple)
+FAKE_SYS = ast_cooked.FakeSys(
+    ast_cooked.FakeSysWithVersionInfo(
+        sys.version_info))  # TODO: parameterize this
 
 
 def cvt_parse_tree(parse_tree: pytree.Base, python_version: int,
@@ -244,7 +254,7 @@ def cvt_atom(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         assert ctx.name_ctx is NameCtx.REF, [node]
         result = ast_cooked.EllipsisNode()
     else:
-        raise ValueError('Invalid atom: {!r}'.format(node))  # pragma: no cover
+        raise ValueError(f'Invalid atom: {node!r}')  # pragma: no cover
     return result
 
 
@@ -529,8 +539,8 @@ def cvt_dotted_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 def cvt_encoding_decl(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """encoding_decl: NAME"""
     assert ctx.name_ctx is NameCtx.REF, [node]  # pragma: no cover
-    raise ValueError('encoding_decl is not used in grammar: {!r}'.format(
-        node))  # pragma: no cover
+    raise ValueError(
+        f'encoding_decl is not used in grammar: {node!r}')  # pragma: no cover
 
 
 def cvt_eval_input(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -605,7 +615,8 @@ def cvt_expr_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         #  because of the test (above): len(node.children) == 1
         expr = cvt(node.children[-1], ctx)
         left_ctx = dataclasses.replace(ctx, name_ctx=NameCtx.BINDING)
-        # TODO: (multiple) ast_cooked.AssignExprStmt's (with temporary as needed):
+        # TODO: (multiple) ast_cooked.AssignExprStmt's (with temporary as needed)
+        #       see ast_cooked.AssignMultipleExprStmt.add_fqns
         return ast_cooked.AssignMultipleExprStmt(
             left_list=[
                 cvt(ch, left_ctx) for ch in node.children[:-1:2]  # skip '='s
@@ -710,15 +721,23 @@ def cvt_if_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """if_stmt: 'if' test ':' suite ('elif' test ':' suite)* ['else' ':' suite]"""
     assert ctx.name_ctx is NameCtx.REF, [node]
     ifthens = []
+    eval_results = []  # TODO: rewrite using functools.reduce or similar
     else_suite = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
     for i in range(0, len(node.children), 4):
         ch0 = xcast(pytree.Leaf, node.children[i])
         if ch0.value in ('if', 'elif'):
             ifthens.append(cvt(node.children[i + 1], ctx))
+            eval_results.append(FAKE_SYS.eval(f'bool({node.children[i + 1]})'))
+            assert node.children[i + 2].type == token.COLON
             ifthens.append(cvt(node.children[i + 3], ctx))
         elif ch0.value == 'else':
+            assert node.children[i + 1].type == token.COLON
             else_suite = cvt(node.children[i + 2], ctx)
-    return ast_cooked.IfStmt(items=ifthens + [else_suite])
+    # TODO: if the source redefines `sys`, this won't work, so need to
+    #       verify that `sys` is "undefined" (from "import sys", which
+    #       is evaluated later).
+    return ast_cooked.IfStmt(
+        eval_results=eval_results, items=ifthens + [else_suite])
 
 
 def cvt_import_as_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -841,39 +860,47 @@ def cvt_pass_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 def cvt_power(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """power: [AWAIT] atom trailer* ['**' factor]"""
     # Can appear on left of assignment
+
+    # lib2to3/Grammar.txt allows many illegal things, such as `a+b =
+    # 1` or `foo() = 2. We don't attempt to catch these, so nonsense
+    # may result where Python would throw an exception such as
+    # "SyntaxError: can't assign to operator" or "SyntaxError: can't
+    # assign to function call".
     if (node.children[0].type == token.NAME and
             node.children[0].value == 'await'):  # type: ignore
-        # ignore AWAIT
         # TODO: test case
-        children = node.children[1:]
+        atom_child, *trailer_factor_children = node.children[
+            1:]  # ignore AWAIT
     else:
-        children = node.children
-    if len(children) == 1:
-        return cvt(children[0], ctx)
-    if children[-1].type == SYMS_FACTOR:
-        assert children[-2].type == token.DOUBLESTAR
-        doublestar_factor = cvt(
-            children[-1], ctx)  # type: Optional[ast_cooked.Base]
-        children = children[:-2]
+        atom_child, *trailer_factor_children = node.children
+    doublestar_factor: Optional[ast_cooked.Base]
+    if (len(trailer_factor_children) >= 2 and
+            trailer_factor_children[-2].type == token.DOUBLESTAR):
+        assert trailer_factor_children[-1].type == SYMS_FACTOR
+        doublestar_factor = cvt(trailer_factor_children[-1], ctx)
+        trailer_children = trailer_factor_children[:-2]
     else:
-        assert len(children) == 1 or children[-1].type == SYMS_TRAILER
         doublestar_factor = None
-    # For the trailer, all but the last item are in a non-binding
-    # context; the last item is in the current binds context (which
-    # only applies for ".").
-    trailer_ctx = dataclasses.replace(ctx, name_ctx=NameCtx.REF)
-    atom = cvt(children[0], trailer_ctx)
-    trailers = [cvt(ch, trailer_ctx) for ch in children[1:-1]]
-    if len(children) > 1:
-        trailers.append(cvt(children[-1], ctx))
-    typing_debug.assert_all_isinstance(ast_cooked.BaseAtomTrailer, trailers)
-    trailer = ast_cooked.atom_trailer_node(
-        atom, typing.cast(Sequence[ast_cooked.BaseAtomTrailer], trailers))
+        trailer_children = trailer_factor_children
+    assert all(ch.type == SYMS_TRAILER for ch in trailer_children[1:])
+
+    if trailer_children:
+        ref_ctx = dataclasses.replace(ctx, name_ctx=NameCtx.REF)
+        atom_and_trailer = cvt(atom_child, ref_ctx)
+        bindings = ((len(trailer_children) - 1) * [False] +
+                    [ctx.name_ctx == NameCtx.BINDING])
+        for ch, binds in zip(trailer_children, bindings):
+            trailer = xcast(ast_cooked.BaseAtomTrailer, cvt(ch, ref_ctx))
+            atom_and_trailer = trailer.atom_trailer_node(
+                atom_and_trailer, binds)
+    else:
+        atom_and_trailer = cvt(atom_child, ctx)
+
     if doublestar_factor:
         return ast_cooked.OpNode(
             op_astns=[ctx.src_file.astn_to_range(node.children[-2])],
-            args=[trailer, doublestar_factor])
-    return trailer
+            args=[atom_and_trailer, doublestar_factor])
+    return atom_and_trailer
 
 
 def cvt_print_stmt(
@@ -1028,8 +1055,10 @@ def cvt_suite(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 
 def cvt_star_expr(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """star_expr: '*' expr"""
-    assert ctx.name_ctx is NameCtx.REF, [node]
+    # This can appear on the l.h.s: a, *b = [1,2,3]
     # Ignore the `*`
+    # TODO: might need to do something else if pykythe.pl needs
+    #       to know that this is a list
     return cvt(node.children[1], ctx)
 
 
@@ -1123,7 +1152,8 @@ def cvt_tname(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 
 def cvt_trailer(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """trailer: '(' [arglist] ')' | '[' subscriptlist ']' | '.' NAME"""
-    # Can appear on left of assignment - cvt_power will set ctx.left_binds appropriately
+    # Can appear on left of assignment - cvt_power (which contains
+    # `atom trailer*`) sets ctx.left_binds appropriately.
     if node.children[0].type == token.LPAR:
         if node.children[1].type == token.RPAR:
             return ast_cooked.RawArgListNode(args=[])
@@ -1134,8 +1164,7 @@ def cvt_trailer(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         return xcast(ast_cooked.RawSubscriptListNode,
                      cvt_name_ctx(NameCtx.REF, node.children[1], ctx))
     assert node.children[0].type == token.DOT
-    return ast_cooked.DotNameTrailerNode(
-        binds=ctx.name_ctx is NameCtx.BINDING,
+    return ast_cooked.RawDotNameTrailerNode(
         name=xcast(ast_cooked.NameRawNode,
                    cvt_name_ctx(NameCtx.RAW, node.children[1], ctx)))
 
@@ -1274,19 +1303,26 @@ def cvt_token_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
                 node.value not in ctx.nonlocal_vars):
             ctx.scope_bindings[node.value] = None
             return ast_cooked.NameBindsNode(name=name_astn)
-        return ast_cooked.NameRefNode(name=name_astn)
+        return ast_cooked.NameBindsGlobalNode(name=name_astn)
     if ctx.name_ctx is NameCtx.REF:
         return ast_cooked.NameRefNode(name=name_astn)
     if ctx.name_ctx is NameCtx.RAW:
         return ast_cooked.NameRawNode(name=name_astn)
-    raise ValueError('Invalid name_ctx: {} to {!r}'.format(
-        ctx.name_ctx, node))  # pragma: no cover
+    raise ValueError(
+        f'Invalid name_ctx: {ctx.name_ctx} to {node!r}')  # pragma: no cover
 
 
 def cvt_token_number(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """Handle token.NUMBER."""
     assert ctx.name_ctx is NameCtx.REF, [node]
-    return ast_cooked.NumberNode(astn=ctx.src_file.astn_to_range(node))
+    astn = ctx.src_file.astn_to_range(node)
+    if re.fullmatch(tokenize.Imagnumber, node.value):
+        return ast_cooked.NumberComplexNode(astn=astn)
+    if re.fullmatch(tokenize.Floatnumber, node.value):
+        return ast_cooked.NumberFloatNode(astn=astn)
+    if re.fullmatch(tokenize.Intnumber, node.value):
+        return ast_cooked.NumberIntNode(astn=astn)
+    raise ValueError(f'Invalid number: {node!r}')
 
 
 def cvt_token_string(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -1294,8 +1330,11 @@ def cvt_token_string(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     assert ctx.name_ctx is NameCtx.REF, [node]
     astns = node if isinstance(node, list) else [node]
     typing_debug.assert_all_isinstance(pytree.Leaf, astns)  # TODO: remove
-    return ast_cooked.StringNode(
-        astns=[ctx.src_file.astn_to_range(astn) for astn in astns])
+    astn_ranges = [ctx.src_file.astn_to_range(astn) for astn in astns]
+    if (re.match('[^"\']*[bB][^"]*"', astns[0].value) or
+            re.match("[^'\"]*[bB][^']*'", astns[0].value)):
+        return ast_cooked.StringBytesNode(astns=astn_ranges)
+    return ast_cooked.StringNode(astns=astn_ranges)
 
 
 def cvt_unary_op(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:

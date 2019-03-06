@@ -185,5 +185,29 @@ class TestAnchor(unittest.TestCase):
                     ('bcd', None), ]))
 
 
+class TestFakeSys(unittest.TestCase):
+    """Unit tests for ast_cooked.FakeSys."""
+
+    def test_fake_sys(self) -> None:
+        """Test how FakeSys is used in ast_raw.py for conditionals."""
+
+        # TODO: parameterize the version (see definition of ast_raw.FAKE_SYS)
+        self.assertTrue(sys.version_info >= (3, 7))
+
+        result = ast_raw.FAKE_SYS.eval('bool(sys.version_info >= (3, 7))')
+        self.assertFalse(result.exception)
+        self.assertTrue(result.result)
+
+        result = ast_raw.FAKE_SYS.eval('bool(sys.version_info < (3, 7))')
+        self.assertFalse(result.exception)
+        self.assertFalse(result.result)
+
+        result = ast_raw.FAKE_SYS.eval('bool(sysx.version_info >= (3, 7))')
+        self.assertTrue(result.exception)
+        self.assertIsInstance(
+            result.exception,
+            NameError)  # NameError("name 'sysx' is not defined")
+
+
 if __name__ == '__main__':
     unittest.main()

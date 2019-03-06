@@ -1,4 +1,4 @@
-#- @loc defines/binding vname(".tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.imports_dir1.i1.loc", _, _, "", python)
+#- @loc defines/binding vname("${ROOT_FQN}.test_data.imports_dir1.i1.loc", _, _, "", python)
 loc = "pykythe/test_data/imports_dir/i1.py"
 
 print("Entering " + loc + " ... " + __file__)
@@ -30,6 +30,5 @@ assert i4_b.loc == "pykythe/test_data/imports_dir/i1_sub/i4.py"
 assert i4_loc == "pykythe/test_data/imports_dir/i1_sub/i4.py"
 
 #- { @III ref III }
-#- // @III ref/imports III_import? }  // TODO: both ref and ref/imports
-#- // { @x ref III_x? }  //  TODO: tests eval_atom_dot_single(... import(Fq, file_and_token(...))
+#- // { @x ref III_x? }  // TODO
 assert III().x == "pykythe/test_data/imports_dir/i1_sub/i4.py"

@@ -14,8 +14,31 @@ allow_multiline_dictionary_keys=False
 # Allow lambdas to be formatted on more than one line.
 allow_multiline_lambdas=False
 
+# Allow splitting before a default / named assignment in an argument list.
+allow_split_before_default_or_named_assigns=True
+
 # Allow splits before the dictionary value.
 allow_split_before_dict_value=True
+
+#   Let spacing indicate operator precedence. For example:
+#
+#     a = 1 * 2 + 3 / 4
+#     b = 1 / 2 - 3 * 4
+#     c = (1 + 2) * (3 - 4)
+#     d = (1 - 2) / (3 + 4)
+#     e = 1 * 2 - 3
+#     f = 1 + 2 + 3 + 4
+#
+# will be formatted as follows to indicate precedence:
+#
+#     a = 1*2 + 3/4
+#     b = 1/2 - 3*4
+#     c = (1+2) * (3-4)
+#     d = (1-2) / (3+4)
+#     e = 1*2 - 3
+#     f = 1 + 2 + 3 + 4
+#
+arithmetic_precedence_indication=False
 
 # Number of blank lines surrounding top-level function and class
 # definitions.
@@ -94,6 +117,10 @@ continuation_indent_width=4
 #   )        # <--- this bracket is dedented and on a separate line
 dedent_closing_brackets=False
 
+# Disable the heuristic which places each list element on a separate line
+# if the list is comma-terminated.
+disable_ending_comma_heuristic=False
+
 # Place each dictionary entry onto its own line.
 each_dict_entry_on_separate_line=True
 
@@ -106,6 +133,9 @@ i18n_comment=
 # reformattting on that line, because the string it has cannot be moved
 # away from the i18n comment.
 i18n_function_call=
+
+# Indent blank lines.
+indent_blank_lines=False
 
 # Indent the dictionary value if it cannot fit on the same line as the
 # dictionary key. For example:
@@ -122,16 +152,15 @@ indent_dictionary_value=True
 indent_width=4
 
 # Join short lines into one line. E.g., single line 'if' statements.
-join_multiple_lines=True
+join_multiple_lines=False
 
 # Do not include spaces around selected binary operators. For example:
 #
 #   1 + 2 * 3 - 4 / 5
 #
-# will be formatted as follows when configured with a value "*,/":
+# will be formatted as follows when configured with "*,/":
 #
 #   1 + 2*3 - 4/5
-#
 no_spaces_around_selected_binary_operators=set()
 
 # Use spaces around default or named assigns.
@@ -141,6 +170,42 @@ spaces_around_default_or_named_assign=False
 spaces_around_power_operator=False
 
 # The number of spaces required before a trailing comment.
+# This can be a single value (representing the number of spaces
+# before each trailing comment) or list of values (representing
+# alignment column values; trailing comments within a block will
+# be aligned to the first column value that is greater than the maximum
+# line length within the block). For example:
+#
+# With spaces_before_comment=5:
+#
+#   1 + 1 # Adding values
+#
+# will be formatted as:
+#
+#   1 + 1     # Adding values <-- 5 spaces between the end of the statement and comment
+#
+# With spaces_before_comment=15, 20:
+#
+#   1 + 1 # Adding values
+#   two + two # More adding
+#
+#   longer_statement # This is a longer statement
+#   short # This is a shorter statement
+#
+#   a_very_long_statement_that_extends_beyond_the_final_column # Comment
+#   short # This is a shorter statement
+#
+# will be formatted as:
+#
+#   1 + 1          # Adding values <-- end of line comments in block aligned to col 15
+#   two + two      # More adding
+#
+#   longer_statement    # This is a longer statement <-- end of line comments in block aligned to col 20
+#   short               # This is a shorter statement
+#
+#   a_very_long_statement_that_extends_beyond_the_final_column  # Comment <-- the end of line comments are aligned based on the line length
+#   short                                                       # This is a shorter statement
+#
 spaces_before_comment=2
 
 # Insert a space between the ending comma and closing bracket of a list,
@@ -153,6 +218,10 @@ split_all_comma_separated_values=False
 # Split before arguments if the argument list is terminated by a
 # comma.
 split_arguments_when_comma_terminated=False
+
+# Set to True to prefer splitting before '+', '-', '*', '/', '//', or '@'
+# rather than after.
+split_before_arithmetic_operator=False
 
 # Set to True to prefer splitting before '&', '|' or '^' rather than
 # after.
@@ -170,6 +239,16 @@ split_before_closing_bracket=False
 #       for variable in bar if variable != 42
 #   }
 split_before_dict_set_generator=True
+
+# Split before the '.' if we need to split a longer expression:
+#
+#   foo = ('This is a really long string: {}, {}, {}, {}'.format(a, b, c, d))
+#
+# would reformat to something like:
+#
+#   foo = ('This is a really long string: {}, {}, {}, {}'
+#          .format(a, b, c, d))
+split_before_dot=False
 
 # Split after the opening paren which surrounds an expression if it doesn't
 # fit on a single line.
@@ -208,8 +287,12 @@ split_penalty_after_opening_bracket=-100
 # The penalty for splitting the line after a unary operator.
 split_penalty_after_unary_operator=10000
 
+# The penalty of splitting the line around the '+', '-', '*', '/', '//',
+# ``%``, and '@' operators.
+split_penalty_arithmetic_operator=300
+
 # The penalty for splitting right before an if expression.
-split_penalty_before_if_expr=0
+split_penalty_before_if_expr=100
 
 # The penalty of splitting the line around the '&', '|', and '^'
 # operators.

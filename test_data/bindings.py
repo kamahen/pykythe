@@ -12,6 +12,14 @@
 #- { File.text/encoding "utf-8" }
 
 
+def false():
+    """Always returns False.
+
+    Used to defeat pykythe's if-then-else evaluations.
+    """
+    return False
+
+
 def testLhsTrailer():
     #- { @i defines/binding TestLhsTrailer_i }
     i = 'abc'
@@ -34,8 +42,9 @@ def testLhsTrailer():
         testDictFor  # Note: no call (for testing when call fails)
 
 
-#- @testDictFor ref TestDictFor  // This is a forward reference test; it would fail in reality.
-testDictFor()
+if false():
+    #- @testDictFor ref TestDictFor  // This is a forward reference test; it would fail in reality.
+    testDictFor()
 
 
 #- { @testDictFor defines/binding TestDictFor }
@@ -74,9 +83,12 @@ def testListFor():
     #- !{ @x ref TestListForListForX }
     assert x == 100
     assert y == [3, 101]
-    if False:  # Test global recursive ref
+    if false():  # Test global recursive ref
         #- @testListFor ref TestListFor
         testListFor()
+    # else:
+    #     #- @testListFor ref TestListFor
+    #     testListFor()
     nums = [1, 2, 3, 4, 5]
     strs = ['Apple', 'Banana', 'Coconut']
     #- @#0i ref TestListFor_for2_i
@@ -120,8 +132,8 @@ def testGexpFor():
     #- { @y defines/binding TestGexp_y }
     #- @foo ref Foo
     #- { TestGexpForX.node/kind variable }
-    y = foo(0, x + 1 for x in [1, 2, 3, x] if x % 2 == 0)
-    #          0         1              2     3
+    y = foo(0, (x + 1 for x in [1, 2, 3, x] if x % 2 == 0))
+    #           0         1              2     3
     #- { @x ref TestGexpLocalX }
     #- !{ @x ref TestGexpForX }
     assert x == 100
@@ -157,11 +169,11 @@ def testNonLocal():
     xxx = 0
 
     def f():
-        #- @xxx ref TestNonLocalXxx
+        #- { @xxx ref TestNonLocalXxx }
         nonlocal xxx
-        #- @xxx ref TestNonLocalXxx?  // TODO: should be defines/binding
+        #- { @xxx defines/binding TestNonLocalXxx }
         xxx = 2
-        #- @xxx ref TestNonLocalXxx
+        #- { @xxx ref TestNonLocalXxx }
         return xxx
 
 

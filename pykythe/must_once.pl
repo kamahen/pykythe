@@ -7,14 +7,24 @@
                       must_once/4,
                       must_once/5,
                       must_once/6,
+                      must_once/7,
+                      must_once/8,
                       fail/1]).
 :- meta_predicate
        must_once(0),
        must_once_msg(0, +, +),
-       must_once(4, ?, ?),
-       must_once(5, ?, ?, ?),
-       must_once(6, ?, ?, ?, ?),
-       must_once(7, ?, ?, ?, ?, ?).
+       must_once(2, ?, ?),
+       must_once(3, ?, ?, ?),
+       must_once(4, ?, ?, ?, ?),
+       must_once(5, ?, ?, ?, ?, ?),
+       must_once(6, ?, ?, ?, ?, ?, ?),
+       must_once(7, ?, ?, ?, ?, ?, ?, ?).
+
+:- style_check(+singleton).
+:- style_check(+var_branches).
+:- style_check(+no_effect).
+:- style_check(+discontiguous).
+%% :- set_prolog_flag(generate_debug_info, false).
 
 % Like once/1, throws an exception on failure.
 % Also works with works with EDCGs.
@@ -36,21 +46,14 @@
 %         'foo must_once'(X, Y, Z) :- % clause 2 ...
 %       and similar for -->> clauses.
 
-% TODO: something like this, to detect non-determinism
+%% TODO: something like this, to detect non-determinism
+%%       see https://swish.swi-prolog.org/p/RLZCwtkJ.swinb
 %% deterministic(Goal) :-
-%%     setup_call_cleanup(true, Goal, Deterministic = true),
-%%     (  var(Deterministic)
-%%     -> !,
-%%        throw(error(must_once_failed(Goal), _))
-%%     ;  true
-%%     ).
-%% deterministic(Goal, Deterministic) :-
-%%     setup_call_cleanup(true, Goal, Deterministic = true),
-%%     (  var(Deterministic)
-%%     -> Deterministic = false
-%%     ;  true
-%%     ),
-%%     !.
+%%    (  call_cleanup(Goal, Det=true),
+%%       ( Det == true ->  true throw(error(multi(Goal), _) )
+%%    -> true
+%%    ;  throw(error(failed(Goal), _))
+%%    ).
 
 %! must_once(:Goal) is det.
 %  Throws an error if Goal doesn't succeed.
@@ -96,6 +99,18 @@ must_once(Goal, AccumA0, AccumA, AccumB0, AccumB) :-
 
 must_once(Goal, AccumA0, AccumA, AccumB0, AccumB, PassA) :-
     (  call(Goal, AccumA0, AccumA, AccumB0, AccumB, PassA)
+    -> true
+    ;  throw(error(must_once_failed(Goal), _))
+    ).
+
+must_once(Goal, AccumA0, AccumA, AccumB0, AccumB, Accum0, AccumC) :-
+    (  call(Goal, AccumA0, AccumA, AccumB0, AccumB, Accum0, AccumC)
+    -> true
+    ;  throw(error(must_once_failed(Goal), _))
+    ).
+
+must_once(Goal, AccumA0, AccumA, AccumB0, AccumB, AccumC0, AccumC, PassA) :-
+    (  call(Goal, AccumA0, AccumA, AccumB0, AccumB, AccumC0, AccumC, PassA)
     -> true
     ;  throw(error(must_once_failed(Goal), _))
     ).

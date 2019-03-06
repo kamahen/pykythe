@@ -30,6 +30,14 @@ import os.path.sep as os_path_sep
 #- { @#0sep ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
 import os.path.sep
 
+import os
+#- { @os ref X1? }  // TODO: typeshed os
+#- { @path ref vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
+#- { @sep ref vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
+print(os.path.sep)
+
+
+
 # !!!
 # !!!# TODO: file bug to kythe about this non-ASCII character in a comment
 # !!!#       causing verifier to fail if it appears near the top of the

@@ -19,7 +19,8 @@ from typing import (  # pylint: disable=unused-import
 class PlainOldData:
     """A mixin class that adds JSON methods."""
 
-    __slots__ = []  # Subclass *must* define its own __slots__
+    # Subclass *must* define its own __slots__
+    __slots__ = []  # type: Sequence[Text]
 
     def as_json_dict(self) -> Mapping[Text, Any]:
         # TODO: -> collections.OrderedDict[Text, Any]
@@ -29,13 +30,13 @@ class PlainOldData:
         if that is desired, you'll need to write something like
         PlainOldDataExtended.as_json_dict.
         """
-        result = collections.OrderedDict(
+        slots = collections.OrderedDict(
         )  # type: collections.OrderedDict[Text, Any]
         for attr in self.__slots__:
             value = getattr(self, attr)
             if value is not None:
-                result[attr] = value
-        return result
+                slots[attr] = value
+        return slots
 
     def as_json_str(self) -> Text:
         return json.dumps(self.as_json_dict())
@@ -44,22 +45,22 @@ class PlainOldData:
 class PlainOldDataExtended(PlainOldData):
     """PlainOlData that can JSON-ify certain types."""
 
-    def as_json_dict(self) -> Mapping[Text, Any]:
+    def as_json_dict(
+            self
+    ) -> Mapping[Text, Any]:  # OrderedDict is actually MutableMapping
         """Recursively turn a node into a dict for JSON-ification."""
-        return self.make_json_dict(self.__class__.__name__)
-
-    def make_json_dict(self, name: Text) -> MutableMapping[Text, Any]:
-        result = collections.OrderedDict(
+        slots = collections.OrderedDict(
         )  # type: collections.OrderedDict[Text, Any]
         for slot in self.__slots__:
-            try:  # TODO: delete (it's for debugging)
+            try:  # TODO: delete (try/except is for debugging)
                 value = getattr(self, slot)
             except AttributeError as exc:
                 raise RuntimeError('%r not in %r slots for %r' %
                                    (slot, self.__slots__, self)) from exc
             if value is not None:
-                result[slot] = _as_json_dict_full(value)
-        return collections.OrderedDict(kind=name, slots=result)
+                slots[slot] = _as_json_dict_full(value)
+        return collections.OrderedDict(
+            kind=self.__class__.__name__, slots=slots)
 
 
 def _as_json_dict_full(value: Any) -> Any:
@@ -90,5 +91,7 @@ def _as_json_dict_full(value: Any) -> Any:
                                           for key, value in value.items()))
     if value is None:
         return collections.OrderedDict(kind='None')
-    raise NotImplementedError('{}: Unknown value: {!r}'.format(
-        value.__class__.__name__, value))
+    if isinstance(value, Exception):
+        return collections.OrderedDict(kind='Exception', value=repr(value))
+    raise NotImplementedError(
+        f'{value.__class__.__name__}: Unknown value: {value!r}')

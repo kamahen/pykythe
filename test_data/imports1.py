@@ -110,7 +110,7 @@ assert os_path == os.path
 #- { @#0os ref OS_import_var }
 #- { @#0path ref vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
 #- { @os_path ref vname("${ROOT_FQN}.test_data.imports1.os_path", _, _, "", python) }
-#- // { @#0curdir ref OsPathCurdir5? }  // TODO: needs resolution of os.path to work
+#- { @#0curdir ref vname("${TYPESHED_FQN}.stdlib.3.os.path.curdir", _, _, "", python) }
 #- { @#1curdir ref vname("${TYPESHED_FQN}.stdlib.3.os.path.curdir", _, _, "", python) }
 assert os.path.curdir == os_path.curdir
 
@@ -125,8 +125,13 @@ import os
 
 #- { @os defines/binding OS_import_var }
 #- { @os   ref/imports vname("${TYPESHED_FQN}.stdlib.3.os", _, _, "", python) }
-#- { @path ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
+#- { @path ref/imports OSPATH_import=vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
 import os.path
+
+#- { @os ref OS_import_var }
+#- { @path ref OSPATH_import }
+#- { @sep ref vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, _, python) }
+os.path.sep
 
 # import os gets os/__init__.pyi
 #- !{ @#0os defines/binding _ }
@@ -137,6 +142,9 @@ import os as my_os
 #- !{ @#0os defines/binding _ }
 #- { @os_path ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
 import os.path as os_path
+
+#- { @sep ref vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
+os_path.sep
 
 #- { @#0os ref OS_import_var }
 #- { @my_os ref MY_OS_import_var }

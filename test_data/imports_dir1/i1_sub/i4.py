@@ -45,4 +45,5 @@ assert i5.loc == "pykythe/test_data/imports_dir/i5.py"
 assert i9_loc == "pykythe/test_data/imports_dir/i8/i9.py"
 assert pykythe.test_data.imports_dir1.i5.loc == i5.loc
 #- { @i8_i9 ref I8_i9 }
+#- { @#0loc ref vname("${ROOT_FQN}.test_data.imports_dir1.i8.i9.loc", _, _, "", python) }
 assert i8_i9.loc == i9_loc

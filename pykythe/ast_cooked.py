@@ -2,7 +2,7 @@
 
 ast_raw.cvt traverses an AST (in the lib2to3.pytree format) and puts
 it into a more easily processed form. While traversing, it also marks
-binding and non-biding uses of all the names (including handling of
+binding and non-binding uses of all the names (including handling of
 names that were marked "global" or "nonlocal"), and resolves most
 names to fully qualified names (FQNs).
 
@@ -52,11 +52,10 @@ from __future__ import annotations
 import collections
 import dataclasses
 from dataclasses import dataclass
-import functools
 import logging  # pylint: disable=unused-import
 from typing import (  # pylint: disable=unused-import
     Any, Mapping, MutableMapping, Iterable, List, Optional, Sequence, Text,
-    TypeVar)
+    Tuple, TypeVar)
 import typing
 from mypy_extensions import Arg  # pylint: disable=unused-import
 
@@ -69,8 +68,67 @@ from .typing_debug import cast as xcast
 
 
 @dataclass(frozen=True)
+class EvalResult(pod.PlainOldDataExtended):
+    """The result of FakeSys.eval."""
+
+    result: Any  # Optional[bool] but in theory could be anything
+    exception: Optional[Exception]
+
+    __slots__ = ['result', 'exception']
+
+
+@dataclass(frozen=True)
+class FakeSysWithVersionInfo:
+    """A very limited `sys`, with only `version_info`."""
+
+    version_info: Tuple
+
+    __slots__ = ['version_info']
+
+
+@dataclass(frozen=True)
+class FakeSys:
+    """Provide a bare minimum of sys functionality for eval.
+
+    There are situations where we need to statically evaluate an
+    if-then-else (particularly in builtins.pyi) to avoid inconsistent
+    Kythe node/kind values. Typically, these are tests on
+    sys.version_info, so this class is used to do the evaluation,
+    returning True, False, or "can't compute".
+
+    This code uses `eval`, which would normally be a security
+    hole. However, the local and global variables are specified to be
+    only a limited version of `sys`, so the evaluation is safe.
+    """
+
+    fake_sys_with_version_info: FakeSysWithVersionInfo
+
+    __slots__ = ['fake_sys_with_version_info']
+
+    def eval(self, expr: Text) -> EvalResult:
+        try:
+            # The following is safe because global and local
+            # environments are constrained to a limited version of
+            # `sys`.
+            result = eval(expr, {}, {'sys': self.fake_sys_with_version_info})
+            return EvalResult(result=result, exception=None)
+        except Exception as exc:
+            return EvalResult(result=None, exception=exc)
+
+
+@dataclass(frozen=True)
 class FqnCtx(pod.PlainOldData):
     """Context for computing FQNs (fully qualified names).
+
+    When a "scope" is entered (file, class, function, comprehension),
+    we need to first scan the scope for bindings because of corner
+    cases such as this:
+
+    y = 1
+
+    def foo(x):
+        return x + y  # y is local
+        y = 1         # because of this binding
 
     Attributes:
       fqn_dot: The Fully Qualifed Name of this scope
@@ -128,7 +186,7 @@ class Base(pod.PlainOldDataExtended):
         (typically, a "name" of some kind in Python) to which semantic
         information is attached.
 
-        In most cases, `add_fqns` simply recursively calls `add_fqns`
+        In most cases, `add_fqns` merely recursively calls `add_fqns`
         on its contents and returns a new node that combines the
         results of the recursive calls to the contents.
 
@@ -212,13 +270,19 @@ def _not_implemented(obj: Base, fake_value: _T) -> _T:
 
 
 class BaseAtomTrailer(BaseNoFqnProcessingNoOutput):
-    """Extension of Base for atom, trailer part of power (in ast_raw).
+    """Extension of Base for atom+trailer part of `power` (in ast_raw).
 
-    Only for nodes that are the result of the grammar rule `power:
-    [AWAIT] atom trailer* ['**' factor]`.
+    Only for nodes that are the result of the grammar rule
+    `power: [AWAIT] atom trailer* ['**' factor]`.
+
+    This is a base class for DotNameTrailerNode, RawArgListNode, and
+    RawSubscriptListNode.  The intent is that
+    BaseAtomTrailer.atom_trailer_node(atom) will return an object that
+    contains the atom and the trailer (AtomCallNode, AtomDotNode,
+    AtomSubscriptNode).
     """
 
-    def atom_trailer_node(self, atom: Base) -> Base:
+    def atom_trailer_node(self, atom: Base, binds: bool) -> Base:
         """For processing atom, trailer part of power (in ast_raw)."""
         raise NotImplementedError(self)  # pragma: no cover
 
@@ -307,15 +371,19 @@ class AnnAssignStmt(Base):
 class RawArgListNode(BaseAtomTrailer):
     """Corresponds to `arglist`.
 
-    This is only used when processing a `decorator`, `classdef`, or
-    `trailers`, and is incorporated directly into the appropriate node.
+    The arglist is only used when processing a `decorator`,
+    `classdef`, or function call (`trailer`) and is incorporated
+    directly into the appropriate node.
     """
 
     args: Sequence[Base]
 
     __slots__ = ['args']
 
-    def atom_trailer_node(self, atom: Base) -> Base:
+    def atom_trailer_node(self, atom: Base, binds: bool) -> Base:
+        # binds must be False, but don't check for this because
+        # lib2to3/Grammar.txt allows it (the actual Python compiler
+        # has an extra check that's not in the grammar).
         return AtomCallNode(atom=atom, args=self.args)
 
 
@@ -403,18 +471,18 @@ class AssertStmt(ListBase):
     """Corresponds to `assert_stmt`."""
 
 
-def atom_trailer_node(atom: Base, trailers: Sequence[BaseAtomTrailer]) -> Base:
-    """Create the appropriate AtomXXX nodes."""
-    return functools.reduce(
-        lambda atom, trailer: trailer.atom_trailer_node(atom), trailers, atom)
-
-
 @dataclass(frozen=True)
 class AtomCallNode(Base):
-    """Corresponds to `atom '(' [arglist] ')'`."""
+    """Corresponds to `atom '(' [arglist] ')'`.
+
+    The grammar allows an assignment to a function call, but this is
+    illegal in the true Python grammar, so we just ignore that
+    possibility.
+    """
 
     atom: Base
     args: Sequence[Base]
+    # binds: The grammar allows this, but it's illegal.
 
     __slots__ = ['atom', 'args']
 
@@ -426,13 +494,16 @@ class AtomCallNode(Base):
 
 @dataclass(frozen=True)
 class AtomDotNode(Base):
-    """Corresponds to `atom '.' NAME`."""
+    """Corresponds to `atom '.' NAME`.
+
+    Unlike NameBindsFqn, NameRefFqn, we keep a bool to track whether
+    this is in a binding context or not.
+    """
 
     atom: Base
     attr_name: ast.Astn
     binds: bool
 
-    # TODO: is `binds` needed or can it be inferred?
     __slots__ = ['atom', 'attr_name', 'binds']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
@@ -444,16 +515,22 @@ class AtomDotNode(Base):
 
 @dataclass(frozen=True)
 class AtomSubscriptNode(Base):
-    """Corresponds to `atom '[' [subscriptist] ']'`."""
+    """Corresponds to `atom '[' [subscriptist] ']'`.
+
+    Unlike NameBindsFqn, NameRefFqn, we keep a bool to track whether
+    this is in a binding context or not.
+    """
 
     atom: Base
     subscripts: Sequence[Base]
+    binds: bool
 
-    __slots__ = ['atom', 'subscripts']
+    __slots__ = ['atom', 'subscripts', 'binds']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return AtomSubscriptNode(
             atom=_add_fqns_wrap(self.atom, ctx),
+            binds=self.binds,
             subscripts=[
                 _add_fqns_wrap(subscript, ctx)
                 for subscript in self.subscripts])
@@ -566,8 +643,8 @@ class CompForNode(Base):
             ctx.bindings.update((name, ctx.fqn_dot + name)
                                 for name in self.scope_bindings)
             return ctx
-        for_fqn_dot = '{}<comp_for>[{:d},{:d}].'.format(
-            ctx.fqn_dot, self.for_astn.start, self.for_astn.end)
+        for_fqn_dot = (f'{ctx.fqn_dot}<comp_for>'
+                       f'[{self.for_astn.start:d},{self.for_astn.end:d}].')
         return xcast(
             FqnCtx,
             dataclasses.replace(
@@ -698,27 +775,6 @@ class DictGenListSetMakerCompForNode(Base):
         value_expr = self.value_expr.add_fqns(comp_for_ctx)
         return DictGenListSetMakerCompFor(
             value_expr=value_expr, comp_for=comp_for)
-
-
-@dataclass(frozen=True)
-class DotNameTrailerNode(BaseAtomTrailer):
-    """Corresponds to '.' NAME in trailer.
-
-    This is only used when processing a trailer and is incorporated
-    directly into AtomDotNode.
-    """
-
-    # TODO: Remove binds and instead: DotNameTrailerNode{Binds,Ref}
-    #       similar to Name{Binds,Ref}Fqn
-
-    name: NameRawNode
-    binds: bool
-
-    __slots__ = ['name', 'binds']
-
-    def atom_trailer_node(self, atom: Base) -> Base:
-        return AtomDotNode(
-            atom=atom, attr_name=self.name.name, binds=self.binds)
 
 
 class DottedNameNode(ListBase):
@@ -857,10 +913,10 @@ class FuncDefStmt(Base):
         #    foo.x = 'a string'
         if self.name.name.value == 'lambda':
             # Make a unique name for the lambda
-            func_fqn = '{}<lambda>[{:d},{:d}]'.format(
-                ctx.fqn_dot, self.name.name.start, self.name.name.end)
+            func_fqn = (f'{ctx.fqn_dot}<lambda>'
+                        f'[{self.name.name.start:d},{self.name.name.end:d}]')
         else:
-            func_fqn = '{}{}'.format(ctx.fqn_dot, self.name.name.value)
+            func_fqn = f'{ctx.fqn_dot}{self.name.name.value}'
         func_fqn_dot = func_fqn + '.<local>.'
         # self.name is already in bindings
         name_add_fqns = xcast(NameBindsFqn, _add_fqns_wrap(self.name, ctx))
@@ -912,8 +968,26 @@ class GlobalStmt(ListBase):
     """Corresponds to `global_stmt`."""
 
 
-class IfStmt(ListBase):
+@dataclass(frozen=True)
+class IfStmt(Base):
     """Corresponds to `if_stmt`."""
+
+    eval_results: Sequence[
+        EvalResult]  # from evaluating the conditions (items[0,2,4,...])
+    items: Sequence[Base]  # the if-then-else parts (including the conditions)
+
+    __slots__ = ['eval_results', 'items']
+
+    def __post_init__(self) -> None:
+        # There's always an else (possibly OmittedNode)
+        assert len(self.items) == 2 * len(self.eval_results) + 1
+
+    def add_fqns(self, ctx: FqnCtx) -> Base:
+        # TODO: https://github.com/python/mypy/issues/4602
+        #       and then use self.__class__(**attr_values)
+        return type(self)(
+            eval_results=self.eval_results,
+            items=[_add_fqns_wrap(item, ctx) for item in self.items])
 
 
 class ImportAsNamesNode(ListBase):
@@ -1117,13 +1191,54 @@ class NameBindsNode(Base):
         # There are some obscure cases where fqn doesn't get filled
         # in, typically due to the grammar accepting an illegal Python
         # program (e.g., the grammar allows test=test for an arg, but
-        # it should be NAME=test)
+        # it should be NAME=test).
+        #
+        # Other than that, an earlier pass will have already filled in
+        # all the binding cases into ctx.bindings -- see
+        # `scope_bindings` in ClassDefStmt, FuncDefStmt, FileInput,
+        # CompForNode. ... the scope is scanned for all bindings, as
+        # explained in the documentation for FqnCtx).
         if name in ctx.bindings:
             fqn = ctx.bindings[name] or ''
         else:
             fqn = ctx.fqn_dot + name
             ctx.bindings[name] = fqn
         return NameBindsFqn(name=self.name, fqn=fqn)
+
+
+@dataclass(frozen=True)
+class NameBindsGlobalNode(Base):
+    """Like NameBindsNode, except for a nonlocal/global.
+
+    The add_fqns method is essentially the same logic as for NameRefNode,
+    except it returns a NameBindsFqn.
+
+    Attributes:
+        astn: The AST node of the name (a Leaf node) - the name
+              is self.astn.value
+    """
+
+    name: ast.Astn
+
+    __slots__ = ['name']
+
+    def add_fqns(self, ctx: FqnCtx) -> Base:
+        # See also comments in NameRefNode.add_fqns
+        name = self.name.value
+        if name in ctx.bindings:
+            return NameBindsFqn(name=self.name, fqn=ctx.bindings[name] or '')
+        ctx.bindings[name] = ctx.fqn_dot + name
+        return NameBindsUnknown(name=self.name, fqn_scope=ctx.fqn_dot[:-1])
+
+
+@dataclass(frozen=True)
+class NameRefUnknown(BaseNoFqnProcessing):
+    """Created by NameBindsGlobalNode.add_fqns."""
+
+    name: ast.Astn
+    fqn_scope: Text
+
+    __slots__ = ['name', 'fqn_scope']
 
 
 @dataclass(frozen=True)
@@ -1166,12 +1281,15 @@ class NameRefNode(Base):
         # in, typically due to the grammar accepting an illegal Python
         # program (e.g., the grammar allows test=test for an arg, but
         # it should be NAME=test)
+
+        # Also, this code is a static *approximation* of Python's
+        # dynamic name resolution. In a few cases, it won't do the
+        # right thing, for example: if there's a `from foo import *`
+        # inside a function definition. To which I say: too bad.
         if name in ctx.bindings:
-            fqn = ctx.bindings[name] or ''
-        else:
-            fqn = ctx.fqn_dot + name
-            ctx.bindings[name] = fqn
-        return NameRefFqn(name=self.name, fqn=fqn)
+            return NameRefFqn(name=self.name, fqn=ctx.bindings[name] or '')
+        ctx.bindings[name] = ctx.fqn_dot + name
+        return NameRefUnknown(name=self.name, fqn_scope=ctx.fqn_dot[:-1])
 
 
 @dataclass(frozen=True)
@@ -1185,12 +1303,22 @@ class NameRefFqn(BaseNoFqnProcessing):
 
 
 @dataclass(frozen=True)
+class NameRefUnknown(BaseNoFqnProcessing):
+    """Created by NameRefNode.add_fqns."""
+
+    name: ast.Astn
+    fqn_scope: Text
+
+    __slots__ = ['name', 'fqn_scope']
+
+
+@dataclass(frozen=True)
 class NameRefGenerated(BaseNoFqnProcessing):
     """Like NameRef, but for `self` type nodes.
 
     This is used to distinguish between nodes that should generate
     add_fqns and those that are generated (e.g., for handling the
-    `self` in method definitions and don't need `add_fqns`).
+    type for `self` in method definitions) and don't need `add_fqns`.
     """
 
     fqn: Text
@@ -1203,8 +1331,40 @@ class NonLocalStmt(ListBase):
 
 
 @dataclass(frozen=True)
-class NumberNode(Base):
-    """Corresponds to a NUMBER node.
+class NumberComplexNode(Base):
+    """Corresponds to a NUMBER(complex) node.
+
+    Attributes:
+    astn: The AST node of the number
+    """
+
+    astn: ast.Astn
+
+    __slots__ = ['astn']
+
+    def add_fqns(self, ctx: FqnCtx) -> Base:
+        return self
+
+
+@dataclass(frozen=True)
+class NumberFloatNode(Base):
+    """Corresponds to a NUMBER(float) node.
+
+    Attributes:
+    astn: The AST node of the number
+    """
+
+    astn: ast.Astn
+
+    __slots__ = ['astn']
+
+    def add_fqns(self, ctx: FqnCtx) -> Base:
+        return self
+
+
+@dataclass(frozen=True)
+class NumberIntNode(Base):
+    """Corresponds to a NUMBER(int) node.
 
     Attributes:
     astn: The AST node of the number
@@ -1226,6 +1386,7 @@ class OmittedNode(EmptyBase):
 OMITTED_NODE = OmittedNode()
 
 
+@dataclass(frozen=True)
 class OpNode(Base):
     """Corresponds to various expression nodes (unary, binary, comparison)."""
 
@@ -1299,6 +1460,22 @@ def make_stmts(items: Iterable[Base]) -> Stmts:
 
 
 @dataclass(frozen=True)
+class StringBytesNode(Base):
+    """Corresponds to a STRING node (bytes).
+
+    Attributes:
+        astns: The AST nodes of the byte string
+    """
+
+    astns: Sequence[ast.Astn]
+
+    __slots__ = ['astns']
+
+    def add_fqns(self, ctx: FqnCtx) -> Base:
+        return self
+
+
+@dataclass(frozen=True)
 class StringNode(Base):
     """Corresponds to a STRING node.
 
@@ -1326,6 +1503,22 @@ class SubscriptNode(Base):
 
 
 @dataclass(frozen=True)
+class RawDotNameTrailerNode(BaseAtomTrailer):
+    """Corresponds to '.' NAME in trailer.
+
+    This is only used when processing a trailer and is incorporated
+    directly into AtomDotNode.
+    """
+
+    name: NameRawNode
+
+    __slots__ = ['name']
+
+    def atom_trailer_node(self, atom: Base, binds: bool) -> Base:
+        return AtomDotNode(atom=atom, attr_name=self.name.name, binds=binds)
+
+
+@dataclass(frozen=True)
 class RawSubscriptListNode(BaseAtomTrailer):
     """Corresponds to `subscript_list`.
 
@@ -1341,8 +1534,22 @@ class RawSubscriptListNode(BaseAtomTrailer):
         typing_debug.assert_all_isinstance(SubscriptNode, self.subscripts)
         # self.subscripts = typing.cast(Sequence[SubscriptNode], subscripts)
 
-    def atom_trailer_node(self, atom: Base) -> Base:
-        return AtomSubscriptNode(atom=atom, subscripts=self.subscripts)
+    def atom_trailer_node(self, atom: Base, binds: bool) -> Base:
+        return AtomSubscriptNode(
+            atom=atom, subscripts=self.subscripts, binds=binds)
+
+
+@dataclass(frozen=True)
+class RawTypedArgsListNode(BaseNoFqnProcessingNoOutput):
+    """Corresponds to `typedargslist`.
+
+    This is only used when processing a funcdef; the args are given
+    directly to FuncDefStmt.
+    """
+
+    args: Sequence[TypedArgNode]
+
+    __slots__ = ['args']
 
 
 class TestListNode(ListBase):
@@ -1377,19 +1584,6 @@ class TypedArgNode(Base):
     expr: Base
 
     __slots__ = ['tname', 'expr']
-
-
-@dataclass(frozen=True)
-class RawTypedArgsListNode(BaseNoFqnProcessingNoOutput):
-    """Corresponds to `typedargslist`.
-
-    This is only used when processing a funcdef; the args are given
-    directly to FuncDefStmt.
-    """
-
-    args: Sequence[TypedArgNode]
-
-    __slots__ = ['args']
 
 
 @dataclass(frozen=True)
@@ -1450,9 +1644,10 @@ class Meta(pod.PlainOldDataExtended):
     kythe_root: Text
     path: Text
     language: Text
-    contents_b64: Text
+    contents_base64: Text
+    sha1: Text
     encoding: Text
 
     __slots__ = [
-        'kythe_corpus', 'kythe_root', 'path', 'language', 'contents_b64',
-        'encoding']
+        'kythe_corpus', 'kythe_root', 'path', 'language', 'contents_base64',
+        'sha1', 'encoding']

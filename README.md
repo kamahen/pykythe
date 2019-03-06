@@ -19,31 +19,32 @@ There is no installation, because this code is pre-alpha. To try it
 out (on Linux):
 
 * `cd` to your top-level source directory (pykythe assumes that all
-  sources are in this, including those from other projects such as `kythe`
-  and `typeshed`).
+  sources are in this, including those from other projects such as
+  `kythe` and `typeshed`).
 
 * `git clone https://github.com/google/kythe.git`
 
-* Follow the instructions for building `kythe` (including installing Bazel).
+* Follow the instructions for building `kythe` (including installing
+  Bazel).
 
-* Follow the instructions at
-  [Kythe - getting started](https://github.com/google/kythe#getting-started )
-  to download the latest tarball from the
-  [Kythe repository](https://github.com/google/kythe/releases) and copy the binaries
-  into `/opt/kythe`.
+* Follow the instructions at [Kythe - getting
+  started](https://github.com/google/kythe#getting-started ) to
+  download the latest tarball from the [Kythe
+  repository](https://github.com/google/kythe/releases) and copy the
+  binaries into `/opt/kythe`.
 
 * Install `python3.7`
 
   This needs the *latest* version of Python 3.7.
 
   If you get an error in `DISPATCH[node.type]`, then it probably means
-  that there's a conflict with Ubuntu package `python3-lib2to3`. The easiest
-  way to fix this is to clone `cprolog` from github and then
-  `sudo cp -r --preserve=mode,timestamps cpython/Lib/lib2to3/* /usr/lib/python3.7/lib2to3/`
+  that there's a conflict with Ubuntu package `python3-lib2to3`. The
+  easiest way to fix this is to clone `cprolog` from github and then
+  `sudo cp -r --preserve=mode,timestamps cpython/Lib/lib2to3/*
+  /usr/lib/python3.7/lib2to3/`
 
 * Install [SWI-Prolog](http://www.swi-prolog.org/Download.html). You
-  need at least version 7.7.20 (earlier versions have a bug in how
-  they handle command line arguments), so as of 2018-11-07, this means
+  need at least version 8.1.1, so as of 2019-02-04, this means
   using the "devel" download or PPA.
 
   After installing, add the packages
@@ -70,46 +71,207 @@ out (on Linux):
 	* `git clone https://github.com/python/mypy.git`
 	* `git clone https://github.com/google/yapf.git`
 
-* `make -C <pkgdir> all_tests all_tests2`
+* `make -C <pkgdir> clean_lite tests`
 
-* You can see the generated facts in `/tmp/pykythe_test/KYTHE/pykythe/test_data/*.json-decoded`
+* You can see the generated facts in
+  `/tmp/pykythe_test/KYTHE/pykythe/test_data/*.json-decoded`
 
-## Code formatting
+## Coding conventions
 
-All the Python code is formatted using `yapf` configured with `.style.yapf`.
-You can either install it from [github](https://github.com/google/yapf)
-or using [pip](https://pypi.python.org/pypi/yapf).
-The `Makefile` has a rule `pyformat` that formats everything.
+### Code formatting
 
-  * Currently this doesn't work because `yapf` doesn't support some Python 3.7 features.
+All the Python code is formatted using `yapf` configured with
+`.style.yapf`.  You can either install it from
+[github](https://github.com/google/yapf) or using
+[pip](https://pypi.python.org/pypi/yapf).  The `Makefile` has a rule
+`pyformat` that formats everything.
 
 Prolog code is formatted according to the recommendations in
 [plcoding.pdf](http://www.covingtoninnovations.com/mc/plcoding.pdf)
 with an extension for EDCGs that shows the accumulators.
 
-## Type declarations
+### Type declarations
 
-The code is processed with `mypy` (using the `Makefile` rule `mypy`) and
-`pylint`. It is intended to also be processed by `pytype`.
+The code is processed with `mypy` (using the `Makefile` rule `mypy`)
+and `pylint`. It is intended to also be processed by `pytype`.
 
-  * Currently this doesn't work because `mypy` doesn't support Python 3.7
-    `dataclasses`
+  * Currently this doesn't work because `mypy` doesn't support Python
+    3.7 `dataclasses`
 
+## Implementation notes
+
+### Processing a single source file
+
+A source file is processed in the following steps:
+
+* `pykythe.pl` invokes a Python program to create an AST with fully
+  qualified names:
+
+  * `ast_raw.parse` generates an AST in `lib2to3.pytree`'s
+    form. (Actually, this is more like a concrete syntax tree, which
+    is why the next step is done.)
+
+  * `ast_raw.cvt_parse_tree` converts the "raw" AST to a more
+    convenient "cooked" form.
+
+  * `ast_cooked.Base.add_fqns` traverses the "cooked" AST to fill in
+    as many FQNs as possible (most names can be resolved, but those
+    from builtins or `from … import *` cannot be known at this
+    point (builtins are in effect `from builtins import *`).
+
+  * The resulting AST (with FQNs) is serialized and passed back to
+    `pykythe.pl`.
+
+* A pass is made over the AST, generating Kythe anchors and a list of
+  "expressions" in the AST.
+
+* Each "import" is recursively processed (if there is a circular import,
+  this is detected and the recursive import is skipped).
+
+* The expressions are symbolically evaluated to fill in the
+  symtab. This is, in effect, simple type inferencing (for example,
+  resolving a function call to a class constructor, then applying the
+  "dot" operator to determine the attribute's type).
+
+  * When a symtab entry is updated with additional information, it is
+    recorded in "rejected" list.
+
+  * If the "rejected" list is non-empty after symbolically evaluating
+    the expressions, the process is repeated. Generally, no more than
+    3 passes are needed to incorporate all the information.
+
+  * While symbolically evaluating the expressions, additional Kythe
+    facts can be generated; for example, attributes (after a `.`
+    operator) can be resolved to the appropriate class
+    attribute/method or module variable/function.
+
+* The symtab and Kythe facts are output to a `.kythe.json` file, from
+  which a Kythe `.entries` file can be generated
+  (`kythe/go/platform/tools/entrystream/entrystream`).  The test cases
+  can be checked with `kythe/cxx/verifier/verifier`.
+
+
+### <a name="symtab">Symtab</a>
+
+A fully qualified name is the absolute path to an abstract entity,
+using '.'s to separate the path items.
+
+The symbol table ("symtab") is a mapping of fully qualified names
+(FQNs) to their "types". (The word "type" is used a bit loosely;
+essentially it is a term such as `class_type(FQN, Bases)` or
+`module_type(module_and_token(Module,Path,Token))` This is different
+from the usual definition of symtab, which maps a single ID to to a
+type and where there is a "stack" of IDs of the various scopes (the
+FQN resolution is done in two passes in the Python program that parses
+the source and outputs an AST).
+
+For example, in file `foo/bar.py`:
+
+    import os
+    sep = os.sep
+
+the symtab would contain entries like the following (note that `os`
+results in both a definition in the namespace of module `foo.bar` and
+a reference to the imported module in typeshed).
+
+    'foo.bar.os': module_type(module_alone(
+        '${FQN_TYPESHED}.os',
+        '${FQN_TYPESHED}/stdlib/3/os/__init__.pyi'))
+    '.foo.bar.sep': class_type('${FQN_TYPESHED}.stdlib.2and3.builtins.str', [])
+    '${FQN_TYPESHED}.os': module_type(module_alone(
+        '${FQN_TYPESHED}.os',
+        '${FQN_TYPESHED}/stdlib/3/os/__init__.pyi'))
+    '${FQN_TYPESHED}.os.sep': class_type('${FQN_TYPESHED}.stdlib.2and3.builtins.str', [])
+
+A symtab is self-contained: there is no need to import the symtabs of
+modules that it imports. However, the imports' symtabs need to be
+checked (recursively) to ensure that they are up-to-date; if any of
+the imports's symtabs is out of date, the entire chain of symtabs
+need to be recomputed.
+
+When an "import *" is processed, the symtab entries that start with
+the module name are added to the importing module's symtab (e.g., if
+`foo.py` has `from bar import *`, then all symtab entries that start
+with `path.to.bar` are added to the symtab, with the `path.to.bar`
+replaced by `path.to.foo`.
+
+Builtins are added to the "scope" of each program, as if there were a
+`from builtins import *` added to each program.  This is not how
+Python actually resolves builtin name lookup, but the effect is
+essentially the same (with a few corner cass that probably don't
+matter for real programs; after all pykythe can't figure out
+everything anyway, because of Python's dynamic nature). In this way,
+we avoid having a stack of symtabs.
+
+### Imports, cache, and batches
+
+When a source file is processed, all the imports must be processed
+first. Unlike C++ (For example), information about dependencies isn't
+available from the build system, although
+[importlab](https://github.com/google/importlab) could be
+used. Additionally, there can be circular imports, which prevent a
+strict ordering of dependencies. (Python doesn't directly allow
+circular imports; but they can be simulated by putting `import`
+statements inside functions, so that they are evaluated at run time
+rather than when the module is first compiled.)
+
+Pykythe processes each `import` statement as it is encountered.
+Circular imports are handled by keeping track of all imports that are
+"in process" and skipping them when they are encountered a second time
+(more details on this are in the [Symtab](#symtab) section).
+
+When processing a codebase, we can easily get <i>O(N<sup>3</sup>)</i>
+behavior by reprocessing the imports (where <i>N</i> is the number of
+lines of code), so a cache is used to avoid this. For each `.py` or
+`.pyi` file, a corresponding `.kythe.json` file` (and `.entries`) is
+created, containing all the Kythe facts plus the pykythe symtab and a
+hash of the source file. When an `import` is encountered, the cache
+file is used if possible:
+
+* The cache file must have been created using the same source file.
+
+* All imports (recursively) must have useable cache files.
+
+If any of the imported cache files is not useable, all source files
+that depend on it must be reprocssed to generate new cache files (that
+is, if `a.py` imports `b.py`, `b.py` imports `c.py`, and `c.py`
+imports `d.py`; and `d.kythe.json` is useable but `c.kythe.json` is
+not (because `c.py` has changed since `c.kythe.json` was created),
+then `c.py`, `b.py`, and `a.py` must be reprocessed (`d.py` can be
+reused as-is).
+
+This kind of caching reduces the algorithm to <i>O(M<sup>2</sup>)</i>
+(where <i>M</i> is the number of files), which is still a problem. A
+further refinement reduces the cost to <i>O(N)</i>. Assuming that we
+can snapshot the code base, then a single pass over all the source
+files suffices, if we can determine an appropriate ordering. We don't
+need to determine that order if instead we can mark each cache file as
+being valid. We also want to allow processing in parallel. To handle
+this, each processing run is given a unique ID (e.g., a nano-second
+time stamp plus a random number)
+
+To sum up, pykythe uses the `.kythe.json` files both as output to
+Kythe and as caches. In addition, to avoid recursively checking cache
+files, it uses `.pykythe-batch-$BATCH_ID` files (using the
+`--batch_suffix` command-line option). Multiple pykythe processes can
+run at the same time; all output is "atomic", as long as it's all on
+the same file system.
+
+(A detail: to allow for read-only source trees, the cache files are in
+a separate directory, as specified by `--kytheout`. This could in
+future be generalized by specifying patterns for transforming an input
+file to an output file, e.g.
+`kytheout_pattern='s!/stuff/to/remove/(.*/)([^/]*)\..*}!/path/to/dir/\\1\\2.kythe.json!'`
+... this probably should allow multiple patterns, to accomodate files
+in multiple repositories.)
 
 ## Known issues
 
-* Does not process the generated facts into a form that Kythe's `http_server`
-  can properly display, so `http_server` cannot be used to interactively
-  validate the generated facts. (The documentation at kythe.io seems to be
-  out of date on how to post-process the facts for use by `http_server`.)
-
-* Does not handle Python `import` statements.
-
-* Doesn't know anything about builtins (`typeshed/stdlib` should be
-  processed as a kind of preamble).
-
-* Analysis and output is limited to `ref` and `defines/binding` facts
-  for local and global variables.
+* Does not process the generated facts into a form that Kythe's
+  `http_server` can properly display, so `http_server` cannot be used
+  to interactively validate the generated facts. (The documentation at
+  kythe.io seems to be out of date on how to post-process the facts
+  for use by `http_server`.)
 
 * Needs more documentation.
 
@@ -126,6 +288,15 @@ The code is processed with `mypy` (using the `Makefile` rule `mypy`) and
   comprehensions).
 
 * Requires Python 3.7
+   * On Ubuntu: `sudo apt-get install python3.7`
+   * You also might have to do something like this: ` cd /usr/lib/python3/dist-packages &&
+sudo ln -s apt_pkg.cpython-36m-x86_64-linux-gnu.so apt_pkg.cpython-37m-x86_64-linux-gnu.so`
+
+* Requires Python 3.7 `2to3`
+   * On Ubuntu: `apt-get install 2to3 python3-lib2to3 python3-toolz`
+
+* Requires `mypy_extensions`:
+   * `python3.7 -m pip install mypy_extensions`
 
 * Outputs JSON and expects `entrystream --read_format=json` to convert
   to the form that `write_tables` expects (it would be more efficient

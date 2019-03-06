@@ -10,6 +10,7 @@ This uses lib2to3, which supports both Python2 and Python3 syntax.
 import argparse
 import base64
 import collections
+import hashlib
 import json
 import logging
 import sys
@@ -28,9 +29,9 @@ def main() -> int:
     parser.add_argument(
         '--module', required=True, help='FQN of module corresponding to --src')
     parser.add_argument(
-        '--out_fqn_expr',
+        '--out_fqn_ast',
         required=True,
-        help=('output file for fqn_expr JSON facts. '
+        help=('output file for AST (with FQNs) in JSON format. '
               'These are post-processed to further resolve names.'))
     parser.add_argument(
         '--kythe_corpus',
@@ -42,7 +43,7 @@ def main() -> int:
         dest='kythe_root',
         default='',
         help='Value of "root" in Kythe facts')
-    parser.add_argument(
+    parser.add_argument(  # TODO: this should be a triple -- see ast_raw.FAKE_SYS
         '--python_version',
         default=3,
         choices=[2, 3],
@@ -65,7 +66,8 @@ def main() -> int:
         kythe_root=args.kythe_root,
         path=args.srcpath,
         language='python',
-        contents_b64=base64.b64encode(src_content).decode('ascii'),
+        contents_base64=base64.b64encode(src_content).decode('ascii'),
+        sha1=hashlib.sha1(src_content).hexdigest(),
         encoding=src_file.encoding)
 
     logging.debug('RAW= %r', parse_tree)
@@ -83,10 +85,10 @@ def main() -> int:
         python_version=args.python_version)
     add_fqns = cooked_nodes.add_fqns(fqn_ctx)
 
-    with open(args.out_fqn_expr, 'w') as out_fqn_expr_file:
-        logging.debug('Output fqn= %r', out_fqn_expr_file)
-        print(meta.as_json_str(), file=out_fqn_expr_file)
-        print(add_fqns.as_json_str(), file=out_fqn_expr_file)
+    with open(args.out_fqn_ast, 'w') as out_fqn_ast_file:
+        logging.debug('Output fqn= %r', out_fqn_ast_file)
+        print(meta.as_json_str(), file=out_fqn_ast_file)
+        print(add_fqns.as_json_str(), file=out_fqn_ast_file)
     logging.debug('Finished')
     return 0
 
@@ -94,6 +96,5 @@ def main() -> int:
 if __name__ == '__main__':
     if sys.version_info < (3, 6):
         # Can't use f'...' because that requires 3.6:
-        raise RuntimeError('Version must be 3.6 or later: {}'.format(
-            sys.version_info))
+        raise RuntimeError(f'Version must be 3.6 or later: {sys.version_info}')
     sys.exit(main())
