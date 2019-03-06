@@ -1,6 +1,6 @@
 """Variants from the typing module, for debugging."""
 
-# TODO: remove this when no longer needed.
+# TODO: delete this when no longer needed.
 
 from typing import Any, Sequence, Type, Tuple, TypeVar, Union
 

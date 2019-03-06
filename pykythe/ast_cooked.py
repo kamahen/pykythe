@@ -1057,7 +1057,7 @@ class ImportDottedAsNamesFqn(ListBase):
         # self.items = typing.cast(Sequence[ImportDottedAsNameFqn], items)
         typing_debug.assert_all_isinstance(
             (ImportDottedAsNameFqn, ImportDottedFqn),
-            self.items)  # TODO: remove
+            self.items)  # TODO: delete
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self  # The components have already been processed
@@ -1069,7 +1069,7 @@ class ImportDottedAsNamesNode(ListBase):
     def __post_init__(self) -> None:
         # self.items = typing.cast(Sequence[ImportDottedAsNameNode], items)
         typing_debug.assert_all_isinstance(
-            ImportDottedAsNameNode, self.items)  # TODO: remove
+            ImportDottedAsNameNode, self.items)  # TODO: delete
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return ImportDottedAsNamesFqn(
@@ -1098,8 +1098,6 @@ class ImportDottedFqn(Base):
 @dataclass(frozen=True)
 class ImportFromStmt(Base):
     """Corresponds to `import_name`."""
-
-    # TODO: new ast_cooked class ImportDottedNode for from_name=None ?
 
     from_dots: Sequence[Base]
     from_name: Optional[Base]

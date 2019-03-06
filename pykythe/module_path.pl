@@ -60,7 +60,7 @@ simple_path_module(Path, Module) :-
 %! path_to_python_module_or_unknown(+Path, -Fqn) is det.
 %% Get the Fqn for the Python module corresponding to Path or
 %% a '<unknown>...' atom.
-%% TODO: harmonize this with path_module/2.
+%% TODO: harmonize with path_module/2.
 path_to_python_module_or_unknown(Path, Fqn) :-
     (  path_to_python_module(Path, Fqn)
     -> true
@@ -87,7 +87,7 @@ path_to_python_module(Path, Fqn) :-
 %% Get a Path into a canonical (absolute) form.
 %% Fails if the file or directory doesn't exist.
 canonical_path(Path, CanonicalPath) :-
-    %% TODO: besides being slightly less efficient, this doesn't do
+    %% TODO: besides being slightly inefficient, this doesn't do
     %%       quite what we want -- probably want to change
     %%       path_expand/2 to use py_ext/2 for files and to use the
     %%       given file name for directories. However, it's unlikely
@@ -100,7 +100,7 @@ canonical_path(Path, CanonicalPath) :-
     -> true
     ;  absolute_file_name(Path, AbsPath, [access(read), file_type(directory), file_errors(fail)])
     ),
-    atom_string(CanonicalPath, AbsPath). % TODO: use string
+    atom_string(CanonicalPath, AbsPath).
 
 %! full_path_prefixed(+Path, +DeprefixedPath, +Prefixes:list, ?Module, -ModuleAndMaybeToken) is det.
 %% ModuleAndMaybeToken is either module_alone or module_and_token functor.
@@ -190,7 +190,7 @@ split_module_atom(Module, ModulePieces) :-
        split_atom(Sub.1, '/', '', ModulePieces0),
        ModulePieces = ['<unknown>'|ModulePieces0]
     ;  re_matchsub('(<unknown>\\.{[^}]*})\\.(.*)$', Module, Sub, [anchored(true)])
-    -> %% TODO: does this situation every arise?
+    -> %% TODO: does this situation ever arise?
        split_atom(Sub.2, '.', '', ModulePieces2),
        ModulePieces = [Sub.1|ModulePieces2]
     ;  split_atom(Module, '.', '', ModulePieces)

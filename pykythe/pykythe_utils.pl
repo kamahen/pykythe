@@ -101,7 +101,7 @@ do_if(Cond, Pred) :-
     ).
 
 %! dump_term(+Msg:atom, +Term) is det.
-%% TODO: Delete this debugging code
+%% TODO: delete this debugging code
 dump_term(Msg, Term) :-
     dump_term(Msg, Term, [tab_width(0),
                           indent_arguments(2),
@@ -151,7 +151,7 @@ get_dict_default(Key, Dict, Default, Value) :-
 %% However, SHA-224 or SHA-384 ought to be used:
 %%          https://www.schneier.com/blog/archives/2018/12/md5_and_sha-1_s.html
 %% (SHA-1 is 20 digits (40 chars),  SHA-224 is 28 digits, SHA-384 is 48 digits.
-%% TODO: do we need to incorporate the encoding in this? (Note that
+%% TODO: incorporate the encoding in this? (Note that
 %%       Python's hashlib.sha1 requires bytes, not text.)
 hash_hex(Text, Hex) :-
     sha_hash(Text, Hash, []),   % Default option is algorithm(sha1)

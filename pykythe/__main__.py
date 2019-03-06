@@ -2,10 +2,9 @@
 """Main program for Python parser that outputs JSON facts.
 
 This uses lib2to3, which supports both Python2 and Python3 syntax.
-"""
 
-# TODO: The code here is temporary scaffolding, and will change
-#       significantly before release.
+This is called by pykythe.pl, which further processes the JSON facts.
+"""
 
 import argparse
 import base64

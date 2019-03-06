@@ -6,9 +6,9 @@ set -e -x
 MAKEFILE_DIR="$(realpath $(dirname $0)/..)"
 TEST_DATA_DIR="$(realpath $(dirname $0)/../test_data)"
 BATCH_ID=BBB
-# TARGET0=t0
+TARGET0=t0
 # TARGET0=circular_bases
-TARGET0=t2
+# TARGET0=t2
 # TARGET0=simple
 TARGET=/tmp/pykythe_test/KYTHE/tmp/pykythe_test/SUBST${TEST_DATA_DIR}/${TARGET0}.verifier
 

@@ -18,14 +18,6 @@
 %% table and inserts Fqn-[] (the "Any" type) if it's not there (if it
 %% is there, Type is union-ed with whatever is alrady in the symtab).
 
-%% TODO: :- use_module(library(protobufs)).  % instead of input/output JSON
-%%        ... handling JSON seems to be the most expensive thing,
-%%            according to profile/1 (it also seems to be the main
-%%            contributor to garbage collection; base64 manipulation is
-%%            also expensive).
-%% TODO: output Prolog terms from pykythe/__main__.py instead of JSON
-%%       (should be much faster reading them in).
-
 %% Names and naming conventions:
 %%  'astn' is an AST (Abstract Syntax Tree) node.
 %%  'fqn' is fully qualified name
@@ -173,13 +165,10 @@
 %% (which can be used on either a class or a module [actually, on
 %% anything]) and to stop recursive imports.
 
-%% TODO: can we remove the kyfact accumulator from the first pass
-%%       and generate all the Kythe information from the second pass?
+%% TODO: try to remove the kyfact accumulator from the first pass
+%%       and generate all the Kythe information from the second pass
 
 %% TODO: Use QLF: http://www.swi-prolog.org/pldoc/man?section=qlf
-
-%% TODO: remove %-%-% comments which are for where the Symtab is
-%%       referenced or updated.
 
 :- module(pykythe, [pykythe_main/0]).
 
@@ -190,16 +179,16 @@
 :- use_module(library(debug), [assertion/1, debug/3]).
 :- use_module(library(edcg)).   % requires: ?- pack_install(edcg).
 :- use_module(library(error), [must_be/2, type_error/2]).
-:- use_module(library(filesex), [directory_file_path/3, link_file/3]). % TODO: remove link_file/3
+:- use_module(library(filesex), [directory_file_path/3, link_file/3]).
 :- use_module(library(lists), [append/2, append/3, list_to_set/2, member/2, reverse/2, select/3]).
-:- use_module(library(pcre), [re_replace/4]). % TODO: remove
+:- use_module(library(pcre), [re_replace/4]).
 :- use_module(library(optparse), [opt_arguments/3]).
 :- use_module(library(ordsets), [list_to_ord_set/2, ord_empty/1, ord_union/2, ord_union/3, ord_add_element/3]).
 :- use_module(library(pairs), [pairs_keys/2, pairs_values/2, pairs_keys_values/3]).
 :- use_module(library(prolog_stack)).  % For catch_with_backtrace
 :- use_module(library(readutil), [read_file_to_string/3]).
 :- use_module(library(yall)).
-%% :- use_module(library(apply_macros).  % TODO: for performance
+%% :- use_module(library(apply_macros).  % TODO: for performance (also maplist_kyfact_syrej etc)
 :- use_module(must_once, [must_once/1, must_once_msg/2, must_once_msg/3, fail/1,
                           must_once/6 as must_once_kyfact_symrej,
                           must_once/3 as must_once_symrej]).
@@ -230,8 +219,11 @@
 %%       later.  Therefore, we don't enable style_check(+var_branches)
 :- style_check(-var_branches).
 
-%% TODO: there are too many rdet declarations, and they slow things down,
-%%       possibly by inhibiting some tail recursion optimization.
+%% TODO: there are too many rdet declarations, and they seem to
+%%       have negligible effect on performance.
+%%       Ideally, we should use some expansion that
+%%       uses setup_call_cleanup/3 to check for determinism
+%%       (or determiistic/1).
 
 %% Higher-level predicates that we use deterministically:
 :- maplist(rdet, [convlist/3,
@@ -429,7 +421,7 @@
 %% source; our de-dup keeps the type information for the first such
 %% definition and outputs defines/binding for all instances.
 
-%% TODO: check for duplicate edge facts, which indicate a bug.
+%% TODO: check for duplicate edge facts that indicate a bug.
 edcg:acc_info(kyfact, T, Out, In, Out=[T|In]).
 
 %% "expr" accumulator gets expressions that need interpreting.
@@ -533,6 +525,7 @@ edcg:pred_info(exprs, 1,                            [expr]).
 %%     set_prolog_flag(autoload, true),
 %%     profile(pykythe:pykythe_main2).
 %%
+%% TODO: re-run profiling (the following is fairly old)
 %% Profiling results:
 %%   CONCLUSION: it's worth computing SHA-1 for source, to avoid
 %%               all the decoding.
@@ -558,32 +551,32 @@ edcg:pred_info(exprs, 1,                            [expr]).
 %%          json_read_dict/2              34%
 %%      $garbage_collect/1           29%       (mostly from put_dict/4)
 pykythe_main :-
-    log_if(true, 'Start'),      % TODO: remove
-    %% TODO: remove {debugger,print}_write_options
+    log_if(true, 'Start'),      % TODO: delete
+    %% TODO: delete {debugger,print}_write_options
     set_prolog_flag(debugger_write_options, [quoted(true), portray(true), max_depth(14), attributes(portray), spacing(next_argument)]),
     set_prolog_flag(print_write_options, [quoted(true), portray(true), max_depth(14), attributes(portray), spacing(next_argument)]),
-    set_prolog_flag(report_error, true),         % TODO: remove
-    set_prolog_flag(backtrace, true),            % TODO: remove
-    set_prolog_flag(backtrace_show_lines, true), % TODO: remove
+    set_prolog_flag(report_error, true),         % TODO: delete
+    set_prolog_flag(backtrace, true),            % TODO: delete
+    set_prolog_flag(backtrace_show_lines, true), % TODO: delete
     %% Play nice with emacs *compilation* (except it doesn't
     %% quite work properly ... no idea why):
-    %% set_prolog_flag(color_term, false), % TODO: remove (to ~/.plrc)
+    %% set_prolog_flag(color_term, false), % TODO: delete (to ~/.plrc)
     %% TODO: the following might not be needed when the
     %%       initialization/2 directive is enabled.
     catch_with_backtrace(pykythe_main2,
                          Error,
                          ( print_message(error, Error),
                            halt(1) )),
-    log_if(true, 'End'),                         % TODO: remove
+    log_if(true, 'End'),                         % TODO: delete
     halt(0).
 
 pykythe_main2 :-
-    retractall(rdet:det(_)), % TODO: remove this crude work-around a weird bug with backtrace and rdet.
+    retractall(rdet:det(_)), % TODO: delete this crude work-around a weird bug with backtrace and rdet.
     %% set_prolog_flag(gc, true),  % TODO: tune GC for performance
     %% set_prolog_flag(agc_margin, 0),  % TODO: tune GC for performance
-    on_signal(int, _, throw),  % TODO: remove?
-    on_signal(term, _, throw),  % TODO: remove?
-    %% on_signal(int, _, interrupt),  % TODO: maybe reinstate
+    on_signal(int, _, throw),  % TODO: delete?
+    on_signal(term, _, throw),  % TODO: delete?
+    %% on_signal(int, _, interrupt),  % TODO: reinstate if don't need traceback
     pykythe_opts(SrcPath, Opts),
     opt(Opts, builtins_symtab(BuiltinsSymtabFile)),
     %% BuiltinsSymtabFile is created by gen_builtins_symtab.pl
@@ -665,11 +658,10 @@ pykythe_opts(SrcPath, Opts) :-
 %% infinite recursion.
 process_module_cached_or_from_src(Opts, FromSrcOk, SrcPath, SrcFqn, Symtab0, Symtab) :-
     process_module_cached_or_from_src_setup(Opts, SrcPath, SrcPathAbs, KythePath),
-    (  get_dict(SrcFqn, Symtab0, _ModuleValue) %-%-%
+    (  get_dict(SrcFqn, Symtab0, _ModuleValue)
     -> %% Module in symtab (possibly recursive import): skip it.
        Symtab = Symtab0,
-       log_if(true,
-              'Skipping (already processed/processing) ~q: ~q', [SrcFqn, SrcPath]) % TODO: delete
+       log_if(true, 'Skipping (already processed/processing) ~q: ~q', [SrcFqn, SrcPath])
     ;  process_module_cached(Opts, FromSrcOk, KythePath, SrcPathAbs, Symtab0, Symtab)
     -> true
     ;  process_module_from_src(Opts, FromSrcOk, KythePath, SrcFqn, Symtab0, Symtab)
@@ -710,8 +702,7 @@ process_module_cached(Opts, FromSrcOk, KythePath, SrcPath, Symtab0, Symtab) :-
         maybe_open_read(KythePath, KytheInputStream),
         process_module_cached_impl(Opts, FromSrcOk, KytheInputStream, KythePath, SrcPath, Symtab0, Symtab),
         close(KytheInputStream)),
-    log_if(true,
-           'Reused ~q for ~q', [KythePath, SrcPath]), % TODO: delete
+    log_if(true, 'Reused ~q for ~q', [KythePath, SrcPath]),
     !. % TODO: delete (when the fail catch-all clause is removed).
 process_module_cached(_Opts, _FromSrcOk, _KytheInputStream, KythePath, SrcPath, _Symtab0, _Symtab)  :-
     %% TODO: need a better reason for failure ... the tests in
@@ -735,12 +726,11 @@ process_module_cached_or_from_src_setup(Opts, SrcPath, SrcPathAbs, KythePath) :-
     atomic_list_concat([KytheOutDir, SrcPathBase, KytheOutSuffix], KythePath).
 
 %! process_module_cached_impl(+Opts:list, +FromSrcOk:{from_src_ok,cached_only}, KytheInputStream, +KythePath:atom, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
-%% TODO: needs to set Modules (see process_module_from_src/6)
 process_module_cached_impl(Opts, FromSrcOk, KytheInputStream, KythePath, SrcPath, Symtab0, Symtab)  :-
     opt(Opts, version(Version)),
     (  process_module_cached_batch(Opts, KythePath, SrcPath, SymtabFromCache, KythePathBatch)
     -> merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab),
-       log_if(false, 'Succeeded/1(~w) in reusing ~q for ~q', [FromSrcOk, KythePathBatch, SrcPath]) % TODO: delete
+       log_if(false, 'Succeeded/1(~w) in reusing ~q for ~q', [FromSrcOk, KythePathBatch, SrcPath])
     ;  %% The following validation depends on what kyfile//1 generates.
        read_cache_and_validate(KytheInputStream, KythePath, SrcPath, Version, SymtabFromCache),
        %% TODO: modules_in_symtab not needed because foldl_process_module_cached_or_from_src/5
@@ -754,7 +744,7 @@ process_module_cached_impl(Opts, FromSrcOk, KytheInputStream, KythePath, SrcPath
        %% the cached result).
        merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab1),
        foldl_process_module_cached_or_from_src(Opts, cached_only, ModulesInSymtab, Symtab1, Symtab),
-       log_if(false, 'Succeeded/2(~w) in reusing ~q for ~q', [FromSrcOk, KythePath, SrcPath]) % TODO: delete
+       log_if(false, 'Succeeded/2(~w) in reusing ~q for ~q', [FromSrcOk, KythePath, SrcPath])
     ).
 
 %! process_module_cached_batch(+Opts:list, +KythePath:atom, +SrcPath:atom, -Symtab:dict, -KythePathBatch:atom) is semidet.
@@ -777,7 +767,7 @@ foldl_process_module_cached_or_from_src(Opts, FromSrcOk, [M|Modules], Symtab0, S
     (  M = module_type(Module),
        path_part(Module, SrcPath), % TODO: fix failure for "import *"
        module_part(Module, SrcFqn)
-    -> log_if(false, 'Trying/2(~w) imported ~q: ~q', [FromSrcOk, Module, SrcPath]), % TODO: delete
+    -> log_if(false, 'Trying/2(~w) imported ~q: ~q', [FromSrcOk, Module, SrcPath]),
        %% TODO: don't do this if module_and_token and module !=
        %% module_path or something like that (although it'll just fail
        %% because the file doesn't exist)
@@ -822,7 +812,7 @@ read_cache_and_validate(KytheInputStream, KythePath, SrcPath, Version, SymtabFro
 %% If a value is already in the cache, it is preserved.
 merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab) :-
     dict_pairs(SymtabFromCache, symtab, SymtabFromCachePairs),
-    update_new_dict(SymtabFromCachePairs, Symtab0, Symtab). %-%-%
+    update_new_dict(SymtabFromCachePairs, Symtab0, Symtab).
 
 %! process_module_from_src(+Opts:list, +FromSrcOk, +KythePath:atom, +SrcFqn:atom, +Symtab0, -Symtab) is semidet.
 %% Read in a single file (JSON output from running --parsecmd, which
@@ -851,27 +841,25 @@ process_module_from_src_impl(Opts, KythePath, SrcPath, SrcFqn, Symtab0, Symtab) 
     Meta.opts = Opts,
     Meta.version = Version,
     Meta.src_fqn = SrcFqn,
-    do_if(false, dump_term('NODES', Nodes)),  % TODO: delete
+    do_if(false, dump_term('NODES', Nodes)),
     process_nodes(Nodes, src{src_fqn: SrcFqn, src: SrcPath}, KytheFacts1, Exprs, Meta),
     builtins_pairs(BuiltinsPairs),
     builtins_symtab_extend(BuiltinsPairs, SrcFqn, Symtab0, Symtab0a),
-    put_dict(SrcFqn, Symtab0a, [module_type(module_alone(SrcFqn,SrcPath))], Symtab1), %-%-%
+    put_dict(SrcFqn, Symtab0a, [module_type(module_alone(SrcFqn,SrcPath))], Symtab1),
     builtins_version(BuiltinsVersion),
     must_once_msg(BuiltinsVersion == Version,
                   'builtins_version(~q) should be ~q', [BuiltinsVersion, Version]),
-    %% TODO: verify not needed: merge_cache_into_symtab(BuiltinsSymtab, Symtab1, Symtab1a),
-    Symtab1a = Symtab1,
     modules_in_exprs(Exprs, ModulesInExprs),
     do_if(trace_file(Meta.path),
-                     dump_term('PASS1-EXPR_MODULES', ModulesInExprs)), % TODO: delete
+                     dump_term('PASS1-EXPR_MODULES', ModulesInExprs)),
     do_if(trace_file(Meta.path),
-          dump_term('PASS1-EXPR', Exprs)), % TODO: delete
+          dump_term('PASS1-EXPR', Exprs)),
     %% Note that the following allows any imported module to be from_src
     %% (FromSrcOk to process_module_cached_or_from_src is from_src_ok).
     %% TODO: for ModulesInExprs that are module_star, need
     %%       to update symtab with top-level items (starts
     %%       with module. and doesn't have '.' inside).
-    foldl_process_module_cached_or_from_src(Opts, from_src_ok, ModulesInExprs, Symtab1a, Symtab1WithImports),
+    foldl_process_module_cached_or_from_src(Opts, from_src_ok, ModulesInExprs, Symtab1, Symtab1WithImports),
     assign_exprs(Exprs, Meta, Symtab1WithImports, Symtab, KytheFacts2),
     validate_symtab(Symtab),
     symtab_as_kyfact(Symtab, Meta, SymtabKytheFact),
@@ -885,11 +873,10 @@ process_module_from_src_impl(Opts, KythePath, SrcPath, SrcFqn, Symtab0, Symtab) 
     -> write_atomic(write_batch_symtab(Symtab, Version), KythePathBatch)
     ;  true
     ),
-    log_if(true, % TODO: delete
-           'Finished output ~q (~q) to ~q', [SrcPath, KythePath, SrcFqn]),
+    log_if(true, 'Finished output ~q (~q) to ~q', [SrcPath, KythePath, SrcFqn]),
     !.
 process_module_from_src_impl(_Opts, KythePath, SrcPath, SrcFqn, _Symtab0, _Symtab) :-
-    %% TODO: remove this catch-all clause
+    %% TODO: delete this catch-all clause
     type_error(process_module_from_src_impl, [KythePath, SrcPath, SrcFqn]),
     fail.
 
@@ -1008,10 +995,11 @@ run_parse_cmd(Opts, SrcPath, SrcFqn, OutPath) :-
     opts(Opts, [python_version(PythonVersion), parsecmd(ParseCmd), kythe_corpus(KytheCorpus), kythe_root(KytheRoot)]),
     must_once_msg(memberchk(PythonVersion, [2, 3]), 'Invalid Python version: ~q', [PythonVersion]),
     tmp_file_stream(OutPath, OutPathStream, [encoding(binary), extension('fqn-json')]),
-    re_replace("/"/g, "@", SrcPath, SrcPathSubs), % TODO: remove
-    atomic_list_concat(['/tmp/pykythe-parser-output--', SrcPathSubs], TmpParserOutput), % TODO: remove
-    do_if(true, (pykythe_utils:safe_delete_file(TmpParserOutput), % TODO: remove
-                 link_file(OutPath, TmpParserOutput, hard))), % TODO: remove
+    do_if(true, ( % TODO: delete
+                  re_replace("/"/g, "@", SrcPath, SrcPathSubs),
+                  atomic_list_concat(['/tmp/pykythe-parser-output--', SrcPathSubs], TmpParserOutput),
+                  pykythe_utils:safe_delete_file(TmpParserOutput),
+                  link_file(OutPath, TmpParserOutput, hard))),
     close(OutPathStream),
     atomic_list_concat(
             [ParseCmd,
@@ -1268,7 +1256,7 @@ kynode('AtomDotNode'{atom: Atom, binds: bool('True'), attr_name: AttrNameAstn},
 kynode('AtomSubscriptNode'{atom: Atom,
                            binds: bool('False'),
                            subscripts: Subscripts},
-       [subscr_op(AtomType)]) -->> !,  %% TODO: subscr_op => subscr_op (and elsewhere)
+       [subscr_op(AtomType)]) -->> !,
     kynode(Atom, AtomType),
     maplist_kynode(Subscripts, _).
 kynode('AtomSubscriptNode'{atom: Atom,
@@ -1407,7 +1395,7 @@ kynode('ListMakerNode'{items: Items},
     maplist_kynode(Items, ItemsType).
 %% 'NameBindsFqn' is only for 'AssignExprStmt' -- for import statements,
 %% it's handled separately.
-%% TODO: special case this within processing of AssignExprStmt?  IMPORTANT
+%% TODO: special case this within processing of AssignExprStmt?
 kynode('NameBindsFqn'{fqn: str(Fqn), name: NameAstn},
        [var_binds(Fqn)]) -->> !,  %% result is same as NameRefFqn
     kyanchor_node_kyedge_fqn(NameAstn, '/kythe/edge/defines/binding', Fqn), % only difference from NameRef
@@ -1491,7 +1479,7 @@ kynode('WithStmt'{items: Items, suite: Suite},
        [stmt(with)]) -->> !,
     maplist_kynode(Items, _),   % handled by WithItemNode
     kynode(Suite, _).
-kynode(X, Ty) -->>              % TODO: remove this catch-all clause
+kynode(X, Ty) -->>              % TODO: delete this catch-all clause
     { type_error(kynode, [X,Ty]) }.
 
 %! kynode_if_stmt(+Results:list, +Items:list)//[kyfact,expr,file_meta] is det.
@@ -1714,7 +1702,6 @@ kyImportFromStmt(FromDots,
 
 %! kyNameRawNode(+Node, -Astn, -Name:atom) is det.
 %  Used by DottedNameNode to process a list of NameRawNode into a list of atoms.
-% TODO: needs some file resolution
 kyNameRawNode('NameRawNode'{name: NameAstn}, astn(Start, End, Name), Name) :-
     node_astn(NameAstn, Start, End, Name).
 
@@ -1740,7 +1727,7 @@ assign_normalized(Left, Right) -->>
     (  { LeftType = [omitted] }
     -> [ ]
     ;  { RightType = [omitted] ; RightType = [ellipsis] }
-    -> [ assign(LeftType, []) ]:expr % TODO: Right is left uninstantiated
+    -> [ assign(LeftType, []) ]:expr
     ;  [ assign(LeftType, RightType) ]:expr
     ).
 
@@ -1916,13 +1903,13 @@ assign_exprs_count_impl(Exprs, Meta, Symtab0, SymtabWithRej, Rej, KytheFacts) :-
     %% TODO: is the following needed? The accumulator should have
     %%       already added the types to the symtab.
     foldl(add_rej_to_symtab, Rej, SymtabAfterEval, SymtabWithRej),
-    must_once(SymtabAfterEval == SymtabWithRej). % TODO: remove if this is always true.
+    must_once(SymtabAfterEval == SymtabWithRej). % TODO: delete if this is always true.
 
 %! maplist_assign_exprs_eval(+Assign:list)//[kyfact,symrej,file_meta] is det.
 %% Process a list of assign or eval nodes.
 maplist_eval_assign_expr([]) -->> [ ].
 maplist_eval_assign_expr([Assign|Assigns]) -->>
-    do_if_file(dump_term('(EVAL_ASSIGN_EXPR)', Assign)), % TODO: delete
+    do_if_file(dump_term('(EVAL_ASSIGN_EXPR)', Assign)),
     eval_assign_expr(Assign),
     maplist_eval_assign_expr(Assigns).
 
@@ -1932,26 +1919,26 @@ eval_assign_expr(assign(Left, Right)) -->> !,
     %% e.g.:
     %% _S = TypeVar('_S')
     %% => assign([var_binds('.home.peter.src.typeshed.stdlib.3.collections._S')], [call([var('.home.peter.src.typeshed.stdlib.3.collections.TypeVar')],[['.home.peter.src.typeshed.stdlib.2and3.builtins.str']])])
-    log_if_file('ASSIGN(~q, ~q)', [Left, Right]), % TODO: delete
+    log_if_file('ASSIGN(~q, ~q)', [Left, Right]),
     eval_union_type(Right, RightEval),
     eval_union_type(Left, LeftEval),
     maplist_kyfact_symrej(eval_assign_single(RightEval), LeftEval).
 eval_assign_expr(expr(Right)) -->> !,
     eval_union_type(Right, RightEval),
-    log_if_file('EVAL(~q => ~q)', [Right, RightEval]). % TODO: delete
+    log_if_file('EVAL(~q => ~q)', [Right, RightEval]).
 eval_assign_expr(class_type(Fqn, Bases)) -->> !,
     maplist_kyfact_symrej(eval_union_type, Bases, BasesEval),
-    [ Fqn-[class_type(Fqn, BasesEval)] ]:symrej. %-%-%
+    [ Fqn-[class_type(Fqn, BasesEval)] ]:symrej.
 eval_assign_expr(function_type(Fqn, ReturnType)) -->> !,
     eval_union_type(ReturnType, ReturnTypeEval),
-    [ Fqn-[function_type(Fqn, ReturnTypeEval)] ]:symrej. %-%-%
+    [ Fqn-[function_type(Fqn, ReturnTypeEval)] ]:symrej.
 eval_assign_expr(assign_import_module(Fqn, ModuleAndMaybeToken)) -->> !,
     %% Add the module to symtab, and the item it binds to
     { full_module_part(ModuleAndMaybeToken, FullModule) },
     { path_part(ModuleAndMaybeToken, Path) },
-    [ FullModule-[module_type(module_alone(FullModule,Path))] ]:symrej, %-%-%
-    [ Fqn-[module_type(ModuleAndMaybeToken)] ]:symrej. %-%-%
-eval_assign_expr(Expr) -->> % TODO: remove this catch-all clause and the cuts above.
+    [ FullModule-[module_type(module_alone(FullModule,Path))] ]:symrej,
+    [ Fqn-[module_type(ModuleAndMaybeToken)] ]:symrej.
+eval_assign_expr(Expr) -->> % TODO: delete this catch-all clause and the cuts above.
     { type_error(assign_expr_eval, Expr) }.
 
 %! eval_assign_single(+Right, +Left)//[kyfact,symrej,file_meta] is det.
@@ -1962,14 +1949,13 @@ eval_assign_single(RightEval, var_binds(Fqn)) -->> !,
 eval_assign_single(RightEval, dot_op_binds(AtomType, AttrAstn)) -->> !,
     maplist_kyfact_symrej(eval_assign_dot_op_binds_single(RightEval, AttrAstn), AtomType).
 eval_assign_single(RightEval, subscr_op_binds(var(Fqn))) -->> !,
-    %% TODO: need to iterate over type
     [ Fqn-[todo_list(RightEval)] ]:symrej,
     kyanchor_node_kyedge_fqn(Fqn, '/kythe/edge/ref', Fqn).  %% TODO: ref-modifies
 eval_assign_single(_RightEval, Left) -->>
     memberchk(Left, [var_binds(_), dot_op_binds(_, _), subscr_op_binds(_)]),
     %% l.h.s. is of a form that we can't process.
     !.
-eval_assign_single(RightEval, LeftEval) -->> % TODO: remove this catch-all clause and the cuts above.
+eval_assign_single(RightEval, LeftEval) -->> % TODO: delete this catch-all clause and the cuts above.
     { type_error(eval_assign_single, [left=LeftEval, right=RightEval]) }.
 
 eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), class_type(ClassName,_Bases)) -->> !,
@@ -1985,7 +1971,7 @@ eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), module_type
     { atomic_list_concat([Module, '.', Token, '.', AttrName], Fqn) },
     [ Fqn-RightEval ]:symrej,
     kyanchor_kyedge_fqn(Start, End, '/kythe/edge/defines/binding', Fqn).
-eval_assign_dot_op_binds_single(RightEval, LeftEval) -->> % TODO: remove this catch-all clause and the cuts above.
+eval_assign_dot_op_binds_single(RightEval, LeftEval) -->> % TODO: delete this catch-all clause and the cuts above.
     { type_error(eval_assign_dot_op_binds_single, [left=LeftEval, right=RightEval]) }.
 
 
@@ -2022,7 +2008,7 @@ eval_single_type(module_type(ModuleAndMaybeToken),
     [ ].
 eval_single_type(dot_op(Atom, Astn), EvalType) -->> !,
     eval_union_type(Atom, AtomEval),
-    %% TODO: MRO for class -- watch out ofr Bases containing Unions!
+    %% TODO: MRO for class -- watch out for Bases containing Unions!
     maplist_kyfact_symrej_combine(eval_atom_dot_single(Astn), AtomEval, EvalType).
 eval_single_type(dot_op_binds(Atom, Astn), [dot_op_binds(AtomEval, Astn)]) -->> !,
     eval_union_type(Atom, AtomEval).
@@ -2033,7 +2019,6 @@ eval_single_type(call(Atom, Parms), EvalType) -->> !,
 eval_single_type(call_op(_OpAstns, ArgsType), EvalType) -->> !,
     maplist_kyfact_symrej(eval_union_type, ArgsType, _ArgsTypeEval),
     %% See typeshed/stdlib/2and3/operator.pyi
-    %% TODO - create a table of operators that's more accurate
     EvalType = [].
 eval_single_type(function_type(Name, ReturnType), [function_type(Name, ReturnTypeEval)]) -->> !,
     eval_union_type(ReturnType, ReturnTypeEval).
@@ -2060,7 +2045,7 @@ eval_single_type(todo_subscript(_), []) -->> !, [ ].
 eval_single_type(todo_arg(_, _), []) -->> !, [ ].
 eval_single_type(todo_list(_), []) -->> !, [ ].
 eval_single_type(todo_exprlist(_), []) -->> !, [ ].
-eval_single_type(Expr, EvalType) -->> % TODO: remove this catch-all clause.
+eval_single_type(Expr, EvalType) -->> % TODO: delete this catch-all clause.
     { type_error(eval_single_type, ['Expr'=Expr, 'EvalType'=EvalType]) }.
 
 %! eval_atom_dot_single(+Astn, +AtomSingleType:ordset, -EvalType:ordset)//[kyfact,symrej,file_meta] is det.
@@ -2162,7 +2147,7 @@ remove_class_cycles_one([Type|Types], TypesOut, Seen, SeenOut) :-
 %! add_rej_to_symtab(+FqnRejType:pair, +Symtab0, -Symtab) is det.
 %% For Fqn-RejType pairs in FqnRejTypes, add to symtab.
 add_rej_to_symtab(Fqn-RejType, Symtab0, Symtab) :-
-    get_dict(Fqn, Symtab0, FqnType), %-%-%
+    get_dict(Fqn, Symtab0, FqnType),
     type_union(FqnType, RejType, CombinedType),
     put_dict(Fqn, Symtab0, CombinedType, Symtab).
 
@@ -2180,12 +2165,12 @@ add_rej_to_symtab(Fqn-RejType, Symtab0, Symtab) :-
 %% TODO: use library(assoc) or library(rbtrees) or trie or hash
 %% instead of dict for Symtab (performance) symrej_accum(Fqn-Type,
 symrej_accum(Fqn-Type, sym_rej(Symtab0,Rej0), sym_rej(Symtab,Rej)) :-
-    (  get_dict(Fqn, Symtab0, TypeSymtab) %-%-%
+    (  get_dict(Fqn, Symtab0, TypeSymtab)
     -> symrej_accum_found(Fqn, Type, TypeSymtab, Symtab0, Symtab, Rej0, Rej)
     ;  Rej = Rej0,
        %% ensure Type is instantiated (defaults to []), if this is a lookup
        ( Type = [] -> true ; true ),  % see comment in eval_single_type//1
-       put_dict(Fqn, Symtab0, Type, Symtab) %-%-%
+       put_dict(Fqn, Symtab0, Type, Symtab)
     ).
 
 %! symtab_lookup(+Fqn, ?Type)//[symrej] is semidet.
@@ -2211,7 +2196,7 @@ symrej_accum_found(Fqn, Type, TypeSymtab, Symtab0, Symtab, Rej0, Rej) :-
        (  TypeComb = TypeSymtab
        -> Symtab = Symtab0,
           Rej = Rej0
-       ;  put_dict(Fqn, Symtab0, TypeComb, Symtab), %-%-%
+       ;  put_dict(Fqn, Symtab0, TypeComb, Symtab),
           Rej = [Fqn-Type|Rej0]
        )
     ).

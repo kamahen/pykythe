@@ -356,7 +356,7 @@ def cvt_comp_for(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         comp_iter = cvt(children[4], ctx_for)  # evaluated in context of `for`
     else:
         comp_iter = ast_cooked.OMITTED_NODE
-    if ctx.python_version == 2:  # TODO: Python2 test case
+    if ctx.python_version == 2:  # TODO: Python 2 test case
         ctx.scope_bindings.update(ctx_for.scope_bindings)  # pragma: no cover
     return ast_cooked.CompForNode(
         for_astn=ctx.src_file.astn_to_range(children[0]),
@@ -405,7 +405,7 @@ def cvt_comparison(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     for i in range(1, len(node.children), 2):
         op_astns = xcast(ast_cooked.OpNode, cvt(
             node.children[i], ctx)).op_astns
-        typing_debug.assert_all_isinstance(ast.Astn, op_astns)  # TODO: remove
+        typing_debug.assert_all_isinstance(ast.Astn, op_astns)  # TODO: delete
         result = ast_cooked.OpNode(
             op_astns=op_astns, args=[result,
                                      cvt(node.children[i + 1], ctx)])
@@ -510,10 +510,8 @@ def cvt_dotted_as_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
                         cvt_name_ctx(NameCtx.RAW, node.children[0], ctx))
     if len(node.children) == 1:
         # `import os.path` creates a binding for `os`.
-        # TODO: new ast_cooked class ImportDottedNode for as_name=None
         return ast_cooked.ImportDottedAsNameNode(
             dotted_name=dotted_name, as_name=None)
-    # TODO: test case `dotted_name 'as' NAME`
     return ast_cooked.ImportDottedAsNameNode(
         dotted_name=dotted_name,
         as_name=cvt_name_ctx(NameCtx.BINDING, node.children[2], ctx))
@@ -594,7 +592,6 @@ def cvt_expr_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """
     assert ctx.name_ctx is NameCtx.REF, [node]
     if len(node.children) == 1:
-        # TODO: ast_cooked.ExprStmt:
         return ast_cooked.make_stmts([
             ast_cooked.AssignMultipleExprStmt(
                 left_list=[], expr=cvt(node.children[0], ctx))])
@@ -1058,7 +1055,7 @@ def cvt_star_expr(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     # This can appear on the l.h.s: a, *b = [1,2,3]
     # Ignore the `*`
     # TODO: might need to do something else if pykythe.pl needs
-    #       to know that this is a list
+    #       to know that this is a list. See Issue #11
     return cvt(node.children[1], ctx)
 
 
@@ -1329,7 +1326,7 @@ def cvt_token_string(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """Handle token.NAME."""
     assert ctx.name_ctx is NameCtx.REF, [node]
     astns = node if isinstance(node, list) else [node]
-    typing_debug.assert_all_isinstance(pytree.Leaf, astns)  # TODO: remove
+    typing_debug.assert_all_isinstance(pytree.Leaf, astns)  # TODO: delete
     astn_ranges = [ctx.src_file.astn_to_range(astn) for astn in astns]
     if (re.match('[^"\']*[bB][^"]*"', astns[0].value) or
             re.match("[^'\"]*[bB][^']*'", astns[0].value)):
