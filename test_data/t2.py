@@ -16,10 +16,10 @@ iii = 0
 ABC = " abc "
 
 #- { @ABC ref ABC }
-#- { @strip ref vname("${TYPESHED_FQN}.stdlib.2and3.builtins.str.strip", _, _, "", python) }
+#- { @strip ref _ABC_strip=vname("${TYPESHED_FQN}.stdlib.2and3.builtins.str.strip", _, _, "", python) }
 #- // { ABC_strip./pykythe/type ABC_strip_type? }  // TODO
-#- { @capitalize ref vname("${TYPESHED_FQN}.stdlib.2and3.builtins.str.capitalize", _, _, "", python) }
-#- // { ABC_capitalize./pykythe/type ABC_strip_capitalize_type? } // TODO
+#- { @capitalize ref _ABC_strip_capitalize=vname("${TYPESHED_FQN}.stdlib.2and3.builtins.str.capitalize", _, _, "", python) }
+#- // { ABC_strip_capitalize./pykythe/type ABC_strip_capitalize_type? } // TODO
 ABC.strip().capitalize()
 
 

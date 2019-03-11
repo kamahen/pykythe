@@ -1,3 +1,5 @@
+% -*- mode: Prolog -*-
+
 %% Translation of c3.dylan into Prolog, with some help from the Python
 %% definition.
 %% https://en.wikipedia.org/wiki/C3_linearization
@@ -10,13 +12,41 @@
 %% left-right depth-first-search of the class hierarchy and then
 %% discard all but the last occurence of each class.
 
-%! mro(+Class:atom, -Mro:list(atom)) is semidet
+:- module(c3, [mro/2, mro/3]).
+
+:- use_module(library(apply), [include/3, maplist/3]).
+:- use_module(library(lists), [append/2, member/2]).
+
+:- meta_predicate mro(2, +, -).
+
+%! mro(:Bases, +Class:atom, -Mro:list(atom)) is semidet.
 %% Failure means an inconsistent hierarchy
-mro(Class, Mro) :-
-    bases(Class, ClassDirectBases),
-    maplist(mro, ClassDirectBases, ClassMro),
+%% Requres bases/2 facts, each mapping a class name to a list of base class names
+mro(Bases, Class, Mro) :-
+    call(Bases, Class, ClassDirectBases),
+    maplist(mro(Bases), ClassDirectBases, ClassMro),
     append([[[Class]], ClassMro, [ClassDirectBases]], ToMerge),
     mro_merge(ToMerge, Mro).
+
+%! mro(+Class -Mro:list) is nondet.
+%% Like mro/3, but expects class_type(ClassName, ListOfBases), where
+%% ListOfBases are recursively a list of ordset of class_type (or [], of course).
+%% Fails if there's an inconsistency.
+%% Deterministic if all the base classes are single type (not a union);
+%% otherwise non-deterministic.
+mro([], []). %% TODO: delete this clause?
+mro(class_type(Class,ClassDirectBases), Mro) :-
+    maplist(select_one, ClassDirectBases, ClassDirectBasesOne),
+    maplist(mro, ClassDirectBasesOne, ClassMro),
+    maplist(class_only, ClassDirectBases, ClassDirectBasesNames),
+    append([[[Class]], ClassMro, [ClassDirectBasesNames]], ToMerge),
+    mro_merge(ToMerge, Mro).
+
+select_one(List, One) :-
+    member(One, List).
+
+class_only(TypeUnion, Class) :-
+    member(class_type(Class, _ClassDirectBases), TypeUnion).
 
 %! mro_merge(+Seqs:list(list(atom)), -Mro:list(atom) is semidet.
 mro_merge([], []) :- !.
@@ -43,32 +73,3 @@ in_tail(X, [_|Tail]) :-
 %! remove_candidate(+Candidate:atom, +Seq:list(atom), -SeqOut:list(atom)) is det.
 remove_candidate(Candidate, [Candidate|Seq], Seq) :- !.
 remove_candidate(_, Seq, Seq).
-
-%% Tests
-%% TODO: use test framework for these
-
-%% Define bases from c3.py example
-bases(object, []).
-bases('O', [object]).
-bases('A', ['O']).
-bases('B', ['O']).
-bases('C', ['O']).
-bases('D', ['O']).
-bases('E', ['O']).
-bases('K1', ['A', 'B', 'C']).
-bases('K2', ['D', 'B', 'E']).
-bases('K3', ['D', 'A']).
-bases('Z', ['K1', 'K2', 'K3']).
-
-?- mro('Z',  ['Z', 'K1', 'K2', 'K3', 'D', 'A', 'B', 'C', 'E', 'O', object]).
-?- mro('K1', ['K1', 'A', 'B', 'C', 'O', object]).
-?- mro('K2', ['K2', 'D', 'B', 'E', 'O', object]).
-?- mro('K3', ['K3', 'D', 'A', 'O', object]).
-?- mro('D', ['D', 'O', object]).
-?- mro('A', ['A', 'O', object]).
-?- mro('B', ['B', 'O', object]).
-?- mro('C', ['C', 'O', object]).
-?- mro('E', ['E', 'O', object]).
-?- mro('O', ['O', object]).
-?- mro(object, [object]).
-

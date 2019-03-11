@@ -192,6 +192,7 @@
 :- use_module(must_once, [must_once/1, must_once_msg/2, must_once_msg/3, fail/1,
                           must_once/6 as must_once_kyfact_symrej,
                           must_once/3 as must_once_symrej]).
+:- use_module(c3, [mro/2]).
 :- use_module(pykythe_utils).
 :- use_module(module_path).
 
@@ -277,6 +278,7 @@
                   dump_term/3,
                   %% ensure_json_fact/3,
                   %% ensure_json_fact_base64/3,
+                  ensure_class_mro_object/3,
                   eval_assign_expr/6,
                   eval_assign_single/7,
                   eval_assign_dot_op_binds_single/8,
@@ -377,6 +379,7 @@
                   remove_suffix_star/3,
                   resolve_unknown_fqn/7,
                   reorder_kythefacts_1/3,
+                  resolve_mro_dot/9,
                   run_parse_cmd/4,
                   safe_delete_file/1,
                   set_json_dict_tag/2,
@@ -475,6 +478,7 @@ edcg:pred_info(process_nodes_impl, 2,               [kyfact,expr,file_meta]).
 edcg:pred_info(maplist_kyfact_symrej, 2,            [kyfact,symrej,file_meta]).
 edcg:pred_info(maplist_kyfact_symrej, 3,            [kyfact,symrej,file_meta]).
 edcg:pred_info(maplist_kyfact_symrej_combine, 3,    [kyfact,symrej,file_meta]).
+edcg:pred_info(must_once_kyfact_symrej, 1,          [kyfact,symrej,file_meta]).
 
 edcg:pred_info(eval_assign_expr, 1,                 [kyfact,symrej,file_meta]).
 edcg:pred_info(eval_assign_single, 2,               [kyfact,symrej,file_meta]).
@@ -486,7 +490,8 @@ edcg:pred_info(eval_lookup_single, 2,               [kyfact,symrej,file_meta]).
 edcg:pred_info(eval_single_type, 2,                 [kyfact,symrej,file_meta]).
 edcg:pred_info(eval_union_type, 2,                  [kyfact,symrej,file_meta]).
 edcg:pred_info(maplist_eval_assign_expr, 1,         [kyfact,symrej,file_meta]).
-edcg:pred_info(must_once_kyfact_symrej, 1,          [kyfact,symrej,file_meta]).
+edcg:pred_info(maybe_resolve_mro_dot, 5,            [kyfact,symrej,file_meta]).
+edcg:pred_info(resolve_mro_dot, 4,                  [kyfact,symrej,file_meta]).
 
 edcg:pred_info(resolve_unknown_fqn, 4,              [symrej,file_meta]).
 edcg:pred_info(symtab_if_file, 1,                   [symrej,file_meta]).
@@ -580,7 +585,7 @@ pykythe_main2 :-
     pykythe_opts(SrcPath, Opts),
     opt(Opts, builtins_symtab(BuiltinsSymtabFile)),
     %% BuiltinsSymtabFile is created by gen_builtins_symtab.pl
-    %% TODO: dynamic builtins_version/1, builtins_symtab/1, builtins_paris/1,
+    %% TODO: dynamic builtins_version/1, builtins_symtab/1, builtins_pairs/1,
     %%               builtins_symtab_primitive/2, builtins_symtab_modules/1.
     ensure_loaded(BuiltinsSymtabFile), % TODO: should be a module and list the predicates
     path_to_python_module_or_unknown(SrcPath, SrcFqn),
@@ -1927,7 +1932,8 @@ eval_assign_expr(expr(Right)) -->> !,
     eval_union_type(Right, RightEval),
     log_if_file('EVAL(~q => ~q)', [Right, RightEval]).
 eval_assign_expr(class_type(Fqn, Bases)) -->> !,
-    maplist_kyfact_symrej(eval_union_type, Bases, BasesEval),
+    maplist_kyfact_symrej(eval_union_type, Bases, BasesEval0),
+    { clean_class(Fqn, BasesEval0, BasesEval) },
     [ Fqn-[class_type(Fqn, BasesEval)] ]:symrej.
 eval_assign_expr(function_type(Fqn, ReturnType)) -->> !,
     eval_union_type(ReturnType, ReturnTypeEval),
@@ -1999,7 +2005,7 @@ eval_single_type(var_binds(Fqn), [var_binds(Fqn)]) -->> !,
 eval_single_type(class_type(ClassName, Bases0),
                  [class_type(ClassName, Bases)]) -->> !,
     maplist_kyfact_symrej(eval_union_type, Bases0, Bases1),
-    clean_class(ClassName, Bases1, Bases).
+    { clean_class(ClassName, Bases1, Bases) }.
 eval_single_type(function_type(FuncName, ReturnType0),
                  [function_type(FuncName, ReturnType)]) -->> !,
     eval_union_type(ReturnType0, ReturnType).
@@ -2007,8 +2013,12 @@ eval_single_type(module_type(ModuleAndMaybeToken),
                  [module_type(ModuleAndMaybeToken)]) -->> !,
     [ ].
 eval_single_type(dot_op(Atom, Astn), EvalType) -->> !,
-    eval_union_type(Atom, AtomEval),
-    %% TODO: MRO for class -- watch out for Bases containing Unions!
+    eval_union_type(Atom, AtomEval0),
+    (  { AtomEval0 = [] }
+    -> %% don't know what the atom is, so the best we can do is 'object':
+       { builtins_symtab_primitive(object, AtomEval) }
+    ;  { AtomEval = AtomEval0 }
+    ),
     maplist_kyfact_symrej_combine(eval_atom_dot_single(Astn), AtomEval, EvalType).
 eval_single_type(dot_op_binds(Atom, Astn), [dot_op_binds(AtomEval, Astn)]) -->> !,
     eval_union_type(Atom, AtomEval).
@@ -2048,13 +2058,17 @@ eval_single_type(todo_exprlist(_), []) -->> !, [ ].
 eval_single_type(Expr, EvalType) -->> % TODO: delete this catch-all clause.
     { type_error(eval_single_type, ['Expr'=Expr, 'EvalType'=EvalType]) }.
 
-%! eval_atom_dot_single(+Astn, +AtomSingleType:ordset, -EvalType:ordset)//[kyfact,symrej,file_meta] is det.
+%! eval_atom_dot_single(+AttrAstn, +AtomSingleType:ordset, -EvalType:ordset)//[kyfact,symrej,file_meta] is det.
 %% Helper for single type-dot-attr.
-eval_atom_dot_single(astn(Start,End,Attr), class_type(ClassName, _Bases), EvalType) -->>
-    %% TODO: MRO on classes base types
-    { atomic_list_concat([ClassName, '.', Attr], FqnAttr) },
-    [ FqnAttr-EvalType ]:symrej,
-    kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref', FqnAttr).
+eval_atom_dot_single(AttrAstn, class_type(ClassName, Bases), EvalType) -->>
+    (  { setof(Mro, c3:mro(class_type(ClassName, Bases), Mro), Mros0) }
+    -> [ ]
+    ;  Mros0 = [[ClassName]]
+    ),
+    { builtins_symtab_primitive(object, [class_type(Object, _)]) },
+    { maplist(ensure_class_mro_object(Object), Mros0, Mros) },
+    maplist_kyfact_symrej(resolve_mro_dot(ClassName, AttrAstn), Mros, EvalTypes),
+    { combine_types(EvalTypes, EvalType) }.
 eval_atom_dot_single(astn(Start,End,Attr),  module_type(module_alone(Module,_Path)), EvalType) -->> !,
     { atomic_list_concat([Module, '.', Attr], FqnAttr) },
     [ FqnAttr-EvalType ]:symrej,
@@ -2073,6 +2087,41 @@ eval_atom_dot_single(astn(Start,End,Attr), AtomSingleType, EvalType) -->>
        %%          apply dot operator
        kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref', FqnAttr)
     ;  [ ]
+    ).
+
+%! ensure_class_mro_object(+Object, +Mro0, -Mro) is det.
+%% If class 'object' (passed in as Object) not in Mro0, then add it
+%% at the end. Mro is Mr0 'object' in it.
+ensure_class_mro_object(Object, Mro0, Mro) :-
+    (  memberchk(Object, Mro0)
+    -> Mro = Mro0
+    ;  append(Mro0, [Object], Mro)
+    ).
+
+%! resolve_mro_dot(+ClassName:atom, +Astn, +Mro:list(atom), -EvalType:ordset(atom))//[kyfact,symrej,file_meta] is det.
+%% Using Mro, resolve Attr and add "ref" edge. If it couldn't be
+%% resolved, do best guess using ClassName.  EvalType is the resulting
+%% type. This never adds to symtab, so symtab lookup can be used to
+%% check if an attr exists for a class in the MRO.
+resolve_mro_dot(ClassName, astn(Start,End,Attr), Mro, EvalType) -->>
+    (  maybe_resolve_mro_dot(Mro, Start, End, Attr, EvalType)
+    -> [ ]
+    ;  %% Couldn't find it, so assume it's part of ClassName
+       { atomic_list_concat([ClassName, '.', Attr], FqnAttr) },
+       EvalType = [],
+       kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref', FqnAttr)
+    ).
+
+%! maybe_resolve_mro_dot(+Mro:list(atom), +Start:int, +End:int, +Attr:atom, -EvalType:ordset(atom)/[kyfact,symrej,file_meta] is semidet.
+%% Using Mro, resolve Attr and add "ref" edge, setting EvalType as the
+%% symtab entry. Fail if Attr can't be resolved. We're guaranteed that
+%% dot-resolution won't put an entry into symtab, so symtab lookup can
+%% be used to check if an attr exists for a class in the MRO.
+maybe_resolve_mro_dot([MroBaseName|Mros], Start, End, Attr, EvalType) -->>
+    {  atomic_list_concat([MroBaseName, '.', Attr], FqnAttr) },
+    (  symtab_lookup(FqnAttr, EvalType)
+    -> kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref', FqnAttr)
+    ;  maybe_resolve_mro_dot(Mros, Start, End, Attr, EvalType)
     ).
 
 %! eval_atom_call_single(+Parms, +AtomSingleType, -EvalType:ordset)//[kyfact,symrej,file_meta] is det.
@@ -2379,7 +2428,7 @@ maplist_kyfact_expr(Pred, [X|Xs], [Y|Ys]) -->>
     maplist_kyfact_expr(Pred, Xs, Ys).
 
 trace_file(_) :- fail.
-%% trace_file('/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t0.py'). % TODO: delete
+%% trace_file('/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t2.py'). % TODO: delete
 
 log_if_file(Fmt, Args) -->>
     Meta/file_meta,
