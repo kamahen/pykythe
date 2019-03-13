@@ -101,7 +101,7 @@ class TestPlainOldData(unittest.TestCase):
         # pylint: disable=line-too-long
         self.assertEqual(
             c_2.as_json_str(),
-            '{"kind": "SomeData2", "slots": {"a": {"kind": "int", "value": 1}, "b": {"kind": "bool", "value": "True"}, "c": {"kind": "str", "value": "xxx"}}}'
+            '{"kind": "SomeData2", "slots": {"a": 1, "b": {"kind": "bool", "value": "True"}, "c": "xxx"}}'
         )
 
         with self.assertRaises(TypeError):

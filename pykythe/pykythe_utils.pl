@@ -256,7 +256,7 @@ set_json_dict_tag(DefaultTag, Term) :-
     -> pairs_values(Pairs, Values),
        maplist(set_json_dict_tag(DefaultTag), Values)
     ;  is_dict(Term)            % tag != DefaultTag
-    -> dict_pairs(Term, _, Pairs),
+    -> dict_pairs(Term, _, Pairs), % the tag is already set -- leave it
        pairs_values(Pairs, Values),
        maplist(set_json_dict_tag(DefaultTag), Values)
     ;  is_list(Term)

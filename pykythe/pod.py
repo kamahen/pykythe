@@ -80,10 +80,12 @@ def _as_json_dict_full(value: Any) -> Any:
             column=value.column)
     if isinstance(value, bool):
         return collections.OrderedDict(kind='bool', value=str(value))
-    if isinstance(value, int):
-        return collections.OrderedDict(kind='int', value=value)
+    # Originally, we had int, str return a wrapped item like bool,
+    # but removing the wrapper gave 10% performance boost overall.
     if isinstance(value, str):
-        return collections.OrderedDict(kind='str', value=value)
+        return value
+    if isinstance(value, int):
+        return value
     if isinstance(value, dict):
         return collections.OrderedDict(
             kind='dict',

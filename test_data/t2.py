@@ -39,8 +39,8 @@ class A:
 #- { @B defines/binding B_class }
 class B:
     def __init__(self):
-        #- { @x defines/binding B_x }
-        self.x = {}
+        #- { @#0x defines/binding B_x }
+        self.x = [0]  # TODO: also test self.x = {1: 'b'}
 
 #- { @C defines/binding C_class }
 class C:
@@ -49,8 +49,8 @@ class C:
     #- { C_a?./pykythe/type C_a_type? }
     a: A
 
-#- { @d defines/binding D }
-d = {}
+#- { @#0d defines/binding D }
+d = []  # TODO: also test d = {}
 
 #- { @c defines/binding C }
 #- { @C ref C_class }
@@ -69,18 +69,29 @@ c.a = A()
 #- { A_b?./pykythe/type A_b_type? }
 c.a.b = B()
 
-#- { @c ref C }
-#- { @a ref C_a }
-#- { @b ref A_b }
-#- { @x defines/binding B_x }
+#- { @#0c ref C }
+#- { @#0a ref C_a }
+#- { @#0b ref A_b }
+#- { @#0x defines/binding B_x }
 #- { B_x./pykythe/type B_x_type? }
-c.a.b.x = {}
+c.a.b.x = []  # TODO: also test self.x = {2: 'x'}
 
 #- { @d ref D }
+#- { D./pykythe/type D_type? }
 d[111] = [1]
 
 # { @c ref C }
 # { @a ref C_a }
 # { @b ref A_ b }
 # { @x ref B_x }
-c.a.b.x[1][2] = 'abc'
+c.a.b.x[1] = 'abc'
+
+c_list = [c]
+
+c_one = c_list[5]
+
+#- { @a ref C_a }
+c_one.a
+
+#- { @a ref C_a }
+c_list[5].a
