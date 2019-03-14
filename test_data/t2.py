@@ -1,5 +1,7 @@
 # TODO: delete this (much of it is from other files, for debugging)
 
+# Mostly this is tests of '.' binding
+
 #- { @ii defines/binding II }
 #- { II./pykythe/type "[class_type('${TYPESHED_FQN}.stdlib.2and3.builtins.int',[])]" }
 #- { @int ref INT? }  // TODO: should be '${TYPESHED_FQN}.stdlib.2and3.builtins.int'

@@ -282,8 +282,10 @@
                   eval_assign_expr/6,
                   eval_assign_single/7,
                   eval_assign_dot_op_binds_single/8,
+                  eval_assign_subscr_op_binds_single/7,
                   eval_atom_call_single/8,
                   eval_atom_dot_single/8,
+                  eval_atom_subscr_binds_single/7,
                   eval_atom_subscr_single/7,
                   eval_lookup/7,
                   eval_lookup_single/7,
@@ -378,9 +380,9 @@
                   remove_class_cycles_one/4,
                   remove_last_component/3,
                   remove_suffix_star/3,
-                  resolve_unknown_fqn/7,
                   reorder_kythefacts_1/3,
                   resolve_mro_dot/9,
+                  resolve_unknown_fqn/7,
                   run_parse_cmd/4,
                   safe_delete_file/1,
                   set_json_dict_tag/2,
@@ -394,6 +396,7 @@
                   split_module_atom/2,
                   split_path_string_and_canonicalize/3,
                   src_base/2,
+                  subscr_resolve_dot_binds/7,
                   %% symtab_filter/2,
                   symrej_accum/3,
                   symrej_accum_found/7,
@@ -484,8 +487,10 @@ edcg:pred_info(must_once_kyfact_symrej, 1,          [kyfact,symrej,file_meta]).
 edcg:pred_info(eval_assign_expr, 1,                 [kyfact,symrej,file_meta]).
 edcg:pred_info(eval_assign_single, 2,               [kyfact,symrej,file_meta]).
 edcg:pred_info(eval_assign_dot_op_binds_single, 3,  [kyfact,symrej,file_meta]).
+edcg:pred_info(eval_assign_subscr_op_binds_single,2,[kyfact,symrej,file_meta]). % TODO: alignment
 edcg:pred_info(eval_atom_call_single, 3,            [kyfact,symrej,file_meta]).
 edcg:pred_info(eval_atom_dot_single, 3,             [kyfact,symrej,file_meta]).
+edcg:pred_info(eval_atom_subscr_binds_single, 2,    [kyfact,symrej,file_meta]).
 edcg:pred_info(eval_atom_subscr_single, 2,          [kyfact,symrej,file_meta]).
 edcg:pred_info(eval_lookup, 2,                      [kyfact,symrej,file_meta]).
 edcg:pred_info(eval_lookup_single, 2,               [kyfact,symrej,file_meta]).
@@ -494,6 +499,7 @@ edcg:pred_info(eval_union_type, 2,                  [kyfact,symrej,file_meta]).
 edcg:pred_info(maplist_eval_assign_expr, 1,         [kyfact,symrej,file_meta]).
 edcg:pred_info(maybe_resolve_mro_dot, 5,            [kyfact,symrej,file_meta]).
 edcg:pred_info(resolve_mro_dot, 4,                  [kyfact,symrej,file_meta]).
+edcg:pred_info(subscr_resolve_dot_binds, 3,         [kyfact,symrej,file_meta]).
 
 edcg:pred_info(resolve_unknown_fqn, 4,              [symrej,file_meta]).
 edcg:pred_info(symtab_if_file, 1,                   [symrej,file_meta]).
@@ -1932,7 +1938,7 @@ maplist_eval_assign_expr([]) -->> [ ].
 maplist_eval_assign_expr([Assign|Assigns]) -->>
     do_if_file(dump_term('(EVAL_ASSIGN_EXPR)', Assign)),
     eval_assign_expr(Assign),
-    %% symtab_if_file('symtab'),
+    symtab_if_file('SYMTAB'),
     maplist_eval_assign_expr(Assigns).
 
 %! assign_expr_eval(+Node)//[kyfact,symrej,file_meta] is det.
@@ -1941,13 +1947,12 @@ eval_assign_expr(assign(Left, Right)) -->> !,
     %% e.g.:
     %% _S = TypeVar('_S')
     %% => assign([var_binds('.home.peter.src.typeshed.stdlib.3.collections._S')], [call([var('.home.peter.src.typeshed.stdlib.3.collections.TypeVar')],[['.home.peter.src.typeshed.stdlib.2and3.builtins.str']])])
-    log_if_file('ASSIGN(~q, ~q)', [Left, Right]),
     eval_union_type(Right, RightEval),
     eval_union_type(Left, LeftEval),
+    log_if_file('ASSIGN(~q=>~q, ~q=>~q', [Left, LeftEval, Right, RightEval]),
     maplist_kyfact_symrej(eval_assign_single(RightEval), LeftEval).
 eval_assign_expr(expr(Right)) -->> !,
-    eval_union_type(Right, RightEval),
-    log_if_file('EVAL(~q => ~q)', [Right, RightEval]).
+    eval_union_type(Right, _RightEval).
 eval_assign_expr(class_type(Fqn, Bases)) -->> !,
     maplist_kyfact_symrej(eval_union_type, Bases, BasesEval0),
     { clean_class(Fqn, BasesEval0, BasesEval) },
@@ -1967,13 +1972,17 @@ eval_assign_expr(Expr) -->> % TODO: delete this catch-all clause and the cuts ab
 %! eval_assign_single(+Right, +Left)//[kyfact,symrej,file_meta] is det.
 %% Helper for a single assignment. The order of args is because of how maplist works.
 eval_assign_single(RightEval, var_binds(Fqn)) -->> !,
-    %% Anchor has already been done by kynode//2.
+    %% Anchor and defines/binding edge have already been done by kynode//2.
+    [ Fqn-RightEval ]:symrej.
+eval_assign_single(RightEval, var(Fqn)) -->> !,
+    %% Can occur from subscr_op_binds, e.g. foo[i] = bar
+    %% because foo is not in a binding context (it's a ref)_
+    %% There should already be a ref edge from kynode//2.
     [ Fqn-RightEval ]:symrej.
 eval_assign_single(RightEval, dot_op_binds(AtomType, AttrAstn)) -->> !,
     maplist_kyfact_symrej(eval_assign_dot_op_binds_single(RightEval, AttrAstn), AtomType).
-eval_assign_single(RightEval, subscr_op_binds(var(Fqn))) -->> !,
-    [ Fqn-[list_of_type(RightEval)] ]:symrej,
-    kyanchor_node_kyedge_fqn(Fqn, '/kythe/edge/ref', Fqn).  %% TODO: ref-modifies
+eval_assign_single(RightEval, subscr_op_binds(AtomType)) -->> !,
+    maplist_kyfact_symrej(eval_assign_subscr_op_binds_single(RightEval), AtomType).
 eval_assign_single(_RightEval, Left) -->>
     memberchk(Left, [var_binds(_), dot_op_binds(_, _), subscr_op_binds(_)]),
     %% l.h.s. is of a form that we can't process.
@@ -1981,6 +1990,12 @@ eval_assign_single(_RightEval, Left) -->>
 eval_assign_single(RightEval, LeftEval) -->> % TODO: delete this catch-all clause and the cuts above.
     { type_error(eval_assign_single, [left=LeftEval, right=RightEval]) }.
 
+%! eval_assign_subscr_op_binds_single(+RightEval, +AtomType) is det.
+eval_assign_subscr_op_binds_single(RightEval, var(Fqn)) -->> !,
+    [ Fqn-[list_of_type(RightEval)] ]:symrej.
+eval_assign_subscr_op_binds_single(_RightEval, _) -->> !.
+
+%! eval_assign_dot_op_binds_single(+RightEval, +AttrAstn, +AtomType) is det.
 eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), class_type(ClassName,_Bases)) -->> !,
     %% TODO: should subclasses that don't override this get anything?
     { atomic_list_concat([ClassName, '.', AttrName], Fqn) },
@@ -2041,7 +2056,7 @@ eval_single_type(dot_op_binds(Atom, Astn), [dot_op_binds(AtomEval, Astn)]) -->> 
     eval_union_type(Atom, AtomEval).
 eval_single_type(subscr_op_binds(Atom), [subscr_op_binds(AtomEval)]) -->> !,
     %% This is used by eval_asssign_expr, which further processes it.
-    eval_union_type(Atom, AtomEval).
+    maplist_kyfact_symrej_combine(eval_atom_subscr_binds_single, Atom, AtomEval).
 eval_single_type(subscr_op(Atom), EvalType) -->> !,
     eval_union_type(Atom, AtomEval0),
     (  { AtomEval0 = [] }
@@ -2050,7 +2065,6 @@ eval_single_type(subscr_op(Atom), EvalType) -->> !,
     ; { AtomEval = AtomEval0 }
     ),
     maplist_kyfact_symrej_combine(eval_atom_subscr_single, AtomEval, EvalType).
-
 eval_single_type(call(Atom, Parms), EvalType) -->> !,
     eval_union_type(Atom, AtomEval),
     maplist_kyfact_symrej(eval_union_type, Parms, ParmsEval),
@@ -2125,10 +2139,28 @@ eval_atom_dot_single(astn(Start,End,Attr), AtomSingleType, EvalType) -->>
     ;  [ ]
     ).
 
-%! eval_atom_subscr_single(+Type, -EvalType) is det.
+%! eval_atom_subscr_single(+Expr, -EvalType)//[kyfact,symrej,file_meta] is det. is det.
 %% Get the type of applying a subscript operator to a type.
 eval_atom_subscr_single(list_of_type(Class), Class) -->> !, [ ].
 eval_atom_subscr_single(_, []) -->> [ ].
+
+%! eval_atom_subscr_binds_single(+Expr, -EvalType)//[kyfact,symrej,file_meta] is det.
+%% eval_single_type, for binding context of subscr_op_binds
+%% This special-cases for a var and doesn't evaluate it further
+%% (eval_single_type does a lookup).
+eval_atom_subscr_binds_single(var(Name), [var(Name)]) -->> !.
+eval_atom_subscr_binds_single(dot_op(Atom,AttrAstn), DotEvals) -->> !,
+    eval_union_type(Atom, AtomEval),
+    maplist_kyfact_symrej_combine(subscr_resolve_dot_binds(AttrAstn), AtomEval, DotEvals).
+eval_atom_subscr_binds_single(Expr, ExprEval) -->>
+    eval_single_type(Expr, ExprEval).
+
+%! subscr_resolve_dot_binds(+AttrAstn, +AtomType, -EvalType) is det.
+subscr_resolve_dot_binds(astn(Start,End,Attr), class_type(ClassName,_Bases), [var(DotEval)]) -->> !,
+    { atomic_list_concat([ClassName, '.', Attr], DotEval) },
+    %% This is within a subscr operator, so it's a ref, not binds:
+    kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref', DotEval).
+subscr_resolve_dot_binds(_Astn, _AtomEval, []) -->> [ ].
 
 %! ensure_class_mro_object(+Object, +Mro0, -Mro) is det.
 %% If class 'object' (passed in as Object) not in Mro0, then add it
@@ -2139,7 +2171,7 @@ ensure_class_mro_object(Object, Mro0, Mro) :-
     ;  append(Mro0, [Object], Mro)
     ).
 
-%! resolve_mro_dot(+ClassName:atom, +Astn, +Mro:list(atom), -EvalType:ordset(atom))//[kyfact,symrej,file_meta] is det.
+%! resolve_mro_dot(+ClassName:atom, +AttrAstn, +Mro:list(atom), -EvalType:ordset(atom))//[kyfact,symrej,file_meta] is det.
 %% Using Mro, resolve Attr and add "ref" edge. If it couldn't be
 %% resolved, do best guess using ClassName.  EvalType is the resulting
 %% type. This never adds to symtab, so symtab lookup can be used to
