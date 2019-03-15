@@ -89,10 +89,10 @@ read_symtab_from_cache(KytheInputStream, SymtabFromCache) :-
     json_read_dict_validate(KytheInputStream, '/pykythe/version', _JsonVersion),
     json_read_dict_validate(KytheInputStream, '/pykythe/text/sha1', _JsonSha1),
     json_read_dict_validate(KytheInputStream, '/kythe/node/kind', JsonPath),
-    ensure_json_fact_base64(JsonPath, fact_value, 'file'),
+    ensure_dict_fact_base64(JsonPath, fact_value, 'file'),
         json_read_dict_validate(KytheInputStream, '/kythe/text/encoding', _JsonEncoding),
     json_read_dict_validate(KytheInputStream, '/pykythe/symtab', JsonSymtab),
-    ensure_json_fact(JsonSymtab, fact_value, SymtabFromCacheStr),
+    ensure_dict_fact(JsonSymtab, fact_value, SymtabFromCacheStr),
     %% base64_term(SymtabFromCacheBase64, SymtabFromCache). - Too slow.
     term_string(SymtabFromCache, SymtabFromCacheStr).
 

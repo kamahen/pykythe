@@ -10,7 +10,7 @@ The basic usage is:
     parse_tree = ast_raw.parse(src_content, python_version)
     cooked_nodes = ast_raw.cvt_parse_tree(parse_tree, python_version, src_file)
     add_fqns = cooked_nodes.add_fqns(fqn_ctx)
-    print(add_fqns.as_json_str())
+    print(add_fqns.as_prolog_str())
 
 Each node is a subclass of Base.
 
@@ -230,12 +230,6 @@ class Base(pod.PlainOldDataExtended):
 
 class BaseNoOutput(Base):
     """Base that is never output for further processing."""
-
-    def as_json_str(self) -> Text:
-        return _not_implemented(self, '***ERROR***')
-
-    def as_json_dict(self) -> Mapping[Text, Any]:
-        return _not_implemented(self, {'ERROR': None})
 
     def as_prolog_str(self) -> Mapping[Text, Any]:
         return _not_implemented(self, '***ERROR***')
@@ -1635,7 +1629,7 @@ class YieldNode(ListBase):
     # TODO: test case (see ast_raw.cvt_yield_expr, ast_raw.cvt_yield_stmt)
 
 
-# === other facts that are output as JSON
+# === other facts that are output as Prolog terms.
 
 
 @dataclass(frozen=True)

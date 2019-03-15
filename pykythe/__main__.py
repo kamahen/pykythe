@@ -1,16 +1,15 @@
 #!/usr/bin/env python3.6
-"""Main program for Python parser that outputs JSON facts.
+"""Main program for Python parser that outputs AST as Prolog term.
 
 This uses lib2to3, which supports both Python2 and Python3 syntax.
 
-This is called by pykythe.pl, which further processes the JSON facts.
+This is called by pykythe.pl, which further processes the AST.
 """
 
 import argparse
 import base64
 import collections
 import hashlib
-import json
 import logging
 import sys
 from typing import List  # pylint: disable=unused-import
@@ -30,7 +29,7 @@ def main() -> int:
     parser.add_argument(
         '--out_fqn_ast',
         required=True,
-        help=('output file for AST (with FQNs) in JSON format. '
+        help=('output file for AST (with FQNs) in Python term format. '
               'These are post-processed to further resolve names.'))
     parser.add_argument(
         '--kythe_corpus',
@@ -84,8 +83,6 @@ def main() -> int:
         logging.debug('Output fqn= %r', out_fqn_ast_file)
         print(meta.as_prolog_str() + '.', file=out_fqn_ast_file)
         print(add_fqns.as_prolog_str() + '.', file=out_fqn_ast_file)
-        print(meta.as_json_str(), file=out_fqn_ast_file) # TODO: delete
-        print(add_fqns.as_json_str(), file=out_fqn_ast_file) # TODO: delete
     logging.debug('Finished')
     return 0
 

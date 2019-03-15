@@ -17,8 +17,3 @@ find /tmp/pykythe_test/KYTHE -name ${TARGET0}'*' -delete
 time make -C ${MAKEFILE_DIR} BATCH_ID=${BATCH_ID} touch-fixed-src ${TARGET}
 time make -C ${MAKEFILE_DIR} BATCH_ID=${BATCH_ID} touch-fixed-src ${TARGET}
 make -C ${MAKEFILE_DIR} BATCH_ID=${BATCH_ID} json-decoded-all
-
-# The following is only if run_parse_cmd hard-links the tmp file:
-# (You might want to change the output file)
-# python3.7 -c 'import json; print(json.dumps(json.loads(open("/tmp/pykythe-parser-output--@tmp@pykythe_test@SUBST@home@peter@src@pykythe@test_data@t2.py", "r").readlines()[1]), indent=2))' > /tmp/pykythe-parser-output.json
-

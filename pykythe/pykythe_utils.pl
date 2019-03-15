@@ -11,8 +11,8 @@
                           do_if/2,
                           dump_term/2,
                           dump_term/3,
-                          ensure_json_fact/3,
-                          ensure_json_fact_base64/3,
+                          ensure_dict_fact/3,
+                          ensure_dict_fact_base64/3,
                           get_dict_default/4,
                           hash_hex/2,
                           json_read_dict_validate/3,
@@ -123,21 +123,22 @@ dump_term(Msg, Term, Options) :-
        log_if(true, '% === end ~w ===~n', [Msg])
     ).
 
-%! ensure_json_fact(+Json, +Attr, ?Value) is semidet.
-%% Die with an error message if Json.Attr != Value
-%% (Can also be used to get Json.Attr into Value).
-ensure_json_fact(Json, Attr, Value) :-
-    must_once_msg(get_dict(Attr, Json, Value),
+%! ensure_dict_fact(+Dict, +Attr, ?Value) is semidet.
+%% Die with an error message if Dict.Attr != Value
+%% (Can also be used to get Dict.Attr into Value).
+ensure_dict_fact(Dict, Attr, Value) :-
+    must_once_msg(get_dict(Attr, Dict, Value),
                   'Invalid JSON, expecting ~q=~q in ~q',
-                  [Attr, Value, Json]).
+                  [Attr, Value, Dict]).
 
-%% Die with an error message if base64(Json.Attr) != Value
-%% (Can also be used to get Json.Attr into Value).
-ensure_json_fact_base64(Json, Attr, Value) :-
-    must_once(get_dict(Attr, Json, Value64)),
+%! ensure_dict_fact_base64(+Dict, +Attr, ?Value) is semidet.
+%% Die with an error message if base64(Dict.Attr) != Value
+%% (Can also be used to get Dict.Attr into Value).
+ensure_dict_fact_base64(Dict, Attr, Value) :-
+    must_once(get_dict(Attr, Dict, Value64)),
     must_once_msg(base64(Value, Value64),
                   'Invalid JSON, expecting base64 ~q=~q in ~q',
-                  [Attr, Value, Json]).
+                  [Attr, Value, Dict]).
 
 get_dict_default(Key, Dict, Default, Value) :-
     (  get_dict(Key, Dict, Value)
@@ -164,7 +165,7 @@ hash_hex(Text, Hex) :-
 %% is FactName and unify the entire term with Dict)
 json_read_dict_validate(KytheInputStream, FactName, Dict) :-
     my_json_read_dict(KytheInputStream, Dict),
-    ensure_json_fact(Dict, fact_name, FactName).
+    ensure_dict_fact(Dict, fact_name, FactName).
 
 %! json_write_dict_nl(+KytheStream:stream, +AnchorAsDict:json_dict) is det.
 %% Output a single Kythe fact.

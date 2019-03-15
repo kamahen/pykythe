@@ -28,7 +28,8 @@
 %% There are multiple passes over the AST:
 %%
 %% 0. [run_parse_cmd] Create a "cooked" AST (Python program specified
-%%    by --parsecmd), generating a JSON data structures of the AST.
+%%    by --parsecmd), generating a Prolog data structures of the AST
+%%    (as a string).
 %%
 %% 1. [process_nodes] Read in the "cooked" AST (see ast_cooked.Base),
 %%    transform the nodes into a simpler form, and produce (using
@@ -276,8 +277,8 @@
                   double_dot/2,
                   dump_term/2,
                   dump_term/3,
-                  %% ensure_json_fact/3,
-                  %% ensure_json_fact_base64/3,
+                  %% ensure_dict_fact/3, % det or throws
+                  %% ensure_dict_fact_base64/3, % det or throws
                   ensure_class_mro_object/3,
                   eval_assign_expr/6,
                   eval_assign_single/7,
@@ -347,7 +348,6 @@
                   %% must_once/1,
                   %% must_once_msg/2,
                   %% must_once_msg/3,
-                  my_json_read_dict/2,
                   %% my_portray/1,
                   %% my_portray_unify/2,
                   %% node_astn/4,
@@ -385,12 +385,11 @@
                   resolve_unknown_fqn/7,
                   run_parse_cmd/4,
                   safe_delete_file/1,
-                  set_json_dict_tag/2,
                   signature_node/3,
                   signature_source/3,
                   simple_path_module/2,
-                  simplify_json/2,
-                  simplify_json_slot_pair/2,
+                  simplify_ast/2,
+                  simplify_ast_slot_pair/2,
                   simplify_meta/2,
                   split_atom/4,
                   split_module_atom/2,
@@ -419,11 +418,12 @@
 %% The "-O" flag changes things slightly; the following directive
 %% needs to be here (and not earlier) with "-O".
 
-:- set_prolog_flag(autoload, false). % See below json:term_to_dict/3
+:- set_prolog_flag(autoload, false). % See comment in pykythe_utils:my_json_read_dict/2.
 
 %% "kyfact" accumulator gets FQN anchor facts, in an ordinary list
-%% with each value being a dict to be output in JSON. The list may
-%% contain duplicates, which are removed before output.
+%% with each value being a dict to be output in JSON (and eventually
+%% to a protobuf). The list may contain duplicates, which are removed
+%% before output.
 
 %% TODO: Need test cases for this:
 %% Duplicates can arise if a variable is redefined in the Python
@@ -540,11 +540,23 @@ edcg:pred_info(exprs, 1,                            [expr]).
 %%     set_prolog_flag(autoload, true),
 %%     profile(pykythe:pykythe_main2).
 %%
-%% Profiling results show that over 87% of time is spent in reading in
-%% the JSON from the parser, writing out the results, or garbage
-%% collection. So, to improve performance, the low hanging fruit are:
+%% Profiling results appeared to show that over 87% of time was spent
+%% in reading in the JSON from the parser, writing out the results, or
+%% garbage collection. So, to improve performance, the low hanging
+%% fruit seemed to be:
 %%   - output the AST as a Prolog term.
 %%   - use another output format than JSON (e.g., protobufs)
+%% So, I changed the AST to be a Prolog term, but that only gave a 10%
+%% performance boost. :(
+%%
+%% After changing to Prolog term for AST, the low-hanging fruit
+%% appears to be:
+%%    write_facts/2        (15%)
+%%    write_batch_symtab/3 (11%) <== mostly in format/3 - would term_string/2 be better?
+%%    put_dict/4           (25%)
+%%      - garbage_collect             (13%)
+%%      from builtins_symtab_extend/4 (11%)
+%%      from symrej_accum/3           (18%)
 %%
 %% Old profiling results:
 %%   CONCLUSION: it's worth computing SHA-1 for source, to avoid
@@ -805,7 +817,7 @@ foldl_process_module_cached_or_from_src(Opts, FromSrcOk, [M|Modules], Symtab0, S
 read_cache_and_validate(KytheInputStream, KytheJsonPath, SrcPath, Version, SymtabFromCache) :-
     json_read_dict_validate(KytheInputStream, '/pykythe/version', JsonVersion),
     %% ignore Signature for /pykythe/version
-    ensure_json_fact_base64(JsonVersion, fact_value, CacheVersion),
+    ensure_dict_fact_base64(JsonVersion, fact_value, CacheVersion),
     %% short-circuit other tests if version mismatch
     (  CacheVersion == Version
     -> true
@@ -814,7 +826,7 @@ read_cache_and_validate(KytheInputStream, KytheJsonPath, SrcPath, Version, Symta
        fail
     ),
     json_read_dict_validate(KytheInputStream, '/pykythe/text/sha1', JsonSha1),
-    ensure_json_fact_base64(JsonSha1, fact_value, JsonSha1Hex),
+    ensure_dict_fact_base64(JsonSha1, fact_value, JsonSha1Hex),
     read_file_to_string(SrcPath, SrcText, [file_errors(fail)]),
     hash_hex(SrcText, SrcSha1Hex),
     (  SrcSha1Hex == JsonSha1Hex
@@ -824,10 +836,10 @@ read_cache_and_validate(KytheInputStream, KytheJsonPath, SrcPath, Version, Symta
        fail
     ),
     json_read_dict_validate(KytheInputStream, '/kythe/node/kind', JsonPath),
-    ensure_json_fact_base64(JsonPath, fact_value, 'file'),
+    ensure_dict_fact_base64(JsonPath, fact_value, 'file'),
     json_read_dict_validate(KytheInputStream, '/kythe/text/encoding', _JsonEncoding),
     json_read_dict_validate(KytheInputStream, '/pykythe/symtab', JsonSymtab),
-    ensure_json_fact(JsonSymtab, fact_value, SymtabFromCacheStr),
+    ensure_dict_fact(JsonSymtab, fact_value, SymtabFromCacheStr),
     %% base64_term(SymtabFromCacheBase64, SymtabFromCache). - Too slow.
     term_string(SymtabFromCache, SymtabFromCacheStr).
 
@@ -1045,11 +1057,11 @@ run_parse_cmd(Opts, SrcPath, SrcFqn, OutPath) :-
                 kythe_corpus(KytheCorpus), kythe_root(KytheRoot)]),
     must_once_msg(memberchk(PythonVersion, [2, 3]), 'Invalid Python version: ~q', [PythonVersion]),
     tmp_file_stream(OutPath, OutPathStream, [encoding(binary), extension('fqn-json')]),
-    do_if(true, ( % TODO: delete
-                  re_replace("/"/g, "@", SrcPath, SrcPathSubs),
-                  atomic_list_concat(['/tmp/pykythe-parser-output--', SrcPathSubs], TmpParserOutput),
-                  pykythe_utils:safe_delete_file(TmpParserOutput),
-                  link_file(OutPath, TmpParserOutput, hard))),
+    do_if(false, ( % TODO: delete
+                   re_replace("/"/g, "@", SrcPath, SrcPathSubs),
+                   atomic_list_concat(['/tmp/pykythe-parser-output--', SrcPathSubs], TmpParserOutput),
+                   pykythe_utils:safe_delete_file(TmpParserOutput),
+                   link_file(OutPath, TmpParserOutput, hard))),
     close(OutPathStream),
     atomic_list_concat(
         [ParseCmd,
@@ -1113,38 +1125,18 @@ starts_with_kyfact(Prefix, Fqn-Type) -->>
 %% Read the JSON node tree (with FQNs) into Nodes and file meta-data into Meta.
 read_nodes(FqnExprPath, Nodes, Meta) :-
     open(FqnExprPath, read, FqnExprStream),
-    read_term(FqnExprStream, MetaRaw, []),
-    read_term(FqnExprStream, NodesRaw, []),
-    %% TODO: delete the commented-out parts:
-    %% log_if(true, 'META: ~q', [MetaRaw]),
-    %% log_if(true, 'NODES: ~q', [NodesRaw]),
-    % my_json_read_dict(FqnExprStream, MetaDict),
-    % my_json_read_dict(FqnExprStream, JsonDict),
-    must_once(ground(MetaRaw)),
-    must_once(ground(NodesRaw)),
-    % must_once(MetaRaw == MetaDict),
-    % %% must_once(NodesRaw == JsonDict), % TODO: delete
-    % (  NodesRaw == JsonDict % TODO: delete
-    % -> true
-    % ;  do_if(true, dump_term('NODES_RAW', NodesRaw)),
-    %    do_if(true, dump_term('JSON_DICT', JsonDict)),
-    %    must_once(NodesRaw == JsonDict) % TODO: delete
-    % ),
-    MetaDict = MetaRaw,
-    JsonDict = NodesRaw,
-    % TODO: clean the following
+    read_term(FqnExprStream, MetaDict, []),
+    read_term(FqnExprStream, NodesDict, []),
+    %% sanity check that capitalized strings were quoted:
+    must_once(ground(MetaDict)),
+    must_once(ground(NodesDict)),
     simplify_meta(MetaDict, Meta),
-    % must_once(
-    %     my_json_read_dict(FqnExprStream, end_of_file)),
-    % do_if(trace_file(Meta.path),
-    %     dump_term('JSON_DICT', JsonDict)),
-    simplify_json(JsonDict, Nodes).
+    simplify_ast(NodesDict, Nodes).
 
 %! simplify_meta(+MetaDictJson:dict, -Meta:dict) is det.
 %% Simplify the file meta-data. The argument is the Prolog dict form
 %% of the first JSON item (see ast_cooked.Meta).
 simplify_meta(MetaDictJson, Meta) :-
-    %% Note that my_json_read_dict/2 sets the tag to 'json'.
     MetaDictJson = json{
         kind: 'Meta',
         slots: json{
@@ -1172,33 +1164,33 @@ simplify_meta(MetaDictJson, Meta) :-
                 opts: _,
                 version: _}.
 
-%! simplify_json(+Json, -Prolog) is det.
+%! simplify_ast(+Json, -Prolog) is det.
 %% Simplify the JSON term into more specific dicts, each one
 %% distinguished by its tag. The input dicts for base types (str, int,
 %% etc.) are turned into simpler functors.
-simplify_json([], []).
-simplify_json([V|Vs], Values) :-
-    maplist(simplify_json, [V|Vs], Values).
+simplify_ast([], []).
+simplify_ast([V|Vs], Values) :-
+    maplist(simplify_ast, [V|Vs], Values).
 %% Originally, pod._as_json_dict_full output str, int as wrapped items
 %% (like bool), but removing the wrapper gave an overall 10%
 %% performance improvement.
-simplify_json(Value, Value) :- atom(Value), !.
-simplify_json(Value, Value) :- integer(Value), !.
-simplify_json(json{kind: 'bool', value: Value}, bool(Value)).
-simplify_json(json{kind: 'None'}, none). % Shouldn't be generated by pod.PlainOldDataExtended.as_json_dict
-simplify_json(json{kind: 'dict', items: Items}, Value) :-
+simplify_ast(Value, Value) :- atom(Value), !.
+simplify_ast(Value, Value) :- integer(Value), !.
+simplify_ast(json{kind: 'bool', value: Value}, bool(Value)).
+simplify_ast(json{kind: 'None'}, none). % Shouldn't be generated by pod.PlainOldDataExtended.as_json_dict
+simplify_ast(json{kind: 'dict', items: Items}, Value) :-
     dict_pairs(Items, _, ItemPairs),
-    maplist(simplify_json_slot_pair, ItemPairs, ItemPairs2),
+    maplist(simplify_ast_slot_pair, ItemPairs, ItemPairs2),
     dict_pairs(Value, dict, ItemPairs2).
-simplify_json(json{kind: 'Exception', value:ValueStr}, exception(ValueStr)).
-simplify_json(json{kind: Kind, slots: Slots}, Value) :-
+simplify_ast(json{kind: 'Exception', value:ValueStr}, exception(ValueStr)).
+simplify_ast(json{kind: Kind, slots: Slots}, Value) :-
     dict_pairs(Slots, _, SlotPairs),
-    maplist(simplify_json_slot_pair, SlotPairs, SlotPairs2),
+    maplist(simplify_ast_slot_pair, SlotPairs, SlotPairs2),
     dict_pairs(Value, Kind, SlotPairs2).
 
-%! simplify_json_slot_pair(+KeyValue:pair, -KeyValue2:pair) is det.
-simplify_json_slot_pair(Key-Value, Key-Value2) :-
-    simplify_json(Value, Value2).
+%! simplify_ast_slot_pair(+KeyValue:pair, -KeyValue2:pair) is det.
+simplify_ast_slot_pair(Key-Value, Key-Value2) :-
+    simplify_ast(Value, Value2).
 
 %! process_nodes(+Nodes, +SrcInfo:dict, -KytheFacts:list, -Exprs:list, +Meta:dict) is det.
 %% Wrapper for process_nodes//[kyfact,expr,file_meta].

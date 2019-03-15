@@ -65,7 +65,8 @@ ifeq ($BATCH_ID,)
 else
     BATCH_OPT:=--batch_suffix='-batch-$(BATCH_ID)'
 endif
-PYTHONPATH_OPT:=--pythonpath='$(PYTHONPATH_DOT):../typeshed/stdlib/3.7:../typeshed/stdlib/3.6:../typeshed/stdlib/3.5:../typeshed/stdlib/3:../typeshed/stdlib/2and3:/usr/lib/python3.7'
+# TODO: parameterize following for python3.6, etc.:
+PYTHONPATH_OPT:=--pythonpath='$(PYTHONPATH_DOT):../typeshed/stdlib/3.7:../typeshed/stdlib/3:../typeshed/stdlib/2and3:/usr/lib/python3.7'
 PYKYTHE_OPTS=$(VERSION_OPT) $(BATCH_OPT) \
 	--builtins_symtab=$(BUILTINS_SYMTAB_FILE) \
 	$(PYKYTHEOUT_OPT) $(PARSECMD_OPT) $(ENTRIESCMD_OPT) $(KYTHE_CORPUS_ROOT_OPT) $(PYTHONPATH_OPT)
@@ -225,7 +226,7 @@ pykythe/TAGS-py: pykythe/*.py
 test: all_tests
 
 .PHONY: all_tests
-all_tests: etags unit_tests test_imports1 test_grammar test_pykythe_pykythe json-decoded-all  # pykythe_http_server
+all_tests: etags unit_tests test_imports1 test_grammar test_pykythe_pykythe # json-decoded-all  # pykythe_http_server
 
 .PHONY: unit_tests
 unit_tests: tests/test_pykythe.py \
@@ -235,8 +236,11 @@ unit_tests: tests/test_pykythe.py \
 
 .PHONY: test_imports1
 test_imports1:  # run imports code, to ensure that it behaves as expected
-	cd .. && PYTHONPATH=. python3.7 -B pykythe/test_data/imports1.py
-	cd test_data && PYTHONPATH=../.. python3.7 -B imports1.py
+	cd .. && PYTHONPATH=. $(PYTHON3_EXE) -B pykythe/test_data/imports1.py
+	cd test_data && PYTHONPATH=../.. $(PYTHON3_EXE) -B imports1.py
+
+test_c3_a:  # run c3_a, to ensure it behaves as expected
+	$(PYTHON3_EXE) -B test_data/c3_a.py
 
 .PHONY: test_grammar
 test_grammar: $(TESTOUT_TARGETS) # TODO: test_grammar2

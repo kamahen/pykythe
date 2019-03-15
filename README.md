@@ -75,6 +75,8 @@ out (on Linux):
 
 * You can see the generated facts in
   `/tmp/pykythe_test/KYTHE/pykythe/test_data/*.json-decoded`
+  (requres running `scripts/decode_json.py` -- see `Makefile` rule
+  `json-decoded-all`).
 
 ## Coding conventions
 
@@ -146,7 +148,7 @@ A source file is processed in the following steps:
     attribute/method or module variable/function.
 
 * The symtab and Kythe facts are output to a `.kythe.json` file, from
-  which a Kythe `.entries` file can be generated
+  which a Kythe `.kythe.entries` file can be generated
   (`kythe/go/platform/tools/entrystream/entrystream`).  The test cases
   can be checked with `kythe/cxx/verifier/verifier`.
 
@@ -223,7 +225,7 @@ Circular imports are handled by keeping track of all imports that are
 When processing a codebase, we can easily get <i>O(N<sup>3</sup>)</i>
 behavior by reprocessing the imports (where <i>N</i> is the number of
 lines of code), so a cache is used to avoid this. For each `.py` or
-`.pyi` file, a corresponding `.kythe.json` file` (and `.entries`) is
+`.pyi` file, a corresponding `.kythe.json` file (and `.kythe.entries`) is
 created, containing all the Kythe facts plus the pykythe symtab and a
 hash of the source file. When an `import` is encountered, the cache
 file is used if possible:
@@ -298,7 +300,7 @@ sudo ln -s apt_pkg.cpython-36m-x86_64-linux-gnu.so apt_pkg.cpython-37m-x86_64-li
 * Requires `mypy_extensions`:
    * `python3.7 -m pip install mypy_extensions`
 
-* Outputs JSON and expects `entrystream --read_format=json` to convert
+* Outputs JSON and uses `entrystream --read_format=json` to convert
   to the form that `write_tables` expects (it would be more efficient
   to output protobufs directly).
 

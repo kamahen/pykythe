@@ -28,8 +28,8 @@ class SomeData(pod.PlainOldData):
     """Simple example of subclassing PlainOldData, for testing."""
 
     a: int
-    b: int
-    c: int
+    b: str
+    c: bool
 
     __slots__ = ['a', 'b', 'c']
 
@@ -64,9 +64,9 @@ class TestPlainOldData(unittest.TestCase):
         """Test that subclass of PlainOldData works as expected."""
         empty_node = EmptyData()
         self.assertTrue(empty_node)  # would fail with namedtuple
-        a_node = SomeData(a=1, b=2, c=3)
+        a_node = SomeData(a=111, b='foo', c=False)
         self.assertEqual(a_node, a_node)
-        self.assertEqual(repr(a_node), 'SomeData(a=1, b=2, c=3)')
+        self.assertEqual(repr(a_node), "SomeData(a=111, b='foo', c=False)")
 
         a_copy = dataclasses.replace(a_node)
         self.assertNotEqual(id(a_node), id(a_copy))
@@ -74,13 +74,13 @@ class TestPlainOldData(unittest.TestCase):
 
         b_node = dataclasses.replace(a_node, a=999)
         self.assertNotEqual(a_node, b_node)
-        self.assertEqual(repr(a_node), 'SomeData(a=1, b=2, c=3)')
-        self.assertEqual(repr(b_node), 'SomeData(a=999, b=2, c=3)')
+        self.assertEqual(repr(a_node), "SomeData(a=111, b='foo', c=False)")
+        self.assertEqual(repr(b_node), "SomeData(a=999, b='foo', c=False)")
 
         if False:  # TODO: this fails for b_unpickle because it's frozen
             b_pickle = pickle.dumps(b_node, protocol=pickle.HIGHEST_PROTOCOL)
             b_unpickle = pickle.loads(b_pickle)
-            self.assertEqual(repr(b_unpickle), 'SomeData(a=999, b=2, c=3)')
+            self.assertEqual(repr(b_unpickle), "SomeData(a=999, b='foo', c=True)")
 
         with self.assertRaises(TypeError):
             # ValueError: Unknown field names: ['x']
@@ -88,27 +88,27 @@ class TestPlainOldData(unittest.TestCase):
 
         with self.assertRaises(TypeError):
             # TypeError: __init__() got an unexpected keyword argument 'x'
-            SomeData(a=1, b=2, c=3, x=666)  # type: ignore  # pylint: disable=unexpected-keyword-arg
+            SomeData(a=1, b='aaa', c=False, x=666)  # type: ignore  # pylint: disable=unexpected-keyword-arg
 
-        c_1 = SomeData(a=1, b=2, c=3)
-        self.assertEqual(c_1.as_json_str(), '{"a": 1, "b": 2, "c": 3}')
+        c_1 = SomeData(a=1, b='abc', c=True)
+        self.assertEqual(c_1.as_prolog_str(),
+                         "json{'a':1,'b':'abc','c':json{kind:bool,value:'True'}}")
 
         with self.assertRaises(TypeError):
             # ValueError: Missing field: 'c'
             SomeData2(a=1, b=2)
 
-        c_2 = SomeData2(a=1, b=True, c='xxx')
+        c_2 = SomeData2(a=1, b='abc', c=False)
         # pylint: disable=line-too-long
         self.assertEqual(
-            c_2.as_json_str(),
-            '{"kind": "SomeData2", "slots": {"a": 1, "b": {"kind": "bool", "value": "True"}, "c": "xxx"}}'
-        )
+            c_2.as_prolog_str(),
+            "json{kind:'SomeData2',slots:json{'a':1,'b':'abc','c':json{kind:bool,value:'False'}}}")
 
         with self.assertRaises(TypeError):
             # ValueError: Unknown field names: ['x']
             SomeData2(a=1, b=2, c=3, x=666)
 
-        c_1a = SomeData(a=1, b=2, c=33)
+        c_1a = SomeData(a=1, b='abc', c=False)
 
         self.assertEqual(c_1, c_1)
         self.assertEqual(c_1, dataclasses.replace(c_1))  # test == with a copy
