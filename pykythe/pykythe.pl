@@ -407,8 +407,10 @@
                   %% path_batch_suffix/3,
                   update_dict/3,
                   update_new_dict/3,
-                  write_atomic/2,
-                  %% write_batch_symtab/2, % Is det, but expansion confuses write_atomic/2.
+                  write_atomic_stream/2,
+                  write_atomic_file/2,
+                  %% write_batch_symtab/2, % Is det, but expansion confuses write_atomic_stream/2.
+                  %% write_to_protobuf/4,  % Is det, but expansion confuses write_atomic_file/2.
                   write_facts/3
                        ]).
 
@@ -618,7 +620,9 @@ pykythe_opts(SrcPath, Opts) :-
     must_once_msg(PrologVersion >= 80101, 'SWI-Prolog version is too old'),  % Sync this with README.md
     OptsSpec =
        [[opt(parsecmd), type(atom), default('parsecmd-must-be-specified'), longflags([parsecmd]),
-         help('Command for running parser than generates fqn.json file')],
+         help('Command for running parser than generates fqn.kythe.json file')],
+        [opt(entriescmd), type(atom), default('entriescmd-must-be-specified'), longflags([entriescmd]),
+         help('Command for running conversion of .kythe.json to .kythe.entries')],
         [opt(kythe_corpus), type(atom), default(''), longflags(['kythe_corpus']),
          help('Value of "corpus" in Kythe facts')],
         [opt(kythe_root), type(atom), default(''), longflags(['kythe_root']),
@@ -629,6 +633,8 @@ pykythe_opts(SrcPath, Opts) :-
          help('Directory for output of imported files (including "main" file)')],
         [opt(kytheout_suffix), type(atom), default('.kythe.json'), longflags(['kythout_suffix']),
          help('Suffix (extension) for output files - should have leading ".".')],
+        [opt(entries_suffix), type(atom), default('.kythe.entries'), longflags(['entries_suffix']),
+         help('Suffix (extension for Kythe protouf output files - should have leading "."')],
         [opt(version), type(atom), default(''), longflags(['version']),
          help('Pykythe version, used to validate cache entries')],
         [opt(builtins_symtab), type(atom), default(''), longflags(['builtins_symtab']),
@@ -642,7 +648,7 @@ pykythe_opts(SrcPath, Opts) :-
     opt_arguments(OptsSpec, Opts0, PositionalArgs),
     must_once_msg(PositionalArgs = [SrcPath0], 'Missing/extra positional args'),
     absolute_file_name(SrcPath0, SrcPath),
-    split_path_string_and_canonicalize(pythonpath, Opts0, Opts).
+    must_once(split_path_string_and_canonicalize(pythonpath, Opts0, Opts)).
 
 %! process_module_cached_or_from_src(+Opts:list, +FromSrcOk:{from_src_ok,cached_only}, +SrcPath:atom, +SrcFqn:atom, +Symtab0, -Symtab) is semidet.
 %%
@@ -675,14 +681,14 @@ pykythe_opts(SrcPath, Opts) :-
 %% imports, so the module's entry in the symtab is used to prevent an
 %% infinite recursion.
 process_module_cached_or_from_src(Opts, FromSrcOk, SrcPath, SrcFqn, Symtab0, Symtab) :-
-    process_module_cached_or_from_src_setup(Opts, SrcPath, SrcPathAbs, KythePath),
+    process_module_cached_or_from_src_setup(Opts, SrcPath, SrcPathAbs, KytheJsonPath),
     (  get_dict(SrcFqn, Symtab0, _ModuleValue)
     -> %% Module in symtab (possibly recursive import): skip it.
        Symtab = Symtab0,
        log_if(true, 'Skipping (already processed/processing) ~q: ~q', [SrcFqn, SrcPath])
-    ;  process_module_cached(Opts, FromSrcOk, KythePath, SrcPathAbs, Symtab0, Symtab)
+    ;  process_module_cached(Opts, FromSrcOk, KytheJsonPath, SrcPathAbs, Symtab0, Symtab)
     -> true
-    ;  process_module_from_src(Opts, FromSrcOk, KythePath, SrcFqn, Symtab0, Symtab)
+    ;  process_module_from_src(Opts, FromSrcOk, KytheJsonPath, SrcFqn, Symtab0, Symtab)
     ).
 
 %! modules_in_symtab(+Symtab, -Modules:list) is det.
@@ -707,50 +713,50 @@ modules_in_exprs(Exprs, Modules) :-
 %% Used by modules_in_exprs/2.
 is_assign_import_module(assign_import_module(_, Module), module_type(Module)).
 
-%! process_module_cached(+Opts:list, +FromSrcOk:{from_src_ok,cached_only}, +KythePath:atom, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
+%! process_module_cached(+Opts:list, +FromSrcOk:{from_src_ok,cached_only}, +KytheJsonPath:atom, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
 %% Doesn't actually do "parse" - instead uses the cache file to
 %% have the same effect as running process_module_from_src/6.
 %% The logic is:
-%%   conditionally open KythePath (which should be an absolute file name)
+%%   conditionally open KytheJsonPath (which should be an absolute file name)
 %%   if it succeeeds, run process_module_cached_impl/7
 %%     this can fail if the cached file isn't valid (e.g., older than the source)
 %%   [ensure that any open file is closed]
-process_module_cached(Opts, FromSrcOk, KythePath, SrcPath, Symtab0, Symtab) :-
+process_module_cached(Opts, FromSrcOk, KytheJsonPath, SrcPath, Symtab0, Symtab) :-
     setup_call_cleanup(
-        maybe_open_read(KythePath, KytheInputStream),
-        process_module_cached_impl(Opts, FromSrcOk, KytheInputStream, KythePath, SrcPath, Symtab0, Symtab),
+        maybe_open_read(KytheJsonPath, KytheInputStream),
+        process_module_cached_impl(Opts, FromSrcOk, KytheInputStream, KytheJsonPath, SrcPath, Symtab0, Symtab),
         close(KytheInputStream)),
-    log_if(true, 'Reused ~q for ~q', [KythePath, SrcPath]),
+    log_if(true, 'Reused ~q for ~q', [KytheJsonPath, SrcPath]),
     !. % TODO: delete (when the fail catch-all clause is removed).
-process_module_cached(_Opts, _FromSrcOk, _KytheInputStream, KythePath, SrcPath, _Symtab0, _Symtab)  :-
+process_module_cached(_Opts, _FromSrcOk, _KytheInputStream, KytheJsonPath, SrcPath, _Symtab0, _Symtab)  :-
     %% TODO: need a better reason for failure ... the tests in
     %%       process_module_cached_impl/7 should give a
     %%       message about which one failed (for now, we have
     %%       must_once/2 and simple tests).
     %% (Currently, some of the failures output a message; perhaps we can
     %% remove the following when all failures output a message?)
-    log_if(access_file(KythePath, read),
-           'Could not use reuse ~q for ~q', [KythePath, SrcPath]),
+    log_if(access_file(KytheJsonPath, read),
+           'Could not use reuse ~q for ~q', [KytheJsonPath, SrcPath]),
     fail.
 
-%! process_module_cached_or_from_src_setup(+Opts, +SrcPath, -SrcPathAbs, -KythePath) is det.
+%! process_module_cached_or_from_src_setup(+Opts, +SrcPath, -SrcPathAbs, -KytheJsonPath) is det.
 %% Make sure that the output directory exists,
 %% SrcPathAbs = absolute_file_name(SrcPath),
-%% KythePath gets a path name in the output directory.
-process_module_cached_or_from_src_setup(Opts, SrcPath, SrcPathAbs, KythePath) :-
+%% KytheJsonPath gets a path name in the output directory.
+process_module_cached_or_from_src_setup(Opts, SrcPath, SrcPathAbs, KytheJsonPath) :-
     opts(Opts, [kytheout(KytheOutDir), kytheout_suffix(KytheOutSuffix)]),
     absolute_file_name(SrcPath, SrcPathAbs), % just in case
     src_base(SrcPathAbs, SrcPathBase),
-    atomic_list_concat([KytheOutDir, SrcPathBase, KytheOutSuffix], KythePath).
+    atomic_list_concat([KytheOutDir, SrcPathBase, KytheOutSuffix], KytheJsonPath).
 
-%! process_module_cached_impl(+Opts:list, +FromSrcOk:{from_src_ok,cached_only}, KytheInputStream, +KythePath:atom, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
-process_module_cached_impl(Opts, FromSrcOk, KytheInputStream, KythePath, SrcPath, Symtab0, Symtab)  :-
+%! process_module_cached_impl(+Opts:list, +FromSrcOk:{from_src_ok,cached_only}, KytheInputStream, +KytheJsonPath:atom, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
+process_module_cached_impl(Opts, FromSrcOk, KytheInputStream, KytheJsonPath, SrcPath, Symtab0, Symtab)  :-
     opt(Opts, version(Version)),
-    (  process_module_cached_batch(Opts, KythePath, SrcPath, SymtabFromCache, KythePathBatch)
+    (  process_module_cached_batch(Opts, KytheJsonPath, SrcPath, SymtabFromCache, KytheBatchPath)
     -> merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab),
-       log_if(false, 'Succeeded/1(~w) in reusing ~q for ~q', [FromSrcOk, KythePathBatch, SrcPath])
+       log_if(false, 'Succeeded/1(~w) in reusing ~q for ~q', [FromSrcOk, KytheBatchPath, SrcPath])
     ;  %% The following validation depends on what kyfile//1 generates.
-       read_cache_and_validate(KytheInputStream, KythePath, SrcPath, Version, SymtabFromCache),
+       read_cache_and_validate(KytheInputStream, KytheJsonPath, SrcPath, Version, SymtabFromCache),
        %% TODO: modules_in_symtab not needed because foldl_process_module_cached_or_from_src/5
        %%       skips non-modules.
        modules_in_symtab(SymtabFromCache, ModulesInSymtab),
@@ -762,19 +768,19 @@ process_module_cached_impl(Opts, FromSrcOk, KytheInputStream, KythePath, SrcPath
        %% the cached result).
        merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab1),
        foldl_process_module_cached_or_from_src(Opts, cached_only, ModulesInSymtab, Symtab1, Symtab),
-       log_if(false, 'Succeeded/2(~w) in reusing ~q for ~q', [FromSrcOk, KythePath, SrcPath])
+       log_if(false, 'Succeeded/2(~w) in reusing ~q for ~q', [FromSrcOk, KytheJsonPath, SrcPath])
     ).
 
-%! process_module_cached_batch(+Opts:list, +KythePath:atom, +SrcPath:atom, -Symtab:dict, -KythePathBatch:atom) is semidet.
-process_module_cached_batch(Opts, KythePath, SrcPath, Symtab, KythePathBatch) :-
+%! process_module_cached_batch(+Opts:list, +KytheJsonPath:atom, +SrcPath:atom, -Symtab:dict, -KytheBatchPath:atom) is semidet.
+process_module_cached_batch(Opts, KytheJsonPath, SrcPath, Symtab, KytheBatchPath) :-
     opt(Opts, version(Version)),
-    path_batch_suffix(KythePath, Opts, KythePathBatch),
-    maybe_open_read(KythePathBatch, KytheStreamBatch),
+    path_batch_suffix(KytheJsonPath, Opts, KytheBatchPath),
+    maybe_open_read(KytheBatchPath, KytheStreamBatch),
     read_term(KytheStreamBatch, BatchVersion, []),
     (  BatchVersion == Version
     -> read_term(KytheStreamBatch, Symtab, [])
     ;  log_if(true,
-              'Cannot reuse batch cache (different version) ~q for ~q', [KythePath, SrcPath]),
+              'Cannot reuse batch cache (different version) ~q for ~q', [KytheJsonPath, SrcPath]),
        fail
     ).
 
@@ -794,9 +800,9 @@ foldl_process_module_cached_or_from_src(Opts, FromSrcOk, [M|Modules], Symtab0, S
     ),
     foldl_process_module_cached_or_from_src(Opts, FromSrcOk, Modules, Symtab1, Symtab).
 
-%- read_cache_and_validate(+KytheInputStream, +KythePath, +SrcPath, +Version, -SymtabFromCache) is det.
+%- read_cache_and_validate(+KytheInputStream, +KytheJsonPath, +SrcPath, +Version, -SymtabFromCache) is det.
 %% Reads just enough to validate.
-read_cache_and_validate(KytheInputStream, KythePath, SrcPath, Version, SymtabFromCache) :-
+read_cache_and_validate(KytheInputStream, KytheJsonPath, SrcPath, Version, SymtabFromCache) :-
     json_read_dict_validate(KytheInputStream, '/pykythe/version', JsonVersion),
     %% ignore Signature for /pykythe/version
     ensure_json_fact_base64(JsonVersion, fact_value, CacheVersion),
@@ -804,7 +810,7 @@ read_cache_and_validate(KytheInputStream, KythePath, SrcPath, Version, SymtabFro
     (  CacheVersion == Version
     -> true
     ;  log_if(true,
-              'Cannot reuse cache (different version) ~q for ~q', [KythePath, SrcPath]),
+              'Cannot reuse cache (different version) ~q for ~q', [KytheJsonPath, SrcPath]),
        fail
     ),
     json_read_dict_validate(KytheInputStream, '/pykythe/text/sha1', JsonSha1),
@@ -814,7 +820,7 @@ read_cache_and_validate(KytheInputStream, KythePath, SrcPath, Version, SymtabFro
     (  SrcSha1Hex == JsonSha1Hex
     -> true
     ;  log_if(true,
-              'Cannot reuse cache (different source ~q - ~q) ~q for ~q', [JsonSha1Hex, SrcSha1Hex, KythePath, SrcPath]),
+              'Cannot reuse cache (different source ~q - ~q) ~q for ~q', [JsonSha1Hex, SrcSha1Hex, KytheJsonPath, SrcPath]),
        fail
     ),
     json_read_dict_validate(KytheInputStream, '/kythe/node/kind', JsonPath),
@@ -832,27 +838,29 @@ merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab) :-
     dict_pairs(SymtabFromCache, symtab, SymtabFromCachePairs),
     update_new_dict(SymtabFromCachePairs, Symtab0, Symtab).
 
-%! process_module_from_src(+Opts:list, +FromSrcOk, +KythePath:atom, +SrcFqn:atom, +Symtab0, -Symtab) is semidet.
+%! process_module_from_src(+Opts:list, +FromSrcOk, +KytheJsonPath:atom, +SrcFqn:atom, +Symtab0, -Symtab) is semidet.
 %% Read in a single file (JSON output from running --parsecmd, which
 %% encodes the AST nodes with FQNs), output Kythe JSON to current
 %% output stream. SrcPath must be in absolute form (leading '/').
 %% Fails if FromSrcOk isn't from_src_ok, otherwise succeeds.
-process_module_from_src(Opts, from_src_ok, KythePath, SrcFqn, Symtab0, Symtab) :-
+process_module_from_src(Opts, from_src_ok, KytheJsonPath, SrcFqn, Symtab0, Symtab) :-
     (  module_path(SrcFqn, SrcPath) % fails if file doesn't exist
-    -> process_module_from_src_impl(Opts, KythePath, SrcPath, SrcFqn, Symtab0, Symtab)
+    -> process_module_from_src_impl(Opts, KytheJsonPath, SrcPath, SrcFqn, Symtab0, Symtab)
     ;  Symtab = Symtab0,
        log_if(true,
-              'Invalid/nonexistant module (~q) for ~q', [KythePath, SrcFqn])
+              'Invalid/nonexistant module (~q) for ~q', [KytheJsonPath, SrcFqn])
        %% TODO: output a dummy item, so that we don't unnecessarily
        %%       reprocess (when looking for cache) things that depend
        %%       on this module
     ).
 
-%! process_module_from_src_impl(+Opts:list, +KythePath:atom, +SrcPath, +SrcFqn:atom, +Symtab0, -Symtab) is det.
-process_module_from_src_impl(Opts, KythePath, SrcPath, SrcFqn, Symtab0, Symtab) :-
+%! process_module_from_src_impl(+Opts:list, +KytheJsonPath:atom, +SrcPath, +SrcFqn:atom, +Symtab0, -Symtab) is det.
+process_module_from_src_impl(Opts, KytheJsonPath, SrcPath, SrcFqn, Symtab0, Symtab) :-
     log_if(true,
-           'Processing from source ~q (~q) for ~q', [SrcPath, KythePath, SrcFqn]),
-    opts(Opts, [pythonpath(Pythonpaths), version(Version)]),
+           'Processing from source ~q (output: ~q) for ~q', [SrcPath, KytheJsonPath, SrcFqn]),
+    opts(Opts, [pythonpath(Pythonpaths), version(Version),
+                kytheout_suffix(KytheOutSuffix), entries_suffix(EntriesSuffix),
+                entriescmd(EntriesCmd)]),
     run_parse_cmd(Opts, SrcPath, SrcFqn, ParsedPath),
     log_if(true, 'Python parser: finished'),
     read_nodes(ParsedPath, Nodes, Meta),
@@ -879,9 +887,9 @@ process_module_from_src_impl(Opts, KythePath, SrcPath, SrcFqn, Symtab0, Symtab) 
     %% TODO: for ModulesInExprs that are module_star, need
     %%       to update symtab with top-level items (starts
     %%       with module. and doesn't have '.' inside).
-    log_if(true, 'Pass 1: process nodes'),
+    log_if(true, 'Pass 1: process nodes for ~q', [Meta.path]),
     foldl_process_module_cached_or_from_src(Opts, from_src_ok, ModulesInExprs, Symtab1, Symtab1WithImports),
-    log_if(true, 'Pass 2: process exprs'),
+    log_if(true, 'Pass 2: process exprs for ~q', [Meta.path]),
     assign_exprs(Exprs, Meta, Symtab1WithImports, Symtab, KytheFacts2),
     validate_symtab(Symtab),
     symtab_as_kyfact(Symtab, Meta, SymtabKytheFact),
@@ -890,17 +898,21 @@ process_module_from_src_impl(Opts, KythePath, SrcPath, SrcFqn, Symtab0, Symtab) 
     reorder_kythefacts_1(KytheFacts1, SymtabKytheFact, KytheFacts1a),
     append([KytheFacts1a, KytheFacts2, SymtabPykytheTypes], KytheFacts3),
     clean_kythe_facts(KytheFacts3, KytheFacts),
-    log_if(true, 'Writing Kythe facts'),
-    write_atomic(write_facts(KytheFacts), KythePath),
-    (  path_batch_suffix(KythePath, Opts, KythePathBatch)
-    -> write_atomic(write_batch_symtab(Symtab, Version), KythePathBatch)
+    log_if(true, 'Writing Kythe facts for ~q', [Meta.path]),
+    write_atomic_stream(write_facts(KytheFacts), KytheJsonPath),
+    (  path_batch_suffix(KytheJsonPath, Opts, KytheBatchPath)
+    -> write_atomic_stream(write_batch_symtab(Symtab, Version), KytheBatchPath)
     ;  true
     ),
-    log_if(true, 'Finished output ~q (~q) to ~q', [SrcPath, KythePath, SrcFqn]),
+    log_if(true, 'Converting to Kythe protobuf'),
+    must_once(atom_concat(KytheJsonPathPrefix, KytheOutSuffix, KytheJsonPath)),
+    atom_concat(KytheJsonPathPrefix, EntriesSuffix, KytheEntriesPath),
+    write_atomic_file(write_to_protobuf(EntriesCmd, SrcPath, KytheJsonPath), KytheEntriesPath),
+    log_if(true, 'Finished output ~q (~q) to ~q (~q)', [SrcPath, SrcFqn, KytheEntriesPath, KytheJsonPath]),
     !.
-process_module_from_src_impl(_Opts, KythePath, SrcPath, SrcFqn, _Symtab0, _Symtab) :-
+process_module_from_src_impl(_Opts, KytheJsonPath, SrcPath, SrcFqn, _Symtab0, _Symtab) :-
     %% TODO: delete this catch-all clause
-    type_error(process_module_from_src_impl, [KythePath, SrcPath, SrcFqn]),
+    type_error(process_module_from_src_impl, [KytheJsonPath, SrcPath, SrcFqn]),
     fail.
 
 %! builtins_symtab_extend(+FqnType:list(pair), +SrcFqn:atom, Symtab0:dict, +Symtab:dict) is det.
@@ -1007,6 +1019,20 @@ write_facts(KytheFacts, KytheStream) :-
 write_batch_symtab(Symtab, Version, KytheStream) :-
     format(KytheStream, '~k.~n~k.~n', [Version, Symtab]).
 
+%! write_to_protobuf(+EntriesCmd, +SrcPath, +KytheJsonPath, +KytheEntriesPath) is det.
+write_to_protobuf(EntriesCmd, SrcPath, KytheJsonPath, KytheEntriesPath) :-
+    atomic_list_concat(
+        [% "set -o pipefail; ",  %% TODO: use bash
+         "egrep -v '^{\"fact_name\":\"/pykythe/symtab\"' <",
+         KytheJsonPath,
+         " | ",
+         EntriesCmd,
+         " --read_format=json",
+         " >", KytheEntriesPath],
+         Cmd),
+    do_if(trace_file(SrcPath), dump_term('CMD-cvt', Cmd)),
+    must_once_msg(shell(Cmd, 0), 'Convert to protobuf failed').
+
 %! run_parse_cmd(+Opts, +SrcPath, +SrcFqn, -OutPath) is det.
 %% Run the parse command into a temporary file. (The temp file is
 %% automatically deleted on graceful termination.)
@@ -1015,7 +1041,8 @@ write_batch_symtab(Symtab, Version, KytheStream) :-
 %% and is a bit more difficult to debug.
 run_parse_cmd(Opts, SrcPath, SrcFqn, OutPath) :-
     must_once_msg(ground(Opts), 'Invalid command line options'),
-    opts(Opts, [python_version(PythonVersion), parsecmd(ParseCmd), kythe_corpus(KytheCorpus), kythe_root(KytheRoot)]),
+    opts(Opts, [python_version(PythonVersion), parsecmd(ParseCmd),
+                kythe_corpus(KytheCorpus), kythe_root(KytheRoot)]),
     must_once_msg(memberchk(PythonVersion, [2, 3]), 'Invalid Python version: ~q', [PythonVersion]),
     tmp_file_stream(OutPath, OutPathStream, [encoding(binary), extension('fqn-json')]),
     do_if(true, ( % TODO: delete
@@ -1025,15 +1052,15 @@ run_parse_cmd(Opts, SrcPath, SrcFqn, OutPath) :-
                   link_file(OutPath, TmpParserOutput, hard))),
     close(OutPathStream),
     atomic_list_concat(
-            [ParseCmd,
-             " --kythe_corpus='", KytheCorpus, "'",
-             " --kythe_root='", KytheRoot, "'",
-             " --python_version='", PythonVersion, "'",
-             " --srcpath='", SrcPath, "'",
-             " --module='", SrcFqn, "'",
-             " --out_fqn_ast='", OutPath, "'"],
-            Cmd),
-    do_if(trace_file(SrcPath), dump_term('CMD', Cmd)),
+        [ParseCmd,
+         " --kythe_corpus='", KytheCorpus, "'",
+         " --kythe_root='", KytheRoot, "'",
+         " --python_version='", PythonVersion, "'",
+         " --srcpath='", SrcPath, "'",
+         " --module='", SrcFqn, "'",
+         " --out_fqn_ast='", OutPath, "'"],
+        Cmd),
+    do_if(trace_file(SrcPath), dump_term('CMD-parse', Cmd)),
     %% TODO: An alternative way of doing the following is to have
     %% ParseCmd output to stdout and then get it by:
     %%   process_create(ParseCmd, ParseCmdArgs, [stdout(pipe(CmdPipe))]),
@@ -1086,13 +1113,31 @@ starts_with_kyfact(Prefix, Fqn-Type) -->>
 %% Read the JSON node tree (with FQNs) into Nodes and file meta-data into Meta.
 read_nodes(FqnExprPath, Nodes, Meta) :-
     open(FqnExprPath, read, FqnExprStream),
-    my_json_read_dict(FqnExprStream, MetaDict),
-    my_json_read_dict(FqnExprStream, JsonDict),
+    read_term(FqnExprStream, MetaRaw, []),
+    read_term(FqnExprStream, NodesRaw, []),
+    %% TODO: delete the commented-out parts:
+    %% log_if(true, 'META: ~q', [MetaRaw]),
+    %% log_if(true, 'NODES: ~q', [NodesRaw]),
+    % my_json_read_dict(FqnExprStream, MetaDict),
+    % my_json_read_dict(FqnExprStream, JsonDict),
+    must_once(ground(MetaRaw)),
+    must_once(ground(NodesRaw)),
+    % must_once(MetaRaw == MetaDict),
+    % %% must_once(NodesRaw == JsonDict), % TODO: delete
+    % (  NodesRaw == JsonDict % TODO: delete
+    % -> true
+    % ;  do_if(true, dump_term('NODES_RAW', NodesRaw)),
+    %    do_if(true, dump_term('JSON_DICT', JsonDict)),
+    %    must_once(NodesRaw == JsonDict) % TODO: delete
+    % ),
+    MetaDict = MetaRaw,
+    JsonDict = NodesRaw,
+    % TODO: clean the following
     simplify_meta(MetaDict, Meta),
-    must_once(
-        my_json_read_dict(FqnExprStream, end_of_file)),
-    do_if(trace_file(Meta.path),
-        dump_term('JSON_DICT', JsonDict)),
+    % must_once(
+    %     my_json_read_dict(FqnExprStream, end_of_file)),
+    % do_if(trace_file(Meta.path),
+    %     dump_term('JSON_DICT', JsonDict)),
     simplify_json(JsonDict, Nodes).
 
 %! simplify_meta(+MetaDictJson:dict, -Meta:dict) is det.
@@ -1507,6 +1552,9 @@ kynode('WithStmt'{items: Items, suite: Suite},
        [stmt(with)]) -->> !,
     maplist_kynode(Items, _),   % handled by WithItemNode
     kynode(Suite, _).
+kynode('YieldNode'{items: Items},
+       [stmt(yield)]) -->> !,
+    maplist_kynode(Items, _).
 kynode(X, Ty) -->>              % TODO: delete this catch-all clause
     { type_error(kynode, [X,Ty]) }.
 
@@ -1998,19 +2046,24 @@ eval_assign_subscr_op_binds_single(_RightEval, _) -->> !.
 %! eval_assign_dot_op_binds_single(+RightEval, +AttrAstn, +AtomType) is det.
 eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), class_type(ClassName,_Bases)) -->> !,
     %% TODO: should subclasses that don't override this get anything?
-    { atomic_list_concat([ClassName, '.', AttrName], Fqn) },
+    { atomic_list_concat([ClassName, AttrName], '.', Fqn) },
+    [ Fqn-RightEval ]:symrej,
+    kyanchor_kyedge_fqn(Start, End, '/kythe/edge/defines/binding', Fqn).
+eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), function_type(FunctionName, _ReturnType)) -->> !,
+    { atomic_list_concat([FunctionName, AttrName], ',', Fqn) },
     [ Fqn-RightEval ]:symrej,
     kyanchor_kyedge_fqn(Start, End, '/kythe/edge/defines/binding', Fqn).
 eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), module_type(module_alone(Module,_Path))) -->> !,
-    { atomic_list_concat([Module, '.', AttrName], Fqn) },
+    { atomic_list_concat([Module, AttrName], '.', Fqn) },
     [ Fqn-RightEval ]:symrej,
     kyanchor_kyedge_fqn(Start, End, '/kythe/edge/defines/binding', Fqn).
 eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), module_type(module_and_token(Module,_Path,Token))) -->> !,
-    { atomic_list_concat([Module, '.', Token, '.', AttrName], Fqn) },
+    { atomic_list_concat([Module, Token, AttrName], '.', Fqn) },
     [ Fqn-RightEval ]:symrej,
     kyanchor_kyedge_fqn(Start, End, '/kythe/edge/defines/binding', Fqn).
-eval_assign_dot_op_binds_single(RightEval, LeftEval) -->> % TODO: delete this catch-all clause and the cuts above.
-    { type_error(eval_assign_dot_op_binds_single, [left=LeftEval, right=RightEval]) }.
+%% TODO: should have a catch-all here (see eval_atom_dot_single(astn(Start,End,Attr), AtomSingleType, EvalType))
+eval_assign_dot_op_binds_single(RightEval, Astn, LeftEval) -->> % TODO: delete this catch-all clause and the cuts above.
+    { type_error(eval_assign_dot_op_binds_single, [left=LeftEval, astn=Astn, right=RightEval]) }.
 
 
 %! eval_union_type(+Expr, -UnionEvalType)//[kyfact,symrej,file_meta] is det.
@@ -2120,7 +2173,7 @@ eval_atom_dot_single(AttrAstn, class_type(ClassName, Bases), EvalType) -->>
     maplist_kyfact_symrej(resolve_mro_dot(ClassName, AttrAstn), Mros, EvalTypes),
     { combine_types(EvalTypes, EvalType) }.
 eval_atom_dot_single(astn(Start,End,Attr),  module_type(module_alone(Module,_Path)), EvalType) -->> !,
-    { atomic_list_concat([Module, '.', Attr], FqnAttr) },
+    { atomic_list_concat([Module, Attr], '.', FqnAttr) },
     [ FqnAttr-EvalType ]:symrej,
     kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref', FqnAttr).
 eval_atom_dot_single(astn(Start,End,Attr), module_type(module_and_token(Module,_Path,Token)), EvalType) -->> !,
@@ -2128,9 +2181,13 @@ eval_atom_dot_single(astn(Start,End,Attr), module_type(module_and_token(Module,_
     { atomic_list_concat([Module, Token, Attr], '.', FqnAttr) },
     [ FqnAttr-EvalType ]:symrej,
     kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref', FqnAttr).
+eval_atom_dot_single(astn(Start,End,Attr), function_type(FunctionName, _ReturnType), EvalType) -->> !,
+    { atomic_list_concat([FunctionName, Attr], '.', FqnAttr) },
+    [ FqnAttr-EvalType ]:symrej,
+    kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref', FqnAttr).
 eval_atom_dot_single(astn(Start,End,Attr), AtomSingleType, EvalType) -->>
     (  atom(AtomSingleType)
-    -> { atomic_list_concat([AtomSingleType, '.', Attr], FqnAttr) },
+    -> { atomic_list_concat([AtomSingleType, Attr], '.', FqnAttr) },
        [ FqnAttr-EvalType ]:symrej,
        %% TODO: if AtomSingleType = function_type(Name, ReturnType)
        %%          builtins_symtab_primitive(function, FunctionType)
@@ -2146,7 +2203,7 @@ eval_atom_subscr_single(_, []) -->> [ ].
 
 %! eval_atom_subscr_binds_single(+Expr, -EvalType)//[kyfact,symrej,file_meta] is det.
 %% eval_single_type, for binding context of subscr_op_binds
-%% This special-cases for a var and doesn't evaluate it further
+%% This special-cases for a var or '.' and doesn't evaluate it further
 %% (eval_single_type does a lookup).
 eval_atom_subscr_binds_single(var(Name), [var(Name)]) -->> !.
 eval_atom_subscr_binds_single(dot_op(Atom,AttrAstn), DotEvals) -->> !,
@@ -2157,7 +2214,7 @@ eval_atom_subscr_binds_single(Expr, ExprEval) -->>
 
 %! subscr_resolve_dot_binds(+AttrAstn, +AtomType, -EvalType) is det.
 subscr_resolve_dot_binds(astn(Start,End,Attr), class_type(ClassName,_Bases), [var(DotEval)]) -->> !,
-    { atomic_list_concat([ClassName, '.', Attr], DotEval) },
+    { atomic_list_concat([ClassName, Attr], '.', DotEval) },
     %% This is within a subscr operator, so it's a ref, not binds:
     kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref', DotEval).
 subscr_resolve_dot_binds(_Astn, _AtomEval, []) -->> [ ].
@@ -2180,7 +2237,7 @@ resolve_mro_dot(ClassName, astn(Start,End,Attr), Mro, EvalType) -->>
     (  maybe_resolve_mro_dot(Mro, Start, End, Attr, EvalType)
     -> [ ]
     ;  %% Couldn't find it, so assume it's part of ClassName
-       { atomic_list_concat([ClassName, '.', Attr], FqnAttr) },
+       { atomic_list_concat([ClassName, Attr], '.', FqnAttr) },
        EvalType = [],
        kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref', FqnAttr)
     ).
@@ -2191,7 +2248,7 @@ resolve_mro_dot(ClassName, astn(Start,End,Attr), Mro, EvalType) -->>
 %% dot-resolution won't put an entry into symtab, so symtab lookup can
 %% be used to check if an attr exists for a class in the MRO.
 maybe_resolve_mro_dot([MroBaseName|Mros], Start, End, Attr, EvalType) -->>
-    {  atomic_list_concat([MroBaseName, '.', Attr], FqnAttr) },
+    {  atomic_list_concat([MroBaseName, Attr], '.', FqnAttr) },
     (  symtab_lookup(FqnAttr, EvalType)
     -> kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref', FqnAttr)
     ;  maybe_resolve_mro_dot(Mros, Start, End, Attr, EvalType)

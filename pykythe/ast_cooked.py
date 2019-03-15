@@ -16,25 +16,26 @@ Each node is a subclass of Base.
 
 Here is an example of how these nodes are used to generate
 cross-reference information. Suppose we have in m.py (annotated with
-Kythe verifier comments):
+commented-out Kythe verifier comments, so that we can run tests on this
+source code):
 
-    #- @C defines/binding C=vname("m.C", _, _, "", python)
-    #- C.node/kind record
-    #- C.subkind class
+    #- // { @C defines/binding C=vname("m.C", _, _, "", python) }
+    #- // { C.node/kind record }
+    #- // { C.subkind class }
     class C:
-      #- @self defines/binding Self=vname("m.C.self", _, _, "", python)
-      #- // TODO: add links for self being of type C
+      #- // { @self defines/binding Self=vname("m.C.self", _, _, "", python) }
+      #- // // TODO: add links for self being of type C
       def __init__(self):
-        #- @self ref Self
-        #- @f1 defines/binding C_F1=vname("m.C.f1", _, _, "", python)
-        #- C_F1 childof C
+        #- // { @self ref Self }
+        #- // { @f1 defines/binding C_F1=vname("m.C.f1", _, _, "", python) }
+        #- // { C_F1 childof C }
         self.f1 = 0
 
-    #- @C ref C
-    #- @c defines/binding VarC=vname("m.c", _, _, "", python)
+    #- // { @C ref C }
+    #- // { @c defines/binding VarC=vname("m.c", _, _, "", python) }
     c = C()
-    #- @c ref VarC
-    #- @f1 ref C_F1
+    #- // { @c ref VarC }
+    #- // { @f1 ref C_F1 }
     print(c.f1)
 
 To generate these facts, we need to record all the assignment
@@ -231,10 +232,13 @@ class BaseNoOutput(Base):
     """Base that is never output for further processing."""
 
     def as_json_str(self) -> Text:
-        return _not_implemeted(self, '***ERROR***')
+        return _not_implemented(self, '***ERROR***')
 
     def as_json_dict(self) -> Mapping[Text, Any]:
         return _not_implemented(self, {'ERROR': None})
+
+    def as_prolog_str(self) -> Mapping[Text, Any]:
+        return _not_implemented(self, '***ERROR***')
 
 
 class BaseNoFqnProcessing(Base):

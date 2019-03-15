@@ -7,6 +7,9 @@
 # of running will vary.  If you use --jobs, you should specify
 # --output-sync=target (this seems to be the default).
 
+# To see how to run this for a single source, see target test_pykythe_pykythe
+# which also outputs *.kythe.entries files for all the imported files.
+
 # ("clean" shouldn't be necessary, but the dependencies are fairly
 # complicated, so it's possible that "make test" doesn't run
 # everything.  In particular, pykythe doesn't check its "version" when
@@ -31,11 +34,12 @@ VERSION:=$(shell ($(SWIPL_EXE) --version; $(PYTHON3_EXE) --version; head -999999
 # To add a random piece: $$RANDOM
 # or with more randomness:
 # -$(shell $(PYTHON3_EXE) -c 'import os, base64; print(base64.urlsafe_b64encode(os.urandom(9)).decode("ascii"))')
-BATCH_ID:=$(shell date --utc --iso-8601=ns | sed 's/\+00:00//')
+BATCH_ID:=$(shell date --utc --iso-8601=ns | sed -e 's/\+00:00//' -e 's/,/./')
 
 TEST_GRAMMAR_DIR:=test_data
 TESTGITHUB:=$(HOME)/tmp/test-github
 PARSECMD_OPT:=--parsecmd="$(PYTHON3_EXE) -m pykythe"
+ENTRIESCMD_OPT:=--entriescmd=$(shell realpath ../kythe/bazel-bin/kythe/go/platform/tools/entrystream/entrystream)
 # PYTHONPATH starts at .., so "absolute" paths in test_data should be
 #            of the form "pykythe.test_data.___"
 #            (see also fix_for_verifier.py and ${ROOT_DIR} etc. substitutions
@@ -51,7 +55,7 @@ PYTHONPATH_DOT:=$(shell realpath .. | sed 's!^/!$(SUBSTDIR)/!')
 TESTOUT_SRCS:=$(shell $(FIND_EXE) $(TEST_GRAMMAR_DIR) -name '*.py'  | sort | \
     sed -e 's!^!$(SUBSDIR_PWD_REAL)/!')
 TESTOUT_TARGETS:=$(shell $(FIND_EXE) $(TEST_GRAMMAR_DIR) -name '*.py' | sort | \
-    sed -e 's!^!$(KYTHEOUTDIR)$(SUBSDIR_PWD_REAL)/!' -e 's!\.py$$!.verifier!')
+    sed -e 's!^!$(KYTHEOUTDIR)$(SUBSDIR_PWD_REAL)/!' -e 's!\.py$$!.kythe.verifier!')
 TESTOUT_TYPESHED:=$(KYTHEOUTDIR)$(TYPESHED_REAL)
 KYTHE_CORPUS_ROOT_OPT:=--kythe_corpus='test-corpus' --kythe_root='test-root'
 VERSION_OPT:=--version='$(VERSION)'
@@ -64,7 +68,7 @@ endif
 PYTHONPATH_OPT:=--pythonpath='$(PYTHONPATH_DOT):../typeshed/stdlib/3.7:../typeshed/stdlib/3.6:../typeshed/stdlib/3.5:../typeshed/stdlib/3:../typeshed/stdlib/2and3:/usr/lib/python3.7'
 PYKYTHE_OPTS=$(VERSION_OPT) $(BATCH_OPT) \
 	--builtins_symtab=$(BUILTINS_SYMTAB_FILE) \
-	$(PYKYTHEOUT_OPT) $(PARSECMD_OPT) $(KYTHE_CORPUS_ROOT_OPT) $(PYTHONPATH_OPT)
+	$(PYKYTHEOUT_OPT) $(PARSECMD_OPT) $(ENTRIESCMD_OPT) $(KYTHE_CORPUS_ROOT_OPT) $(PYTHONPATH_OPT)
 TIME:=time
 
 # stuff for running tests (see https://kythe.io/docs/kythe-verifier.html)
@@ -91,7 +95,7 @@ KYTHE_EXE:=$(KYTHE_BIN)/kythe/go/serving/tools/kythe/kythe
 # # HTTP_SERVER_RESOURCESX:=$(HOME)/src/kythe/kythe/web/ui/resources/public
 HTTP_SERVER_RESOURCES:=/tmp/kythe_resources
 
-# .PRECIOUS: %.entries %.json-decoded %.json
+# .PRECIOUS: %.kythe.entries %.json-decoded %.json
 .SECONDARY:  # Do not delete any intermediate files
 
 # $(PYKYTHE_SRCS) is a dependency because it's used to compute $(VERSION)
@@ -136,7 +140,8 @@ importlab:
 #       what about circular imports?):
 #  $(SUBSDIR_PWD_REAL)/%.py
 # NOTE: the 1st argument is important (used by "$<")
-$(KYTHEOUTDIR)%.kythe.json: \
+$(KYTHEOUTDIR)%.kythe.json \
+$(KYTHEOUTDIR)%.kythe.entries: \
 		%.py \
 		$(TESTOUT_SRCS) \
 		$(PYKYTHE_SRCS) \
@@ -163,7 +168,8 @@ $(KYTHEOUTDIR)%.kythe.json: \
 #       followed by gen_builtins_symtab.
 # $(PYKYTHE_SRCS) is a dependency because it's used to compute $(VERSION)
 $(BUILTINS_SYMTAB_FILE) \
-$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.json: \
+$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.json \
+$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.entries: \
 		$(SUBSDIR_PWD_REAL)/pykythe/bootstrap_builtins.py \
 		$(SUBSDIR_PWD_REAL)/pykythe/bootstrap_builtins_symtab.pl \
 		$(PYKYTHE_SRCS) \
@@ -190,18 +196,18 @@ json-decoded-all:
 	    $(PYTHON3_EXE) scripts/decode_json.py <$$i >$$i-decoded; \
 	done
 
-%.kythe.entries: %.kythe.json %.kythe.json-decoded
-	@# We leave /pykythe/symtab unencoded, so need to strip it:
-	egrep -v '^{"fact_name":"/pykythe/symtab"' <"$<" | \
-	    $(ENTRYSTREAM_EXE) --read_format=json >"$@"
+# %.kythe.entries: %.kythe.json %.kythe.json-decoded
+# 	@# We leave /pykythe/symtab unencoded, so need to strip it:
+# 	egrep -v '^{"fact_name":"/pykythe/symtab"' <"$<" | \
+# 	    $(ENTRYSTREAM_EXE) --read_format=json >"$@"
 
-$(KYTHEOUTDIR)/%.verifier: $(KYTHEOUTDIR)/%.kythe.entries $(SUBSDIR)/%.py # etags
+$(KYTHEOUTDIR)/%.kythe.verifier: $(KYTHEOUTDIR)/%.kythe.entries $(SUBSDIR)/%.py # etags
 	@# TODO: --ignore_dups
 	set -o pipefail; $(VERIFIER_EXE) -check_for_singletons -goal_prefix='#-' "$(word 2,$^)" <"$(word 1,$^)" | tee "$@" || (rm "$@" ; exit 1)
 
 .PHONY: verify-%
 # TODO: make the following work:
-verify-%: $(KYTHEOUTDIR_PWD_REAL)/$(TEST_GRAMMAR_DIR)/%.verifier
+verify-%: $(KYTHEOUTDIR_PWD_REAL)/$(TEST_GRAMMAR_DIR)/%.kythe.verifier
 
 .PHONY: etags
 etags: pykythe/TAGS
@@ -219,7 +225,7 @@ pykythe/TAGS-py: pykythe/*.py
 test: all_tests
 
 .PHONY: all_tests
-all_tests: etags unit_tests test_imports1 test_grammar json-decoded-all  # pykythe_http_server
+all_tests: etags unit_tests test_imports1 test_grammar test_pykythe_pykythe json-decoded-all  # pykythe_http_server
 
 .PHONY: unit_tests
 unit_tests: tests/test_pykythe.py \
@@ -240,6 +246,11 @@ test_grammar: $(TESTOUT_TARGETS) # TODO: test_grammar2
 
 .PHONY: test_grammar2
 test_grammar2: $(TESTOUT_TYPESHED)/stdlib/3/builtins.kythe.json
+
+.PHONY: test_pykythe_pykythe
+# This is an example of how to generate outputs for a single source
+# (it also generates *.kythe.entries for all the imported files). ===
+test_pykythe_pykythe: $(KYTHEOUTDIR)$(PWD_REAL)/pykythe/__main__.kythe.entries
 
 # Reformat all the source code (uses .style.yapf)
 .PHONY: pyformat

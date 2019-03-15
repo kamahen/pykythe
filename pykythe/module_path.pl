@@ -2,6 +2,14 @@
 
 %% Module/path manipulation routines.
 
+%% '.' in a directory name causes problems
+%%    ... e.g. /usr/lib/python3.7/test/support/__init__.py
+%%    doesn't roundtrip:
+%%             /usr/lib/python3/7/test/support/__init__.py
+%%                             ^ <====
+%%    so change all '.'s to ':' -- this is generally safe
+%%    because --pythonpath uses ':' to separate items.
+%%    (see fix_dot/2 and unfix_dot/2 and where they're used).
 :- module(module_path, [
                           canonical_path/2,
                           full_module_part/2,
@@ -18,8 +26,9 @@
                           token_part/2
                        ]).
 
+:- use_module(library(apply), [maplist/3]).
 :- use_module(library(lists), [append/3, member/2]).
-:- use_module(library(pcre), [re_matchsub/4]).
+:- use_module(library(pcre), [re_matchsub/4, re_replace/4]).
 :- use_module(must_once, [must_once/1, must_once_msg/2, must_once_msg/3, fail/1]).
 :- use_module(pykythe_utils).
 
@@ -51,11 +60,23 @@ module_path(Module, Path) :-
 %% TODO: use library(pcre) re_replace?
 simple_path_module(Path, Module) :-
     (  var(Module)
-    -> split_atom(Path, '/', '', ModuleParts),
+    -> split_path_to_module_parts(Path, ModuleParts),
        atomic_list_concat(ModuleParts, '.', Module)
     ;  split_module_atom(Module, ModuleParts),
        atomic_list_concat(ModuleParts, '/', Path)
     ).
+
+split_path_to_module_parts(Path, ModuleParts) :-
+    split_atom(Path, '/', '', ModuleParts0),
+    maplist(fix_dot, ModuleParts0, ModuleParts).
+
+fix_dot(In, Out) :-
+    re_replace('\\.'/g, ':', In, Out0),
+    atom_string(Out, Out0).
+
+unfix_dot(In, Out) :-
+    re_replace(':'/g, '.', In, Out0),
+    atom_string(Out, Out0).
 
 %! path_to_python_module_or_unknown(+Path, -Fqn) is det.
 %% Get the Fqn for the Python module corresponding to Path or
@@ -66,7 +87,7 @@ path_to_python_module_or_unknown(Path, Fqn) :-
     -> true
     ;  %% Make sure the result conforms with FQN dotted name, so that
        %% match_reversed_module_and_dotted_names/3 works properly
-       split_atom(Path, '/', '', PathParts),
+       split_path_to_module_parts(Path, PathParts),
        (  PathParts = ['$PYTHONPATH'|PathParts2]
        -> atomic_list_concat(['<unknown>'|PathParts2], '.', Fqn)
        ;  PathParts = [''|PathParts2]
@@ -84,18 +105,9 @@ path_to_python_module(Path, Fqn) :-
     simple_path_module(CanonicalPath0, Fqn).
 
 %! canonical_path(+Path, -CanonicalPath) is semidet.
-%% Get a Path into a canonical (absolute) form.
+%% Get a Path (file or directory) into a canonical (absolute) form.
 %% Fails if the file or directory doesn't exist.
 canonical_path(Path, CanonicalPath) :-
-    %% TODO: besides being slightly inefficient, this doesn't do
-    %%       quite what we want -- probably want to change
-    %%       path_expand/2 to use py_ext/2 for files and to use the
-    %%       given file name for directories. However, it's unlikely
-    %%       that anyone would notice the subtlely different semantics
-    %%       -- e.g., we allow a directory whose name ends in '.py' or
-    %%       a file without a '.py' extension, but these wouldn't be
-    %%       allowed by the Python interpreter, so the extra
-    %%       permissivity is shouldn't be a problem.
     (  absolute_file_name(Path, AbsPath, [access(read), file_errors(fail)])
     -> true
     ;  absolute_file_name(Path, AbsPath, [access(read), file_type(directory), file_errors(fail)])
@@ -180,9 +192,9 @@ full_module_pieces(module_star(Module,_Path), ModulePieces) :-
     split_module_atom(Module, ModulePieces0),
     append(ModulePieces0, ['*'], ModulePieces). % TODO: need something better here
 
-%! split_module_atom(-Module:atom, +ModulePieces:list(atom) is det.
+%! split_module_atom(+Module:atom, -ModulePieces:list(atom) is det.
 %% Split module into pieces on '.', with special handling for '<unknown>'
-split_module_atom(Module, ModulePieces) :-
+split_module_atom(Module, ModulePiecesFixed) :-
     (  re_matchsub('<unknown>\\.{([^}]*)}$', Module, Sub, [anchored(true)])
     -> %% filename is in absolute form, so the first part of the result
        %% is ''. If we want to get rid of that, then the following should have
@@ -194,7 +206,8 @@ split_module_atom(Module, ModulePieces) :-
        split_atom(Sub.2, '.', '', ModulePieces2),
        ModulePieces = [Sub.1|ModulePieces2]
     ;  split_atom(Module, '.', '', ModulePieces)
-    ).
+    ),
+    maplist(unfix_dot, ModulePieces, ModulePiecesFixed).
 
 %! py_ext(+Path:atom, -PathBase:atom is nondet.
 %! py_ext(-Path:atom, +PathBase:atom is nondet.

@@ -1,16 +1,22 @@
 """Exercise all the syntactic structures in Python.
 
-This is derived from Python-3.7.0/Lib/lib2to3/tests/data/py3_test_grammar.py
-with Kythe verifier rules added.
+This is derived from
+Python-3.7.3.rc1/Lib/lib2to3/tests/data/py3_test_grammar.py with some
+Kythe verifier rules added.
 
+TODO: needs tests for at least the following (extended iterable unpacking):
+      PEP 3132 (Python 3.0)
+      PEP 448 (Python 3.5)
+      slices on left-hand-side
 
 The "{...}"s in verifier goals are to avoid unnecessary backtracking
 in the verifier (it *eventually* terminates without them, but takes a
 very long time). The order of goals might be important for
 performance: the `defines/binding` goals are given before `ref` goals,
 but I haven't verified that this ordering is needed for performance or
-for the "{...}" notations to work. Also, some goals can't have "{...}";
-for example, a `ref` to a forward `defines/binding` can't have "{...}".
+for the "{...}" notations to work. Also, some goals can't have
+"{...}"; for example, a `ref` to a forward `defines/binding` can't
+have "{...}".
 
 TODO: remove all "#- //" lines (these are "to be implemented" syntactic items).
 """

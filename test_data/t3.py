@@ -45,3 +45,9 @@ d.a[0].bb[0].strip()
 
 #- { @strip ref STRIP? }
 'abc'.strip()
+
+
+# ad-hoc tests for slices:
+
+l = [1,2,3]
+l[2:3] = [999,888]

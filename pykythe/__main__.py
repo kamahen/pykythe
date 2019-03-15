@@ -72,10 +72,6 @@ def main() -> int:
     logging.debug('RAW= %r', parse_tree)
     cooked_nodes = ast_raw.cvt_parse_tree(
         parse_tree, args.python_version, src_file)
-    logging.debug('COOKED= %r', cooked_nodes)
-    cooked_nodes_json_dict = cooked_nodes.as_json_dict()
-    logging.debug('AS_JSON_DICT= %r', cooked_nodes_json_dict)
-    logging.debug('AS_JSON: %s', json.dumps(cooked_nodes_json_dict))
     fqn_ctx = ast_cooked.FqnCtx(
         fqn_dot=args.module + '.',
         bindings=collections.ChainMap(collections.OrderedDict()),
@@ -86,8 +82,10 @@ def main() -> int:
 
     with open(args.out_fqn_ast, 'w') as out_fqn_ast_file:
         logging.debug('Output fqn= %r', out_fqn_ast_file)
-        print(meta.as_json_str(), file=out_fqn_ast_file)
-        print(add_fqns.as_json_str(), file=out_fqn_ast_file)
+        print(meta.as_prolog_str() + '.', file=out_fqn_ast_file)
+        print(add_fqns.as_prolog_str() + '.', file=out_fqn_ast_file)
+        print(meta.as_json_str(), file=out_fqn_ast_file) # TODO: delete
+        print(add_fqns.as_json_str(), file=out_fqn_ast_file) # TODO: delete
     logging.debug('Finished')
     return 0
 

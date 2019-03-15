@@ -973,7 +973,7 @@ def cvt_sliceop(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """sliceop: ':' [test]"""
     # TODO: test case
     assert ctx.name_ctx is NameCtx.REF, [node]
-    return cvt(node.children[0], ctx)
+    return cvt(node.children[1], ctx)
 
 
 def cvt_small_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:

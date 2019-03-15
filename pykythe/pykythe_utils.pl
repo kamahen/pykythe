@@ -31,7 +31,8 @@
                           term_to_canonical_atom/2,
                           update_dict/3,
                           update_new_dict/3,
-                          write_atomic/2
+                          write_atomic_file/2,
+                          write_atomic_stream/2
                          ]).
 
 :- meta_predicate
@@ -39,7 +40,8 @@
        do_if(0, 0),
        log_if(0, +),
        log_if(0, +, +),
-       write_atomic(0, +).
+       write_atomic_stream(0, +),
+       write_atomic_file(0, +).
 
 :- use_module(library(apply), [exclude/3, include/3, maplist/2, maplist/3, maplist/4, foldl/4, convlist/3]).
 :- use_module(library(base64), [base64/2]).
@@ -312,7 +314,7 @@ update_new_dict([K-V|KVs], Dict0, Dict) :-
     update_new_dict(KVs, Dict1, Dict).
 
 
-%! write_atomic(:WritePred, +Path:atom) is semidet.
+%! write_atomic_stream(:WritePred, +Path:atom) is semidet.
 %% Write to a file "atomically" -- that is, if another process is
 %% trying to write to the same file, there will be no collision (it is
 %% undetermined which process will "win"; presumably they both are
@@ -320,7 +322,7 @@ update_new_dict([K-V|KVs], Dict0, Dict) :-
 %% isn't created (even if `WritePred` fails and write_atomic/2 fails.
 %% If needed, directories to Path are created.
 %% WritePred must take the stream as its last argument.
-write_atomic(WritePred, Path) :-
+write_atomic_stream(WritePred, Path) :-
     %% TODO: See '$stage_file' in /usr/lib/swi-prolog/boot/init.pl
     %%       and setup_call_catcher_cleanup
     %% TODO: the tmpfile/rename trick doesn't work if the tmp file is
@@ -352,7 +354,23 @@ write_atomic(WritePred, Path) :-
        %% two pykythe processes are processing the same file at the
        %% same time.
        rename_file(TmpPath, Path)
-    ;  flush_output(Stream), % TODO: is this needed?
-       close(Stream),
-       pykythe_utils:safe_delete_file(TmpPath)
+    ;  close(Stream),
+       pykythe_utils:safe_delete_file(TmpPath),
+       fail
+    ).
+
+%! write_atomic_file(+WritePred, +Path) is semidet.
+%% Similar to write_atomic_stream, except it passes a path to Pred
+%% instead of a stream.
+write_atomic_file(WritePred, Path) :-
+    directory_file_path(PathDir, _, Path),
+    make_directory_path(PathDir),
+    tmp_file_stream(TmpPath, Stream, [encoding(utf8)]),
+    %% TODO: instead of setting up at_halt, use setup_call_cleanup/3
+    at_halt(pykythe_utils:safe_delete_file(TmpPath)), % in case WritePred crashes or fails
+    close(Stream),
+    (  call(WritePred, TmpPath)
+    -> rename_file(TmpPath, Path)
+    ;  pykythe_utils:safe_delete_file(TmpPath),
+       fail
     ).

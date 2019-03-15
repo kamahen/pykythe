@@ -49,9 +49,9 @@ gen_builtins_symtab_main :-
     convdict_pairs(strip_sym(PackageDot), Symtab, BuiltinsPairs),
     convdict(is_module, Symtab, SymtabModules),
     log_if(false, 'Package: ~q~n', [Package]),
-    write_atomic(gen_builtins_symtab:write_symtab_fact(
-                     Opts, Symtab, BuiltinsPairs, SymtabModules),
-                 SymtabOutputPath),
+    write_atomic_stream(gen_builtins_symtab:write_symtab_fact(
+                            Opts, Symtab, BuiltinsPairs, SymtabModules),
+                        SymtabOutputPath),
     halt.
 
 %! strip_sym(+PackageDot:atom, +SymType:(atom-atom), -SymStrippedType:(atom-atom))) is det.
