@@ -294,9 +294,7 @@
                   eval_union_type/7,
                   expr_normalized/6,
                   foldl_process_cached_or_from_src_module/5,
-                  full_module_pieces/2,
-                  full_path/5,
-                  full_path_prefixed/5,
+                  full_path/6,
                   hash_hex/2,
                   if_stmt_elses/2,
                   include_kyfact/5,
@@ -362,8 +360,6 @@
                   %% process_module_from_src_impl/6,
                   %% path_expand/3,
                   %% path_part/2,
-                  %% path_to_python_module/2,
-                  path_part_to_python_module_or_unknown/2,
                   path_to_python_module_or_unknown/2,
                   print_term_cleaned/3,
                   process_nodes/5,
@@ -373,7 +369,6 @@
                   %% pykythe_main/0,
                   pykythe_main2/0,
                   pykythe_opts/2,
-                  %% pythonpath_prefix/2,
                   %% read_cache_and_validate/5,
                   read_nodes/3,
                   remove_class_cycles/3,
@@ -404,8 +399,8 @@
                   %% symtab_lookup/4,
                   term_to_canonical_atom/2,
                   %% path_batch_suffix/3,
-                  update_dict/3,
-                  update_new_dict/3,
+                  %% update_dict/3, % This is deterministic
+                  %% update_new_dict/3, % This is deterministic
                   write_atomic_stream/2,
                   write_atomic_file/2,
                   %% write_batch_symtab/2, % Is det, but expansion confuses write_atomic_stream/2.
@@ -557,6 +552,19 @@ edcg:pred_info(exprs, 1,                            [expr]).
 %%      - garbage_collect             (13%)
 %%      from builtins_symtab_extend/4 (11%)
 %%      from symrej_accum/3           (18%)
+%%
+%% When processing from a cache file (batch), almost all the time
+%% is taken by:
+%%     update_new_dict
+%%       put_dict/4         27%
+%%       garbage collection 67%
+
+%% For this, the low-hanging fruit is changing symtab from dict to
+%% assoc or rbtree (probably rbtree). We also need a faster merge of
+%% symtab entries (neither library(assoc) nor library(rbtrees) has a
+%% "merge", although they both have a way of converting an ordered
+%% list to a tree, which can probably be modified to add to an
+%% existing tree.
 %%
 %% Old profiling results:
 %%   CONCLUSION: it's worth computing SHA-1 for source, to avoid
@@ -738,7 +746,7 @@ process_module_cached(Opts, FromSrcOk, KytheJsonPath, SrcPath, Symtab0, Symtab) 
         maybe_open_read(KytheJsonPath, KytheInputStream),
         process_module_cached_impl(Opts, FromSrcOk, KytheInputStream, KytheJsonPath, SrcPath, Symtab0, Symtab),
         close(KytheInputStream)),
-    log_if(true, 'Reused ~q for ~q', [KytheJsonPath, SrcPath]),
+    log_if(false, 'Reused ~q for ~q', [KytheJsonPath, SrcPath]), % msg is output by process_module_cached_impl
     !. % TODO: delete (when the fail catch-all clause is removed).
 process_module_cached(_Opts, _FromSrcOk, _KytheInputStream, KytheJsonPath, SrcPath, _Symtab0, _Symtab)  :-
     %% TODO: need a better reason for failure ... the tests in
@@ -761,12 +769,12 @@ process_module_cached_or_from_src_setup(Opts, SrcPath, SrcPathAbs, KytheJsonPath
     src_base(SrcPathAbs, SrcPathBase),
     atomic_list_concat([KytheOutDir, SrcPathBase, KytheOutSuffix], KytheJsonPath).
 
-%! process_module_cached_impl(+Opts:list, +FromSrcOk:{from_src_ok,cached_only}, KytheInputStream, +KytheJsonPath:atom, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
+%! process_module_cached_impl(+Opts:list, +FromSrcOk:{from_src_ok,cached_only}, +KytheInputStream, +KytheJsonPath:atom, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
 process_module_cached_impl(Opts, FromSrcOk, KytheInputStream, KytheJsonPath, SrcPath, Symtab0, Symtab)  :-
     opt(Opts, version(Version)),
     (  process_module_cached_batch(Opts, KytheJsonPath, SrcPath, SymtabFromCache, KytheBatchPath)
     -> merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab),
-       log_if(false, 'Succeeded/1(~w) in reusing ~q for ~q', [FromSrcOk, KytheBatchPath, SrcPath])
+       log_if(true, 'Reused/batch(~w) ~q for ~q', [FromSrcOk, KytheBatchPath, SrcPath])
     ;  %% The following validation depends on what kyfile//1 generates.
        read_cache_and_validate(KytheInputStream, KytheJsonPath, SrcPath, Version, SymtabFromCache),
        %% TODO: modules_in_symtab not needed because foldl_process_module_cached_or_from_src/5
@@ -780,7 +788,7 @@ process_module_cached_impl(Opts, FromSrcOk, KytheInputStream, KytheJsonPath, Src
        %% the cached result).
        merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab1),
        foldl_process_module_cached_or_from_src(Opts, cached_only, ModulesInSymtab, Symtab1, Symtab),
-       log_if(false, 'Succeeded/2(~w) in reusing ~q for ~q', [FromSrcOk, KytheJsonPath, SrcPath])
+       log_if(true, 'Reussed/cache(~w) ~q for ~q', [FromSrcOk, KytheJsonPath, SrcPath])
     ).
 
 %! process_module_cached_batch(+Opts:list, +KytheJsonPath:atom, +SrcPath:atom, -Symtab:dict, -KytheBatchPath:atom) is semidet.
@@ -1056,7 +1064,7 @@ run_parse_cmd(Opts, SrcPath, SrcFqn, OutPath) :-
     opts(Opts, [python_version(PythonVersion), parsecmd(ParseCmd),
                 kythe_corpus(KytheCorpus), kythe_root(KytheRoot)]),
     must_once_msg(memberchk(PythonVersion, [2, 3]), 'Invalid Python version: ~q', [PythonVersion]),
-    tmp_file_stream(OutPath, OutPathStream, [encoding(binary), extension('fqn-json')]),
+    tmp_file_stream(OutPath, OutPathStream, [encoding(binary), extension('fqn-ast.pl')]),
     do_if(false, ( % TODO: delete
                    re_replace("/"/g, "@", SrcPath, SrcPathSubs),
                    atomic_list_concat(['/tmp/pykythe-parser-output--', SrcPathSubs], TmpParserOutput),
@@ -1655,11 +1663,8 @@ kyImportDottedAsNamesFqn('ImportDottedAsNameFqn'{
 kyImportDottedAsNamesFqn_comb(FromDots, DottedNameItems, BindsFqn, BindsNameAstn,
                               ModuleAndMaybeToken) -->>
     Meta/file_meta,
-    MetaPath = Meta.path,
-    MetaPythonpaths = Meta.pythonpaths,
     { kyImportDottedAsNamesFqn_dots(FromDots, DottedNameItems, FromDotAstns, DottedNameAstns, FromImportPath) },
-    { full_path(FromDots, FromImportPath, MetaPythonpaths, MetaPath, ModuleAndMaybeToken) },
-    { full_module_pieces(ModuleAndMaybeToken, FullModulePieces) },
+    { full_path(FromDots, FromImportPath, Meta.pythonpaths, Meta.path, ModuleAndMaybeToken, FullModulePieces) },
     (  FullModulePieces = ['<unknown>'|FullModulePieces2]
     -> [ImportsEdgeKind, ImportsSep] = ['/kythe/edge/ref/file', '/']
     ;  [ImportsEdgeKind, ImportsSep] = ['/kythe/edge/ref/imports', '.'],
@@ -1672,36 +1677,6 @@ kyImportDottedAsNamesFqn_comb(FromDots, DottedNameItems, BindsFqn, BindsNameAstn
     kyfact_signature_node(BindsFqn, '/kythe/node/kind', 'variable'),
     kyanchor_node_kyedge_fqn(BindsNameAstn, '/kythe/edge/defines/binding', BindsFqn),
     [ assign_import_module(BindsFqn, ModuleAndMaybeToken) ]:expr.
-
-%! full_path(+FromDots, +Path, +Prefixes, +CurrModulePath, -ModuleAndMaybeToken) is det.
-%% Derive a module (and maybe token) for an "import" or "from ... import" statement.
-%% FromDots is only used to determine how things are processed -- the
-%% needed information is in FromImportPath
-%% - "from .. import i5" has FromImportPath='../i5' and FromDots=[_|_]
-%% - "from os.path import sep" has FromImportPath='$PYTHONPATH/os/path/sep' and FromDots=[]
-full_path([], Path, Prefixes, _CurrModulePath, ModuleAndMaybeToken) :-
-    must_once(
-        pythonpath_prefix(Path, DeprefixedPath)),
-    full_path_prefixed(Path, DeprefixedPath, Prefixes, Module, ModuleAndMaybeToken),
-    path_part_to_python_module_or_unknown(ModuleAndMaybeToken, Module).
-full_path([_|_], Path, _Prefixes, CurrModulePath, ModuleAndMaybeToken) :-
-    directory_file_path(CurrModulePathDir, _, CurrModulePath),
-    atomic_list_concat([CurrModulePathDir, Path], '/', FromImportPath2),
-    (  path_expand(FromImportPath2, Module, ModuleAndMaybeToken)
-    -> path_part_to_python_module_or_unknown(ModuleAndMaybeToken, Module)
-    ;  %% File doesn't exist, e.g. '/home/fred/foo/bar/src/../../xyz',
-       %% path_to_python_module_or_unknown/2 would give
-       %% '<unknown>.home.fred.foo.bar.src.......xyz'.
-       absolute_file_name(FromImportPath2, AbsFromImportPath2),
-       format(atom(Module), '<unknown>.{~w}', [AbsFromImportPath2]),
-       ModuleAndMaybeToken = module_alone(Module, FromImportPath2)
-    ).
-
-%! path_part_to_python_module_or_unknown(+ModuleAndMaybeToken, -Module) is det.
-%% Convenience predicate maping ModuleAndMaybeToken to Module.
-path_part_to_python_module_or_unknown(ModuleAndMaybeToken, Module) :-
-    path_part(ModuleAndMaybeToken, ResolvedPath),
-    path_to_python_module_or_unknown(ResolvedPath, Module).
 
 %! dotted_name_imports(+ReversedDotsAndNames:list, +ModulePieces:list, +ImportsEdgeKind:atom, +ImportsSep:atom)//kyfact,file_meta] is det.
 %% Note: in the case of an invalid path (no file), it's possible to
@@ -2331,10 +2306,15 @@ add_rej_to_symtab(Fqn-RejType, Symtab0, Symtab) :-
 %% Symtab0Rej0Mod0 and SymtabRejMod are sym_rej/2 functors.
 %% If Type is uninstantiated it gets set to []
 %% TODO: can we eliminate the "(Type=[]->true;true)" ?
-%%       one way would be to do an initial pass that
+%%       One way would be to do an initial pass that
 %%       enters all the identifiers into symtab (with type=[]).
 %% TODO: use library(assoc) or library(rbtrees) or trie or hash
-%% instead of dict for Symtab (performance) symrej_accum(Fqn-Type,
+%%       instead of dict for Symtab (performance)
+%%       symrej_accum(Fqn-Type.  (Probably rbtrees, because we do a
+%%       lot of insertions when reading in a cached symtab compared to
+%%       the number of lookups that will be done ... also might want
+%%       to create a merge_ord_list_to_rbtree for making the update
+%%       faster.)
 symrej_accum(Fqn-Type, sym_rej(Symtab0,Rej0), sym_rej(Symtab,Rej)) :-
     (  get_dict(Fqn, Symtab0, TypeSymtab)
     -> symrej_accum_found(Fqn, Type, TypeSymtab, Symtab0, Symtab, Rej0, Rej)

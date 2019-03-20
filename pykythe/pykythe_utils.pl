@@ -29,7 +29,7 @@
                           split_atom/4,
                           split_path_string_and_canonicalize/3,
                           term_to_canonical_atom/2,
-                          update_dict/3,
+                          %% update_dict/3,
                           update_new_dict/3,
                           write_atomic_file/2,
                           write_atomic_stream/2
@@ -50,6 +50,7 @@
 :- use_module(library(lists), [append/2, append/3, list_to_set/2, member/2, reverse/2, select/3]).
 :- use_module(library(pcre), [re_replace/4]).
 :- use_module(library(pprint), [print_term/2]).
+:- use_module(library(rbtrees), [ord_list_to_rbtree/2, rb_insert/4, rb_visit/2] ).
 :- use_module(library(sha), [sha_hash/3, hash_atom/2]).
 :- use_module(library(yall)).
 :- use_module(must_once, [must_once/1, must_once_msg/2, must_once_msg/3, fail/1]).
@@ -291,14 +292,18 @@ split_path_string_and_canonicalize(OptName, Opts0, [NewOpt|Opts1]) :-
 term_to_canonical_atom(Term, Atom) :-
     format(atom(Atom), '~k', [Term]).
 
-%! update_dict(+KVs:list(pair), -Dict0:dict, +Dict:dict) is det.
-%% Add/update all key-value pairs in KVs into the dict.
-%% The keys are processed in order; the last one takes effect.
-%% Note that dict_pairs(Dict, Tag, KVs) doesn't allow duplicate keys.
-update_dict([], Dict, Dict).
-update_dict([K-V|KVs], Dict0, Dict) :-
-    put_dict(K, Dict0, V, Dict1),
-    update_dict(KVs, Dict1, Dict).
+%% (NOT CURRENTLY USED)
+%% %! update_dict(+KVs:list(pair), -Dict0:dict, +Dict:dict) is det.
+%% %% Add/update all key-value pairs in KVs into the dict.
+%% %% The keys are processed in order; the last one takes effect.
+%% %% Note that dict_pairs(Dict, Tag, KVs) doesn't allow duplicate keys.
+%% update_dict([], Dict, Dict).
+%% update_dict([K-V|KVs], Dict0, Dict) :-
+%%     (  get_dict(K, Dict0, V)  % prevent creating so much garbage
+%%     -> Dict1 = Dict0
+%%     ;  put_dict(K, Dict0, V, Dict1)
+%%     ),
+%%     update_dict(KVs, Dict1, Dict).
 
 %! update_new_dict(+KVs:list(pair), -Dict0:dict, +Dict:dict) is det.
 %% Add all key-value pairs in KVs into the dict, skipping any that
@@ -306,14 +311,35 @@ update_dict([K-V|KVs], Dict0, Dict) :-
 %% The keys are processed in order, so if a key is added, any subsequent
 %% values of that key are ignored.
 %% Note that dict_pairs(Dict, Tag, KVs) doesn't allow duplicate keys.
-update_new_dict([], Dict, Dict).
-update_new_dict([K-V|KVs], Dict0, Dict) :-
-    (  get_dict(K, Dict0, _)
-    -> Dict1 = Dict0
-    ;  put_dict(K, Dict0, V, Dict1)
-    ),
-    update_new_dict(KVs, Dict1, Dict).
 
+%% This is the straightforward implementation, but it creates
+%% a lot of garbage and is slow.
+
+%% update_new_dict([], Dict, Dict).
+%% update_new_dict([K-V|KVs], Dict0, Dict) :-
+%%     (  get_dict(K, Dict0, _)
+%%     -> Dict1 = Dict0
+%%     ;  put_dict(K, Dict0, V, Dict1)
+%%     ),
+%%     update_new_dict(KVs, Dict1, Dict).
+
+%% The following is about several times faster than the above.
+%% (For 11,000 items, make_rb is about 20x faster than
+%% the equivalent loop for a dict).
+%% It would be better to just leave everything as a RB-tree,
+%% TODO: convert everything to RB-tree.
+
+update_new_dict(KVs, Dict0, Dict) :-
+    dict_pairs(Dict0, Tag, KVs0),
+    ord_list_to_rbtree(KVs0, Rb0),
+    make_rb(KVs, Rb0, Rb1),
+    rb_visit(Rb1, KVs1),
+    dict_pairs(Dict, Tag, KVs1).
+
+make_rb([], Rb, Rb).
+make_rb([K-V|KVs], Rb0, Rb) :-
+    rb_insert(Rb0, K, V, Rb1),
+    make_rb(KVs, Rb1, Rb).
 
 %! write_atomic_stream(:WritePred, +Path:atom) is semidet.
 %% Write to a file "atomically" -- that is, if another process is

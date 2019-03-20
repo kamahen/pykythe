@@ -80,7 +80,8 @@ class TestPlainOldData(unittest.TestCase):
         if False:  # TODO: this fails for b_unpickle because it's frozen
             b_pickle = pickle.dumps(b_node, protocol=pickle.HIGHEST_PROTOCOL)
             b_unpickle = pickle.loads(b_pickle)
-            self.assertEqual(repr(b_unpickle), "SomeData(a=999, b='foo', c=True)")
+            self.assertEqual(
+                repr(b_unpickle), "SomeData(a=999, b='foo', c=True)")
 
         with self.assertRaises(TypeError):
             # ValueError: Unknown field names: ['x']
@@ -91,8 +92,9 @@ class TestPlainOldData(unittest.TestCase):
             SomeData(a=1, b='aaa', c=False, x=666)  # type: ignore  # pylint: disable=unexpected-keyword-arg
 
         c_1 = SomeData(a=1, b='abc', c=True)
-        self.assertEqual(c_1.as_prolog_str(),
-                         "json{'a':1,'b':'abc','c':json{kind:bool,value:'True'}}")
+        self.assertEqual(
+            c_1.as_prolog_str(),
+            "json{'a':1,'b':'abc','c':json{kind:bool,value:'True'}}")
 
         with self.assertRaises(TypeError):
             # ValueError: Missing field: 'c'
@@ -102,7 +104,8 @@ class TestPlainOldData(unittest.TestCase):
         # pylint: disable=line-too-long
         self.assertEqual(
             c_2.as_prolog_str(),
-            "json{kind:'SomeData2',slots:json{'a':1,'b':'abc','c':json{kind:bool,value:'False'}}}")
+            "json{kind:'SomeData2',slots:json{'a':1,'b':'abc','c':json{kind:bool,value:'False'}}}"
+        )
 
         with self.assertRaises(TypeError):
             # ValueError: Unknown field names: ['x']

@@ -78,6 +78,11 @@ out (on Linux):
   (requres running `scripts/decode_json.py` -- see `Makefile` rule
   `json-decoded-all`).
 
+* You can run `scripts/test3.sh` to see how the system works both with
+  processing from source or by reusing the cache (or a combination).
+  Note that this has some extra pre-processing steps that aren't needed
+  for ordinary use.
+
 ## Coding conventions
 
 ### Code formatting
@@ -129,6 +134,9 @@ A source file is processed in the following steps:
 
 * Each "import" is recursively processed (if there is a circular import,
   this is detected and the recursive import is skipped).
+  * This includes outputting the `.kythe.json` and `.kythe.entries`
+    files.  (The `.kythe.json` file can be reused as a "cache" to
+    avoid reprocessing the source file.)
 
 * The expressions are symbolically evaluated to fill in the
   symtab. This is, in effect, simple type inferencing (for example,
@@ -147,10 +155,9 @@ A source file is processed in the following steps:
     operator) can be resolved to the appropriate class
     attribute/method or module variable/function.
 
-* The symtab and Kythe facts are output to a `.kythe.json` file, from
-  which a Kythe `.kythe.entries` file can be generated
-  (`kythe/go/platform/tools/entrystream/entrystream`).  The test cases
-  can be checked with `kythe/cxx/verifier/verifier`.
+* The symtab and Kythe facts are output to a `.kythe.json` file and
+  `.kythe.entries` file.  The test cases can be checked with
+  `kythe/cxx/verifier/verifier`.
 
 
 ### <a name="symtab">Symtab</a>

@@ -7,8 +7,10 @@
 # of running will vary.  If you use --jobs, you should specify
 # --output-sync=target (this seems to be the default).
 
-# To see how to run this for a single source, see target test_pykythe_pykythe
-# which also outputs *.kythe.entries files for all the imported files.
+# To see how to run this for a single source, see target
+# test_pykythe_pykythe which also outputs *.kythe.entries files for
+# all the imported files.
+# Also scripts/test3.sh
 
 # ("clean" shouldn't be necessary, but the dependencies are fairly
 # complicated, so it's possible that "make test" doesn't run
@@ -60,7 +62,7 @@ TESTOUT_TYPESHED:=$(KYTHEOUTDIR)$(TYPESHED_REAL)
 KYTHE_CORPUS_ROOT_OPT:=--kythe_corpus='test-corpus' --kythe_root='test-root'
 VERSION_OPT:=--version='$(VERSION)'
 PYKYTHEOUT_OPT:=--kytheout='$(KYTHEOUTDIR)'
-ifeq ($BATCH_ID,)
+ifeq ($(BATCH_ID),)
     BATCH_OPT:=--batch_suffix=
 else
     BATCH_OPT:=--batch_suffix='-batch-$(BATCH_ID)'
@@ -184,7 +186,7 @@ $(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.entries: \
 	    $(PYKYTHE_OPTS) \
 	    "$<"
 	$(SWIPL_EXE) pykythe/gen_builtins_symtab.pl \
-	    -- $(VERSION_OPT) \
+	    -- $(VERSION_OPT) $(PYTHONPATH_OPT) \
 	    "$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.json" \
 	    "$(BUILTINS_SYMTAB_FILE)"
 
@@ -202,7 +204,7 @@ json-decoded-all:
 # 	egrep -v '^{"fact_name":"/pykythe/symtab"' <"$<" | \
 # 	    $(ENTRYSTREAM_EXE) --read_format=json >"$@"
 
-$(KYTHEOUTDIR)/%.kythe.verifier: $(KYTHEOUTDIR)/%.kythe.entries $(SUBSDIR)/%.py # etags
+$(KYTHEOUTDIR)/%.kythe.verifier: $(KYTHEOUTDIR)/%.kythe.entries # etags
 	@# TODO: --ignore_dups
 	set -o pipefail; $(VERIFIER_EXE) -check_for_singletons -goal_prefix='#-' "$(word 2,$^)" <"$(word 1,$^)" | tee "$@" || (rm "$@" ; exit 1)
 
@@ -328,19 +330,23 @@ clean:
 clean-lite clean_lite:
 	$(RM) -r $(KYTHEOUTDIR)
 
-.PHONY: clean-batch clean_batch
+.PHONY: touch-fixed-src touch_fixed_src
+touch-fixed-src touch_fixed_src:  # For doing a rerun with cache preserved
+	find $(SUBSTDIR) -type f -print0 | xargs -0 touch
+
+.PHONY: clean-cache clean_cache
 clean-batch clean_batch:
-	find $(KYTHEOUTDIR) -name '*.pykythe.cache-*' -print0 | xargs -0 $(RM)
+	@# leaves the BATCH cache intact
+	find $(KYTHEOUTDIR) -name '*.kythe.json' -o -name '*.kythe.json-decoded' -o -name '*.kythe.entries' -o -name '*.kythe.verifier' -delete
+
+PHONY: clean-batch clean_batch
+	find $(KYTHEOUTDIR) -name '*.kythe.json-batch-*' -delete
 
 .PHONY: clean-testout-srcs clean_testout_srcs
 clean-testout-srcs clean_testout_srcs:
 	find $(SUBSTDIR) -name '*.py' -delete
 
-PHONY: touch-fixed-src touch_fixed_src
-touch-fixed-src touch_fixed_src:  # For doing a rerun with cache preserved
-	find $(SUBSTDIR) -type f -print0 | xargs -0 touch
-	@# It will be a new batch, so might as well get rid of the batch cache files:
-	find $(KYTHEOUTDIR) -type f -name '*-batch_suffix-*' -delete
+clean-batch clean_batch:
 
 .PHONY: tkdiff
 tkdiff:
@@ -384,8 +390,8 @@ web_ui:
 	cp -p  $(KYTHE_GENFILES)/kythe/web/ui/resources/public/js/main.js $(HTTP_SERVER_RESOURCES)/js/
 
 
-.PHONY: triples
-triples: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).nq.gz
+# .PHONY: triples
+# triples: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).nq.gz
 
 .PHONY: gc
 gc:

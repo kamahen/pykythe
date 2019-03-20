@@ -18,12 +18,13 @@
 
 :- use_module(library(base64), [base64/2]).
 :- use_module(library(optparse), [opt_arguments/3]).
+:- use_module(module_path).
 :- use_module(must_once).
 :- use_module(pykythe_utils).
 
 :- ensure_loaded(bootstrap_builtins_symtab).
 
-:- initialization(gen_builtins_symtab_main, main). % TODO: reinstate this (see comment in Makefile).
+:- initialization(gen_builtins_symtab_main, main).
 
 %% TODO:
 %% These are missing from builtins:
@@ -36,10 +37,13 @@
 gen_builtins_symtab_main :-
     %% set_prolog_flag(color_term, false),        % TODO: remove (to ~/.plrc)
     %% allow --versions but don't use it (for now)
-    opt_arguments([[opt(version), type(atom), default(''), longflags(['version']),
-                    help('Pykythe version, used to validate cache entries')]
-                  ],
-                  Opts, PositionalArgs),
+    OptsSpec =
+        [[opt(version), type(atom), default(''), longflags(['version']),
+          help('Pykythe version, used to validate cache entries')],
+         [opt(pythonpath), type(atom), default(''), longflags(['pythonpath']),
+          help('Similar to $PYTHONPATH for resolving imports (":"-separated paths)')]],
+    opt_arguments(OptsSpec, Opts0, PositionalArgs),
+    must_once(split_path_string_and_canonicalize(pythonpath, Opts0, Opts)),
     must_once_msg(PositionalArgs = [KytheInputPath, SymtabOutputPath],
                   'Missing/extra positional args'),
     open(KytheInputPath, read, KytheInputStream),
@@ -78,6 +82,19 @@ write_symtab_fact(Opts, Symtab, BuiltinsPairs, SymtabModules, Stream) :-
     format(Stream, '~k.~n', [builtins_symtab(Symtab)]),
     format(Stream, '~k.~n', [builtins_pairs(BuiltinsPairs)]),
     format(Stream, '~k.~n', [builtins_symtab_modules(SymtabModules)]),
+    memberchk(pythonpath(PythonPaths), Opts),
+    must_once(full_path([], '$PYTHONPATH/typing', PythonPaths, '', TypingModule0, _)),
+    must_once(module_part(TypingModule0, TypingModule)),
+    must_once(\+ token_part(TypingModule0, _)),
+    must_once(is_resolved_path(TypingModule0)),
+    %% TODO: delete the following, which are for eventually adding
+    %%       support for mypy-style type declarations
+    log_if(false, 'TYPING module: ~q (from ~q)', [TypingModule, TypingModule0]), % TODO: delete
+    atomic_list_concat([TypingModule, 'Dict'], '.', TypingDict),
+    log_if(false, 'TYPING-Dict: ~q', [Symtab.TypingDict]), % TODO: delete
+    do_if(false,
+          forall(member(K-V, BuiltinsPairs), % TODO: delete 
+                 format('BUILTIN ~q: ~q~n', [K, V]))),
     %% TODO: 'None', 'NoneType', bool, bytes, function
     forall((builtins_symtab_primitive(Primitive, _Type),
             get_dict(Primitive, BuiltinsDict, Builtin)),

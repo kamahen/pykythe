@@ -10,23 +10,21 @@
 %%    so change all '.'s to ':' -- this is generally safe
 %%    because --pythonpath uses ':' to separate items.
 %%    (see fix_dot/2 and unfix_dot/2 and where they're used).
-:- module(module_path, [
-                          canonical_path/2,
-                          full_module_part/2,
-                          full_module_pieces/2,
-                          full_path_prefixed/5,
-                          module_part/2,
-                          module_path/2,
-                          path_expand/3,
-                          path_part/2,
-                          path_to_python_module/2,
-                          path_to_python_module_or_unknown/2,
-                          pythonpath_prefix/2,
-                          src_base/2,
-                          token_part/2
+:- module(module_path, [canonical_path/2,
+                        full_module_part/2,
+                        full_path/6,
+                        is_resolved_path/1,
+                        module_part/2,
+                        module_path/2,
+                        path_expand/3,
+                        path_part/2,
+                        path_to_python_module_or_unknown/2,
+                        src_base/2,
+                        token_part/2
                        ]).
 
 :- use_module(library(apply), [maplist/3]).
+:- use_module(library(filesex), [directory_file_path/3]).
 :- use_module(library(lists), [append/3, member/2]).
 :- use_module(library(pcre), [re_matchsub/4, re_replace/4]).
 :- use_module(must_once, [must_once/1, must_once_msg/2, must_once_msg/3, fail/1]).
@@ -38,6 +36,39 @@
 :- style_check(+discontiguous).
 %% :- set_prolog_flag(generate_debug_info, false).
 
+%! full_path(+FromDots, +Path, +Pythonpaths, +CurrModulePath, -ModuleAndMaybeToken, -ModulePieces:list(atom)) is det.
+%% Derive a module (and maybe token) for an "import" or "from ... import" statement.
+%% FromDots is only used to determine how things are processed -- the
+%% needed information is in CurrModulePath + Path.
+%% - "from .. import i5" has FromImportPath='../i5' and FromDots=[_|_]
+%% - "from os.path import sep" has FromImportPath='$PYTHONPATH/os/path/sep' and FromDots=[]
+full_path([], Path, Pythonpaths, _CurrModulePath, ModuleAndMaybeToken, ModulePieces) :-
+    must_once(
+        pythonpath_prefix(Path, DeprefixedPath)),
+    full_path_prefixed(Path, DeprefixedPath, Pythonpaths, Module, ModuleAndMaybeToken),
+    path_part_to_python_module_or_unknown(ModuleAndMaybeToken, Module),
+    full_module_pieces(ModuleAndMaybeToken, ModulePieces).
+full_path([_|_], Path, _Pythonpaths, CurrModulePath, ModuleAndMaybeToken, ModulePieces) :-
+    directory_file_path(CurrModulePathDir, _, CurrModulePath),
+    atomic_list_concat([CurrModulePathDir, Path], '/', FromImportPath2),
+    (  path_expand(FromImportPath2, Module, ModuleAndMaybeToken)
+    -> path_part_to_python_module_or_unknown(ModuleAndMaybeToken, Module)
+    ;  %% File doesn't exist, e.g. '/home/fred/foo/bar/src/../../xyz',
+       %% path_to_python_module_or_unknown/2 would give
+       %% '<unknown>.home.fred.foo.bar.src.......xyz'.
+       absolute_file_name(FromImportPath2, AbsFromImportPath2),
+       format(atom(Module), '<unknown>.{~w}', [AbsFromImportPath2]),
+       ModuleAndMaybeToken = module_alone(Module, FromImportPath2)
+    ),
+    full_module_pieces(ModuleAndMaybeToken, ModulePieces).
+
+%! is_resolved_path(+ModuleAndMaybeToken) is semidet.
+%% Succeeds if the module has a resolved path.
+is_resolved_path(ModuleAndMaybeToken) :-
+    path_part(ModuleAndMaybeToken, Path),
+    \+ atom_concat('$PYTHONPATH/', _, Path),
+    module_part(ModuleAndMaybeToken, Module),
+    \+ atom_concat('<unknown>.', _, Module).
 
 %! module_path(+Module:atom, -Path:atom) is nondet.
 %! module_path(-Module:atom, +Path:atom) is nondet.
@@ -114,11 +145,11 @@ canonical_path(Path, CanonicalPath) :-
     ),
     atom_string(CanonicalPath, AbsPath).
 
-%! full_path_prefixed(+Path, +DeprefixedPath, +Prefixes:list, ?Module, -ModuleAndMaybeToken) is det.
+%! full_path_prefixed(+Path, +DeprefixedPath, +Pythonpaths:list, ?Module, -ModuleAndMaybeToken) is det.
 %% ModuleAndMaybeToken is either module_alone or module_and_token functor.
 %% Module is logical variable that gets filled in later
-full_path_prefixed(Path, DeprefixedPath, Prefixes, Module, ModuleAndMaybeToken) :-
-    (  member(Prefix, Prefixes),
+full_path_prefixed(Path, DeprefixedPath, Pythonpaths, Module, ModuleAndMaybeToken) :-
+    (  member(Prefix, Pythonpaths),
        atom_concat(Prefix, DeprefixedPath, Path0),
        path_expand(Path0, Module, ModuleAndMaybeToken)
     -> true
@@ -244,3 +275,9 @@ src_base(SrcPath, SrcPathBase) :-
        %% trigger it:
        %% type_error(file_name_not_ending_in_py_or_pyi, SrcPath)
     ).
+
+%! path_part_to_python_module_or_unknown(+ModuleAndMaybeToken, -Module) is det.
+%% Convenience predicate maping ModuleAndMaybeToken to Module.
+path_part_to_python_module_or_unknown(ModuleAndMaybeToken, Module) :-
+    path_part(ModuleAndMaybeToken, ResolvedPath),
+    path_to_python_module_or_unknown(ResolvedPath, Module).
