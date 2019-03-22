@@ -43,10 +43,11 @@ out (on Linux):
   that there's a conflict with Ubuntu package `python3-lib2to3`. The
   easiest way to fix this is to clone `cprolog` from github and then
   `sudo cp -r --preserve=mode,timestamps cpython/Lib/lib2to3/*
-  /usr/lib/python3.7/lib2to3/`
+  /usr/lib/python3.7/lib2to3/`. Alternatively, `sudo apt-get install
+  2to3 python3-lib2to3 python3-toolz`.
 
 * Install [SWI-Prolog](http://www.swi-prolog.org/Download.html). You
-  need at least version 8.1.1, so as of 2019-02-04, this means
+  need at least version 8.1.3, so as of 2019-02-04, this means
   using the "devel" download or PPA.
 
   After installing, add the packages
@@ -141,9 +142,10 @@ A source file is processed in the following steps:
     avoid reprocessing the source file.)
 
 * The expressions are symbolically evaluated to fill in the
-  symtab. This is, in effect, simple type inferencing (for example,
-  resolving a function call to a class constructor, then applying the
-  "dot" operator to determine the attribute's type).
+  symtab. This is, in effect, simple type inferencing or abstract
+  interpretation (for example, resolving a function call to a class
+  constructor, then applying the "dot" operator to determine the
+  attribute's type).
 
   * When a symtab entry is updated with additional information, it is
     recorded in "rejected" list.
@@ -204,7 +206,7 @@ When an "import *" is processed, the symtab entries that start with
 the module name are added to the importing module's symtab (e.g., if
 `foo.py` has `from bar import *`, then all symtab entries that start
 with `path.to.bar` are added to the symtab, with the `path.to.bar`
-replaced by `path.to.foo`.
+replaced by `path.to.foo`).
 
 Builtins are added to the "scope" of each program, as if there were a
 `from builtins import *` added to each program.  This is not how
@@ -217,7 +219,7 @@ we avoid having a stack of symtabs.
 ### Imports, cache, and batches
 
 When a source file is processed, all the imports must be processed
-first. Unlike C++ (For example), information about dependencies isn't
+first. Unlike C++ (for example), information about dependencies isn't
 available from the build system, although
 [importlab](https://github.com/google/importlab) could be
 used. Additionally, there can be circular imports, which prevent a
@@ -278,12 +280,6 @@ in multiple repositories.)
 
 ## Known issues
 
-* Does not process the generated facts into a form that Kythe's
-  `http_server` can properly display, so `http_server` cannot be used
-  to interactively validate the generated facts. (The documentation at
-  kythe.io seems to be out of date on how to post-process the facts
-  for use by `http_server`.)
-
 * Needs more documentation.
 
 * Needs *many* more test cases.
@@ -304,7 +300,7 @@ in multiple repositories.)
 sudo ln -s apt_pkg.cpython-36m-x86_64-linux-gnu.so apt_pkg.cpython-37m-x86_64-linux-gnu.so`
 
 * Requires Python 3.7 `2to3`
-   * On Ubuntu: `apt-get install 2to3 python3-lib2to3 python3-toolz`
+   * On Ubuntu: `sudo apt-get install 2to3 python3-lib2to3 python3-toolz`
 
 * Requires `mypy_extensions`:
    * `python3.7 -m pip install mypy_extensions`
