@@ -30,8 +30,10 @@ out (on Linux):
 * Follow the instructions at [Kythe - getting
   started](https://github.com/google/kythe#getting-started ) to
   download the latest tarball from the [Kythe
-  repository](https://github.com/google/kythe/releases) and copy the
-  binaries into `/opt/kythe`.
+  repository](https://github.com/google/kythe/releases) and follow the
+  instructions to copy the binaries into `/opt/kythe`.
+  * There are rules in the Makefile for building Kythe from scratch,
+    but they often break with new releases.
 
 * Install `python3.7`
 

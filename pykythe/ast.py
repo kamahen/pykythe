@@ -36,10 +36,13 @@ class File(pod.PlainOldData):
         astn = xcast(pytree.Leaf, astn)
         offset = self.line_offsets[astn.lineno] + astn.column
         return Astn(
-            value=astn.value, start=offset, end=offset + len(astn.value))
+            value=astn.value,
+            start=offset,
+            end=offset + len(astn.value),  # type: ignore
+        )
 
 
-def make_file(path: Text, content: Text, encoding: Text) -> File:
+def make_file(path: Text, content: bytes, encoding: Text) -> File:
     line_offsets = {1: 0}
     # TODO: this only works with ASCII right now ... need to instead
     #       use a decoding iterator to get bytes that correspond to
@@ -55,4 +58,5 @@ def make_file(path: Text, content: Text, encoding: Text) -> File:
         content=content,
         encoding=encoding,
         line_offsets=line_offsets,
-        numlines=lineno - 1)
+        numlines=lineno - 1,  # type: ignore
+    )

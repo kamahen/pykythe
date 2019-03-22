@@ -1,5 +1,13 @@
 # Simple scripts for testing etc.
 
+# To build the indexes for the pyythe source and display
+# it with the Kythe browser:
+# - download the latest Kythe build from https://github.com/kythe/kythe/releases
+# - unpack it and link it into ~/kythe (e.g., so that ~/kythe/tools/http_server exists)
+# - make -C ~/src/pykythe add-index-pykythe run-server
+# Because of some pre-processing, $HOME/src/pykythe/* files show in
+# /tmp/pykythe_test/SUBST/$HOME/src/pykythe/pykythe/ast_raw.py
+
 # make -C ~/src/pykythe clean etags test
 # make -C ~/src/pykythe clean_lite etags test
 # You should be able to run with --jobs parameter and get the same
@@ -27,8 +35,36 @@ SHELL:=/bin/bash
 PYTHON3_EXE:=$(shell type -p python3.7)  # /usr/bin/python3.7
 FIND_EXE:=$(shell type -p find)          # /usr/bin/find
 SWIPL_EXE:=$(shell type -p swipl)        # /usr/bin/swipl
-SWIPL_OPTIMISE:=-O
 COVERAGE:=$(shell type -p coverage)      # /usr/local/bin/coverage
+
+# stuff for running tests (see https://kythe.io/docs/kythe-verifier.html)
+KYTHE:=../kythe
+KYTHE_BIN:=$(KYTHE)/bazel-bin
+KYTHE_GENFILES:=$(KYTHE)/bazel-genfiles
+
+BROWSE_PORT_PYKYTHE:=8888
+BROWSE_PORT_PYTYPE:=8889
+VERIFIER_EXE:=/opt/kythe/tools/verifier
+ENTRYSTREAM_EXE:=/opt/kythe/tools/entrystream
+WRITE_ENTRIES_EXE=/opt/kythe/tools/write_entries
+WRITE_TABLES_EXE=/opt/kythe/tools/write_tables
+HTTP_SERVER_EXE:=/opt/kythe/tools/http_server
+HTTP_SERVER_RESOURCES:=/opt/kythe/web/ui
+
+# If Kythe built from source:
+# VERIFIER_EXE:=$(KYTHE_BIN)/kythe/cxx/verifier/verifier
+# ENTRYSTREAM_EXE:=$(KYTHE_BIN)/kythe/go/platform/tools/entrystream/entrystream
+# WRITE_ENTRIES_EXE:=$(KYTHE_BIN)/kythe/go/storage/tools/write_entries/write_entries
+# WRITE_TABLES_EXE:=$(KYTHE_BIN)/kythe/go/serving/tools/write_tables/write_tables
+# HTTP_SERVER_EXE:=$(KYTHE_BIN)/kythe/go/serving/tools/http_server/http_server
+
+# TRIPLES_EXE:=$(KYTHE_BIN)/kythe/go/storage/tools/triples/triples
+# KYTHE_EXE:=$(KYTHE_BIN)/kythe/go/serving/tools/kythe/kythe
+
+# WARNING: web_ui modifies $(HTTP_SERVER_RESOURCES)
+# TODO: fix this for where the build_kythe target puts the resources
+#       (e.g. ../kythe/bazel-genfiles/kythe/web/ui/resources/public)
+# HTTP_SERVER_RESOURCES:=/tmp/kythe_resources
 
 PYKYTHE_SRCS:=$(shell ls pykythe/*.{py,pl} | sort)
 # TODO: see also https://docs.python.org/3/library/uuid.html
@@ -38,10 +74,13 @@ VERSION:=$(shell ($(SWIPL_EXE) --version; $(PYTHON3_EXE) --version; head -999999
 # -$(shell $(PYTHON3_EXE) -c 'import os, base64; print(base64.urlsafe_b64encode(os.urandom(9)).decode("ascii"))')
 BATCH_ID:=$(shell date --utc --iso-8601=ns | sed -e 's/\+00:00//' -e 's/,/./')
 
+PYKYTHE_EXE=$(TESTOUTDIR)/pykythe.qlf
+
 TEST_GRAMMAR_DIR:=test_data
 TESTGITHUB:=$(HOME)/tmp/test-github
 PARSECMD_OPT:=--parsecmd="$(PYTHON3_EXE) -m pykythe"
-ENTRIESCMD_OPT:=--entriescmd=$(shell realpath ../kythe/bazel-bin/kythe/go/platform/tools/entrystream/entrystream)
+# ENTRIESCMD_OPT:=--entriescmd=$(shell realpath ../kythe/bazel-bin/kythe/go/platform/tools/entrystream/entrystream)
+ENTRIESCMD_OPT:=--entriescmd=$(ENTRYSTREAM_EXE)
 # PYTHONPATH starts at .., so "absolute" paths in test_data should be
 #            of the form "pykythe.test_data.___"
 #            (see also fix_for_verifier.py and ${ROOT_DIR} etc. substitutions
@@ -51,13 +90,13 @@ SUBSTDIR:=$(TESTOUTDIR)/SUBST
 KYTHEOUTDIR:=$(TESTOUTDIR)/KYTHE
 BUILTINS_SYMTAB_FILE:=$(TESTOUTDIR)/KYTHE/builtins_symtab.pl
 TESTOUT_PYKYTHEDIR=$(KYTHEOUTDIR)/pykythe
-SUBSDIR_PWD_REAL:=$(shell echo $(SUBSTDIR) | sed "s:$$:$(PWD_REAL):")
+SUBSTDIR_PWD_REAL:=$(shell echo $(SUBSTDIR) | sed "s:$$:$(PWD_REAL):")
 KYTHEOUTDIR_PWD_REAL:=$(shell echo $(KYTHEOUTDIR) | sed "s:$$:$(PWD_REAL):")
 PYTHONPATH_DOT:=$(shell realpath .. | sed 's!^/!$(SUBSTDIR)/!')
 TESTOUT_SRCS:=$(shell $(FIND_EXE) $(TEST_GRAMMAR_DIR) -name '*.py'  | sort | \
-    sed -e 's!^!$(SUBSDIR_PWD_REAL)/!')
+    sed -e 's!^!$(SUBSTDIR_PWD_REAL)/!')
 TESTOUT_TARGETS:=$(shell $(FIND_EXE) $(TEST_GRAMMAR_DIR) -name '*.py' | sort | \
-    sed -e 's!^!$(KYTHEOUTDIR)$(SUBSDIR_PWD_REAL)/!' -e 's!\.py$$!.kythe.verifier!')
+    sed -e 's!^!$(KYTHEOUTDIR)$(SUBSTDIR_PWD_REAL)/!' -e 's!\.py$$!.kythe.verifier!')
 TESTOUT_TYPESHED:=$(KYTHEOUTDIR)$(TYPESHED_REAL)
 KYTHE_CORPUS_ROOT_OPT:=--kythe_corpus='test-corpus' --kythe_root='test-root'
 VERSION_OPT:=--version='$(VERSION)'
@@ -74,37 +113,13 @@ PYKYTHE_OPTS=$(VERSION_OPT) $(BATCH_OPT) \
 	$(PYKYTHEOUT_OPT) $(PARSECMD_OPT) $(ENTRIESCMD_OPT) $(KYTHE_CORPUS_ROOT_OPT) $(PYTHONPATH_OPT)
 TIME:=time
 
-# stuff for running tests (see https://kythe.io/docs/kythe-verifier.html)
-KYTHE:=../kythe
-KYTHE_BIN:=$(KYTHE)/bazel-bin
-KYTHE_GENFILES:=$(KYTHE)/bazel-genfiles
-VERIFIER_EXE:=$(KYTHE_BIN)/kythe/cxx/verifier/verifier
-# VERIFIER_EXE:=/opt/kythe/tools/verifier
-ENTRYSTREAM_EXE:=$(KYTHE_BIN)/kythe/go/platform/tools/entrystream/entrystream
-# ENTRYSTREAM_EXE:=/opt/kythe/tools/entrystream
-WRITE_ENTRIES_EXE:=$(KYTHE_BIN)/kythe/go/storage/tools/write_entries/write_entries
-WRITE_TABLES_EXE:=$(KYTHE_BIN)/kythe/go/serving/tools/write_tables/write_tables
-# http_server built from source requires some additional post-processing,
-#     so use the old http_server from Kythe v0.0.26
-#     https://github.com/kythe/kythe/releases/tag/v0.0.26
-# HTTP_SERVER_EXE:=/opt/kythe/tools/http_server
-HTTP_SERVER_EXE:=$(KYTHE_BIN)/kythe/go/serving/tools/http_server/http_server
-TRIPLES_EXE:=$(KYTHE_BIN)/kythe/go/storage/tools/triples/triples
-BROWSE_PORT:=8888
-KYTHE_EXE:=$(KYTHE_BIN)/kythe/go/serving/tools/kythe/kythe
-# # WARNING: web_ui modifies $(HTTP_SERVER_RESOURCES)
-# # HTTP_SERVER_RESOURCESX:=/opt/kythe/web/ui
-# # HTTP_SERVER_RESOURCESX:=$(HOME)/Downloads/kythe-v0.0.29/web/ui
-# # HTTP_SERVER_RESOURCESX:=$(HOME)/src/kythe/kythe/web/ui/resources/public
-HTTP_SERVER_RESOURCES:=/tmp/kythe_resources
-
 # .PRECIOUS: %.kythe.entries %.json-decoded %.json
 .SECONDARY:  # Do not delete any intermediate files
 
 # $(PYKYTHE_SRCS) is a dependency because it's used to compute $(VERSION)
-$(SUBSDIR_PWD_REAL)/pykythe/bootstrap_builtins_symtab.pl: $(PYKYTHE_SRCS)
+$(SUBSTDIR_PWD_REAL)/pykythe/bootstrap_builtins_symtab.pl: $(PYKYTHE_SRCS)
 
-$(SUBSDIR_PWD_REAL)/%: % scripts/fix_for_verifier.py
+$(SUBSTDIR_PWD_REAL)/%: % scripts/fix_for_verifier.py
 	@# FROM_DIR TO_DIR TYPESHED_DIR FROM_FILE TO_FILE
 	@echo "fix >$@"
 	@mkdir -p "$(dir $@)"
@@ -114,22 +129,22 @@ $(SUBSDIR_PWD_REAL)/%: % scripts/fix_for_verifier.py
 # TODO: the following have an extra stutter in the files
 ########
 
-# $(SUBSDIR_PWD_REAL)/test_data/imports_dir1/i1.py: \
-# 	$(SUBSDIR_PWD_REAL)/test_data/imports_dir1/i3.py \
-# 	$(SUBSDIR_PWD_REAL)/test_data/imports_dir1/i1_sub/i4.py \
-# 	$(SUBSDIR_PWD_REAL)/test_data/imports_dir1/i1_sub/i4a.py
+# $(SUBSTDIR_PWD_REAL)/test_data/imports_dir1/i1.py: \
+# 	$(SUBSTDIR_PWD_REAL)/test_data/imports_dir1/i3.py \
+# 	$(SUBSTDIR_PWD_REAL)/test_data/imports_dir1/i1_sub/i4.py \
+# 	$(SUBSTDIR_PWD_REAL)/test_data/imports_dir1/i1_sub/i4a.py
 
-# $(SUBSDIR_PWD_REAL)/test_data/imports_dir1/i1_sub/i4.py: \
-# 	$(SUBSDIR_PWD_REAL)/test_data/imports_dir1/i1_sub/i4a.py \
-# 	$(SUBSDIR_PWD_REAL)/test_data/imports_dir1/i5.py \
-# 	$(SUBSDIR_PWD_REAL)/test_data/imports_dir1/i8/i9.py
+# $(SUBSTDIR_PWD_REAL)/test_data/imports_dir1/i1_sub/i4.py: \
+# 	$(SUBSTDIR_PWD_REAL)/test_data/imports_dir1/i1_sub/i4a.py \
+# 	$(SUBSTDIR_PWD_REAL)/test_data/imports_dir1/i5.py \
+# 	$(SUBSTDIR_PWD_REAL)/test_data/imports_dir1/i8/i9.py
 
-# $(SUBSDIR_PWD_REAL)/test_data/imports_dir1/imports1.py: \
-# 	$(SUBSDIR_PWD_REAL)/test_data/imports_dir1/i1_sub/i4.py \
-# 	$(SUBSDIR_PWD_REAL)/test_data/imports_file1 \
-# 	$(SUBSDIR_PWD_REAL)/test_data/imports_dir1/i6.py \
-# 	$(SUBSDIR_PWD_REAL)/test_data/imports_dir1/i7.py \
-# 	$(SUBSDIR_PWD_REAL)/test_data/imports_dir1/i8/__init__.py
+# $(SUBSTDIR_PWD_REAL)/test_data/imports_dir1/imports1.py: \
+# 	$(SUBSTDIR_PWD_REAL)/test_data/imports_dir1/i1_sub/i4.py \
+# 	$(SUBSTDIR_PWD_REAL)/test_data/imports_file1 \
+# 	$(SUBSTDIR_PWD_REAL)/test_data/imports_dir1/i6.py \
+# 	$(SUBSTDIR_PWD_REAL)/test_data/imports_dir1/i7.py \
+# 	$(SUBSTDIR_PWD_REAL)/test_data/imports_dir1/i8/__init__.py
 
 .PHONY: testout_srcs
 testout_srcs: $(TESTOUT_SRCS)
@@ -138,10 +153,14 @@ testout_srcs: $(TESTOUT_SRCS)
 importlab:
 	../importlab/bin/importlab --tree --trim -P.. .
 
+$(PYKYTHE_EXE): pykythe/*.pl
+	$(SWIPL_EXE) --stand_alone=true --foreign=save --undefined=error --verbose=true \
+	    -o $@ -c pykythe/pykythe.pl
+
 # TODO: this rule requires all the SUBST files ($(TESTOUT_SRCS))
 #       because it isn't easy to write more specific Make fules (and
 #       what about circular imports?):
-#  $(SUBSDIR_PWD_REAL)/%.py
+#  $(SUBSTDIR_PWD_REAL)/%.py
 # NOTE: the 1st argument is important (used by "$<")
 $(KYTHEOUTDIR)%.kythe.json \
 $(KYTHEOUTDIR)%.kythe.entries: \
@@ -149,17 +168,14 @@ $(KYTHEOUTDIR)%.kythe.entries: \
 		$(TESTOUT_SRCS) \
 		$(PYKYTHE_SRCS) \
 		$(BUILTINS_SYMTAB_FILE) \
+	 	$(PYKYTHE_EXE) \
 		pykythe/pykythe.pl $(wildcard pykythe/*.pl) \
 		pykythe/__main__.py $(wildcard pykythe/*.py)
 	@# TODO: make this into a script (with a saved state - qsave_program/2 stand_alone).
 	@#       maybe?: set_prolog_flag(generate_debug_info, false)
 	@# Note that -O changes the order of some directives (see the comment in
 	@# pykythe/pykythe.pl with the last `set_prolog_flag(autoload, false)`.
-	@# The following is to get nice error messages that integrate
-	@# with emacs *compilation*. When not needed, reinstate the
-	@# :- initialization directive and remove the --no-tty:
-	set -o pipefail; echo "pykythe:pykythe_main." | \
-	    $(TIME) $(SWIPL_EXE) --no-tty -q $(SWIPL_OPTIMISE) pykythe/pykythe.pl -- \
+	$(TIME) $(PYKYTHE_EXE) \
 	    $(PYKYTHE_OPTS) \
 	    "$<"
 
@@ -173,16 +189,16 @@ $(KYTHEOUTDIR)%.kythe.entries: \
 $(BUILTINS_SYMTAB_FILE) \
 $(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.json \
 $(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.entries: \
-		$(SUBSDIR_PWD_REAL)/pykythe/bootstrap_builtins.py \
-		$(SUBSDIR_PWD_REAL)/pykythe/bootstrap_builtins_symtab.pl \
+		$(SUBSTDIR_PWD_REAL)/pykythe/bootstrap_builtins.py \
+		$(SUBSTDIR_PWD_REAL)/pykythe/bootstrap_builtins_symtab.pl \
 		$(PYKYTHE_SRCS) \
+	 	$(PYKYTHE_EXE) \
 		pykythe/gen_builtins_symtab.pl \
 		pykythe/pykythe.pl $(wildcard pykythe/*.pl) \
 		pykythe/__main__.py $(wildcard pykythe/*.py)
 	@mkdir -p "$(dir $@)"
-	cat $(SUBSDIR_PWD_REAL)/pykythe/bootstrap_builtins_symtab.pl >"$@"
-	set -o pipefail; echo "pykythe:pykythe_main." | \
-	    $(TIME) $(SWIPL_EXE) --no-tty -q $(SWIPL_OPTIMISE) pykythe/pykythe.pl -- \
+	cat $(SUBSTDIR_PWD_REAL)/pykythe/bootstrap_builtins_symtab.pl >"$@"
+	$(TIME) $(PYKYTHE_EXE) \
 	    $(PYKYTHE_OPTS) \
 	    "$<"
 	$(SWIPL_EXE) pykythe/gen_builtins_symtab.pl \
@@ -291,22 +307,6 @@ PYTYPE=$(shell type -p pytype)
 #       "cd pykythe" and instead using the file name "pykythe/...py"
 #       but that seems to upset pytype's imnport mechanism.
 
-.PHONY: pytype
-pytype: $(PYTYPE_DIR)/pykythe/__main__.pyi
-
-$(PYTYPE_DIR)/%.pyi: %.py
-	@mkdir -p $(dir $@)
-	-$(PYTYPE) -V$(PYTYPE_V) -P $(PYTYPE_DIR) $< -o $@
-
-$(PYTYPE_DIR)/pykythe/ast.pyi: $(addprefix $(PYTYPE_DIR)/pykythe/,\
-	pod.pyi)
-$(PYTYPE_DIR)/pykythe/ast_cooked.pyi: $(addprefix $(PYTYPE_DIR)/pykythe/,\
-	pod.pyi typing_debug.pyi ast.pyi)
-$(PYTYPE_DIR)/pykythe/ast_raw.pyi: $(addprefix $(PYTYPE_DIR)/pykythe/,\
-	pod.pyi typing_debug.pyi ast_cooked.pyi)
-$(PYTYPE_DIR)/pykythe/__main__.pyi: $(addprefix $(PYTYPE_DIR)/pykythe/,\
-	pod.pyi typing_debug.pyi ast_raw.pyi ast_cooked.pyi ast.pyi)
-
 # TODO: --python-version=3.6  # conflict if python3.6 is not default python3
 #       maybe --no-site-packages ?
 # Anyway, mypy doesn't yet have a plugin for dataclasses. :(
@@ -332,7 +332,7 @@ clean-lite clean_lite:
 
 .PHONY: touch-fixed-src touch_fixed_src
 touch-fixed-src touch_fixed_src:  # For doing a rerun with cache preserved
-	find $(SUBSTDIR) -type f -print0 | xargs -0 touch
+	-find $(SUBSTDIR) -type f -print0 | xargs -0 touch
 
 .PHONY: clean-cache clean_cache
 clean-batch clean_batch:
@@ -358,28 +358,53 @@ tkdiff:
 
 %.nq.gz: %.entries
 	$(RM) -r $(TESTOUTDIR)/graphstore $(TESTOUTDIR)/tables
-	$(WRITE_ENTRIES_EXE) -graphstore $(TESTOUTDIR)/graphstore <"$<"
 	@mkdir -p $(TESTOUTDIR)/graphstore $(TESTOUTDIR)/tables
+	$(WRITE_ENTRIES_EXE) -graphstore $(TESTOUTDIR)/graphstore <"$<"
 	$(WRITE_TABLES_EXE) -graphstore=$(TESTOUTDIR)/graphstore -out=$(TESTOUTDIR)/tables
 	$(TRIPLES_EXE) "$<" | gzip >"$@"
 	$(TRIPLES_EXE) -graphstore $(TESTOUTDIR)/graphstore
 
-.PHONY: build_kytne
-build_kythe:
-	cd ../kythe && git remote show origin
-	-# cd ../kythe && git pull --recurse-submodules
-	cd ../kythe && ./tools/modules/update.sh;
-	cd ../kythe && bazel build @local_config_cc//:toolchain;
-	cd ../kythe && bazel build //... //kythe/web/ui
-	cd ../kythe && bazel test -k //...
-	cd ../kythe && bazel shutdown
+# TODO: use bash functions to create an incomprehensible set of dependencies instead
+#       of this verbose list
+.PHONY: add-index-pykythe
+add-index-pykythe: \
+		$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath pykythe/__init__.py)).kythe.entries \
+		$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath pykythe/__main__.py)).kythe.entries \
+		$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath pykythe/ast.py)).kythe.entries \
+		$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath pykythe/ast_cooked.py)).kythe.entries \
+		$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath pykythe/ast_raw.py)).kythe.entries \
+		$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath pykythe/pod.py)).kythe.entries \
+		$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath pykythe/typing_debug.py)).kythe.entries
+	$(RM) -r $(TESTOUTDIR)/graphstore $(TESTOUTDIR)/tables
+	mkdir -p $(TESTOUTDIR)/graphstore $(TESTOUTDIR)/tables
+	@# cat $(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath pykythe))/*.kythe.json
+	set -o pipefail; \
+	    cat $$(find $(KYTHEOUTDIR) -name '*.kythe.json') | \
+	    egrep -v '^{"fact_name":"/pykythe/symtab"' | \
+	    $(ENTRYSTREAM_EXE) --read_format=json | \
+	    $(WRITE_ENTRIES_EXE) -graphstore $(TESTOUTDIR)/graphstore
+	$(WRITE_TABLES_EXE) -graphstore=$(TESTOUTDIR)/graphstore -out=$(TESTOUTDIR)/tables
 
 # TODO: pre-req:  prep_server
-.PHONY: run_server
-run_server: web_ui
+.PHONY: run_server run-server
+run_server run-server: # web_ui  # TODO: uncomment web_ui
 	$(HTTP_SERVER_EXE) -serving_table=$(TESTOUTDIR)/tables \
 	  -public_resources=$(HTTP_SERVER_RESOURCES) \
-	  -listen=localhost:$(BROWSE_PORT)
+	  -listen=localhost:$(BROWSE_PORT_PYKYTHE)
+
+.PHONY: build_kytne
+build_kythe:
+	@# TODO: //kythe/web/ui doesn't build: https://github.com/kythe/kythe/issues/3636
+	@#       unless the "cmd" in kythe/web/ui/BUILD is changed to:
+	@#       cmd = 'PATH="/usr/lib/jvm/java-8-openjdk-amd64/bin:$$PATH" $(location @org_leiningen//:leinbuild) $(location :project.clj) $(OUTS)',
+	cd ../kythe && git remote show origin
+	-# cd ../kythe && git pull --recurse-submodules
+	cd ../kythe && bazel build @local_config_cc//:toolchain;
+	cd ../kythe && bazel build //...
+	cd ../kythe && bazel test -k //...
+	@# cd ../kythe && LEIN_JAVA_CMD=/usr/lib/jvm/java-8-openjdk-amd64/bin/java nice bazel build --sandbox_debug --verbose_failures --shell_executable=/bin/bash //kythe/web/ui
+	cd ../kythe && LEIN_JAVA_CMD=/usr/lib/jvm/java-8-openjdk-amd64/bin/java nice bazel build //kythe/web/ui
+	cd ../kythe && bazel shutdown
 
 .PHONY: web_ui
 web_ui:
@@ -388,8 +413,6 @@ web_ui:
 	@mkdir -p $(HTTP_SERVER_RESOURCES)
 	cp -pR $(KYTHE)/kythe/web/ui/resources/public/{css,js,index.html} $(HTTP_SERVER_RESOURCES)
 	cp -p  $(KYTHE_GENFILES)/kythe/web/ui/resources/public/js/main.js $(HTTP_SERVER_RESOURCES)/js/
-
-
 # .PHONY: triples
 # triples: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).nq.gz
 
@@ -462,3 +485,40 @@ FORCE:
 #@#@# 	-# $(PYTHON3_EXE) $(COVERAGE) run --branch tests/test_pykythe.py
 #@#@# 	$(COVERAGE) html
 #@#@# 	rm -r pykythe/__pycache__
+
+
+pytype:
+	@# TODO: ast_cooked.py needs "from __future__" removed to make pytype happy
+	-$(RM) -r pytype_output pykythe/pytype_output
+	-time pytype -k --exclude=pykythe/bootstrap_builtins.py pykythe
+	for i in $$(ls pykythe/*.py | fgrep -v bootstrap_builtins.py); do \
+	    echo $$i \
+	        pytype_output/imports/pykythe.$$(basename $$i .py).imports \
+		/tmp/$$(basename $$i .py).xref.json; \
+	    time xref --python_version=3.6 --imports_info=pytype_output/imports/pykythe.$$(basename $$i .py).imports $$i >/tmp/$$(basename $$i .py).xref.json;  \
+	done
+	$(RM) -r /tmp/pytype-graphstore /tmp/pytype-tables
+	mkdir -p $/tmp/-pytype-graphstore /tmp/$(TESTOUTDIR)/pytype-tables
+	set -o pipefail; \
+	    cat /tmp/*.xref.json | \
+	    $(ENTRYSTREAM_EXE) --read_format=json | \
+	    $(WRITE_ENTRIES_EXE) -graphstore /tmp/pytype-graphstore
+	$(WRITE_TABLES_EXE) -graphstore=/tmp/pytype-graphstore -out=/tmp/pytype-tables
+
+run-pytype-server:
+	$(HTTP_SERVER_EXE) -serving_table=/tmp/pytype-tables \
+	  -public_resources=$(HTTP_SERVER_RESOURCES) \
+	  -listen=localhost:$(BROWSE_PORT_PYTYPE)
+
+# $(PYTYPE_DIR)/%.pyi: %.py
+# 	@mkdir -p $(dir $@)
+# 	-$(PYTYPE) -V$(PYTYPE_V) -P $(PYTYPE_DIR) $< -o $@
+
+# $(PYTYPE_DIR)/pykythe/ast.pyi: $(addprefix $(PYTYPE_DIR)/pykythe/,\
+# 	pod.pyi)
+# $(PYTYPE_DIR)/pykythe/ast_cooked.pyi: $(addprefix $(PYTYPE_DIR)/pykythe/,\
+# 	pod.pyi typing_debug.pyi ast.pyi)
+# $(PYTYPE_DIR)/pykythe/ast_raw.pyi: $(addprefix $(PYTYPE_DIR)/pykythe/,\
+# 	pod.pyi typing_debug.pyi ast_cooked.pyi)
+# $(PYTYPE_DIR)/pykythe/__main__.pyi: $(addprefix $(PYTYPE_DIR)/pykythe/,\
+# 	pod.pyi typing_debug.pyi ast_raw.pyi ast_cooked.pyi ast.pyi)

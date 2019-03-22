@@ -67,11 +67,6 @@ def _as_prolog_str_full(value: Any) -> Text:
         return value.as_prolog_str()
     if isinstance(value, list):
         return '[' + ','.join(_as_prolog_str_full(v) for v in value) + ']'
-    if isinstance(value, pytree.Leaf):
-        return 'json{' + ','.join(
-            'kind:Leaf', 'leaf_kind:' + value.type, 'value:' +
-            _prolog_atom(value.value), 'prefix:' + _prolog_atom(value.prefix),
-            'lineno:' + str(value.lineno), 'column:' + str(value.column)) + '}'
     if isinstance(value, bool):
         return 'json{kind:bool,value:' + _prolog_atom(str(value)) + '}'
     # Originally, we had int, str return a wrapped item like bool,

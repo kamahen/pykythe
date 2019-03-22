@@ -140,7 +140,8 @@ def new_ctx(python_version: int, src_file: ast.File) -> Ctx:
         global_vars=collections.OrderedDict(),
         nonlocal_vars=collections.OrderedDict(),
         python_version=python_version,
-        src_file=src_file)
+        src_file=src_file,  # type: ignore
+    ) 
 
 
 def new_ctx_from(ctx: Ctx) -> Ctx:
@@ -944,6 +945,9 @@ def cvt_raise_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 def cvt_return_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """return_stmt: 'return' [testlist]"""
     assert ctx.name_ctx is NameCtx.REF, [node]
+    # TODO: in future, might want the return statement handled, to
+    #       infer the return type of the function (if it isn't given
+    #       by type annotations).
     if len(node.children) == 2:
         return cvt(node.children[1], ctx)
     return ast_cooked.OMITTED_NODE
@@ -1313,11 +1317,11 @@ def cvt_token_number(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """Handle token.NUMBER."""
     assert ctx.name_ctx is NameCtx.REF, [node]
     astn = ctx.src_file.astn_to_range(node)
-    if re.fullmatch(tokenize.Imagnumber, node.value):
+    if re.fullmatch(tokenize.Imagnumber, node.value):  # type: ignore
         return ast_cooked.NumberComplexNode(astn=astn)
-    if re.fullmatch(tokenize.Floatnumber, node.value):
+    if re.fullmatch(tokenize.Floatnumber, node.value):  # type: ignore
         return ast_cooked.NumberFloatNode(astn=astn)
-    if re.fullmatch(tokenize.Intnumber, node.value):
+    if re.fullmatch(tokenize.Intnumber, node.value):  # type: ignore
         return ast_cooked.NumberIntNode(astn=astn)
     raise ValueError(f'Invalid number: {node!r}')
 
@@ -1328,8 +1332,8 @@ def cvt_token_string(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     astns = node if isinstance(node, list) else [node]
     typing_debug.assert_all_isinstance(pytree.Leaf, astns)  # TODO: delete
     astn_ranges = [ctx.src_file.astn_to_range(astn) for astn in astns]
-    if (re.match('[^"\']*[bB][^"]*"', astns[0].value) or
-            re.match("[^'\"]*[bB][^']*'", astns[0].value)):
+    if (re.match('[^"\']*[bB][^"]*"', astns[0].value) or  # type: ignore
+            re.match("[^'\"]*[bB][^']*'", astns[0].value)):  # type: ignore
         return ast_cooked.StringBytesNode(astns=astn_ranges)
     return ast_cooked.StringNode(astns=astn_ranges)
 

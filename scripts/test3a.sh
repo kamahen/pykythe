@@ -12,7 +12,7 @@ BATCH_ID=BATCH_test3a # See comment in test3.sh
 # do all the rest, so that their cached results are used.
 TARGET=$(echo /tmp/pykythe_test/KYTHE/tmp/pykythe_test/SUBST${TEST_DATA_DIR}/{__main__,ast_raw,ast_cooked,ast,bootstrap_builtins,pod,typing_debug}.kythe.verifier)
 
-time make --warn-undefined-variables -C ${MAKEFILE_DIR} BATCH_ID=${BATCH_ID} clean_lite
+time make --warn-undefined-variables -C ${MAKEFILE_DIR} BATCH_ID=${BATCH_ID} clean_lite etags
 SRCS=
 for i in $(find ${MAKEFILE_DIR}/test_data ${MAKEFILE_DIR}/pykythe -name '*.py'); do
     SRCS="${SRCS} ${SUBSTDIR}${i}"

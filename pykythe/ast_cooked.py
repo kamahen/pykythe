@@ -49,7 +49,14 @@ semantic node, identified by `C.f1`). For the latter, we capture that
 we can therefore deduce that `c` is also of type `class(C)`.
 """
 
-from __future__ import annotations
+# from __future__ import annotations  # TODO: this upsets pytype, which can't handle Python 3.7
+#       and can't test for sys.version_info > (3,7):
+#       SyntaxError: from __future__ imports must occur at the beginning of the file
+# The following needed to be quoted:
+#    'Base'
+#    'NameBindsNode'
+#    'NameBindsFqn'
+#    'TypedArgNode'
 import collections
 import dataclasses
 from dataclasses import dataclass
@@ -112,7 +119,7 @@ class FakeSys:
             # environments are constrained to a limited version of
             # `sys`.
             result = eval(expr, {}, {'sys': self.fake_sys_with_version_info})
-            return EvalResult(result=result, exception=None)
+            return EvalResult(result=result, exception=None)  # type: ignore
         except Exception as exc:
             return EvalResult(result=None, exception=exc)
 
@@ -142,7 +149,7 @@ class FqnCtx(pod.PlainOldData):
     """
 
     fqn_dot: Text
-    bindings: typing.ChainMap[Text, Text]  # pylint: disable=no-member
+    bindings: typing.ChainMap[Text, Text]  # pylint: disable=no-member  # type: ignore
     class_fqn: Optional[Text]
     class_astn: Optional[ast.Astn]
     python_version: int
@@ -176,7 +183,7 @@ class Base(pod.PlainOldDataExtended):
         for attr, value in kwargs.items():
             setattr(self, attr, value)  # pragma: no cover
 
-    def add_fqns(self, ctx: FqnCtx) -> Base:
+    def add_fqns(self, ctx: FqnCtx) -> 'Base':
         """Generate a new tree with FQNs filled in.
 
         This code defines the generic form of the `add_fqns` method,
@@ -219,7 +226,7 @@ class Base(pod.PlainOldDataExtended):
         #       and then use self.__class__(**attr_values)
         return type(self)(**attr_values)
 
-    def _attr_add_fqns(self, attr: Text, ctx: FqnCtx) -> Base:
+    def _attr_add_fqns(self, attr: Text, ctx: FqnCtx) -> 'Base':
         # TODO: inline this when fully debugged
         try:
             return xcast(Base, getattr(self, attr).add_fqns(ctx))
@@ -232,7 +239,7 @@ class BaseNoOutput(Base):
     """Base that is never output for further processing."""
 
     def as_prolog_str(self) -> Mapping[Text, Any]:
-        return _not_implemented(self, '***ERROR***')
+        return _not_implemented(self, '***ERROR***')  # type: ignore
 
 
 class BaseNoFqnProcessing(Base):
@@ -243,7 +250,7 @@ class BaseNoFqnProcessing(Base):
     """
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
-        return _not_implemented(self, self)
+        return _not_implemented(self, self)  # type: ignore
 
 
 class BaseNoFqnProcessingNoOutput(BaseNoOutput):
@@ -253,7 +260,7 @@ class BaseNoFqnProcessingNoOutput(BaseNoOutput):
     """
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
-        return _not_implemented(self, self)
+        return _not_implemented(self, self)  # type: ignore
 
 
 _T = TypeVar('_T')
@@ -583,7 +590,7 @@ class Class(BaseNoFqnProcessing):
 class ClassDefStmt(Base):
     """Corresponds to `classdef`."""
 
-    name: NameBindsNode
+    name: 'NameBindsNode'
     bases: Sequence[Base]
     suite: Base
     scope_bindings: Mapping[Text, None]
@@ -710,7 +717,8 @@ class DecoratorDottedNameNode(ListBase):
 
     def __post_init__(self) -> None:
         # self.items = typing.cast(Sequence[NameRawNode], items)
-        typing_debug.assert_all_isinstance(NameRawNode, self.items)
+        typing_debug.assert_all_isinstance(
+            NameRawNode, self.items)  # type: ignore
 
 
 @dataclass(frozen=True)
@@ -780,7 +788,8 @@ class DottedNameNode(ListBase):
 
     def __post_init__(self) -> None:
         # self.items = typing.cast(Sequence[NameRawNode], items)
-        typing_debug.assert_all_isinstance(NameRawNode, self.items)
+        typing_debug.assert_all_isinstance(
+            NameRawNode, self.items)  # type: ignore
 
 
 class EllipsisNode(EmptyBase):
@@ -895,7 +904,7 @@ class FuncDefStmt(Base):
     subclass of Base and not of Base.
     """
 
-    name: NameBindsNode
+    name: 'NameBindsNode'
     parameters: Sequence[Base]
     return_type: Base
     suite: Base
@@ -1016,7 +1025,7 @@ class ImportDottedAsNameFqn(Base):
     """
 
     dotted_name: DottedNameNode
-    as_name: NameBindsFqn
+    as_name: 'NameBindsFqn'
 
     __slots__ = ['dotted_name', 'as_name']
 
@@ -1031,7 +1040,7 @@ class ImportDottedAsNameNode(Base):
     # TODO: new ast_cooked class ImportDottedNode for as_name=None
 
     dotted_name: DottedNameNode
-    as_name: Optional[NameBindsNode]
+    as_name: Optional['NameBindsNode']
 
     __slots__ = ['dotted_name', 'as_name']
 
@@ -1085,7 +1094,7 @@ class ImportDottedFqn(Base):
     """
 
     dotted_name: DottedNameNode
-    top_name: NameBindsFqn
+    top_name: 'NameBindsFqn'
 
     __slots__ = ['dotted_name', 'top_name']
 
@@ -1543,7 +1552,7 @@ class RawTypedArgsListNode(BaseNoFqnProcessingNoOutput):
     directly to FuncDefStmt.
     """
 
-    args: Sequence[TypedArgNode]
+    args: Sequence['TypedArgNode']
 
     __slots__ = ['args']
 

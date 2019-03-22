@@ -1,6 +1,8 @@
-__pycache__
-.mypy_cache
 .cayley_history
+.mypy_cache
 TAGS
-TAGS-py
 TAGS-pl
+TAGS-py
+__pycache__
+build.ninja
+pytype_output
