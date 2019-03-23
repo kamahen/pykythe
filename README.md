@@ -280,6 +280,8 @@ in multiple repositories.)
 
 ## Known issues
 
+* See also https://github.com/kamahen/pykythe/issues
+
 * Needs more documentation.
 
 * Needs *many* more test cases.

@@ -1595,11 +1595,13 @@ kynode_if_stmt(['EvalResult'{result:bool('True')}|_], [Cond,ThenItem|ElseItems])
     if_stmt_elses(ElseItems, ElseItemsConds),
     maplist_kynode([Cond, ThenItem | ElseItemsConds], _).
 kynode_if_stmt(['EvalResult'{result:bool('False')}|Results], [Cond,_Then|Items]) -->> % if/elif False
-    kynode(Cond, _),
+    kynode(Cond, CondType),
+    kynode_add_items(CondType),
     kynode_if_stmt(Results, Items).
 kynode_if_stmt(['EvalResult'{exception:_Exc}|Results], [Cond,Item|Items]) -->> % if/elif Exception
     %% We don't know if this is true or not, so assume true and continue with the result
-    maplist_kynode([Cond,Item], _),
+    maplist_kynode([Cond,Item], CondItemType),
+    kynode_add_items(CondItemType),
     kynode_if_stmt(Results, Items).
 
 %! if_stmt_elses(+Items, -ElseItems) is det.
@@ -2578,6 +2580,7 @@ maplist_kyfact_expr(Pred, [X|Xs], [Y|Ys]) -->>
 trace_file(_) :- fail.
 %% trace_file('/home/peter/src/typeshed/stdlib/3/collections/__init__.pyi'). % TODO: delete
 %% trace_file('/tmp/pykythe_test/SUBST/home/peter/src/pykythe/pykythe/pod.py'). % TODO: delete
+%% trace_file('/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t0.py'). % TODO: delete
 
 log_if_file(Fmt, Args) -->>
     Meta/file_meta,

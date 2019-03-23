@@ -5,8 +5,12 @@
 # - download the latest Kythe build from https://github.com/kythe/kythe/releases
 # - unpack it and link it into ~/kythe (e.g., so that ~/kythe/tools/http_server exists)
 # - make -C ~/src/pykythe add-index-pykythe run-server
+#   (if you use Emacs, you can't do "make run-server" in the *compilation*
+#    window because Emacs will kill the process; instead, run it in a shell)
 # Because of some pre-processing, $HOME/src/pykythe/* files show in
 # /tmp/pykythe_test/SUBST/$HOME/src/pykythe/pykythe/ast_raw.py
+# e.g.:
+# http://localhost:8888/#/tmp/pykythe_test/SUBST/home/peter/src/pykythe/pykythe/ast_raw.py?root=test-root&corpus=test-corpus&signature
 
 # make -C ~/src/pykythe clean etags test
 # make -C ~/src/pykythe clean_lite etags test
@@ -220,9 +224,12 @@ json-decoded-all:
 # 	egrep -v '^{"fact_name":"/pykythe/symtab"' <"$<" | \
 # 	    $(ENTRYSTREAM_EXE) --read_format=json >"$@"
 
-$(KYTHEOUTDIR)/%.kythe.verifier: $(KYTHEOUTDIR)/%.kythe.entries # etags
+# TODO: do something clever with make's substitution functions, to
+#       avoid the use of $(SUBSDIR)/%.py and $(word 2,$^)
+$(KYTHEOUTDIR)/%.kythe.verifier: $(KYTHEOUTDIR)/%.kythe.entries $(SUBSDIR)/%.py # DO NOT REMOVE 2nd arg
 	@# TODO: --ignore_dups
-	set -o pipefail; $(VERIFIER_EXE) -check_for_singletons -goal_prefix='#-' "$(word 2,$^)" <"$(word 1,$^)" | tee "$@" || (rm "$@" ; exit 1)
+	@# 2nd arg is used here: $(word 2,$^)
+	set -o pipefail; $(VERIFIER_EXE) -check_for_singletons -goal_prefix='#-' ""$(word 2,$^)"" <"$(word 1,$^)" | tee "$@" || (rm "$@" ; exit 1)
 
 .PHONY: verify-%
 # TODO: make the following work:
@@ -364,17 +371,17 @@ tkdiff:
 	$(TRIPLES_EXE) "$<" | gzip >"$@"
 	$(TRIPLES_EXE) -graphstore $(TESTOUTDIR)/graphstore
 
-# TODO: use bash functions to create an incomprehensible set of dependencies instead
-#       of this verbose list
+FFF:=$(shell find pykythe test_data -name '*.py')
+zzz:
+	@# for i in $(foreach file,$(wildcard pykythe/*.py) $(wildcard test_data/**.py),$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath $(file))).kythe.entries);do echo $$i; done
+	@echo $(foreach file,$(FFF),$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath $(file))).kythe.entries)
+
+
 .PHONY: add-index-pykythe
+# $(wildcard test_data/**.py) doesn't work, so do it this way:
+TEST_FILES:=$(shell find pykythe test_data -name '*.py')
 add-index-pykythe: \
-		$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath pykythe/__init__.py)).kythe.entries \
-		$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath pykythe/__main__.py)).kythe.entries \
-		$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath pykythe/ast.py)).kythe.entries \
-		$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath pykythe/ast_cooked.py)).kythe.entries \
-		$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath pykythe/ast_raw.py)).kythe.entries \
-		$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath pykythe/pod.py)).kythe.entries \
-		$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath pykythe/typing_debug.py)).kythe.entries
+		$(foreach file,$(TEST_FILES),$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath $(file))).kythe.entries)
 	$(RM) -r $(TESTOUTDIR)/graphstore $(TESTOUTDIR)/tables
 	mkdir -p $(TESTOUTDIR)/graphstore $(TESTOUTDIR)/tables
 	@# cat $(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath pykythe))/*.kythe.json
