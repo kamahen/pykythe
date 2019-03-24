@@ -203,7 +203,7 @@
        maplist_kyfact(5, +, -, +, -, +),
        maplist_kyfact_symrej(6, +, +, -, +, -, +),
        maplist_kyfact_symrej(7, +, -, +, -, +, -, +),
-       maplist_kyfact_symrej_combine(7, +, -, +, -, +, -, +),
+       maplist_kyfact_symrej_union(7, +, -, +, -, +, -, +),
        maplist_kyfact_expr(6, +, +, -, +, -, +),
        maplist_kyfact_expr(7, +, +, +, -, +, -, +).
 
@@ -336,7 +336,7 @@
                   maplist_kyfact_expr/8,
                   maplist_kyfact_symrej/7,
                   maplist_kyfact_symrej/8,
-                  maplist_kyfact_symrej_combine/8,
+                  maplist_kyfact_symrej_union/8,
                   maplist_kynode/7,
                   %% maybe_open_read/2,
                   merge_cache_into_symtab/3,
@@ -480,13 +480,13 @@ edcg:pred_info(process_nodes_impl, 2,               [kyfact,expr,file_meta]).
 
 edcg:pred_info(maplist_kyfact_symrej, 2,            [kyfact,symrej,file_meta]).
 edcg:pred_info(maplist_kyfact_symrej, 3,            [kyfact,symrej,file_meta]).
-edcg:pred_info(maplist_kyfact_symrej_combine, 3,    [kyfact,symrej,file_meta]).
+edcg:pred_info(maplist_kyfact_symrej_union, 3,      [kyfact,symrej,file_meta]).
 edcg:pred_info(must_once_kyfact_symrej, 1,          [kyfact,symrej,file_meta]).
 
 edcg:pred_info(eval_assign_expr, 1,                 [kyfact,symrej,file_meta]).
 edcg:pred_info(eval_assign_single, 2,               [kyfact,symrej,file_meta]).
 edcg:pred_info(eval_assign_dot_op_binds_single, 3,  [kyfact,symrej,file_meta]).
-edcg:pred_info(eval_assign_subscr_op_binds_single,2,[kyfact,symrej,file_meta]). % TODO: alignment
+edcg:pred_info(eval_assign_subscr_op_binds_single,2,[kyfact,symrej,file_meta]).
 edcg:pred_info(eval_atom_call_single, 3,            [kyfact,symrej,file_meta]).
 edcg:pred_info(eval_atom_dot_single, 3,             [kyfact,symrej,file_meta]).
 edcg:pred_info(eval_atom_subscr_binds_single, 2,    [kyfact,symrej,file_meta]).
@@ -1443,12 +1443,12 @@ kynode('Func'{fqn: Fqn,
               name: NameAstn,
               parameters: Params,
               return_type: Return},
-       [function_type(Fqn, ParamsTypes, ReturnType)]) -->> !,
+       [function_type(Fqn,ParamsTypes,ReturnType)]) -->> !,
     kyanchor_node_kyedge_fqn(NameAstn, '/kythe/edge/defines/binding', Fqn),
     kyfact_signature_node(Fqn, '/kythe/node/kind', 'function'),
     maplist_kynode(Params, ParamsTypes),
     kynode(Return, ReturnType),
-    [ function_type(Fqn, ParamsTypes, ReturnType) ]:expr.
+    [ function_type(Fqn,ParamsTypes,ReturnType) ]:expr.
 kynode('GlobalStmt'{items: Items},
        [stmt(global)]) -->> !,
     maplist_kyfact_expr(expr_normalized, Items).
@@ -2003,10 +2003,10 @@ eval_assign_expr(class_type(Fqn, Bases)) -->> !,
     maplist_kyfact_symrej(eval_union_type, Bases, BasesEvals0),
     { clean_class(Fqn, BasesEvals0, BasesEvals) },
     [ Fqn-[class_type(Fqn, BasesEvals)] ]:symrej.
-eval_assign_expr(function_type(Fqn, Params, Return)) -->> !,
+eval_assign_expr(function_type(Fqn,Params,Return)) -->> !,
     eval_union_type(Return, ReturnEval),
     maplist_kyfact_symrej(eval_union_type, Params, ParamsEvals),
-    [ Fqn-[function_type(Fqn, ParamsEvals, ReturnEval)] ]:symrej.
+    [ Fqn-[function_type(Fqn,ParamsEvals,ReturnEval)] ]:symrej.
 eval_assign_expr(assign_import_module(Fqn, ModuleAndMaybeToken)) -->> !,
     %% Add the module to symtab, and the item it binds to
     { full_module_part(ModuleAndMaybeToken, FullModule) },
@@ -2055,9 +2055,11 @@ eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), class_type(
     { atomic_list_concat([ClassName, AttrName], '.', Fqn) },
     [ Fqn-RightEval ]:symrej,
     kyanchor_kyedge_fqn(Start, End, '/kythe/edge/defines/binding', Fqn).
-eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), function_type(FunctionName,_Params, _Return)) -->> !,
+eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), function_type(FunctionName,Params, Return)) -->> !,
     %% TODO: use builtins.function's definition, if it exists,
     %%       otherwise allow adding a new attr.
+    eval_union_type(Return, _),
+    maplist_kyfact_symrej(eval_union_type, Params, _),
     { atomic_list_concat([FunctionName, AttrName], ',', Fqn) },
     [ Fqn-RightEval ]:symrej,
     kyanchor_kyedge_fqn(Start, End, '/kythe/edge/defines/binding', Fqn).
@@ -2077,7 +2079,7 @@ eval_assign_dot_op_binds_single(RightEval, Astn, LeftEval) -->> % TODO: delete t
 %! eval_union_type(+Expr, -UnionEvalType)//[kyfact,symrej,file_meta] is det.
 %% Evaluate (union) Expr and look it up in the symtab.
 eval_union_type(Expr, UnionEvalType) -->>
-    maplist_kyfact_symrej_combine(eval_single_type, Expr, UnionEvalType).
+    maplist_kyfact_symrej_union(eval_single_type, Expr, UnionEvalType).
 
 %! eval_single_type((+Expr, -UnionEvalType)//[kyfact,symrej,file_meta] is det.
 %% Evaluate (non-union) Expr and look it up in the symtab.
@@ -2100,26 +2102,28 @@ eval_single_type(class_type(ClassName, Bases0),
                  [class_type(ClassName, Bases)]) -->> !,
     maplist_kyfact_symrej(eval_union_type, Bases0, Bases1),
     { clean_class(ClassName, Bases1, Bases) }.
-eval_single_type(function_type(FuncName, ReturnType0),
-                 [function_type(FuncName, ReturnType)]) -->> !,
-    eval_union_type(ReturnType0, ReturnType).
+eval_single_type(function_type(FuncName,Params,Return),
+                 [function_type(FuncName,ParamsTypes,ReturnType)]) -->> !,
+    maplist_kyfact_symrej(eval_union_type, Params, ParamsTypes),
+    eval_union_type(Return, ReturnType).
 eval_single_type(module_type(ModuleAndMaybeToken),
                  [module_type(ModuleAndMaybeToken)]) -->> !,
     [ ].
 eval_single_type(dot_op(Atom, Astn), EvalType) -->> !,
     eval_union_type(Atom, AtomEval0),
     (  { AtomEval0 = [] }
-    -> %% don't know what the atom is, so the best we can do is 'object':
+    -> %% don't know what the atom is, so the best we can do is 'object'
+       %% TODO: issue #18
        { builtins_symtab_primitive(object, AtomEval) }
     ;  { AtomEval = AtomEval0 }
     ),
-    maplist_kyfact_symrej_combine(eval_atom_dot_single(Astn), AtomEval, EvalType).
+    maplist_kyfact_symrej_union(eval_atom_dot_single(Astn), AtomEval, EvalType).
 eval_single_type(dot_op_binds(Atom, Astn), [dot_op_binds(AtomEval, Astn)]) -->> !,
     eval_union_type(Atom, AtomEval).
 eval_single_type(subscr_op_binds(Atom,Subscripts), [subscr_op_binds(AtomEval,SubscriptsEval)]) -->> !,
     %% This is used by eval_asssign_expr, which further processes it.
     maplist_kyfact_symrej(eval_union_type, Subscripts, SubscriptsEval),
-    maplist_kyfact_symrej_combine(eval_atom_subscr_binds_single, Atom, AtomEval).
+    maplist_kyfact_symrej_union(eval_atom_subscr_binds_single, Atom, AtomEval).
 eval_single_type(subscr_op(Atom,Subscripts), EvalType) -->> !,
     maplist_kyfact_symrej(eval_union_type, Subscripts, _),
     eval_union_type(Atom, AtomEval0),
@@ -2128,17 +2132,18 @@ eval_single_type(subscr_op(Atom,Subscripts), EvalType) -->> !,
        { builtins_symtab_primitive(object, AtomEval) }
     ; { AtomEval = AtomEval0 }
     ),
-    maplist_kyfact_symrej_combine(eval_atom_subscr_single, AtomEval, EvalType).
+    maplist_kyfact_symrej_union(eval_atom_subscr_single, AtomEval, EvalType).
 eval_single_type(call(Atom, Args), EvalType) -->> !,
     eval_union_type(Atom, AtomEval),
     maplist_kyfact_symrej(eval_union_type, Args, ArgsEval),
-    maplist_kyfact_symrej_combine(eval_atom_call_single(ArgsEval), AtomEval, EvalType).
+    maplist_kyfact_symrej_union(eval_atom_call_single(ArgsEval), AtomEval, EvalType).
 eval_single_type(call_op(_OpAstns, ArgsTypes), EvalType) -->> !,
     maplist_kyfact_symrej(eval_union_type, ArgsTypes, _ArgsTypesEval),
     %% See typeshed/stdlib/2and3/operator.pyi
     EvalType = [].
-eval_single_type(function_type(Name, ReturnType), [function_type(Name, ReturnTypeEval)]) -->> !,
-    eval_union_type(ReturnType, ReturnTypeEval).
+eval_single_type(function_type(Name,Params,Return), [function_type(Name,ParamsEvals,ReturnEval)]) -->> !,
+    maplist_kyfact_symrej(eval_union_type, Params, ParamsEvals),
+    eval_union_type(Return, ReturnEval).
 eval_single_type(ellipsis, []) -->> !, [ ].
 eval_single_type(module(Fqn, Path), [module(Fqn,Path)]) -->> !, [ ].
 eval_single_type(omitted, []) -->> !, [ ].
@@ -2196,7 +2201,9 @@ eval_atom_dot_single(astn(Start,End,Attr), module_type(module_and_token(Module,_
     { atomic_list_concat([Module, Token, Attr], '.', FqnAttr) },
     [ FqnAttr-EvalType ]:symrej,
     kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref', FqnAttr).
-eval_atom_dot_single(astn(Start,End,Attr), function_type(FunctionName, _ReturnType), EvalType) -->> !,
+eval_atom_dot_single(astn(Start,End,Attr), function_type(FunctionName,Params,Return), EvalType) -->> !,
+    maplist_kyfact_symrej(eval_union_type, Params, _),
+    eval_union_type(Return, _),
     { atomic_list_concat([FunctionName, Attr], '.', FqnAttr) },
     [ FqnAttr-EvalType ]:symrej,
     kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref', FqnAttr).
@@ -2204,7 +2211,7 @@ eval_atom_dot_single(astn(Start,End,Attr), AtomSingleType, EvalType) -->>
     (  atom(AtomSingleType)
     -> { atomic_list_concat([AtomSingleType, Attr], '.', FqnAttr) },
        [ FqnAttr-EvalType ]:symrej,
-       %% TODO: if AtomSingleType = function_type(Name, ReturnType)
+       %% TODO: if AtomSingleType = function_type(Name,Params,Return)
        %%          builtins_symtab_primitive(function, FunctionType)
        %%          apply dot operator
        kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref', FqnAttr)
@@ -2223,7 +2230,7 @@ eval_atom_subscr_single(_, []) -->> [ ].
 eval_atom_subscr_binds_single(var(Name), [var(Name)]) -->> !.
 eval_atom_subscr_binds_single(dot_op(Atom,AttrAstn), DotEvals) -->> !,
     eval_union_type(Atom, AtomEval),
-    maplist_kyfact_symrej_combine(subscr_resolve_dot_binds(AttrAstn), AtomEval, DotEvals).
+    maplist_kyfact_symrej_union(subscr_resolve_dot_binds(AttrAstn), AtomEval, DotEvals).
 eval_atom_subscr_binds_single(Expr, ExprEval) -->>
     eval_single_type(Expr, ExprEval).
 
@@ -2274,8 +2281,9 @@ maybe_resolve_mro_dot([MroBaseName|Mros], Start, End, Attr, EvalType) -->>
 eval_atom_call_single(_Args, class_type(Fqn,Bases), EvalType) -->>  !,
     %% TODO: MRO for__init__ and output ref to it
     { EvalType = [class_type(Fqn,Bases)] }.
-eval_atom_call_single(_Args, function_type(_, ReturnType), ReturnType) -->>  !,
-    [ ].
+eval_atom_call_single(_Args, function_type(_,Params,Return), ReturnType) -->>  !,
+    maplist_kyfact_symrej(eval_union_type, Params, _),
+    eval_union_type(Return, ReturnType).
 eval_atom_call_single(_Args, _AtomSingleType, []) -->> [ ]. % Don't know how to call anything else.
 
 %! resolve_unknown_fqn(+FqnScope, +NameAstn, -ResolvedFqn, -Type)//[symrej,file_meta] is det.
@@ -2428,9 +2436,9 @@ combine_types(ListOfTypes, Type) :-
 
 normalize_type(Type, Type).  % TODO: this probably is unsufficient.
 
-%! maplist_kyfact_symrej_combine(:Pred, L:list, EvalType:ordset)//[kyfact,symrej,file_meta] is det.
+%! maplist_kyfact_symrej_union(:Pred, L:list, EvalType:ordset)//[kyfact,symrej,file_meta] is det.
 %% maplist/3 for EDCG [kyfact,symrej,file_meta] + combine_types
-maplist_kyfact_symrej_combine(Pred, L, EvalType) -->>
+maplist_kyfact_symrej_union(Pred, L, EvalType) -->>
     maplist_kyfact_symrej(Pred, L, EvalType0),
     { combine_types(EvalType0, EvalType) }.
 
@@ -2476,8 +2484,8 @@ my_portray(var_binds(X)) :- !,
     format('var_binds(~p)', [X]).
 my_portray(var_lookup(X)) :- !,
     format('var_lookup(~p)', [X]).
-my_portray(function_type(F, R)) :- !,
-    format('function_type(~p, ~p)', [F, R]).
+my_portray(function_type(F,P,R)) :- !,
+    format('function_type(~p, ~p, ~p)', [F, P, R]).
 my_portray(class_type(F, R)) :- !,
     format('class_type(~p, ~p)', [F, R]).
 my_portray(union(U)) :- !,
