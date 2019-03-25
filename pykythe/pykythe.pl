@@ -613,7 +613,7 @@ pykythe_main :-
     set_prolog_flag(backtrace_show_lines, true), % TODO: delete
     %% Play nice with emacs *compilation* (except it doesn't
     %% quite work properly ... no idea why):
-    %% set_prolog_flag(color_term, false), % TODO: delete (to ~/.plrc)
+    set_prolog_flag(color_term, false), % TODO: delete (to ~/.swiplrc)
     %% TODO: the following might not be needed when the
     %%       initialization/2 directive is enabled.
     catch_with_backtrace(pykythe_main2,
@@ -682,6 +682,7 @@ pykythe_opts(SrcPath, Opts) :-
     %% TODO: The following only works with saved state; without saved
     %%       state, there is one fewer positional arg
     %%       See https://github.com/SWI-Prolog/swipl-devel/commit/30498cd0a5fac0242926fd0b71d2e61f3b6024ee
+    %% TODO: allow multiple positional args (here and in __main__.py)
     must_once_msg(PositionalArgs = [_,SrcPath0], 'Missing/extra positional args'),
     absolute_file_name(SrcPath0, SrcPath),
     must_once(split_path_string_and_canonicalize(pythonpath, Opts0, Opts)).
@@ -1548,7 +1549,10 @@ kynode('TryStmt'{items: Items},
     maplist_kynode(Items, _).
 kynode('TypedArgNode'{tname: 'TnameNode'{name: Name, type_expr: TypeExpr},
                       expr: Expr},
-       [todo_typedarg(Name, TypeExpr)]) -->> !,
+       []) -->> !,
+    %% TODO: is this correct? Need test cases with all variants
+    %%       PROBABLY should be union of TypeExpr, Expr
+    %%       but for now, just output [] (Any)
     assign_normalized(Name, TypeExpr),
     expr_normalized(Expr).  %% assign_normalized(Name, Expr) would cause duplicate facts
 kynode('WhileStmt'{else_suite: ElseSuite,
@@ -2148,17 +2152,31 @@ eval_single_type(ellipsis, []) -->> !, [ ].
 eval_single_type(module(Fqn, Path), [module(Fqn,Path)]) -->> !, [ ].
 eval_single_type(omitted, []) -->> !, [ ].
 
+%% TODO: expand all of the following.
+%%   Check http://localhost:8888/#/tmp/pykythe_test/SUBST/home/peter/src/pykythe/pykythe/ast_raw.py?root=test-root&corpus=test-corpus&signature&line=262
 %% TODO: implement the following:
-eval_single_type(todo_compfor(iter:_CompIterType, for:_ForExprlistType, in:_InTestlistType), []) -->> !, [ ].
-eval_single_type(todo_compifcompiter(_ValueExprType, _CompIterType), []) -->> !, [ ].
-eval_single_type(todo_decorated(_ItemsTypes), []) -->> !, [ ].
-eval_single_type(todo_decorator_dottedname(_ItemsTypes), []) -->> !, [ ].
-eval_single_type(todo_decorators(_ItemsTypes), []) -->> !, [ ].
-eval_single_type(todo_dictgen(_ValueExprType, _CompForType), []) -->> !, [ ].
-eval_single_type(todo_dictkeyvaluelist(_ItemsTypes), []) -->> !, [ ].
-eval_single_type(todo_dictset(_ItemsTypes), []) -->> !, [ ].
-eval_single_type(todo_dottedname(_ItemsTypes), []) -->> !, [ ].
-eval_single_type(todo_typedarg(_Name, _TypedArg), []) -->> !, [ ].
+eval_single_type(todo_compfor(iter:CompIterType, for:ForExprlistType, in:InTestlistType), []) -->> !,
+    eval_union_type(CompIterType, _),
+    eval_union_type(ForExprlistType, _),
+    eval_union_type(InTestlistType, _).
+eval_single_type(todo_compifcompiter(ValueExprType, CompIterType), []) -->> !,
+    eval_union_type(ValueExprType, _),
+    eval_union_type(CompIterType, _).
+eval_single_type(todo_decorated(ItemsTypes), []) -->> !,
+    maplist_kyfact_symrej(eval_union_type, ItemsTypes, _).
+eval_single_type(todo_decorator_dottedname(ItemsTypes), []) -->> !,
+    maplist_kyfact_symrej(eval_union_type, ItemsTypes, _).
+eval_single_type(todo_decorators(ItemsTypes), []) -->> !,
+    maplist_kyfact_symrej(eval_union_type, ItemsTypes, _).
+eval_single_type(todo_dictgen(ValueExprType, CompForType), []) -->> !,
+    eval_union_type(ValueExprType, _),
+    eval_union_type(CompForType, _).
+eval_single_type(todo_dictkeyvaluelist(ItemsTypes), []) -->> !,
+    maplist_kyfact_symrej(eval_union_type, ItemsTypes, _).
+eval_single_type(todo_dictset(ItemsTypes), []) -->> !,
+    maplist_kyfact_symrej(eval_union_type, ItemsTypes, _).
+eval_single_type(todo_dottedname(ItemsTypes), []) -->> !,
+    maplist_kyfact_symrej(eval_union_type, ItemsTypes, _).
 eval_single_type(subscript(X1,X2,X3), [subscript(E1,E2,E3)]) -->> !,
     eval_union_type(X1, E1),
     eval_union_type(X2, E2),
@@ -2171,7 +2189,8 @@ eval_single_type(todo_arg(_Name, Arg), []) -->> !,
 eval_single_type(list_make(Xs), [list_of_type(Combined)]) -->> !,
     maplist_kyfact_symrej(eval_union_type, Xs, XEs),
     { combine_types(XEs, Combined) }.
-eval_single_type(todo_exprlist(_), []) -->> !, [ ].
+eval_single_type(todo_exprlist(ItemsTypes), []) -->> !,
+    maplist_kyfact_symrej(eval_union_type, ItemsTypes, _).
 eval_single_type(stmt(stmts), []) -->> !, [ ].
 eval_single_type(Expr, EvalType) -->> % TODO: delete this catch-all clause.
     { type_error(eval_single_type, ['Expr'=Expr, 'EvalType'=EvalType]) }.
@@ -2587,7 +2606,6 @@ maplist_kyfact_expr(Pred, [X|Xs], [Y|Ys]) -->>
 
 trace_file(_) :- fail.
 %% trace_file('/home/peter/src/typeshed/stdlib/3/collections/__init__.pyi'). % TODO: delete
-%% trace_file('/tmp/pykythe_test/SUBST/home/peter/src/pykythe/pykythe/pod.py'). % TODO: delete
 %% trace_file('/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t0.py'). % TODO: delete
 
 log_if_file(Fmt, Args) -->>

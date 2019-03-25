@@ -39,6 +39,7 @@ SHELL:=/bin/bash
 PYTHON3_EXE:=$(shell type -p python3.7)  # /usr/bin/python3.7
 FIND_EXE:=$(shell type -p find)          # /usr/bin/find
 SWIPL_EXE:=$(shell type -p swipl)        # /usr/bin/swipl
+# SWIPL_EXE:=../swipl-devel/build/src/swipl  # From github
 COVERAGE:=$(shell type -p coverage)      # /usr/local/bin/coverage
 
 # stuff for running tests (see https://kythe.io/docs/kythe-verifier.html)
@@ -226,10 +227,12 @@ json-decoded-all:
 
 # TODO: do something clever with make's substitution functions, to
 #       avoid the use of $(SUBSDIR)/%.py and $(word 2,$^)
-$(KYTHEOUTDIR)/%.kythe.verifier: $(KYTHEOUTDIR)/%.kythe.entries $(SUBSDIR)/%.py # DO NOT REMOVE 2nd arg
+
+$(KYTHEOUTDIR)/%.kythe.verifier: $(KYTHEOUTDIR)/%.kythe.entries
 	@# TODO: --ignore_dups
-	@# 2nd arg is used here: $(word 2,$^)
-	set -o pipefail; $(VERIFIER_EXE) -check_for_singletons -goal_prefix='#-' ""$(word 2,$^)"" <"$(word 1,$^)" | tee "$@" || (rm "$@" ; exit 1)
+	set -o pipefail; $(VERIFIER_EXE) -check_for_singletons -goal_prefix='#-' \
+		"$(SUBSDIR)/$*.py" \
+		<"$<" | tee "$@" || (rm "$@" ; exit 1)
 
 .PHONY: verify-%
 # TODO: make the following work:

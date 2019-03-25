@@ -89,14 +89,14 @@ class Ctx(pod.PlainOldData):
     Attributes:
         name_ctx: Used to mark ast_cooked.NameNode items as being in a
             binding context (left-hand-side), ref context or raw.  See
-            NameCtx for details of these.  It is responsibility of the
-            parent of a node to set this appropriately -- e.g., for an
-            assignment statement, the parent would set name_ctx =
-            NameCtx.BINDING for the node(s) to the left of the "=" and
-            would leave it as name_ctx = NameCtx.REF for node(s) on
-            the right. For something like a dotted name on the left,
-            the name_ctx would be changed from NameCtx.BINDING to
-            NameCtx.REF for all except the last dotted name. The
+            NameCtx for details of these.  It is the responsibility of
+            the parent of a node to set this appropriately -- e.g.,
+            for an assignment statement, the parent would set name_ctx
+            = NameCtx.BINDING for the node(s) to the left of the "="
+            and would leave it as name_ctx = NameCtx.REF for node(s)
+            on the right. For something like a dotted name on the
+            left, the name_ctx would be changed from NameCtx.BINDING
+            to NameCtx.REF for all except the last dotted name. The
             normal value for name_ctx is NameCtx.REF; it only becomes
             NameCtx.BINDING on the left-hand side of assignments, for
             parameters in a function definition, and a few other
@@ -113,7 +113,6 @@ class Ctx(pod.PlainOldData):
             statements within the current scope.
         python_version: 2 or 3
         src_file: source and offset information
-
     """
 
     name_ctx: NameCtx
@@ -141,7 +140,7 @@ def new_ctx(python_version: int, src_file: ast.File) -> Ctx:
         nonlocal_vars=collections.OrderedDict(),
         python_version=python_version,
         src_file=src_file,  # type: ignore
-    ) 
+    )
 
 
 def new_ctx_from(ctx: Ctx) -> Ctx:
@@ -439,7 +438,14 @@ def cvt_decorator(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     assert ctx.name_ctx is NameCtx.REF, [node]
     dotted_names = xcast(ast_cooked.DottedNameNode,
                          cvt_name_ctx(NameCtx.RAW, node.children[1], ctx))
-    name = ast_cooked.DecoratorDottedNameNode(items=dotted_names.items)
+    # The grammar says that the dotted_name's are all "raw"; but they
+    # get treated like `atom '.' trailer`, where `atom` is always a
+    # raw name (see `power: atom trailer*; trailer: ... | '.' NAME`).
+    # This is partially handled here and partly by
+    # DecoratorDottedNameNode.
+    item0 = ast_cooked.NameRefNode(name=dotted_names.items[0].name)
+    name = ast_cooked.DecoratorDottedNameNode(items=[item0] +
+                                              dotted_names.items[1:])
     if node.children[2].type == token.LPAR:
         # TODO: test case
         if node.children[3].type == token.RPAR:

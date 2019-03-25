@@ -60,6 +60,7 @@ we can therefore deduce that `c` is also of type `class(C)`.
 import collections
 import dataclasses
 from dataclasses import dataclass
+import functools
 import logging  # pylint: disable=unused-import
 from typing import (  # pylint: disable=unused-import
     Any, Mapping, MutableMapping, Iterable, List, Optional, Sequence, Text,
@@ -713,12 +714,17 @@ class DecoratedStmt(ListBase):
 
 
 class DecoratorDottedNameNode(ListBase):
-    """Corresponds to `dotted_name` in `decorator` (see also DottedNameNode)."""
+    """Corresponds to `dotted_name` in `decorator` (see also DottedNameNode).
+
+    The caller will have converted the grammar's "raw" name to a
+    NameRefNode (see ast_raw.cvt_decorator).
+    """
 
     def __post_init__(self) -> None:
         # self.items = typing.cast(Sequence[NameRawNode], items)
+        assert isinstance(self.items[0], NameRefNode)
         typing_debug.assert_all_isinstance(
-            NameRawNode, self.items)  # type: ignore
+            NameRawNode, self.items[1:])  # type: ignore
 
 
 @dataclass(frozen=True)
@@ -736,9 +742,13 @@ class DecoratorNode(Base):
     __slots__ = ['name', 'args']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
+        atom = _add_fqns_wrap(
+            functools.reduce(
+                lambda atom, name: AtomDotNode(
+                    binds=False, atom=atom, attr_name=name.name),
+                self.name.items[1:], self.name.items[0]), ctx)
         return AtomCallNode(
-            atom=_add_fqns_wrap(self.name, ctx),
-            args=[_add_fqns_wrap(arg, ctx) for arg in self.args])
+            atom=atom, args=[_add_fqns_wrap(arg, ctx) for arg in self.args])
 
 
 class DelStmt(ListBase):
@@ -1255,7 +1265,7 @@ class NameRawNode(Base):
     ast.Astn is a subclass of ast_cooked.Base).
 
     Attributes:
-        astn: The AST node of the name (a Leaf node) - the name
+        name: The AST node of the name (a Leaf node) - the name
               is self.astn.value
     """
 
