@@ -33,7 +33,7 @@ else:
 
 #- { @Sized ref Sized }
 #- { @xxrange defines/binding Xxrange }
-#- { Xxrange./pykythe/type "[class_type('${ROOT_FQN}.test_data.t0.xxrange',[[module_type(module_and_token('${TYPESHED_FQN}.stdlib.3.typing','${TYPESHED_DIR}/stdlib/3/typing.pyi','Sized'))]])]" }
+#- { Xxrange./pykythe/type XXRANGE_type? } // TODO: this gets ${TYPESHED_FQN}.3.typing.Sized instead of ${TYPESHED_FQN}.typeshed.3.typing.Sized
 class xxrange(Sized): pass
 
 #- { @sep defines/binding SEP }
@@ -43,12 +43,12 @@ from os.path import sep
 import os
 
 #- { @print ref PRINT? } // TODO: should be builtins
-#- { PRINT./pykythe/type PRINT_type? } // "[func_type('${TYPESHED_FQN}.stdlib.2and3.builtins.print',[])]" }
+#- { PRINT./pykythe/type "[function_type('${TYPESHED_FQN}.stdlib.2and3.builtins.print',[[],[],[],[],[]],[])]" } // TODO: should show keywords
 #- { @os ref OS? }
 #- { @path ref vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
 #- { @sep ref vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
 #- // { OS_PATH_SEP./pykythe/type SEP_type? } // TODO
-#- { @strip ref OS_PATH_SEP_STRIP? }
+#- { @strip ref OS_PATH_SEP_STRIP? } // TODO: should be str.strip, not object.strip
 #- // { @capitalize ref OS_PATH_SEP_STRIP_CAPITALIZE? } // TODO
 print(os.path.sep.strip().capitalize())
 

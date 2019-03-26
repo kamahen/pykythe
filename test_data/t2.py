@@ -19,17 +19,17 @@ ABC = " abc "
 
 #- { @ABC ref ABC }
 #- { @strip ref _ABC_strip=vname("${TYPESHED_FQN}.stdlib.2and3.builtins.str.strip", _, _, "", python) }
-#- // { ABC_strip./pykythe/type ABC_strip_type? }  // TODO
+#- // { ABC_strip./pykythe/type ABC_strip_type? } // TODO
 #- { @capitalize ref _ABC_strip_capitalize=vname("${TYPESHED_FQN}.stdlib.2and3.builtins.str.capitalize", _, _, "", python) }
-#- // { ABC_strip_capitalize./pykythe/type ABC_strip_capitalize_type? } // TODO
+#- // { _ABC_strip_capitalize./pykythe/type ABC_strip_capitalize_type? } // TODO
 ABC.strip().capitalize()
 
 
 # TODO: py3_test_grammar doesn't have assignment unpacking to a "*" (PEP 3132)
 #- { @xa defines/binding XA? }
-#- // { XA./pykythe/type XA_type? } // TODO
+#- // { XA./pykythe/type XA_type? }  // TODO: should be there
 #- { @xb defines/binding XB? }  // TODO: should get a list type
-#- // { XB./pykythe/type XB_type? } // TODO
+#- // { XB./pykythe/type XB_type? }  // TODO: should be there
 xa, *xb = [1,2,3,4]
 
 #- { @A defines/binding A_class }

@@ -39,7 +39,7 @@ SHELL:=/bin/bash
 PYTHON3_EXE:=$(shell type -p python3.7)  # /usr/bin/python3.7
 FIND_EXE:=$(shell type -p find)          # /usr/bin/find
 SWIPL_EXE:=$(shell type -p swipl)        # /usr/bin/swipl
-# SWIPL_EXE:=../swipl-devel/build/src/swipl  # From github
+# SWIPL_EXE:=$(realpath ../swipl-devel/build/src/swipl)  # From github
 COVERAGE:=$(shell type -p coverage)      # /usr/local/bin/coverage
 
 # stuff for running tests (see https://kythe.io/docs/kythe-verifier.html)
@@ -84,19 +84,20 @@ PYKYTHE_EXE=$(TESTOUTDIR)/pykythe.qlf
 TEST_GRAMMAR_DIR:=test_data
 TESTGITHUB:=$(HOME)/tmp/test-github
 PARSECMD_OPT:=--parsecmd="$(PYTHON3_EXE) -m pykythe"
-# ENTRIESCMD_OPT:=--entriescmd=$(shell realpath ../kythe/bazel-bin/kythe/go/platform/tools/entrystream/entrystream)
+# ENTRIESCMD_OPT:=--entriescmd=$(realpath ../kythe/bazel-bin/kythe/go/platform/tools/entrystream/entrystream)
 ENTRIESCMD_OPT:=--entriescmd=$(ENTRYSTREAM_EXE)
 # PYTHONPATH starts at .., so "absolute" paths in test_data should be
 #            of the form "pykythe.test_data.___"
 #            (see also fix_for_verifier.py and ${ROOT_DIR} etc. substitutions
-PWD_REAL:=$(shell realpath .)
-TYPESHED_REAL:=$(shell realpath ../typeshed)
+PWD_REAL:=$(realpath .)
+TYPESHED_REAL:=$(realpath ../typeshed)
 SUBSTDIR:=$(TESTOUTDIR)/SUBST
 KYTHEOUTDIR:=$(TESTOUTDIR)/KYTHE
 BUILTINS_SYMTAB_FILE:=$(TESTOUTDIR)/KYTHE/builtins_symtab.pl
 TESTOUT_PYKYTHEDIR=$(KYTHEOUTDIR)/pykythe
 SUBSTDIR_PWD_REAL:=$(shell echo $(SUBSTDIR) | sed "s:$$:$(PWD_REAL):")
 KYTHEOUTDIR_PWD_REAL:=$(shell echo $(KYTHEOUTDIR) | sed "s:$$:$(PWD_REAL):")
+# Warning: do *not* replace the following "$(shell realpath .." with "$(realpath ..".
 PYTHONPATH_DOT:=$(shell realpath .. | sed 's!^/!$(SUBSTDIR)/!')
 TESTOUT_SRCS:=$(shell $(FIND_EXE) $(TEST_GRAMMAR_DIR) -name '*.py'  | sort | \
     sed -e 's!^!$(SUBSTDIR_PWD_REAL)/!')
@@ -128,7 +129,7 @@ $(SUBSTDIR_PWD_REAL)/%: % scripts/fix_for_verifier.py
 	@# FROM_DIR TO_DIR TYPESHED_DIR FROM_FILE TO_FILE
 	@echo "fix >$@"
 	@mkdir -p "$(dir $@)"
-	@$(PYTHON3_EXE) scripts/fix_for_verifier.py "${VERSION}" "$(TEST_GRAMMAR_DIR)" "$(SUBSTDIR)$(shell realpath $(TEST_GRAMMAR_DIR))" "$(shell realpath ../typeshed)" "$(shell realpath $<)" "$@"
+	@$(PYTHON3_EXE) scripts/fix_for_verifier.py "${VERSION}" "$(TEST_GRAMMAR_DIR)" "$(SUBSTDIR)$(realpath $(TEST_GRAMMAR_DIR))" "$(realpath ../typeshed)" "$(realpath $<)" "$@"
 
 ########
 # TODO: the following have an extra stutter in the files
@@ -225,13 +226,10 @@ json-decoded-all:
 # 	egrep -v '^{"fact_name":"/pykythe/symtab"' <"$<" | \
 # 	    $(ENTRYSTREAM_EXE) --read_format=json >"$@"
 
-# TODO: do something clever with make's substitution functions, to
-#       avoid the use of $(SUBSDIR)/%.py and $(word 2,$^)
-
 $(KYTHEOUTDIR)/%.kythe.verifier: $(KYTHEOUTDIR)/%.kythe.entries
 	@# TODO: --ignore_dups
 	set -o pipefail; $(VERIFIER_EXE) -check_for_singletons -goal_prefix='#-' \
-		"$(SUBSDIR)/$*.py" \
+		"/$*.py" \
 		<"$<" | tee "$@" || (rm "$@" ; exit 1)
 
 .PHONY: verify-%

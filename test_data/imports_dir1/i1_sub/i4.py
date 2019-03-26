@@ -15,7 +15,9 @@ assert i4a_loc == "pykythe/test_data/imports_dir/i1_sub/i4a.py"
 loc = "pykythe/test_data/imports_dir/i1_sub/i4.py"
 
 class III:
+    y = 'yyy'
     def __init__(self):
+        #- { @x defines/binding III_x? } // TODO: should match III().x in i1.py
         self.x = loc
 
 print("Entering " + loc + " ... " + __file__)

@@ -678,12 +678,16 @@ pykythe_opts(SrcPath, Opts) :-
                'If omitted or "", batch cache isn\'t used.'])],
         [opt(python_version), type(integer), default(3), longflags(python_version),
          help('Python major version')]], % TODO: should be a triple: see ast_raw.FAKE_SYS
-    opt_arguments(OptsSpec, Opts0, PositionalArgs),
-    %% TODO: The following only works with saved state; without saved
-    %%       state, there is one fewer positional arg
-    %%       See https://github.com/SWI-Prolog/swipl-devel/commit/30498cd0a5fac0242926fd0b71d2e61f3b6024ee
+    opt_arguments(OptsSpec, Opts0, PositionalArgs0),
     %% TODO: allow multiple positional args (here and in __main__.py)
-    must_once_msg(PositionalArgs = [_,SrcPath0], 'Missing/extra positional args'),
+    %% TODO: remove the following hack when we're at SWI-Prolog 8.1.4
+    %%       See https://github.com/SWI-Prolog/swipl-devel/commit/30498cd0a5fac0242926fd0b71d2e61f3b6024ee
+    (  PositionalArgs0 = [Exe|PositionalArgs],
+       atom_concat(_, '/pykythe.qlf', Exe)
+    -> true
+    ;  PositionalArgs = PositionalArgs0
+    ),
+    must_once_msg(PositionalArgs = [SrcPath0], 'Missing/extra positional args'),
     absolute_file_name(SrcPath0, SrcPath),
     must_once(split_path_string_and_canonicalize(pythonpath, Opts0, Opts)).
 
@@ -1657,13 +1661,13 @@ kyImportDottedAsNamesFqn('ImportDottedFqn'{
                              dotted_name: 'DottedNameNode'{items: DottedNameItems},
                              top_name: 'NameBindsFqn'{fqn: BindsFqn, name: BindsNameAstn}},
                          unused_import_module_1(BindsFqn, ModuleAndMaybeToken)) -->>
-    %% Note that BindsFqn is just the "top name" (e.g., "${FQN}.os" for "os.path")
-    %% so we don't need to do anything special for it.
+    %% BindsFqn is just the "top name" (e.g., "${FQN}.os" for
+    %% "os.path") so don't need to do anything special for it.
     kyImportDottedAsNamesFqn_comb([], % FromDots
                                   DottedNameItems, BindsFqn, BindsNameAstn,
                                   ModuleAndMaybeToken).
 kyImportDottedAsNamesFqn('ImportDottedAsNameFqn'{
-                             dotted_name: 'DottedNameNode'{items:DottedNameItems},
+                             dotted_name: 'DottedNameNode'{items: DottedNameItems},
                              as_name: 'NameBindsFqn'{fqn: BindsFqn, name: BindsNameAstn}},
                          unused_import_module_2(BindsFqn, ModuleAndMaybeToken)) -->>
     kyImportDottedAsNamesFqn_comb([], % FromDots
@@ -1671,11 +1675,11 @@ kyImportDottedAsNamesFqn('ImportDottedAsNameFqn'{
                                   ModuleAndMaybeToken).
 
 %%! kyImportDottedAsNamesFqn_comb(+FromDots, +DottedNameItems:list, +BindsFqn:string, +BindsNameAstn:astn, -ModuleAndMaybeToken)//[kyfact,expr,file_meta] is det.
-%%  Combined code for ImportDottedFqn, ImportDottedAsNameFqn.
-%% FromDots is list of ImportDotNode{dot:ASTN(Start,End,'.')}
-%% DottedNameItems is list of NameRawNode{name:ASTN(Start,End,Name)}
-%%  Adds anchors and binding facts for an imported FQN.
-%%   for "import os.path.sep as os_path_sep" (which is not valid Python, unless
+%% Combined code for ImportDottedFqn, ImportDottedAsNameFqn.
+%% - FromDots is list of ImportDotNode{dot:ASTN(Start,End,'.')}
+%% - DottedNameItems is list of NameRawNode{name:ASTN(Start,End,Name)}
+%% Adds anchors and binding facts for an imported FQN.
+%% E.g., for "import os.path.sep as os_path_sep" (which is not valid Python, unless
 %%   os.path.sep happens to be a module):
 %%      FromDots = []   % Always [] for "import"; "from ... import" can have non-[]
 %%      DottedNameItems = [NameRawNode{name:ASTN(os)}, NameRawNode{name:ASTN(path){, NameRawNode{name:ASTN(sep)}}]
@@ -2013,10 +2017,17 @@ eval_assign_expr(function_type(Fqn,Params,Return)) -->> !,
     [ Fqn-[function_type(Fqn,ParamsEvals,ReturnEval)] ]:symrej.
 eval_assign_expr(assign_import_module(Fqn, ModuleAndMaybeToken)) -->> !,
     %% Add the module to symtab, and the item it binds to
+    { module_part(ModuleAndMaybeToken, ModulePart) },
     { full_module_part(ModuleAndMaybeToken, FullModule) },
     { path_part(ModuleAndMaybeToken, Path) },
-    [ FullModule-[module_type(module_alone(FullModule,Path))] ]:symrej,
-    [ Fqn-[module_type(ModuleAndMaybeToken)] ]:symrej.
+    %% The following first puts in the module type, then gets (or adds
+    %% if not there) the module.attr -- which could be either a
+    %% variable inside the module or another module -- and finally
+    %% adds (or gets) the Fqn.
+    %% TODO: need more test cases.
+    [ ModulePart-[module_type(module_alone(ModulePart, Path))] ]:symrej,
+    [ FullModule-FullModuleType ]:symrej,
+    [ Fqn-FullModuleType ]:symrej.
 eval_assign_expr(unused_import_from(_)) -->> !, [ ].
 eval_assign_expr(unused_import(_)) -->> !, [ ].
 eval_assign_expr(unused_import_module_1(_,_)) -->> !, [ ].
