@@ -47,7 +47,7 @@ out (on Linux):
   2to3 python3-lib2to3 python3-toolz`.
 
 * Install [SWI-Prolog](http://www.swi-prolog.org/Download.html). You
-  need at least version 8.1.3, so as of 2019-02-04, this means
+  need at least version 8.1.4, so as of 2019-03-27, this means
   using the "devel" download or PPA.
 
   After installing, add the packages

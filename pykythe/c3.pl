@@ -28,7 +28,7 @@ mro(Bases, Class, Mro) :-
     append([[[Class]], ClassMro, [ClassDirectBases]], ToMerge),
     mro_merge(ToMerge, Mro).
 
-%! mro(+Class -Mro:list) is nondet.
+%! mro(+Class, -Mro:list) is nondet.
 %% Like mro/3, but expects class_type(ClassName, ListOfBases), where
 %% ListOfBases are recursively a list of ordset of class_type (or [], of course).
 %% Fails if there's an inconsistency.
@@ -48,7 +48,7 @@ select_one(List, One) :-
 class_only(TypeUnion, Class) :-
     member(class_type(Class, _ClassDirectBases), TypeUnion).
 
-%! mro_merge(+Seqs:list(list(atom)), -Mro:list(atom) is semidet.
+%! mro_merge(+Seqs:list(list(atom)), -Mro:list(atom)) is semidet.
 mro_merge([], []) :- !.
 mro_merge([[]|Seqs], Mro) :- !,
     mro_merge(Seqs, Mro).

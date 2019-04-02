@@ -170,12 +170,11 @@ class TestAnchor(unittest.TestCase):
                 parse_tree, python_version, src_file)
             logging.debug('RAW= %r', parse_tree)
             logging.debug('COOKED= %r', cooked_nodes)
-            fqn_ctx = ast_cooked.FqnCtx(
-                fqn_dot='testing.',
-                bindings=collections.ChainMap(),
-                class_fqn=None,
-                class_astn=None,
-                python_version=python_version)
+            fqn_ctx = ast_cooked.FqnCtx(fqn_dot='testing.',
+                                        bindings=collections.ChainMap(),
+                                        class_fqn=None,
+                                        class_astn=None,
+                                        python_version=python_version)
             add_fqns = cooked_nodes.add_fqns(fqn_ctx)
             self.assertEqual(
                 typing_debug.cast(

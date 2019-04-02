@@ -56,6 +56,7 @@ we can therefore deduce that `c` is also of type `class(C)`.
 #    'Base'
 #    'NameBindsNode'
 #    'NameBindsFqn'
+#    'NameRawNode'
 #    'TypedArgNode'
 import collections
 import dataclasses
@@ -493,9 +494,9 @@ class AtomCallNode(Base):
     __slots__ = ['atom', 'args']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
-        return AtomCallNode(
-            atom=_add_fqns_wrap(self.atom, ctx),
-            args=[_add_fqns_wrap(arg, ctx) for arg in self.args])
+        return AtomCallNode(atom=_add_fqns_wrap(self.atom, ctx),
+                            args=[
+                                _add_fqns_wrap(arg, ctx) for arg in self.args])
 
 
 @dataclass(frozen=True)
@@ -513,10 +514,9 @@ class AtomDotNode(Base):
     __slots__ = ['atom', 'attr_name', 'binds']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
-        return AtomDotNode(
-            atom=_add_fqns_wrap(self.atom, ctx),
-            attr_name=self.attr_name,
-            binds=self.binds)
+        return AtomDotNode(atom=_add_fqns_wrap(self.atom, ctx),
+                           attr_name=self.attr_name,
+                           binds=self.binds)
 
 
 @dataclass(frozen=True)
@@ -534,12 +534,11 @@ class AtomSubscriptNode(Base):
     __slots__ = ['atom', 'subscripts', 'binds']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
-        return AtomSubscriptNode(
-            atom=_add_fqns_wrap(self.atom, ctx),
-            binds=self.binds,
-            subscripts=[
-                _add_fqns_wrap(subscript, ctx)
-                for subscript in self.subscripts])
+        return AtomSubscriptNode(atom=_add_fqns_wrap(self.atom, ctx),
+                                 binds=self.binds,
+                                 subscripts=[
+                                     _add_fqns_wrap(subscript, ctx)
+                                     for subscript in self.subscripts])
 
 
 @dataclass(frozen=True)
@@ -566,10 +565,9 @@ class AugAssignStmt(Base):
     __slots__ = ['augassign', 'expr', 'left']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
-        return AugAssignStmt(
-            augassign=self.augassign,
-            expr=_add_fqns_wrap(self.expr, ctx),
-            left=_add_fqns_wrap(self.left, ctx))
+        return AugAssignStmt(augassign=self.augassign,
+                             expr=_add_fqns_wrap(self.expr, ctx),
+                             left=_add_fqns_wrap(self.left, ctx))
 
 
 class BreakStmt(EmptyBase):
@@ -612,10 +610,11 @@ class ClassDefStmt(Base):
                                         for name in self.scope_bindings)),
             class_fqn=class_fqn,
             class_astn=self.name.name)
-        class_add_fqns = Class(
-            fqn=class_fqn,
-            name=name_add_fqns.name,
-            bases=[_add_fqns_wrap(base, ctx) for base in self.bases])
+        class_add_fqns = Class(fqn=class_fqn,
+                               name=name_add_fqns.name,
+                               bases=[
+                                   _add_fqns_wrap(base, ctx)
+                                   for base in self.bases])
         return make_stmts([
             class_add_fqns,
             _add_fqns_wrap(self.suite, class_ctx)])
@@ -653,10 +652,10 @@ class CompForNode(Base):
                        f'[{self.for_astn.start:d},{self.for_astn.end:d}].')
         return xcast(
             FqnCtx,
-            dataclasses.replace(
-                ctx,
-                fqn_dot=for_fqn_dot,
-                bindings=ctx.bindings.new_child(collections.OrderedDict())))
+            dataclasses.replace(ctx,
+                                fqn_dot=for_fqn_dot,
+                                bindings=ctx.bindings.new_child(
+                                    collections.OrderedDict())))
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Assume that the caller has created a new child in the
@@ -672,11 +671,10 @@ class CompForNode(Base):
                             for name in self.scope_bindings)
         for_exprlist_add_fqns = _add_fqns_wrap(self.for_exprlist, ctx)
         comp_iter_add_fqns = _add_fqns_wrap(self.comp_iter, ctx)
-        return CompFor(
-            for_astn=self.for_astn,
-            for_exprlist=for_exprlist_add_fqns,
-            in_testlist=in_testlist_add_fqns,
-            comp_iter=comp_iter_add_fqns)
+        return CompFor(for_astn=self.for_astn,
+                       for_exprlist=for_exprlist_add_fqns,
+                       in_testlist=in_testlist_add_fqns,
+                       comp_iter=comp_iter_add_fqns)
 
 
 @dataclass(frozen=True)
@@ -747,8 +745,9 @@ class DecoratorNode(Base):
                 lambda atom, name: AtomDotNode(
                     binds=False, atom=atom, attr_name=name.name),
                 self.name.items[1:], self.name.items[0]), ctx)
-        return AtomCallNode(
-            atom=atom, args=[_add_fqns_wrap(arg, ctx) for arg in self.args])
+        return AtomCallNode(atom=atom,
+                            args=[
+                                _add_fqns_wrap(arg, ctx) for arg in self.args])
 
 
 class DelStmt(ListBase):
@@ -789,8 +788,8 @@ class DictGenListSetMakerCompForNode(Base):
         comp_for_ctx = self.comp_for.scope_ctx(ctx)
         comp_for = xcast(CompFor, self.comp_for.add_fqns(comp_for_ctx))
         value_expr = self.value_expr.add_fqns(comp_for_ctx)
-        return DictGenListSetMakerCompFor(
-            value_expr=value_expr, comp_for=comp_for)
+        return DictGenListSetMakerCompFor(value_expr=value_expr,
+                                          comp_for=comp_for)
 
 
 class DottedNameNode(ListBase):
@@ -859,8 +858,9 @@ class FileInput(Base):
                 collections.OrderedDict((name, ctx.fqn_dot + name)
                                         for name in self.scope_bindings)))
         stmts = [_add_fqns_wrap(stmt, file_ctx) for stmt in self.stmts]
-        return FileInput(
-            path=self.path, stmts=stmts, scope_bindings=self.scope_bindings)
+        return FileInput(path=self.path,
+                         stmts=stmts,
+                         scope_bindings=self.scope_bindings)
 
 
 @dataclass(frozen=True)
@@ -886,11 +886,10 @@ class ForStmt(Base):
         in_testlist_add_fqns = _add_fqns_wrap(self.in_testlist, ctx)
         # for_exprlist adds to bindings
         for_exprlist_add_fqns = _add_fqns_wrap(self.for_exprlist, ctx)
-        return ForStmt(
-            for_exprlist=for_exprlist_add_fqns,
-            in_testlist=in_testlist_add_fqns,
-            suite=_add_fqns_wrap(self.suite, ctx),
-            else_suite=_add_fqns_wrap(self.else_suite, ctx))
+        return ForStmt(for_exprlist=for_exprlist_add_fqns,
+                       in_testlist=in_testlist_add_fqns,
+                       suite=_add_fqns_wrap(self.suite, ctx),
+                       else_suite=_add_fqns_wrap(self.else_suite, ctx))
 
 
 @dataclass(frozen=True)
@@ -958,13 +957,12 @@ class FuncDefStmt(Base):
                     OmittedNode) and isinstance(
                         xcast(TypedArgNode, self.parameters[0]).expr,
                         OmittedNode)):
-            param0 = TypedArgNode(
-                tname=TnameNode(
-                    name=_add_fqns_wrap(
-                        xcast(TypedArgNode, self.parameters[0]).tname.name,
-                        func_ctx),
-                    type_expr=NameRefGenerated(fqn=ctx.class_fqn)),
-                expr=OMITTED_NODE)
+            param0 = TypedArgNode(tname=TnameNode(
+                name=_add_fqns_wrap(
+                    xcast(TypedArgNode, self.parameters[0]).tname.name,
+                    func_ctx),
+                type_expr=NameRefGenerated(fqn=ctx.class_fqn)),
+                                  expr=OMITTED_NODE)
             parameters = [param0] + [
                 xcast(TypedArgNode, _add_fqns_wrap(parameter, func_ctx))
                 for parameter in self.parameters[1:]]
@@ -972,11 +970,10 @@ class FuncDefStmt(Base):
             parameters = [
                 xcast(TypedArgNode, _add_fqns_wrap(parameter, func_ctx))
                 for parameter in self.parameters]
-        func_add_fqns = Func(
-            fqn=func_fqn,
-            name=name_add_fqns.name,
-            parameters=parameters,
-            return_type=_add_fqns_wrap(self.return_type, ctx))
+        func_add_fqns = Func(fqn=func_fqn,
+                             name=name_add_fqns.name,
+                             parameters=parameters,
+                             return_type=_add_fqns_wrap(self.return_type, ctx))
         return make_stmts([
             func_add_fqns, _add_fqns_wrap(self.suite, func_ctx)])
 
@@ -1002,9 +999,10 @@ class IfStmt(Base):
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # TODO: https://github.com/python/mypy/issues/4602
         #       and then use self.__class__(**attr_values)
-        return type(self)(
-            eval_results=self.eval_results,
-            items=[_add_fqns_wrap(item, ctx) for item in self.items])
+        return type(self)(eval_results=self.eval_results,
+                          items=[
+                              _add_fqns_wrap(item, ctx)
+                              for item in self.items])
 
 
 class ImportAsNamesNode(ListBase):
@@ -1036,8 +1034,9 @@ class ImportDottedAsNameFqn(Base):
 
     dotted_name: DottedNameNode
     as_name: 'NameBindsFqn'
+    rest_names: List['NameRawNode']
 
-    __slots__ = ['dotted_name', 'as_name']
+    __slots__ = ['dotted_name', 'as_name', 'rest_names']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self  # The components have already been processed
@@ -1058,13 +1057,24 @@ class ImportDottedAsNameNode(Base):
         dotted_name = xcast(DottedNameNode,
                             _add_fqns_wrap(self.dotted_name, ctx))
         if self.as_name:
-            return ImportDottedAsNameFqn(
-                dotted_name=dotted_name,
-                as_name=xcast(NameBindsFqn, _add_fqns_wrap(self.as_name, ctx)))
-        return ImportDottedFqn(
-            dotted_name=dotted_name,
-            top_name=_add_fqns_wrap(
-                NameBindsNode(name=self.dotted_name.items[0].name), ctx))
+            top_name = xcast(NameBindsFqn, _add_fqns_wrap(self.as_name, ctx))
+        else:
+            top_name = xcast(
+                NameBindsFqn,
+                _add_fqns_wrap(
+                    NameBindsNode(name=self.dotted_name.items[0].name), ctx))
+        rest_names = []
+        rest_fqn = top_name.fqn
+        for name in self.dotted_name.items[1:]:
+            rest_fqn = rest_fqn + '.' + name.name.value
+            rest_names.append(NameBindsFqn(fqn=rest_fqn, name=name.name))
+        if self.as_name:
+            return ImportDottedAsNameFqn(dotted_name=dotted_name,
+                                         as_name=top_name,
+                                         rest_names=rest_names)
+        return ImportDottedFqn(dotted_name=dotted_name,
+                               top_name=top_name,
+                               rest_names=rest_names)
 
 
 class ImportDottedAsNamesFqn(ListBase):
@@ -1105,8 +1115,9 @@ class ImportDottedFqn(Base):
 
     dotted_name: DottedNameNode
     top_name: 'NameBindsFqn'
+    rest_names: List['NameRawNode']
 
-    __slots__ = ['dotted_name', 'top_name']
+    __slots__ = ['dotted_name', 'top_name', 'rest_names']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self  # The components have already been processed
@@ -1137,11 +1148,12 @@ class ImportFromStmt(Base):
         # import_part are NameBindsNode, so we don't need to do
         # anything special about them.
         # TODO: don't need add_fqns (nor for ImportDotNode, DottedNameNode)
-        return ImportFromStmt(
-            from_dots=[_add_fqns_wrap(dot, ctx) for dot in self.from_dots],
-            from_name=_add_fqns_wrap(self.from_name, ctx)
-            if self.from_name else self.from_name,
-            import_part=_add_fqns_wrap(self.import_part, ctx))
+        return ImportFromStmt(from_dots=[
+            _add_fqns_wrap(dot, ctx) for dot in self.from_dots],
+                              from_name=_add_fqns_wrap(self.from_name, ctx)
+                              if self.from_name else self.from_name,
+                              import_part=_add_fqns_wrap(
+                                  self.import_part, ctx))
 
 
 @dataclass(frozen=True)
@@ -1169,9 +1181,8 @@ class ImportNameNode(Base):
         assert isinstance(self.dotted_as_names, ImportDottedAsNamesNode)
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
-        return ImportNameFqn(
-            dotted_as_names=xcast(ImportDottedAsNamesFqn,
-                                  _add_fqns_wrap(self.dotted_as_names, ctx)))
+        return ImportNameFqn(dotted_as_names=xcast(
+            ImportDottedAsNamesFqn, _add_fqns_wrap(self.dotted_as_names, ctx)))
 
 
 class ListMakerNode(ListBase):
@@ -1414,9 +1425,8 @@ class OpNode(Base):
         typing_debug.assert_all_isinstance(ast.Astn, self.op_astns)
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
-        return OpNode(
-            op_astns=self.op_astns,
-            args=[_add_fqns_wrap(arg, ctx) for arg in self.args])
+        return OpNode(op_astns=self.op_astns,
+                      args=[_add_fqns_wrap(arg, ctx) for arg in self.args])
 
 
 class PassStmt(EmptyBase):
@@ -1550,8 +1560,9 @@ class RawSubscriptListNode(BaseAtomTrailer):
         # self.subscripts = typing.cast(Sequence[SubscriptNode], subscripts)
 
     def atom_trailer_node(self, atom: Base, binds: bool) -> Base:
-        return AtomSubscriptNode(
-            atom=atom, subscripts=self.subscripts, binds=binds)
+        return AtomSubscriptNode(atom=atom,
+                                 subscripts=self.subscripts,
+                                 binds=binds)
 
 
 @dataclass(frozen=True)
@@ -1637,9 +1648,9 @@ class WithStmt(Base):
         # self.items = typing.cast(Sequence[WithItemNode], items)
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
-        return WithStmt(
-            items=[_add_fqns_wrap(item, ctx) for item in self.items],
-            suite=_add_fqns_wrap(self.suite, ctx))
+        return WithStmt(items=[
+            _add_fqns_wrap(item, ctx) for item in self.items],
+                        suite=_add_fqns_wrap(self.suite, ctx))
 
 
 class YieldNode(ListBase):
@@ -1660,9 +1671,10 @@ class Meta(pod.PlainOldDataExtended):
     path: Text
     language: Text
     contents_base64: Text
+    contents: Text
     sha1: Text
     encoding: Text
 
     __slots__ = [
         'kythe_corpus', 'kythe_root', 'path', 'language', 'contents_base64',
-        'sha1', 'encoding']
+        'contents', 'sha1', 'encoding']

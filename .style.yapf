@@ -75,7 +75,7 @@ blank_line_before_nested_class_or_def=True
 #        'key1': 'value1',
 #        'key2': 'value2',
 #    })
-coalesce_brackets=False
+coalesce_brackets=True
 
 # The column limit.
 column_limit=79
@@ -86,8 +86,6 @@ column_limit=79
 # - FIXED: Use fixed number (CONTINUATION_INDENT_WIDTH) of columns
 #   (ie: CONTINUATION_INDENT_WIDTH/INDENT_WIDTH tabs) for continuation
 #   alignment.
-# - LESS: Slightly left if cannot vertically align continuation lines with
-#   indent characters.
 # - VALIGN-RIGHT: Vertically align continuation lines with indent
 #   characters. Slightly right (one more indent character) if cannot
 #   vertically align continuation lines with indent characters.
@@ -217,7 +215,7 @@ split_all_comma_separated_values=False
 
 # Split before arguments if the argument list is terminated by a
 # comma.
-split_arguments_when_comma_terminated=False
+split_arguments_when_comma_terminated=True
 
 # Set to True to prefer splitting before '+', '-', '*', '/', '//', or '@'
 # rather than after.

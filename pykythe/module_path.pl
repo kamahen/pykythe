@@ -10,6 +10,9 @@
 %%    so change all '.'s to ':' -- this is generally safe
 %%    because --pythonpath uses ':' to separate items.
 %%    (see fix_dot/2 and unfix_dot/2 and where they're used).
+
+%% TODO: get rid of Path's in module types.
+
 :- module(module_path, [canonical_path/2,
                         full_module_part/2,
                         full_path/6,
@@ -193,13 +196,13 @@ path_part(module_alone(_Module,Path), Path).
 path_part(module_and_token(_Module,Path,_Token), Path).
 path_part(module_star(_Module,Path), Path).
 
-%! module_part(+module_alone(ModuleAndMaybeToken, -Path), Module) is det.
+%! module_part(+ModuleAndMaybeToken, -Module) is det.
 %% Extract Module from ModuleAndMaybeToken. Any Token is ignored.
 module_part(module_alone(Module,_Path), Module).
 module_part(module_and_token(Module,_Path,_Token), Module).
 module_part(module_star(Module,_Path), Module).
 
-%! full_module_part(+module_alone(ModuleAndMaybeToken, -Path), Module) is det.
+%! full_module_part(+ModuleAndMaybeToken, -Module) is det.
 %% Extract Module from ModuleAndMaybeToken.
 %% If there is a Token, it is added to the Module name.
 full_module_part(module_alone(Module,_Path), Module).
@@ -208,7 +211,7 @@ full_module_part(module_and_token(Module,_Path,Token), ModuleDotToken) :-
 %% Shouldn't happen:
 %% full_module_part(module_star(Module,_Path), Module).
 
-%! token_part(+module_alone(ModuleAndMaybeToken, -Token), Token) is semidet.
+%! token_part(+ModuleAndMaybeToken, -Token) is semidet.
 %% If ModuleAndMaybeToken has a Token, get it (else fail).
 token_part(module_and_token(_Module,_Path,Token), Token).
 
@@ -240,8 +243,8 @@ split_module_atom(Module, ModulePiecesFixed) :-
     ),
     maplist(unfix_dot, ModulePieces, ModulePiecesFixed).
 
-%! py_ext(+Path:atom, -PathBase:atom is nondet.
-%! py_ext(-Path:atom, +PathBase:atom is nondet.
+%! py_ext(+Path:atom, -PathBase:atom) is nondet.
+%! py_ext(-Path:atom, +PathBase:atom) is nondet.
 %% Path unifies with all permutations of PathBase plus {.py,.pyi} and
 %%  __init__ equivalents and does not check for existence.
 py_ext(PathBase, Path) :-

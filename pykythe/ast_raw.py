@@ -156,7 +156,9 @@ def cvt_annassign(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     else:
         expr = cvt(node.children[3], ctx)
     return ast_cooked.RawAnnAssignNode(
-        left_annotation=cvt(node.children[1], ctx), expr=expr)
+        left_annotation=cvt(node.children[1], ctx),
+        expr=expr,
+    )
 
 
 def cvt_arglist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -182,8 +184,8 @@ def cvt_argument(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             # the astn:
             name_cvt = cvt(node.children[0], ctx)
             if isinstance(name_cvt, ast_cooked.NameRefNode):
-                return ast_cooked.ArgumentNode(
-                    name=name_cvt.name, arg=cvt(node.children[2], ctx))
+                return ast_cooked.ArgumentNode(name=name_cvt.name,
+                                               arg=cvt(node.children[2], ctx))
             # The grammar allows this but it's not a well-formed Python program
             logging.warning(
                 'argument not in form name=expr: %r', node)  # pragma: no cover
@@ -196,8 +198,8 @@ def cvt_argument(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             comp_for=xcast(ast_cooked.CompForNode, cvt(node.children[1], ctx)))
     if node.children[0].type == token.DOUBLESTAR:
         return cvt(node.children[1], ctx)  # Ignore the `**`
-    assert node.children[0].type == SYMS_STAR_EXPR, dict(
-        ch0=node.children[0], node=node)
+    assert node.children[0].type == SYMS_STAR_EXPR, dict(ch0=node.children[0],
+                                                         node=node)
     return cvt(node.children[0], ctx)  # Ignores the `*`
 
 
@@ -301,7 +303,8 @@ def cvt_binary_op(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     for i in range(1, len(node.children), 2):
         result = ast_cooked.OpNode(
             op_astns=[ctx.src_file.astn_to_range(node.children[i])],
-            args=[result, cvt(node.children[i + 1], ctx)])
+            args=[result, cvt(node.children[i + 1], ctx)],
+        )
     return result
 
 
@@ -330,11 +333,10 @@ def cvt_classdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     else:
         bases = []
     suite = cvt(node.children[-1], ctx_class)
-    return ast_cooked.ClassDefStmt(
-        name=name,
-        bases=bases,
-        suite=suite,
-        scope_bindings=ctx_class.scope_bindings)
+    return ast_cooked.ClassDefStmt(name=name,
+                                   bases=bases,
+                                   suite=suite,
+                                   scope_bindings=ctx_class.scope_bindings)
 
 
 def cvt_comp_for(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -363,7 +365,8 @@ def cvt_comp_for(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         for_exprlist=for_exprlist,
         in_testlist=in_testlist,
         comp_iter=comp_iter,
-        scope_bindings=ctx_for.scope_bindings)
+        scope_bindings=ctx_for.scope_bindings,
+    )
 
 
 def cvt_comp_if(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -373,9 +376,8 @@ def cvt_comp_if(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     if len(node.children) == 2:
         return cvt(node.children[1], ctx)
     assert len(node.children) == 3
-    return ast_cooked.CompIfCompIterNode(
-        value_expr=cvt(node.children[1], ctx),
-        comp_iter=cvt(node.children[2], ctx))
+    return ast_cooked.CompIfCompIterNode(value_expr=cvt(node.children[1], ctx),
+                                         comp_iter=cvt(node.children[2], ctx))
 
 
 def cvt_comp_iter(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -391,7 +393,8 @@ def cvt_comp_op(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     # The following will be replaced in cvt_comparison
     return ast_cooked.OpNode(
         op_astns=[ctx.src_file.astn_to_range(ch) for ch in node.children],
-        args=[])
+        args=[],
+    )
 
 
 def cvt_comparison(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -406,9 +409,10 @@ def cvt_comparison(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         op_astns = xcast(ast_cooked.OpNode, cvt(
             node.children[i], ctx)).op_astns
         typing_debug.assert_all_isinstance(ast.Astn, op_astns)  # TODO: delete
-        result = ast_cooked.OpNode(
-            op_astns=op_astns, args=[result,
-                                     cvt(node.children[i + 1], ctx)])
+        result = ast_cooked.OpNode(op_astns=op_astns,
+                                   args=[
+                                       result,
+                                       cvt(node.children[i + 1], ctx)])
     return result
 
 
@@ -517,11 +521,12 @@ def cvt_dotted_as_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
                         cvt_name_ctx(NameCtx.RAW, node.children[0], ctx))
     if len(node.children) == 1:
         # `import os.path` creates a binding for `os`.
-        return ast_cooked.ImportDottedAsNameNode(
-            dotted_name=dotted_name, as_name=None)
-    return ast_cooked.ImportDottedAsNameNode(
-        dotted_name=dotted_name,
-        as_name=cvt_name_ctx(NameCtx.BINDING, node.children[2], ctx))
+        return ast_cooked.ImportDottedAsNameNode(dotted_name=dotted_name,
+                                                 as_name=None)
+    return ast_cooked.ImportDottedAsNameNode(dotted_name=dotted_name,
+                                             as_name=cvt_name_ctx(
+                                                 NameCtx.BINDING,
+                                                 node.children[2], ctx))
 
 
 def cvt_dotted_as_names(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -600,8 +605,9 @@ def cvt_expr_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     assert ctx.name_ctx is NameCtx.REF, [node]
     if len(node.children) == 1:
         return ast_cooked.make_stmts([
-            ast_cooked.AssignMultipleExprStmt(
-                left_list=[], expr=cvt(node.children[0], ctx))])
+            ast_cooked.AssignMultipleExprStmt(left_list=[],
+                                              expr=cvt(
+                                                  node.children[0], ctx))])
     if len(node.children) == 2:
         # TODO: test case
         assert node.children[1].type == SYMS_ANNASSIGN
@@ -630,8 +636,9 @@ def cvt_expr_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     augassign = xcast(ast_cooked.AugAssignNode, cvt(node.children[1], ctx))
     expr = cvt(node.children[2], ctx)
     left_augassign = cvt(node.children[0], ctx)  # modifies left; REF context
-    return ast_cooked.AugAssignStmt(
-        left=left_augassign, augassign=augassign.op, expr=expr)
+    return ast_cooked.AugAssignStmt(left=left_augassign,
+                                    augassign=augassign.op,
+                                    expr=expr)
 
 
 def cvt_exprlist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -644,15 +651,13 @@ def cvt_exprlist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 def cvt_file_input(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """file_input: (NEWLINE | stmt)* ENDMARKER"""
     assert ctx.name_ctx is NameCtx.REF, [node]
-    assert all(
-        ch.type in (SYMS_STMT, token.NEWLINE, token.ENDMARKER)
-        for ch in node.children)
+    assert all(ch.type in (SYMS_STMT, token.NEWLINE, token.ENDMARKER)
+               for ch in node.children)
     stmts = ast_cooked.make_stmts([
         cvt(ch, ctx) for ch in node.children if ch.type == SYMS_STMT])
-    return ast_cooked.FileInput(
-        path=ctx.src_file.path,
-        stmts=stmts.items,
-        scope_bindings=ctx.scope_bindings)
+    return ast_cooked.FileInput(path=ctx.src_file.path,
+                                stmts=stmts.items,
+                                scope_bindings=ctx.scope_bindings)
 
 
 def cvt_flow_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -672,11 +677,10 @@ def cvt_for_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     else:
         assert len(node.children) == 6
         else_suite = ast_cooked.OMITTED_NODE
-    return ast_cooked.ForStmt(
-        for_exprlist=exprlist,
-        in_testlist=testlist,
-        suite=suite,
-        else_suite=else_suite)
+    return ast_cooked.ForStmt(for_exprlist=exprlist,
+                              in_testlist=testlist,
+                              suite=suite,
+                              else_suite=else_suite)
 
 
 def cvt_funcdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -696,12 +700,11 @@ def cvt_funcdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     else:
         return_type = ast_cooked.OMITTED_NODE
     suite = cvt(node.children[-1], ctx_func)
-    return ast_cooked.FuncDefStmt(
-        name=name,
-        parameters=parameters.args,
-        return_type=return_type,
-        suite=suite,
-        scope_bindings=ctx_func.scope_bindings)
+    return ast_cooked.FuncDefStmt(name=name,
+                                  parameters=parameters.args,
+                                  return_type=return_type,
+                                  suite=suite,
+                                  scope_bindings=ctx_func.scope_bindings)
 
 
 def cvt_global_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -740,8 +743,8 @@ def cvt_if_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     # TODO: if the source redefines `sys`, this won't work, so need to
     #       verify that `sys` is "undefined" (from "import sys", which
     #       is evaluated later).
-    return ast_cooked.IfStmt(
-        eval_results=eval_results, items=ifthens + [else_suite])
+    return ast_cooked.IfStmt(eval_results=eval_results,
+                             items=ifthens + [else_suite])
 
 
 def cvt_import_as_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -750,12 +753,13 @@ def cvt_import_as_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     ch0 = node.children[0]
     ch0_name = cvt_name_ctx(NameCtx.RAW, ch0, ctx)
     if len(node.children) == 1:
-        return ast_cooked.AsNameNode(
-            name=ch0_name, as_name=cvt_name_ctx(NameCtx.BINDING, ch0, ctx))
+        return ast_cooked.AsNameNode(name=ch0_name,
+                                     as_name=cvt_name_ctx(
+                                         NameCtx.BINDING, ch0, ctx))
     # TODO: test case
-    return ast_cooked.AsNameNode(
-        name=ch0_name,
-        as_name=cvt_name_ctx(NameCtx.BINDING, node.children[2], ctx))
+    return ast_cooked.AsNameNode(name=ch0_name,
+                                 as_name=cvt_name_ctx(
+                                     NameCtx.BINDING, node.children[2], ctx))
 
 
 def cvt_import_as_names(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -791,15 +795,15 @@ def cvt_import_from(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     i += 1
     # pylint: enable=undefined-loop-variable
     if node.children[i].type == token.STAR:
-        import_part = ast_cooked.StarNode(
-            star=ctx.src_file.astn_to_range(
-                node.children[i]))  # type: ast_cooked.Base
+        import_part = ast_cooked.StarNode(star=ctx.src_file.astn_to_range(
+            node.children[i]))  # type: ast_cooked.Base
     elif node.children[i].type == token.LPAR:
         import_part = cvt_name_ctx(NameCtx.BINDING, node.children[i + 1], ctx)
     else:
         import_part = cvt_name_ctx(NameCtx.BINDING, node.children[i], ctx)
-    return ast_cooked.ImportFromStmt(
-        from_dots=from_dots, from_name=from_name, import_part=import_part)
+    return ast_cooked.ImportFromStmt(from_dots=from_dots,
+                                     from_name=from_name,
+                                     import_part=import_part)
 
 
 def cvt_import_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -828,12 +832,11 @@ def cvt_lambdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     else:
         parameters = ast_cooked.RawTypedArgsListNode(args=[])
         suite = cvt(node.children[2], ctx_func)
-    return ast_cooked.FuncDefStmt(
-        name=name,
-        parameters=parameters.args,
-        return_type=ast_cooked.OMITTED_NODE,
-        suite=suite,
-        scope_bindings=ctx_func.scope_bindings)
+    return ast_cooked.FuncDefStmt(name=name,
+                                  parameters=parameters.args,
+                                  return_type=ast_cooked.OMITTED_NODE,
+                                  suite=suite,
+                                  scope_bindings=ctx_func.scope_bindings)
 
 
 def cvt_listmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -903,7 +906,8 @@ def cvt_power(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     if doublestar_factor:
         return ast_cooked.OpNode(
             op_astns=[ctx.src_file.astn_to_range(node.children[-2])],
-            args=[atom_and_trailer, doublestar_factor])
+            args=[atom_and_trailer, doublestar_factor],
+        )
     return atom_and_trailer
 
 
@@ -963,9 +967,8 @@ def cvt_simple_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """simple_stmt: small_stmt (';' small_stmt)* [';'] NEWLINE"""
     # filter for ch.type == SYMS_SMALL_STMT
     assert ctx.name_ctx is NameCtx.REF, [node]
-    assert all(
-        ch.type in (SYMS_SMALL_STMT, token.SEMI, token.NEWLINE)
-        for ch in node.children)
+    assert all(ch.type in (SYMS_SMALL_STMT, token.SEMI, token.NEWLINE)
+               for ch in node.children)
     return ast_cooked.make_stmts(
         cvt(ch, ctx) for ch in node.children if ch.type == SYMS_SMALL_STMT)
 
@@ -1043,17 +1046,15 @@ def cvt_subscript(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 def cvt_subscriptlist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """subscriptlist: subscript (',' subscript)* [',']"""
     # Can appear on left of assignment
-    return ast_cooked.RawSubscriptListNode(
-        subscripts=cvt_children_skip_commas(
-            node, dataclasses.replace(ctx, name_ctx=NameCtx.REF)))
+    return ast_cooked.RawSubscriptListNode(subscripts=cvt_children_skip_commas(
+        node, dataclasses.replace(ctx, name_ctx=NameCtx.REF)))
 
 
 def cvt_suite(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """suite: simple_stmt | NEWLINE INDENT stmt+ DEDENT"""
     assert ctx.name_ctx is NameCtx.REF, [node]
-    assert all(
-        ch.type in (SYMS_SIMPLE_STMT, SYMS_STMT, token.NEWLINE, token.INDENT,
-                    token.DEDENT) for ch in node.children)
+    assert all(ch.type in (SYMS_SIMPLE_STMT, SYMS_STMT, token.NEWLINE,
+                           token.INDENT, token.DEDENT) for ch in node.children)
     return ast_cooked.make_stmts(
         cvt(ch, ctx)
         for ch in node.children
@@ -1215,14 +1216,16 @@ def cvt_typedargslist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
                     ast_cooked.TypedArgNode(
                         tname=xcast(ast_cooked.TnameNode,
                                     cvt_name_ctx(NameCtx.BINDING, ch0, ctx)),
-                        expr=cvt(node.children[i + 2], ctx)))
+                        expr=cvt(node.children[i + 2], ctx),
+                    ))
                 i += 3
             else:
                 args.append(
                     ast_cooked.TypedArgNode(
                         tname=xcast(ast_cooked.TnameNode,
                                     cvt_name_ctx(NameCtx.BINDING, ch0, ctx)),
-                        expr=ast_cooked.OMITTED_NODE))
+                        expr=ast_cooked.OMITTED_NODE,
+                    ))
                 i += 1
         else:
             assert ch0.type in (token.STAR, token.DOUBLESTAR), [i, ch0, node]
@@ -1235,14 +1238,12 @@ def cvt_while_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """while_stmt: 'while' test ':' suite ['else' ':' suite]"""
     assert ctx.name_ctx is NameCtx.REF, [node]
     if len(node.children) == 7:
-        return ast_cooked.WhileStmt(
-            test=cvt(node.children[1], ctx),
-            suite=cvt(node.children[3], ctx),
-            else_suite=cvt(node.children[6], ctx))
-    return ast_cooked.WhileStmt(
-        test=cvt(node.children[1], ctx),
-        suite=cvt(node.children[3], ctx),
-        else_suite=ast_cooked.OMITTED_NODE)
+        return ast_cooked.WhileStmt(test=cvt(node.children[1], ctx),
+                                    suite=cvt(node.children[3], ctx),
+                                    else_suite=cvt(node.children[6], ctx))
+    return ast_cooked.WhileStmt(test=cvt(node.children[1], ctx),
+                                suite=cvt(node.children[3], ctx),
+                                else_suite=ast_cooked.OMITTED_NODE)
 
 
 def cvt_with_item(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -1259,12 +1260,9 @@ def cvt_with_item(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 def cvt_with_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """with_stmt: 'with' with_item (',' with_item)*  ':' suite"""
     assert ctx.name_ctx is NameCtx.REF, [node]
-    return ast_cooked.WithStmt(
-        items=[
-            cvt(ch, ctx)
-            for ch in node.children[1:-2]
-            if ch.type != token.COMMA],
-        suite=cvt(node.children[-1], ctx))
+    return ast_cooked.WithStmt(items=[
+        cvt(ch, ctx) for ch in node.children[1:-2] if ch.type != token.COMMA],
+                               suite=cvt(node.children[-1], ctx))
 
 
 def cvt_with_var(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -1355,7 +1353,8 @@ def cvt_unary_op(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     assert ctx.name_ctx is NameCtx.REF, [node]
     return ast_cooked.OpNode(
         op_astns=[ctx.src_file.astn_to_range(node.children[0])],
-        args=[cvt(node.children[1], ctx)])
+        args=[cvt(node.children[1], ctx)],
+    )
 
 
 # The following dispatch table is derived from
@@ -1486,7 +1485,9 @@ SYMS_TNAMES = frozenset([syms.tfpdef, syms.vfpdef, syms.tname, syms.vname])
 # Explanation for the following: https://github.com/python/mypy/issues/4530
 _DISPATCH_TYPE = Dict[
     int, Callable[[Arg(pytree.Base, 'node'
-                      ), Arg(Ctx, 'ctx')], ast_cooked.Base, ]]
+                      ), Arg(Ctx, 'ctx')],
+                  ast_cooked.Base,
+                 ]]
 
 
 def cvt(node: pytree.Base, ctx: Ctx,
@@ -1568,8 +1569,9 @@ def parse(src_bytes: bytes, python_version: int) -> pytree.Base:
         # TODO: why doesn't lib2to3.pygram do this for "exec"?
         del grammar.keywords["print"]
         del grammar.keywords["exec"]
-    parser_driver = driver.Driver(
-        grammar, convert=_convert, logger=lib2to3_logger)
+    parser_driver = driver.Driver(grammar,
+                                  convert=_convert,
+                                  logger=lib2to3_logger)
     if not src_str.endswith('\n'):  # pragma: no cover
         src_str += '\n'  # work around bug in lib2to3
     return parser_driver.parse_string(src_str)

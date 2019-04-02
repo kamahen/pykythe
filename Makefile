@@ -400,17 +400,13 @@ run_server run-server: # web_ui  # TODO: uncomment web_ui
 	  -public_resources=$(HTTP_SERVER_RESOURCES) \
 	  -listen=localhost:$(BROWSE_PORT_PYKYTHE)
 
-.PHONY: build_kytne
-build_kythe:
-	@# TODO: //kythe/web/ui doesn't build: https://github.com/kythe/kythe/issues/3636
-	@#       unless the "cmd" in kythe/web/ui/BUILD is changed to:
-	@#       cmd = 'PATH="/usr/lib/jvm/java-8-openjdk-amd64/bin:$$PATH" $(location @org_leiningen//:leinbuild) $(location :project.clj) $(OUTS)',
-	cd ../kythe && git remote show origin
+.PHONY: build_kythe build-kythe
+build_kythe build-kythe:
+	cd ../kythe && git remote show origin && git pull --recurse-submodules
 	-# cd ../kythe && git pull --recurse-submodules
-	cd ../kythe && bazel build @local_config_cc//:toolchain;
-	cd ../kythe && bazel build //...
-	cd ../kythe && bazel test -k //...
-	@# cd ../kythe && LEIN_JAVA_CMD=/usr/lib/jvm/java-8-openjdk-amd64/bin/java nice bazel build --sandbox_debug --verbose_failures --shell_executable=/bin/bash //kythe/web/ui
+	cd ../kythe && nice bazel build --jobs=3 @local_config_cc//:toolchain;
+	cd ../kythe && nice bazel build --jobs=3 //...
+	cd ../kythe && nice bazel test -k --jobs=3 //...
 	cd ../kythe && LEIN_JAVA_CMD=/usr/lib/jvm/java-8-openjdk-amd64/bin/java nice bazel build //kythe/web/ui
 	cd ../kythe && bazel shutdown
 
@@ -503,7 +499,7 @@ pytype:
 	    echo $$i \
 	        pytype_output/imports/pykythe.$$(basename $$i .py).imports \
 		/tmp/$$(basename $$i .py).xref.json; \
-	    time xref --python_version=3.6 --imports_info=pytype_output/imports/pykythe.$$(basename $$i .py).imports $$i >/tmp/$$(basename $$i .py).xref.json;  \
+	    time pyxref --python_version=3.6 --imports_info=pytype_output/imports/pykythe.$$(basename $$i .py).imports $$i >/tmp/$$(basename $$i .py).xref.json;  \
 	done
 	$(RM) -r /tmp/pytype-graphstore /tmp/pytype-tables
 	mkdir -p $/tmp/-pytype-graphstore /tmp/$(TESTOUTDIR)/pytype-tables
