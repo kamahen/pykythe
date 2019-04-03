@@ -22,7 +22,8 @@
 # To see how to run this for a single source, see target
 # test_pykythe_pykythe which also outputs *.kythe.entries files for
 # all the imported files.
-# Also scripts/test3.sh
+# Also scripts/test3a.sh (and test3.sh)
+# ALso target test_pykythe_pykythe_all
 
 # ("clean" shouldn't be necessary, but the dependencies are fairly
 # complicated, so it's possible that "make test" doesn't run
@@ -114,9 +115,11 @@ else
 endif
 # TODO: parameterize following for python3.6, etc.:
 PYTHONPATH_OPT:=--pythonpath='$(PYTHONPATH_DOT):../typeshed/stdlib/3.7:../typeshed/stdlib/3:../typeshed/stdlib/2and3:/usr/lib/python3.7'
-PYKYTHE_OPTS=$(VERSION_OPT) $(BATCH_OPT) \
+PYTHONPATH_OPT_NO_SUBST:=--pythonpath='$(PYTHONPATH_DOT):../typeshed/stdlib/3.7:../typeshed/stdlib/3:../typeshed/stdlib/2and3:/usr/lib/python3.7'
+PYKYTHE_OPTS0=$(VERSION_OPT) $(BATCH_OPT) \
 	--builtins_symtab=$(BUILTINS_SYMTAB_FILE) \
-	$(PYKYTHEOUT_OPT) $(PARSECMD_OPT) $(ENTRIESCMD_OPT) $(KYTHE_CORPUS_ROOT_OPT) $(PYTHONPATH_OPT)
+	$(PYKYTHEOUT_OPT) $(PARSECMD_OPT) $(ENTRIESCMD_OPT) $(KYTHE_CORPUS_ROOT_OPT)
+PYKYTHE_OPTS=$(PYKYTHE_OPTS0)  $(PYTHONPATH_OPT)
 TIME:=time
 
 # .PRECIOUS: %.kythe.entries %.json-decoded %.json
@@ -281,6 +284,14 @@ test_grammar2: $(TESTOUT_TYPESHED)/stdlib/3/builtins.kythe.json
 # This is an example of how to generate outputs for a single source
 # (it also generates *.kythe.entries for all the imported files). ===
 test_pykythe_pykythe: $(KYTHEOUTDIR)$(PWD_REAL)/pykythe/__main__.kythe.entries
+
+.PHONY: test_pykythe_pykythe_all test_pykythe_pykythe_all0
+# This is an example of running on multiple sources
+test_pykythe_pykythe_all: $(BUILTINS_SYMTAB_FILE) $(PYKYTHE_EXE) test_pykythe_pykythe_all0
+
+test_pykythe_pykythe_all0:
+	@# specify the order of the *.py files, to allow verifying that the cache is used:
+	$(TIME) $(PYKYTHE_EXE) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) __main__.py pykythe/*.py
 
 # Reformat all the source code (uses .style.yapf)
 .PHONY: pyformat
@@ -493,18 +504,18 @@ FORCE:
 
 pytype:
 	@# TODO: ast_cooked.py needs "from __future__" removed to make pytype happy
-	-$(RM) -r pytype_output pykythe/pytype_output
+	-$(RM) -r .pytype
 	-time pytype -k --exclude=pykythe/bootstrap_builtins.py pykythe
 	for i in $$(ls pykythe/*.py | fgrep -v bootstrap_builtins.py); do \
 	    echo $$i \
-	        pytype_output/imports/pykythe.$$(basename $$i .py).imports \
-		/tmp/$$(basename $$i .py).xref.json; \
-	    time pyxref --python_version=3.6 --imports_info=pytype_output/imports/pykythe.$$(basename $$i .py).imports $$i >/tmp/$$(basename $$i .py).xref.json;  \
+	        .pytype/imports/pykythe.$$(basename $$i .py).imports \
+		/tmp/$$(basename $$i .py).pyxref.json; \
+	    time pyxref --debug --python_version=3.6 --imports_info=.pytype/imports/pykythe.$$(basename $$i .py).imports $$i >/tmp/$$(basename $$i .py).pyxref.json;  \
 	done
 	$(RM) -r /tmp/pytype-graphstore /tmp/pytype-tables
-	mkdir -p $/tmp/-pytype-graphstore /tmp/$(TESTOUTDIR)/pytype-tables
+	mkdir -p $/tmp/pytype-graphstore /tmp/pytype-tables
 	set -o pipefail; \
-	    cat /tmp/*.xref.json | \
+	    cat /tmp/*.pyxref.json | \
 	    $(ENTRYSTREAM_EXE) --read_format=json | \
 	    $(WRITE_ENTRIES_EXE) -graphstore /tmp/pytype-graphstore
 	$(WRITE_TABLES_EXE) -graphstore=/tmp/pytype-graphstore -out=/tmp/pytype-tables

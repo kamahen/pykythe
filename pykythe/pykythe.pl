@@ -362,6 +362,7 @@
                   process_module_cached_or_from_src_setup/4,
                   %% process_module_from_src/6,
                   %% process_module_from_src_impl/6,
+                  process_src/2,
                   %% path_expand/3,
                   %% path_part/2,
                   path_to_python_module_or_unknown/2,
@@ -636,10 +637,15 @@ pykythe_main2 :-
     on_signal(int, _, throw),  % TODO: delete?
     on_signal(term, _, throw),  % TODO: delete?
     %% on_signal(int, _, interrupt),  % TODO: reinstate if don't need traceback
-    pykythe_opts(SrcPath, Opts),
+    pykythe_opts(SrcPaths, Opts),
     opt(Opts, builtins_symtab(BuiltinsSymtabFile)),
     %% BuiltinsSymtabFile is created by gen_builtins_symtab.pl
     ensure_loaded(BuiltinsSymtabFile), % TODO: should be a module and list the predicates
+    maplist(process_src(Opts), SrcPaths).
+
+%! process_src(+Opts:list, +SrcPath:atom) is det.
+%% Process a single source file
+process_src(Opts, SrcPath) :-
     path_to_python_module_or_unknown(SrcPath, SrcFqn),
     builtins_symtab(Symtab0),
     must_once(
@@ -650,9 +656,9 @@ pykythe_main2 :-
 interrupt(_Signal) :-
     halt(1).
 
-%! pykythe_opts(-SrcPath:atom, -Opts:list(pair)) is det.
+%! pykythe_opts(-SrcPaths:list(atom), -Opts:list(pair)) is det.
 %% Process the command line, getting the source file and options.
-pykythe_opts(SrcPath, Opts) :-
+pykythe_opts(SrcPaths, Opts) :-
     current_prolog_flag(version, PrologVersion),
     must_once_msg(PrologVersion >= 80104, 'SWI-Prolog version is too old'),  % Sync this with README.md
     OptsSpec =
@@ -684,8 +690,8 @@ pykythe_opts(SrcPath, Opts) :-
          help('Python major version')]], % TODO: should be a triple: see ast_raw.FAKE_SYS
     opt_arguments(OptsSpec, Opts0, PositionalArgs),
     %% TODO: allow multiple positional args (here and in __main__.py)
-    must_once_msg(PositionalArgs = [SrcPath0], 'Missing/extra positional args'),
-    absolute_file_name(SrcPath0, SrcPath),
+    must_once_msg(PositionalArgs = [_|_], 'Missing positional arg (file to process)'),
+    maplist(absolute_file_name, PositionalArgs, SrcPaths),
     must_once(split_path_string_and_canonicalize(pythonpath, Opts0, Opts)).
 
 %! process_module_cached_or_from_src(+Opts:list, +FromSrcOk:{from_src_ok,cached_only}, +SrcPath:atom, +SrcFqn:atom, +Symtab0, -Symtab) is semidet.

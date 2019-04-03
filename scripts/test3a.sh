@@ -35,3 +35,6 @@ echo "=== Analyze unmodified ${TARGET} ==="
 time make --warn-undefined-variables -C ${MAKEFILE_DIR} BATCH_ID=${BATCH_ID} touch-fixed-src ${TARGET}
 echo "=== (end 3) ==="
 make --warn-undefined-variables -C ${MAKEFILE_DIR} BATCH_ID=${BATCH_ID} json-decoded-all
+
+echo "=== Analyze sources, but without 'fix_for_verifier' ==="
+time make --warn-undefined-variables -C ${MAKEFILE_DIR} BATCH_ID=${BATCH_ID} test_pykythe_pykythe_all

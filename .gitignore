@@ -6,3 +6,4 @@ TAGS-py
 __pycache__
 build.ninja
 pytype_output
+.pytype
