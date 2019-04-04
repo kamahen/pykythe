@@ -5,7 +5,7 @@
 from typing import Any, Sequence, Type, Tuple, TypeVar, Union
 
 # This definition of `cast` is the same as typing.cast, except it
-# verifies the type:
+# has code to verify type.
 # TODO: replace by typing.cast
 
 _T = TypeVar('_T')

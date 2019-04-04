@@ -29,14 +29,13 @@ class PlainOldData:
         if that is desired, you'll need to write something like
         PlainOldDataExtended.as_prolog_str.
         """
-        result = 'json{'
-        sep = ''
+        attr_strs = []
         for attr in self.__slots__:
             value = getattr(self, attr)
             if value is not None:
-                result += f'{sep}{_prolog_atom(attr)}:{_as_prolog_str_full(value)}'
-                sep = ','
-        return result + '}'
+                attr_strs.append(
+                    f'{_prolog_atom(attr)}:{_as_prolog_str_full(value)}')
+        return 'json{' + ','.join(attr_strs) + '}'
 
 
 class PlainOldDataExtended(PlainOldData):
@@ -44,24 +43,23 @@ class PlainOldDataExtended(PlainOldData):
 
     def as_prolog_str(self) -> Text:
         """Recursively turn a node into a Prolog term."""
-        result = ('json{kind:' + _prolog_atom(self.__class__.__name__) +
-                  ',slots:json{')
-        sep = ''
+        attr_strs = []
         for slot in self.__slots__:
             value = getattr(self, slot)
             if value is not None:
-                result += f'{sep}{_prolog_atom(slot)}:{_as_prolog_str_full(value)}'
-                sep = ','
-        return result + '}}'
+                attr_strs.append(
+                    f'{_prolog_atom(slot)}:{_as_prolog_str_full(value)}')
+        return ('json{kind:' + _prolog_atom(self.__class__.__name__) +
+                ',slots:json{' + ','.join(attr_strs) + '}}')
 
 
-def _prolog_atom(value):
+def _prolog_atom(value: Text) -> Text:
     """Wrap a string so that it's a valid Prolog atom."""
     return "'" + value.replace('\\', '\\\\').replace("'", r"\'") + "'"
 
 
 def _as_prolog_str_full(value: Any) -> Text:
-    """Recursively turn an object into a python term."""
+    """Recursively turn an object into a Prolog term."""
     # pylint: disable=too-many-return-statements
     if isinstance(value, PlainOldData):
         return value.as_prolog_str()

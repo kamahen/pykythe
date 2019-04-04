@@ -260,6 +260,7 @@ all_tests: etags unit_tests test_imports1 test_grammar test_pykythe_pykythe # js
 .PHONY: unit_tests
 unit_tests: tests/test_pykythe.py \
 		pykythe/ast_raw.py \
+		pykythe/fakesys.py \
 		pykythe/pod.py
 	$(PYTHON3_EXE) tests/test_pykythe.py
 
@@ -505,7 +506,7 @@ FORCE:
 pytype:
 	@# TODO: ast_cooked.py needs "from __future__" removed to make pytype happy
 	-$(RM) -r .pytype
-	-time pytype -k --exclude=pykythe/bootstrap_builtins.py pykythe
+	-time pytype --exclude=pykythe/bootstrap_builtins.py pykythe
 	for i in $$(ls pykythe/*.py | fgrep -v bootstrap_builtins.py); do \
 	    echo $$i \
 	        .pytype/imports/pykythe.$$(basename $$i .py).imports \
@@ -513,7 +514,7 @@ pytype:
 	    time pyxref --debug --python_version=3.6 --imports_info=.pytype/imports/pykythe.$$(basename $$i .py).imports $$i >/tmp/$$(basename $$i .py).pyxref.json;  \
 	done
 	$(RM) -r /tmp/pytype-graphstore /tmp/pytype-tables
-	mkdir -p $/tmp/pytype-graphstore /tmp/pytype-tables
+	mkdir -p /tmp/pytype-graphstore /tmp/pytype-tables
 	set -o pipefail; \
 	    cat /tmp/*.pyxref.json | \
 	    $(ENTRYSTREAM_EXE) --read_format=json | \

@@ -10,12 +10,11 @@ from .typing_debug import cast as xcast
 
 @dataclass(frozen=True)
 class Astn(pod.PlainOldDataExtended):
-    """pytree.Leaf contents with byte offset."""
+    """AST node - pytree.Leaf contents with byte offset."""
 
     value: Text
     start: int
     end: int
-
     __slots__ = ['value', 'start', 'end']
 
 
@@ -28,7 +27,6 @@ class File(pod.PlainOldData):
     encoding: Text
     line_offsets: dict
     numlines: int
-
     __slots__ = ['path', 'content', 'line_offsets', 'encoding', 'numlines']
 
     def astn_to_range(self, astn: pytree.Base) -> Astn:
@@ -43,6 +41,12 @@ class File(pod.PlainOldData):
 
 
 def make_file(path: Text, content: bytes, encoding: Text) -> File:
+    """Wrapper for File constructor.
+
+    Computes the line offsets and creates a `File` object from
+    `content`. (`path` and `encoding` are passed through to the
+    `File` object.)
+    """
     line_offsets = {1: 0}
     # TODO: this only works with ASCII right now ... need to instead
     #       use a decoding iterator to get bytes that correspond to

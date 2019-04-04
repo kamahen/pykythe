@@ -1,8 +1,6 @@
 #!/usr/bin/env python3.6
 """Main program for Python parser that outputs AST as Prolog term.
 
-This uses lib2to3, which supports both Python2 and Python3 syntax.
-
 This is called by pykythe.pl, which further processes the AST.
 """
 
@@ -40,7 +38,7 @@ def main() -> int:
                         dest='kythe_root',
                         default='',
                         help='Value of "root" in Kythe facts')
-    parser.add_argument(  # TODO: this should be a triple -- see ast_raw.FAKE_SYS
+    parser.add_argument(  # TODO: version should be a triple -- see ast_raw.FAKE_SYS
         '--python_version',
         default=3,
         choices=[2, 3],
@@ -56,6 +54,12 @@ def main() -> int:
         )  # TODO: get encoding from lib2to3.pgen2.tokenize.detect_encoding
         parse_tree = ast_raw.parse(src_content, args.python_version)
 
+    logging.debug('RAW= %r', parse_tree)
+    cooked_nodes = ast_raw.cvt_parse_tree(
+        parse_tree, args.python_version, src_file)
+    add_fqns = ast_cooked.add_fqns(
+        cooked_nodes, args.module, args.python_version)
+
     # b64encode returns bytes, so use decode() to turn it into a
     # string, because json.dumps can't process bytes.
     meta = ast_cooked.Meta(
@@ -69,17 +73,6 @@ def main() -> int:
         sha1=hashlib.sha1(src_content).hexdigest(),
         encoding=src_file.encoding)
 
-    logging.debug('RAW= %r', parse_tree)
-    cooked_nodes = ast_raw.cvt_parse_tree(
-        parse_tree, args.python_version, src_file)
-    fqn_ctx = ast_cooked.FqnCtx(fqn_dot=args.module + '.',
-                                bindings=collections.ChainMap(
-                                    collections.OrderedDict()),
-                                class_fqn=None,
-                                class_astn=None,
-                                python_version=args.python_version)
-    add_fqns = cooked_nodes.add_fqns(fqn_ctx)
-
     with open(args.out_fqn_ast, 'w') as out_fqn_ast_file:
         logging.debug('Output fqn= %r', out_fqn_ast_file)
         print(meta.as_prolog_str() + '.', file=out_fqn_ast_file)
@@ -90,6 +83,5 @@ def main() -> int:
 
 if __name__ == '__main__':
     if sys.version_info < (3, 6):
-        # Can't use f'...' because that requires 3.6:
         raise RuntimeError(f'Version must be 3.6 or later: {sys.version_info}')
     sys.exit(main())

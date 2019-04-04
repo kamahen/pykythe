@@ -20,7 +20,7 @@ from lib2to3.pgen2 import token
 sys.path.insert(0,
                 os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from pykythe import (ast, ast_cooked, ast_raw, typing_debug, pod)  # pylint: disable=wrong-import-position
+from pykythe import (ast, ast_cooked, ast_raw, fakesys, typing_debug, pod)  # pylint: disable=wrong-import-position
 
 
 @dataclass(frozen=True)
@@ -196,15 +196,15 @@ class TestFakeSys(unittest.TestCase):
         # TODO: parameterize the version (see definition of ast_raw.FAKE_SYS)
         self.assertTrue(sys.version_info >= (3, 7))
 
-        result = ast_raw.FAKE_SYS.eval('bool(sys.version_info >= (3, 7))')
+        result = fakesys.FAKE_SYS.eval('bool(sys.version_info >= (3, 7))')
         self.assertFalse(result.exception)
         self.assertTrue(result.result)
 
-        result = ast_raw.FAKE_SYS.eval('bool(sys.version_info < (3, 7))')
+        result = fakesys.FAKE_SYS.eval('bool(sys.version_info < (3, 7))')
         self.assertFalse(result.exception)
         self.assertFalse(result.result)
 
-        result = ast_raw.FAKE_SYS.eval('bool(sysx.version_info >= (3, 7))')
+        result = fakesys.FAKE_SYS.eval('bool(sysx.version_info >= (3, 7))')
         self.assertTrue(result.exception)
         self.assertIsInstance(
             result.exception,
