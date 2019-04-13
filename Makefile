@@ -12,7 +12,7 @@
 # e.g.:
 # http://localhost:8888/#/tmp/pykythe_test/SUBST/home/peter/src/pykythe/pykythe/ast_raw.py?root=test-root&corpus=test-corpus&signature
 
-# make -C ~/src/pykythe clean etags test
+# make -C ~/src/pykythe clean etags test test_python_lib
 # make -C ~/src/pykythe clean_lite etags test
 # You should be able to run with --jobs parameter and get the same
 # results each time (the outputs should be idempotent), but the order
@@ -163,6 +163,7 @@ importlab:
 	../importlab/bin/importlab --tree --trim -P.. .
 
 $(PYKYTHE_EXE): pykythe/*.pl
+	mkdir -p $(dir $@)
 	$(SWIPL_EXE) --stand_alone=true --foreign=save --undefined=error --verbose=true \
 	    -o $@ -c pykythe/pykythe.pl
 
@@ -286,13 +287,33 @@ test_grammar2: $(TESTOUT_TYPESHED)/stdlib/3/builtins.kythe.json
 # (it also generates *.kythe.entries for all the imported files). ===
 test_pykythe_pykythe: $(KYTHEOUTDIR)$(PWD_REAL)/pykythe/__main__.kythe.entries
 
-.PHONY: test_pykythe_pykythe_all test_pykythe_pykythe_all0
+.PHONY: test_pykythe_pykythe_all
 # This is an example of running on multiple sources
-test_pykythe_pykythe_all: $(BUILTINS_SYMTAB_FILE) $(PYKYTHE_EXE) test_pykythe_pykythe_all0
-
-test_pykythe_pykythe_all0:
+test_pykythe_pykythe_all:
+	$(MAKE) $(PYKYTHE_EXE) $(BUILTINS_SYMTAB_FILE)
 	@# specify the order of the *.py files, to allow verifying that the cache is used:
 	$(TIME) $(PYKYTHE_EXE) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) __main__.py pykythe/*.py
+
+.PHONY: test_python_lib
+test_python_lib:
+	$(MAKE) $(PYKYTHE_EXE) $(BUILTINS_SYMTAB_FILE)
+	@# TODO: too many args causes "out of file resources":
+	@# $(TIME) $(PYKYTHE_EXE) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) $$(find /usr/lib/python3.7 -name '*.py' | sort)
+	@# "sort" in the following is to make results more reproducible
+	@# "--group" probably slows things down a bit
+	@# There are roughly 1300 files, so batches of 50-150 are reasonable
+	set -o pipefail; \
+	find /usr/lib/python3.7 -name '*.py' | sort | \
+	  parallel --will-cite --group -P0 -L50 \
+	  '/usr/bin/time -f "\t%E real\t%U user\t%S sys\t%I-%O file" \
+	    $(PYKYTHE_EXE) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) {}'
+
+.PHONY: test_single_src
+# This is an example of running on a single source
+SINGLE_SRC=/usr/lib/python3.7/lib2to3/fixer_util.py
+test_single_src:
+	$(MAKE) $(PYKYTHE_EXE) $(BUILTINS_SYMTAB_FILE)
+	$(TIME) $(PYKYTHE_EXE) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) $(SINGLE_SRC)
 
 # Reformat all the source code (uses .style.yapf)
 .PHONY: pyformat
@@ -330,7 +351,7 @@ PYTYPE=$(shell type -p pytype)
 # TODO: --python-version=3.6  # conflict if python3.6 is not default python3
 #       maybe --no-site-packages ?
 # Anyway, mypy doesn't yet have a plugin for dataclasses. :(
-MYPY=$(PYTHON3_EXE) $$(which mypy) --python-version=3.7 --strict-optional --check-untyped-defs --warn-incomplete-stub --warn-no-return --no-incremental --disallow-any-unimported --show-error-context --implicit-optional --strict --disallow-incomplete-defs
+MYPY:=$(shell type -p mypy) --python-version=3.7 --strict-optional --check-untyped-defs --warn-incomplete-stub --warn-no-return --no-incremental --disallow-any-unimported --show-error-context --implicit-optional --strict --disallow-incomplete-defs
 # TODO: --disallow-incomplete-defs  https://github.com/python/mypy/issues/4603
 # TODO: --disallow-any-generics
 

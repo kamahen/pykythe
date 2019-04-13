@@ -33,8 +33,7 @@ class PlainOldData:
         for attr in self.__slots__:
             value = getattr(self, attr)
             if value is not None:
-                attr_strs.append(
-                    f'{_prolog_atom(attr)}:{_as_prolog_str_full(value)}')
+                attr_strs.append(f'{_prolog_atom(attr)}:{_as_prolog_str_full(value)}')
         return 'json{' + ','.join(attr_strs) + '}'
 
 
@@ -47,10 +46,9 @@ class PlainOldDataExtended(PlainOldData):
         for slot in self.__slots__:
             value = getattr(self, slot)
             if value is not None:
-                attr_strs.append(
-                    f'{_prolog_atom(slot)}:{_as_prolog_str_full(value)}')
-        return ('json{kind:' + _prolog_atom(self.__class__.__name__) +
-                ',slots:json{' + ','.join(attr_strs) + '}}')
+                attr_strs.append(f'{_prolog_atom(slot)}:{_as_prolog_str_full(value)}')
+        return ('json{kind:' + _prolog_atom(self.__class__.__name__) + ',slots:json{' +
+                ','.join(attr_strs) + '}}')
 
 
 def _prolog_atom(value: Text) -> Text:
@@ -81,5 +79,4 @@ def _as_prolog_str_full(value: Any) -> Text:
         return "json{kind:'None'}"
     if isinstance(value, Exception):
         return "json{kind:'Exception',value:" + _prolog_atom(repr(value)) + '}'
-    raise NotImplementedError(
-        f'{value.__class__.__name__}: Unknown value: {value!r}')
+    raise NotImplementedError(f'{value.__class__.__name__}: Unknown value: {value!r}')

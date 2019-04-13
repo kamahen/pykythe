@@ -283,8 +283,14 @@ split_path_string_and_canonicalize(OptName, Opts0, [NewOpt|Opts1]) :-
     Opt =.. [OptName, PathStr],
     select(Opt, Opts0, Opts1),
     split_atom(PathStr, ':', '', PathList0),
-    maplist(absolute_dir, PathList0, PathList),
+    convlist(maybe_absolute_dir, PathList0, PathList),
     NewOpt =.. [OptName, PathList].
+
+maybe_absolute_dir(Path0, AbsPath) :-
+    (  absolute_dir(Path0, AbsPath)
+    -> true
+    ;  log_if(true, 'WARNING: no such directory: ~q', [Path0])
+    ).
 
 %! term_canonical_atom(+Term, -Atom) is det.
 %% Like term_to_atom/2 if Term is instantiated, but generates
@@ -323,9 +329,9 @@ term_to_canonical_atom(Term, Atom) :-
 %%     ),
 %%     update_new_dict(KVs, Dict1, Dict).
 
-%% The following is about several times faster than the above.
-%% (For 11,000 items, make_rb is about 20x faster than
-%% the equivalent loop for a dict).
+%% The following is several times faster than the above.  (For 11,000
+%% items, make_rb is about 20x faster than the equivalent loop for a
+%% dict, but there's still significant cost inverting to/from rbtree).
 %% It would be better to just leave everything as a RB-tree,
 %% TODO: convert everything to RB-tree.
 

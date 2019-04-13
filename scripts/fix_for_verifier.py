@@ -20,8 +20,7 @@ It uses ${TYPESHED_DIR} and ${TYPESHED_FQN} for substitutions.
 import os, stat, sys
 
 VERSION = sys.argv[1]
-FROM_DIR, TO_DIR, TYPESHED_DIR, FROM_FILE, TO_FILE = map(
-    os.path.abspath, sys.argv[2:])
+FROM_DIR, TO_DIR, TYPESHED_DIR, FROM_FILE, TO_FILE = map(os.path.abspath, sys.argv[2:])
 
 # In the following, ROOT_FQN_REPL is the same as ROOT_FQN.  This is
 # because we used to check for a double-quote ('"') before the
@@ -80,10 +79,8 @@ def cp_file(path_in, path_out):
             pass
         with open(path_out, 'w') as file_out:
             file_out.write(contents)
-            os.chmod(
-                path_out,
-                os.stat(path_out).st_mode
-                & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))
+            os.chmod(path_out,
+                     os.stat(path_out).st_mode & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))
 
 
 if __name__ == '__main__':

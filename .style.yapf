@@ -78,7 +78,8 @@ blank_line_before_nested_class_or_def=True
 coalesce_brackets=True
 
 # The column limit.
-column_limit=79
+# (79 is too short for my prolix style; and I have a 32" monitor)
+column_limit=99
 
 # The style for continuation alignment. Possible values are:
 #

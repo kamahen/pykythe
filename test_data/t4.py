@@ -5,8 +5,8 @@
 ABC = " abc "
 #- { @strip ref STRIP? }
 #- { @capitalize ref CAPITALIZE? }
-#- { STRIP./pykythe/type STRIP_type? }
-#- { CAPITALIZE./pykythe/type CAPITALIZE_type? }
+#- // { STRIP./pykythe/type STRIP_type? }
+#- // { CAPITALIZE./pykythe/type CAPITALIZE_type? }
 ABC.strip().capitalize()
 
 class B:

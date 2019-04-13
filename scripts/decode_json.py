@@ -20,11 +20,10 @@ for line in sys.stdin:
         raise ValueError('Error %r - JSON line: %r' % (exc, line)) from exc
     if 'fact_value' in as_json:
         if as_json['fact_name'] == '/kythe/x-htmlgz':
-            as_json['fact_value'] = zlib.decompress(
-                base64.b64decode(as_json['fact_value'])).decode('utf-8')
+            as_json['fact_value'] = zlib.decompress(base64.b64decode(
+                as_json['fact_value'])).decode('utf-8')
         elif as_json['fact_name'] == '/pykythe/symtab':
             pass  # It's unencoded
         else:
-            as_json['fact_value'] = base64.b64decode(
-                as_json['fact_value']).decode('utf-8')
+            as_json['fact_value'] = base64.b64decode(as_json['fact_value']).decode('utf-8')
     print(json.dumps(as_json))

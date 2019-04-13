@@ -465,7 +465,7 @@ edcg:pred_info(kyfact_signature_node, 3,            [kyfact,file_meta]).
 edcg:pred_info(kyfacts, 2,                          [kyfact,file_meta]).
 edcg:pred_info(kyfacts_signature_node, 2,           [kyfact,file_meta]).
 edcg:pred_info(kyfile, 1,                           [kyfact,file_meta]).
-edcg:pred_info(starts_with_kyfact, 2,               [kyfact,file_meta]).
+edcg:pred_info(starts_with_kyfact_type, 2,          [kyfact,file_meta]).
 edcg:pred_info(symtab_pykythe_types, 1,             [kyfact,file_meta]).
 
 edcg:pred_info(maplist_kyfact_expr, 2,              [kyfact,expr,file_meta]).
@@ -935,7 +935,9 @@ process_module_from_src_impl(Opts, KytheJsonPath, SrcPath, SrcFqn, Symtab0, Symt
     log_if(true, 'Pass 1: process nodes for ~q', [Meta.path]),
     foldl_process_module_cached_or_from_src(Opts, from_src_ok, ModulesInExprs, Symtab1, Symtab1WithImports),
     log_if(true, 'Pass 2: process exprs for ~q', [Meta.path]),
-    assign_exprs(Exprs, Meta, Symtab1WithImports, Symtab, KytheFactsFromExprs),
+    assign_exprs(Exprs, Meta, Symtab1WithImports, Symtab, KytheFactsFromExprs0),
+    include(nonredundant_pytype_fact(Symtab),
+            KytheFactsFromExprs0, KytheFactsFromExprs),
     validate_symtab(Symtab),
     symtab_as_kyfact(Symtab, Meta, SymtabKytheFact),
     %% Output /pykythe/type facts, for debugging.
@@ -957,10 +959,28 @@ process_module_from_src_impl(Opts, KytheJsonPath, SrcPath, SrcFqn, Symtab0, Symt
     write_atomic_file(write_to_protobuf(EntriesCmd, SrcPath, KytheJsonPath), KytheEntriesPath),
     log_if(true, 'Finished output ~q (~q) to ~q (~q)', [SrcPath, SrcFqn, KytheEntriesPath, KytheJsonPath]),
     !.
-process_module_from_src_impl(_Opts, KytheJsonPath, SrcPath, SrcFqn, _Symtab0, _Symtab) :-
+process_module_from_src_impl(Opts, KytheJsonPath, SrcPath, SrcFqn, _Symtab0, _Symtab) :-
     %% TODO: delete this catch-all clause
-    type_error(process_module_from_src_impl, [KytheJsonPath, SrcPath, SrcFqn]),
+    type_error(process_module_from_src_impl, process_module_from_src_impl(Opts, KytheJsonPath, SrcPath, SrcFqn)),
     fail.
+
+%! nonredundant_pytype_fact(+Symtab, +Fact) is semidet.
+%% Succeeds if this is either a non-/pykythe/type fact or if it's a
+%% /pykythe/type fact that isn't already in the symtab (with a warning
+%% logged if the symtab type isn't []).
+nonredundant_pytype_fact(Symtab, Fact) :-
+    Fact.fact_name == '/pykythe/type',
+    !,
+    (  get_dict(Fact.source.signature, Symtab, SymtabType)
+    -> base64(FactTypeStr, Fact.fact_value),
+       term_string(FactType, FactTypeStr),
+       log_if((SymtabType \= FactType, FactType \= []),
+              'WARNING: ~q: Inconsistent symtab=~q, expr(ignored)=~q',
+              [Fact.source.signature, SymtabType, FactType]),
+       fail
+    ;  true
+    ).
+nonredundant_pytype_fact(_Symtab, _Fact).
 
 %! builtins_symtab_extend(+FqnType:list(pair), +SrcFqn:atom, Symtab0:dict, +Symtab:dict) is det.
 %% Add the builtins to the symtab with the current  SrcFqn.
@@ -1036,7 +1056,7 @@ clean_kind(SourceAtom-Kinds,
     ;  must_once(
            maplist(precedence_and_kind, Kinds, PKs)),
        keysort(PKs, [_-Kind|_]),
-       log_if(true, 'Cleaned kind: ~q->~q for ~q', [Kinds, Kind, Source])
+       log_if(true, 'INFO: Cleaned kind: ~q->~q for ~q', [Kinds, Kind, Source])
     ),
     base64(Kind, Kind64).
 
@@ -1092,11 +1112,7 @@ run_parse_cmd(Opts, SrcPath, SrcFqn, OutPath) :-
                 kythe_corpus(KytheCorpus), kythe_root(KytheRoot)]),
     must_once_msg(memberchk(PythonVersion, [2, 3]), 'Invalid Python version: ~q', [PythonVersion]),
     tmp_file_stream(OutPath, OutPathStream, [encoding(binary), extension('fqn-ast.pl')]),
-    do_if(false, ( % TODO: delete
-                   re_replace("/"/g, "@", SrcPath, SrcPathSubs),
-                   atomic_list_concat(['/tmp/pykythe-parser-output--', SrcPathSubs], TmpParserOutput),
-                   pykythe_utils:safe_delete_file(TmpParserOutput),
-                   link_file(OutPath, TmpParserOutput, hard))),
+    do_if(trace_file(SrcPath), link_src_file(SrcPath, OutPath)), % TODO: delete
     close(OutPathStream),
     atomic_list_concat(
         [ParseCmd,
@@ -1113,6 +1129,12 @@ run_parse_cmd(Opts, SrcPath, SrcFqn, OutPath) :-
     %%   process_create(ParseCmd, ParseCmdArgs, [stdout(pipe(CmdPipe))]),
     %%   my_json_read_dict(CmdPipe, ...), ...
     must_once_msg(shell(Cmd, 0), 'Parse failed').
+
+link_src_file(SrcPath, OutPath) :- % TODO: delete
+    re_replace("/"/g, "@", SrcPath, SrcPathSubs),
+    atomic_list_concat(['/tmp/pykythe-parser-output--', SrcPathSubs], TmpParserOutput),
+    pykythe_utils:safe_delete_file(TmpParserOutput),
+    link_file(OutPath, TmpParserOutput, hard).
 
 %! version_as_kyfact(+Version, +Meta, -KytheFactsAsJsonDict) is det.
 %% Convert the version into a Kythe fact.
@@ -1143,11 +1165,11 @@ symtab_pykythe_types(Symtab) -->>
     Meta/file_meta,
     { atomic_list_concat([Meta.src_fqn, '.'], SrcFqnDot) },
     { dict_pairs(Symtab, symtab, SymtabPairs) },
-    include_kyfact(starts_with_kyfact(SrcFqnDot), SymtabPairs).
+    include_kyfact(starts_with_kyfact_type(SrcFqnDot), SymtabPairs).
 
-%! starts_with_kyfact(+Prefix, +Fqn-Type:pair)//[kyfact,file_meta] is semidet.
+%! starts_with_kyfact_type(+Prefix, +Fqn-Type:pair)//[kyfact,file_meta] is semidet.
 %% Generate kyfact if its FQN (in symtab) starts with Prefix
-starts_with_kyfact(Prefix, Fqn-Type) -->>
+starts_with_kyfact_type(Prefix, Fqn-Type) -->>
     { atom_concat(Prefix, _Fqn2, Fqn) },
     %% If we don't want the builtins, do this test:
     %%   builtins_pairs(BuiltinsPairs), % inefficient - should use a dict
@@ -1419,7 +1441,8 @@ kynode('DictKeyValue'{items: Items},
        [todo_dictkeyvaluelist(ItemsTypes)]) -->> !,
     maplist_kynode(Items, ItemsTypes).
 kynode('DictSetMakerNode'{items: Items},
-       [todo_dictset(ItemsTypes)]) -->> !,
+       %% TODO: evaluate the items and create dictset_make of union of items' values' types
+       [dictset_make(ItemsTypes)]) -->> !,
     maplist_kynode(Items, ItemsTypes).
 kynode('EllipsisNode'{},
        [ellipsis]) -->> !, [ ].
@@ -1431,8 +1454,12 @@ kynode('ExceptClauseNode'{expr: Expr, as_item: AsItem},
     -> [ expr(ExprType) ]:expr
     ;  [ assign(AsItemType, ExprType) ]:expr
     ).
-kynode('ExprListNode'{items: Items},
-       [todo_exprlist(ItemsTypes)]) -->> !,
+kynode('ExprListNode'{items: Items, binds: bool('False')},
+       [exprlist(ItemsTypes)]) -->> !,
+    maplist_kynode(Items, ItemsTypes).
+kynode('ExprListNode'{items: Items, binds: bool('True')},
+       [exprlist_binds(ItemsTypes)]) -->> !,
+    %% TODO: exprlist_binds and list_of_type_binds should be the same?
     maplist_kynode(Items, ItemsTypes).
 kynode('ExprStmt'{expr: Expr},
        [stmt(assign)]) -->> !,
@@ -1493,8 +1520,11 @@ kynode('ImportFromStmt'{from_dots: FromDots,
 kynode('ImportNameFqn'{dotted_as_names: 'ImportDottedAsNamesFqn'{items: DottedAsNames}},
        [unused_import('ImportNameFqn',DottedAsNamesTypes)]) -->> !,
     maplist_kyfact_expr(kyImportDottedAsNamesFqn, DottedAsNames, DottedAsNamesTypes).
-kynode('ListMakerNode'{items: Items},
+kynode('ListMakerNode'{items: Items, binds: bool('False')},
        [list_make(ItemsTypes)]) -->> !,
+    maplist_kynode(Items, ItemsTypes).
+kynode('ListMakerNode'{items: Items, binds: bool('True')},
+       [list_make_binds(ItemsTypes)]) -->> !,
     maplist_kynode(Items, ItemsTypes).
 %% 'NameBindsFqn' is only for 'AssignExprStmt' -- for import statements,
 %% it's handled separately.
@@ -1585,11 +1615,8 @@ kynode('WithStmt'{items: Items, suite: Suite},
        [stmt(with)]) -->> !,
     maplist_kynode(Items, _),   % handled by WithItemNode
     kynode(Suite, _).
-kynode('YieldNode'{items: Items},
-       [stmt(yield)]) -->> !,
-    maplist_kynode(Items, _).
 kynode(X, Ty) -->>              % TODO: delete this catch-all clause
-    { type_error(kynode, [X,Ty]) }.
+    { type_error(kynode, kynode(X,Ty)) }.
 
 %! kynode_add_items(Items:list)//[kyfact,expr,file_meta] is det.
 kynode_add_items([]) -->> [ ].
@@ -2000,7 +2027,15 @@ assign_exprs_count(Count, Exprs, Meta, Symtab0, Symtab, KytheFacts) :-
     -> Symtab = Symtab1,
        KytheFacts = KytheFacts1,
        pairs_keys(Rej, RejKeys),
-       log_if(Rej \= [], 'Max pass count exceeded: ~d leaving ~d unprocessed: ~q', [CountIncr, RejLen, RejKeys])
+       sort(RejKeys, RejKeysSorted),
+       %% The write_term is to guard against "circular" types, e.g.
+       %%     list_of_type([list_of_type([]), ...)
+       %% (These will eventually get fixed, of course.)
+       with_output_to(string(RejStr),
+                      (current_output(RejStream),
+                       write_term(RejStream, Rej,
+                                  [quoted(true), portray(true), max_depth(10), attributes(portray)]))),
+       log_if(Rej \= [], 'Max pass count exceeded: ~d leaving ~d unprocessed: ~q -- ~w', [CountIncr, RejLen, RejKeysSorted, RejStr])
        %% log_if(Rej \= [], 'Rejected: ~q', [Rej])
     ;  assign_exprs_count(CountIncr, Exprs, Meta, Symtab1, Symtab, KytheFacts)
     ).
@@ -2022,7 +2057,7 @@ maplist_eval_assign_expr([]) -->> [ ].
 maplist_eval_assign_expr([Assign|Assigns]) -->>
     do_if_file(dump_term('(EVAL_ASSIGN_EXPR)', Assign)),
     eval_assign_expr(Assign),
-    %% symtab_if_file('SYMTAB'), % TODO: delete
+    symtab_if_file('SYMTAB'),   % TODO: delete
     maplist_eval_assign_expr(Assigns).
 
 %! assign_expr_eval(+Node)//[kyfact,symrej,file_meta] is det.
@@ -2111,19 +2146,37 @@ eval_assign_single(RightEval, var(Fqn)) -->> !,
 eval_assign_single(RightEval, dot_op_binds(AtomType, AttrAstn)) -->> !,
     maplist_kyfact_symrej(eval_assign_dot_op_binds_single(RightEval, AttrAstn), AtomType).
 eval_assign_single(RightEval, subscr_op_binds(AtomType,SubscriptsTypes)) -->> !,
-    maplist_kyfact_symrej(eval_union_type, SubscriptsTypes, _),
+    maplist_kyfact_symrej(eval_union_type, SubscriptsTypes, _SubscriptsTypesEval),
     maplist_kyfact_symrej(eval_assign_subscr_op_binds_single(RightEval), AtomType).
 eval_assign_single(_RightEval, BindsLeft) -->>
-    memberchk(BindsLeft, [var_binds(_), dot_op_binds(_, _), subscr_op_binds(_)]),
+    memberchk(BindsLeft, [var_binds(_), dot_op_binds(_, _), subscr_op_binds(_),
+                          list_of_type_binds(_), exprlist_binds(_)]),
+    %% TODO: handle list_of_type_binds (struct unpacking)
     %% l.h.s. is of a form that we can't process.
     !.
 eval_assign_single(RightEval, BindsLeftEval) -->> % TODO: delete this catch-all clause and the cuts above.
-    { type_error(eval_assign_single, [binds_left=BindsLeftEval, right=RightEval]) }.
+    %% One cause for getting here is if ast_raw didn't set the binding
+    %% context properly.  This happens if the l.h.s. is in the symtab
+    %% and evaluates to something (e.g., class_type(...)).
+    %% e.g. (if the "as"  expr in "with" is evaluated in a REF context):
+    %%    x = ''; with foo() as x: bar(x)
+    { type_error(eval_assign_single, eval_assign_single(RightEval, BindsLeftEval)) }.
 
 %! eval_assign_subscr_op_binds_single(+RightEval, +AtomType) is det.
 eval_assign_subscr_op_binds_single(RightEval, var(BindsFqn)) -->> !,
-    [ BindsFqn-[list_of_type(RightEval)]-_ ]:symrej.
-eval_assign_subscr_op_binds_single(_RightEval, _) -->> !.
+    %% TODO: Add the following; but this requires removing
+    %%       cycles, e.g. caused by this (from functools._lru_cache_wrapper):
+    %%       `root = []; root[:] = [root, root]`
+    %% TODO: Circular list_of_type([list_of_type([]),...) seems to come
+    %%       from somewhere else also; see /usr/lib/python3.7/typing.py
+    %%       and show the Rej in the "Max pass count exceeded" message.
+    (  symtab_lookup(BindsFqn, Type), %% TODO: remove this hack
+       member(list_of_type(Type2), Type),
+       member(list_of_type(_), Type2)
+    -> true
+    ;  [ BindsFqn-[list_of_type(RightEval)]-_ ]:symrej
+    ).
+eval_assign_subscr_op_binds_single(_RightEval, _) -->> [ ].
 
 %! eval_assign_dot_op_binds_single(+RightEval, +AttrAstn, +AtomType) is det.
 eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), class_type(ClassName,_Bases)) -->> !,
@@ -2147,10 +2200,13 @@ eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), module_type
     { atomic_list_concat([Module, Token, AttrName], '.', BindsFqn) },
     [ BindsFqn-RightEval-_ ]:symrej,
     kyanchor_kyedge_fqn(Start, End, '/kythe/edge/defines/binding', BindsFqn).
-%% TODO: should have a catch-all here (see eval_atom_dot_single(astn(Start,End,Attr), AtomSingleType, EvalType))
-eval_assign_dot_op_binds_single(RightEval, Astn, BindsLeftEval) -->> % TODO: delete this catch-all clause and the cuts above.
-    { type_error(eval_assign_dot_op_binds_single, [binds_left=BindsLeftEval, astn=Astn, right=RightEval]) }.
-
+eval_assign_dot_op_binds_single(RightEval, Astn, BindsLeftEval) -->>
+    { log_if(true, 'WARNING: no rule for ~q', [eval_assign_dot_op_binds_single(RightEval, Astn, BindsLeftEval)]) },
+    %% Typically arrive here if there is a union of types and one of them doesn't
+    %% support the "dot" operator. e.g. (on 2nd pass):
+    %%    source.prefix = " "; source = [source]
+    %% TODO: compare with eval_atom_dot_single
+    [ ].
 
 %! eval_union_type(+Expr, -UnionEvalType)//[kyfact,symrej,file_meta] is det.
 %% Evaluate (union) Expr and look it up in the symtab.
@@ -2174,16 +2230,13 @@ eval_single_type(var_lookup(FqnScope, NameAstn), Type) -->> !,
     kyanchor_node_kyedge_fqn(NameAstn, '/kythe/edge/ref', ResolvedFqn).
 eval_single_type(var_binds(BindsFqn), [var_binds(BindsFqn)]) -->> !,
     [ ].
-eval_single_type(class_type(ClassName, Bases0),
-                 [class_type(ClassName, Bases)]) -->> !,
+eval_single_type(class_type(ClassName, Bases0), [class_type(ClassName, Bases)]) -->> !,
     maplist_kyfact_symrej(eval_union_type, Bases0, Bases1),
     { clean_class(ClassName, Bases1, Bases) }.
-eval_single_type(function_type(FuncName,Params,Return),
-                 [function_type(FuncName,ParamsTypes,ReturnType)]) -->> !,
+eval_single_type(function_type(FuncName,Params,Return), [function_type(FuncName,ParamsTypes,ReturnType)]) -->> !,
     maplist_kyfact_symrej(eval_union_type, Params, ParamsTypes),
     eval_union_type(Return, ReturnType).
-eval_single_type(module_type(ModuleAndMaybeToken),
-                 [module_type(ModuleAndMaybeToken)]) -->> !,
+eval_single_type(module_type(ModuleAndMaybeToken), [module_type(ModuleAndMaybeToken)]) -->> !,
     [ ].
 eval_single_type(dot_op(Atom, Astn), EvalType) -->> !,
     eval_union_type(Atom, AtomEval0),
@@ -2194,6 +2247,9 @@ eval_single_type(dot_op(Atom, Astn), EvalType) -->> !,
     ;  { AtomEval = AtomEval0 }
     ),
     maplist_kyfact_symrej_union(eval_atom_dot_single(Astn), AtomEval, EvalType).
+eval_single_type(function_type(Name,Params,Return), [function_type(Name,ParamsEvals,ReturnEval)]) -->> !,
+    maplist_kyfact_symrej(eval_union_type, Params, ParamsEvals),
+    eval_union_type(Return, ReturnEval).
 eval_single_type(dot_op_binds(Atom, Astn), [dot_op_binds(AtomEval, Astn)]) -->> !,
     eval_union_type(Atom, AtomEval).
 eval_single_type(subscr_op_binds(Atom,Subscripts), [subscr_op_binds(AtomEval,SubscriptsEval)]) -->> !,
@@ -2217,9 +2273,6 @@ eval_single_type(call_op(_OpAstns, ArgsTypes), EvalType) -->> !,
     maplist_kyfact_symrej(eval_union_type, ArgsTypes, _ArgsTypesEval),
     %% See typeshed/stdlib/2and3/operator.pyi
     EvalType = [].
-eval_single_type(function_type(Name,Params,Return), [function_type(Name,ParamsEvals,ReturnEval)]) -->> !,
-    maplist_kyfact_symrej(eval_union_type, Params, ParamsEvals),
-    eval_union_type(Return, ReturnEval).
 eval_single_type(ellipsis, []) -->> !, [ ].
 eval_single_type(module(Fqn, Path), [module(Fqn,Path)]) -->> !, [ ].
 eval_single_type(omitted, []) -->> !, [ ].
@@ -2245,8 +2298,10 @@ eval_single_type(todo_dictgen(ValueExprType, CompForType), []) -->> !,
     eval_union_type(CompForType, _).
 eval_single_type(todo_dictkeyvaluelist(ItemsTypes), []) -->> !,
     maplist_kyfact_symrej(eval_union_type, ItemsTypes, _).
-eval_single_type(todo_dictset(ItemsTypes), []) -->> !,
-    maplist_kyfact_symrej(eval_union_type, ItemsTypes, _).
+eval_single_type(dictset_make(ItemsTypes), [dictset_of_type(Union)]) -->> !,
+    maplist_kyfact_symrej_union(eval_union_type, ItemsTypes, Union).
+eval_single_type(dictset_of_type(Type), [dictset_of_type(EvalType)]) -->> !,
+    eval_union_type(Type, EvalType).
 eval_single_type(todo_dottedname(ItemsTypes), []) -->> !,
     maplist_kyfact_symrej(eval_union_type, ItemsTypes, _).
 eval_single_type(subscript(X1,X2,X3), [subscript(E1,E2,E3)]) -->> !,
@@ -2258,14 +2313,23 @@ eval_single_type(todo_arg(_Name, Arg), []) -->> !,
     %%       (except for **kwargs).
     %% TODO: should return something?
     eval_union_type(Arg, _).
-eval_single_type(list_make(Xs), [list_of_type(Combined)]) -->> !,
-    maplist_kyfact_symrej(eval_union_type, Xs, XEs),
-    { combine_types(XEs, Combined) }.
-eval_single_type(todo_exprlist(ItemsTypes), []) -->> !,
-    maplist_kyfact_symrej(eval_union_type, ItemsTypes, _).
+eval_single_type(list_make(ItemsTypes), [list_of_type(Union)]) -->> !,
+    maplist_kyfact_symrej_union(eval_union_type, ItemsTypes, Union).
+eval_single_type(list_of_type(Type), [list_of_type(EvalType)]) -->> !,
+    eval_union_type(Type, EvalType).
+%% Note: list_of_type_binds/1 should never appear in symtab because
+%%       it should only appear on l.h.s. of assignment.
+eval_single_type(list_make_binds(ItemsTypes), [list_of_type_binds(Union)]) -->> !,
+    maplist_kyfact_symrej_union(eval_union_type, ItemsTypes, Union).
+eval_single_type(list_make_binds(ItemsTypes), [list_of_type_binds(Union)]) -->> !,
+    maplist_kyfact_symrej_union(eval_union_type, ItemsTypes, Union).
+eval_single_type(exprlist(ItemsTypes), [list_of_type(Union)]) -->> !,
+    maplist_kyfact_symrej_union(eval_union_type, ItemsTypes, Union).
+eval_single_type(exprlist_binds(ItemsTypes), [list_of_type_binds(Union)]) -->> !,
+    maplist_kyfact_symrej_union(eval_union_type, ItemsTypes, Union).
 eval_single_type(stmt(stmts), []) -->> !, [ ].
 eval_single_type(Expr, EvalType) -->> % TODO: delete this catch-all clause.
-    { type_error(eval_single_type, ['Expr'=Expr, 'EvalType'=EvalType]) }.
+    { type_error(eval_single_type, eval_single_type(Expr, EvalType)) }.
 
 %! eval_atom_dot_single(+AttrAstn, +AtomSingleType:ordset, -EvalType:ordset)//[kyfact,symrej,file_meta] is det.
 %% Helper for single type-dot-attr.
@@ -2284,8 +2348,7 @@ eval_atom_dot_single(AttrAstn, class_type(ClassName, Bases), EvalType) -->> !,
     ),
     { builtins_symtab_primitive(object, [class_type(Object, _)]) },
     { maplist(ensure_class_mro_object(Object), Mros0, Mros) },
-    maplist_kyfact_symrej(resolve_mro_dot(ClassName, AttrAstn), Mros, EvalTypes),
-    { combine_types(EvalTypes, EvalType) }.
+    maplist_kyfact_symrej_union(resolve_mro_dot(ClassName, AttrAstn), Mros, EvalType).
 eval_atom_dot_single(AttrAstn,  module_type(module_alone(Module,_Path)), EvalType) -->> !,
     { AttrAstn= astn(_Start,_End,Attr) },
     { atomic_list_concat([Module, Attr], '.', FqnAttr) },
@@ -2319,6 +2382,8 @@ eval_atom_dot_single(AttrAstn, AtomSingleType, EvalType) -->>
 %! eval_atom_subscr_single(+Expr, -EvalType)//[kyfact,symrej,file_meta] is det. is det.
 %% Get the type of applying a subscript operator to a type.
 eval_atom_subscr_single(list_of_type(Class), Class) -->> !, [ ].
+eval_atom_subscr_single(list_of_type_binds(Class), Class) -->> !, [ ].
+eval_atom_subscr_single(dictset_of_type(_Class), []) -->> !, [ ]. % TODO: evaluate this
 eval_atom_subscr_single(_, []) -->> [ ].
 
 %! eval_atom_subscr_binds_single(+Expr, -EvalType)//[kyfact,symrej,file_meta] is det.
@@ -2415,20 +2480,21 @@ is_empty_list([]).
 %! remove_class_cycles(+Bases:list(list), +Seen:dict, +BasesCleaned:List(list)) is det.
 %% Ensure that there are no cycles in the base classes of a class (see
 %% test cases for examples). Bases0 is the original list of bases;
-%% Bases gets the cycle-free bases. Seen is a dict of class names that
-%% have been seen so far; it should have an initial value of the class
-%% name (the dict values are ignored).
-%% The resulting BasesCleaned may have some empty types, which equate to "Any";
-%% the assumption is that the caller will remove them.
-%% (Hint for understanding this code -- each Base is a union (list) of types.)
+%% Bases gets the cycle-free bases. Seen is a dict (used as a set) of
+%% class names that have been seen so far; it should have an initial
+%% value of the class name (the dict values are ignored).  The
+%% resulting BasesCleaned may have some empty types, which equate to
+%% "Any"; the assumption is that the caller will remove them.
+%% (Hint for understanding this code -- each Base is a union (list) of
+%% types.)
 remove_class_cycles([], _Seen, []).
 remove_class_cycles([Base|Bases], Seen, [Base2|Bases2]) :-
     remove_class_cycles_one(Base, Base2, Seen, Seen2),
     remove_class_cycles(Bases, Seen2, Bases2).
 
-%! remove_class_cycles_one(+Types:list, -TypesOut:list, +Seen:list(atom), -SeenOut:list(atom)) is det.
+%! remove_class_cycles_one(+Types:list, -TypesOut:list, +Seen:dict, -SeenOut:dict) is det.
 %% Remove cycles for a single base.
-%% Seen is a set of already seen class names.
+%% Seen is a dict (set) of already seen class names.
 remove_class_cycles_one([], [], Seen, Seen).
 remove_class_cycles_one([Type|Types], TypesOut, Seen, SeenOut) :-
     (  Type = class_type(ClassName, _)
@@ -2450,8 +2516,8 @@ remove_class_cycles_one([Type|Types], TypesOut, Seen, SeenOut) :-
 %% For Fqn-RejType pairs in FqnRejTypes, add to symtab.
 add_rej_to_symtab(Fqn-RejType, Symtab0, Symtab) :-
     get_dict(Fqn, Symtab0, FqnType),
-    type_union(FqnType, RejType, CombinedType),
-    put_dict(Fqn, Symtab0, CombinedType, Symtab).
+    type_union(FqnType, RejType, UnionType),
+    put_dict(Fqn, Symtab0, UnionType, Symtab).
 
 %! symrej_accum(+FqnType:triple, +Symtab0Rej0Mod0, +SymtabRejMod) is det.
 %% The accumulator for 'symrej'.
@@ -2533,17 +2599,17 @@ list_to_union_type(List, Type) :-
     list_to_ord_set(List, Type0),
     normalize_type(Type0, Type).
 
-%! combine_types(+ListOfOrdSets, -Set) is det.
-combine_types(ListOfTypes, Type) :-
-    ord_union(ListOfTypes, Type).
-
-normalize_type(Type, Type).  % TODO: this probably is unsufficient.
-
 %! maplist_kyfact_symrej_union(:Pred, L:list, EvalType:ordset)//[kyfact,symrej,file_meta] is det.
 %% maplist/3 for EDCG [kyfact,symrej,file_meta] + combine_types
 maplist_kyfact_symrej_union(Pred, L, EvalType) -->>
     maplist_kyfact_symrej(Pred, L, EvalType0),
     { combine_types(EvalType0, EvalType) }.
+
+%! combine_types(+ListOfOrdSets, -Set) is det.
+combine_types(ListOfTypes, Type) :-
+    ord_union(ListOfTypes, Type).
+
+normalize_type(Type, Type).  % TODO: this probably is unsufficient.
 
 user:portray(Term) :-
     %% in the following, format/2 is used because
@@ -2690,7 +2756,8 @@ maplist_kyfact_expr(Pred, [X|Xs], [Y|Ys]) -->>
 
 trace_file(_) :- fail.
 %% trace_file('/home/peter/src/typeshed/stdlib/3/collections/__init__.pyi'). % TODO: delete
-%% trace_file('/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t0.py'). % TODO: delete
+%% trace_file('/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t5.py'). % TODO: delete
+%% trace_file('/home/peter/src/pykythe/test_data/t5.py'). % TODO: delete
 
 log_if_file(Fmt, Args) -->>
     Meta/file_meta,

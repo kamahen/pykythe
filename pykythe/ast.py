@@ -3,7 +3,7 @@
 import codecs
 from dataclasses import dataclass
 from lib2to3 import pytree
-from typing import Text
+from typing import Dict, Text
 from . import pod
 from .typing_debug import cast as xcast
 
@@ -25,7 +25,7 @@ class File(pod.PlainOldData):
     path: Text
     content: bytes
     encoding: Text
-    line_offsets: dict
+    line_offsets: Dict[int, int]
     numlines: int
     __slots__ = ['path', 'content', 'line_offsets', 'encoding', 'numlines']
 
@@ -36,7 +36,7 @@ class File(pod.PlainOldData):
         return Astn(
             value=astn.value,
             start=offset,
-            end=offset + len(astn.value),  # type: ignore
+            end=offset + len(astn.value),
         )
 
 
@@ -62,5 +62,5 @@ def make_file(path: Text, content: bytes, encoding: Text) -> File:
         content=content,
         encoding=encoding,
         line_offsets=line_offsets,
-        numlines=lineno - 1,  # type: ignore
+        numlines=lineno - 1,
     )

@@ -17,8 +17,7 @@ from lib2to3 import pytree
 from lib2to3.pgen2 import token
 
 # TODO: get rid of this hack?
-sys.path.insert(0,
-                os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from pykythe import (ast, ast_cooked, ast_raw, fakesys, typing_debug, pod)  # pylint: disable=wrong-import-position
 
@@ -80,8 +79,7 @@ class TestPlainOldData(unittest.TestCase):
         if False:  # TODO: this fails for b_unpickle because it's frozen
             b_pickle = pickle.dumps(b_node, protocol=pickle.HIGHEST_PROTOCOL)
             b_unpickle = pickle.loads(b_pickle)
-            self.assertEqual(
-                repr(b_unpickle), "SomeData(a=999, b='foo', c=True)")
+            self.assertEqual(repr(b_unpickle), "SomeData(a=999, b='foo', c=True)")
 
         with self.assertRaises(TypeError):
             # ValueError: Unknown field names: ['x']
@@ -93,8 +91,7 @@ class TestPlainOldData(unittest.TestCase):
 
         c_1 = SomeData(a=1, b='abc', c=True)
         self.assertEqual(
-            c_1.as_prolog_str(),
-            "json{'a':1,'b':'abc','c':json{kind:bool,value:'True'}}")
+            c_1.as_prolog_str(), "json{'a':1,'b':'abc','c':json{kind:bool,value:'True'}}")
 
         with self.assertRaises(TypeError):
             # ValueError: Missing field: 'c'
@@ -104,8 +101,7 @@ class TestPlainOldData(unittest.TestCase):
         # pylint: disable=line-too-long
         self.assertEqual(
             c_2.as_prolog_str(),
-            "json{kind:'SomeData2',slots:json{'a':1,'b':'abc','c':json{kind:bool,value:'False'}}}"
-        )
+            "json{kind:'SomeData2',slots:json{'a':1,'b':'abc','c':json{kind:bool,value:'False'}}}")
 
         with self.assertRaises(TypeError):
             # ValueError: Unknown field names: ['x']
@@ -154,20 +150,16 @@ class TestAnchor(unittest.TestCase):
             self.assertEqual(content.decode('utf-8'), str(parse_tree))
             self.assertEqual(
                 str(parse_tree), ''.join(
-                    str(node)
-                    for node in parse_tree.pre_order()
-                    if isinstance(node, pytree.Leaf)))
+                    str(node) for node in parse_tree.pre_order() if isinstance(node, pytree.Leaf)))
             anchor_file = ast.make_file('<>', content, 'utf-8')
             leaf_nodes = [
-                node for node in parse_tree.pre_order() if
-                isinstance(node, pytree.Leaf) and node.type in expected_types]
+                node for node in parse_tree.pre_order()
+                if isinstance(node, pytree.Leaf) and node.type in expected_types]
             self.assertEqual(len(leaf_nodes), len(expected))
             for node, expected_str in zip(leaf_nodes, expected):
                 anchor = anchor_file.astn_to_range(node)
-                self.assertEqual(
-                    content[anchor.start:anchor.end], expected_str)
-            cooked_nodes = ast_raw.cvt_parse_tree(
-                parse_tree, python_version, src_file)
+                self.assertEqual(content[anchor.start:anchor.end], expected_str)
+            cooked_nodes = ast_raw.cvt_parse_tree(parse_tree, python_version, src_file)
             logging.debug('RAW= %r', parse_tree)
             logging.debug('COOKED= %r', cooked_nodes)
             fqn_ctx = ast_cooked.FqnCtx(fqn_dot='testing.',
@@ -177,8 +169,7 @@ class TestAnchor(unittest.TestCase):
                                         python_version=python_version)
             add_fqns = cooked_nodes.add_fqns(fqn_ctx)
             self.assertEqual(
-                typing_debug.cast(
-                    ast_cooked.FileInput, add_fqns).scope_bindings,
+                typing_debug.cast(ast_cooked.FileInput, add_fqns).scope_bindings,
                 collections.OrderedDict([
                     ('a', None),
                     ('b', None),
@@ -207,8 +198,7 @@ class TestFakeSys(unittest.TestCase):
         result = fakesys.FAKE_SYS.eval('bool(sysx.version_info >= (3, 7))')
         self.assertTrue(result.exception)
         self.assertIsInstance(
-            result.exception,
-            NameError)  # NameError("name 'sysx' is not defined")
+            result.exception, NameError)  # NameError("name 'sysx' is not defined")
 
 
 if __name__ == '__main__':

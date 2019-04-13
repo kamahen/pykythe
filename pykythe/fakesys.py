@@ -23,7 +23,7 @@ class FakeSysWithVersionInfo:
     This is used to safely evaluate a string (see `FakeSys`).
     """
 
-    version_info: Tuple
+    version_info: Tuple[int, int, int, str, int]
     __slots__ = ['version_info']
 
 
@@ -51,11 +51,10 @@ class FakeSys:
             # environments are constrained to a limited version of
             # `sys`.
             result = eval(expr, {}, {'sys': self.fake_sys_with_version_info})
-            return EvalResult(result=result, exception=None)  # type: ignore
+            return EvalResult(result=result, exception=None)
         except Exception as exc:
             return EvalResult(result=None, exception=exc)
 
 
 # TODO: use __main__.args.python_version (and change that to be a triple)
-FAKE_SYS = FakeSys(FakeSysWithVersionInfo(
-    sys.version_info))  # TODO: parameterize this
+FAKE_SYS = FakeSys(FakeSysWithVersionInfo(sys.version_info))  # TODO: parameterize this
