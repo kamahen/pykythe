@@ -135,21 +135,21 @@ class Ctx(pod.PlainOldData):
         # deterministic results.
         assert self.python_version in (2, 3)
 
-    def to_BINDING(self):
+    def to_BINDING(self) -> 'Ctx':
         return dataclasses.replace(self, name_ctx=NameCtx.BINDING)
 
-    def to_RAW(self):
+    def to_RAW(self) -> 'Ctx':
         return dataclasses.replace(self, name_ctx=NameCtx.RAW)
 
-    def to_REF(self):
+    def to_REF(self) -> 'Ctx':
         return dataclasses.replace(self, name_ctx=NameCtx.REF)
 
     @property
-    def is_BINDING(self):
+    def is_BINDING(self) -> bool:
         return self.name_ctx is NameCtx.BINDING
 
     @property
-    def is_REF(self):
+    def is_REF(self) -> bool:
         return self.name_ctx is NameCtx.REF
 
 
@@ -179,7 +179,7 @@ def cvt_annassign(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     # TODO: test case
     assert ctx.is_REF, [node]
     if len(node.children) == 2:
-        expr = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
+        expr = ast_cooked.OMITTED_NODE
     else:
         expr = cvt(node.children[3], ctx)
     return ast_cooked.RawAnnAssignNode(
@@ -232,7 +232,7 @@ def cvt_assert_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     assert ctx.is_REF, [node]
     test = cvt(node.children[1], ctx)
     if len(node.children) == 2:
-        display = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
+        display = ast_cooked.OMITTED_NODE
     else:
         display = cvt(node.children[3], ctx)
     return ast_cooked.AssertStmt(items=[test, display])
@@ -545,10 +545,11 @@ def cvt_dotted_as_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     if len(node.children) == 1:
         # `import os.path` creates a binding for `os`.
         return ast_cooked.ImportDottedAsNameNode(dotted_name=dotted_name, as_name=None)
-    return ast_cooked.ImportDottedAsNameNode(
-        dotted_name=dotted_name,
-        as_name=cvt(node.children[2], ctx.to_BINDING()),
-    )
+    as_name = typing.cast(Union[ast_cooked.NameBindsNode, ast_cooked.NameBindsGlobalNode],
+                          cvt(node.children[2], ctx.to_BINDING()))
+    assert isinstance(
+        as_name, (ast_cooked.NameBindsNode, ast_cooked.NameBindsGlobalNode))  # TODO: delete
+    return ast_cooked.ImportDottedAsNameNode(dotted_name=dotted_name, as_name=as_name)
 
 
 def cvt_dotted_as_names(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -585,8 +586,8 @@ def cvt_except_clause(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """except_clause: 'except' [test [(',' | 'as') test]]"""
     assert ctx.is_REF, [node]
     if len(node.children) == 1:
-        expr = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
-        as_item = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
+        expr = ast_cooked.OMITTED_NODE
+        as_item = ast_cooked.OMITTED_NODE
     elif len(node.children) == 2:
         expr = cvt(node.children[1], ctx)
         as_item = ast_cooked.OMITTED_NODE
@@ -602,8 +603,8 @@ def cvt_exec_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:  # pragma: no
     assert ctx.is_REF, [node]
     if len(node.children) == 1:
         expr1 = cvt(node.children[1], ctx)
-        expr2 = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
-        expr3 = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
+        expr2 = ast_cooked.OMITTED_NODE
+        expr3 = ast_cooked.OMITTED_NODE
     elif len(node.children) == 4:
         expr1 = cvt(node.children[1], ctx)
         expr2 = cvt(node.children[3], ctx)
@@ -705,8 +706,10 @@ def cvt_funcdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     assert ctx.is_REF, [node]
     # The bindings for FuncDefStmt are built up in the calls to
     # parameters and suite.
-    name = xcast((ast_cooked.NameBindsNode, ast_cooked.NameBindsGlobalNode),
-                 cvt(node.children[1], ctx.to_BINDING()))
+    name = typing.cast(Union[ast_cooked.NameBindsNode, ast_cooked.NameBindsGlobalNode],
+                       cvt(node.children[1], ctx.to_BINDING()))
+    assert isinstance(
+        name, (ast_cooked.NameBindsNode, ast_cooked.NameBindsGlobalNode))  # TODO: delete
     ctx.scope_bindings[name.name.value] = None
     # start a new set of bindings for the parameters, suite
     ctx_func = new_ctx_from(ctx)
@@ -745,7 +748,7 @@ def cvt_if_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     assert ctx.is_REF, [node]
     ifthens = []
     eval_results = []  # TODO: rewrite using functools.reduce or similar
-    else_suite = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
+    else_suite = ast_cooked.OMITTED_NODE
     for i in range(0, len(node.children), 4):
         ch0 = xcast(Leaf, node.children[i])
         if ch0.value in ('if', 'elif'):
@@ -788,9 +791,9 @@ def cvt_import_from(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     from_dots = []  # type: List[ast_cooked.Base]
     from_name = None  # type: Optional[ast_cooked.Base]
     for i, child in enumerate(node.children):
-        if child.type == token.NAME and child.value == 'from':  # type: ignore
+        if child.type == token.NAME and xcast(Leaf, child).value == 'from':
             continue
-        if child.type == token.NAME and child.value == 'import':  # type: ignore
+        if child.type == token.NAME and xcast(Leaf, child).value == 'import':
             break
         if child.type == token.DOT:
             # TODO: test case
@@ -799,8 +802,8 @@ def cvt_import_from(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             assert not from_name, [node]
             from_name = cvt(child, ctx.to_RAW())
     # pylint: disable=undefined-loop-variable
-    assert (
-        node.children[i].type == token.NAME and node.children[i].value == 'import')  # type: ignore
+    assert (node.children[i].type == token.NAME and
+            xcast(Leaf, node.children[i]).value == 'import')
     i += 1
     # pylint: enable=undefined-loop-variable
     if node.children[i].type == token.STAR:
@@ -882,8 +885,7 @@ def cvt_power(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     # "SyntaxError: can't assign to operator" or "SyntaxError: can't
     # assign to function call".
     if (node.children[0].type == token.AWAIT or
-        (node.children[0].type == token.NAME and
-         node.children[0].value == 'await')):  # type: ignore
+        (node.children[0].type == token.NAME and xcast(Leaf, node.children[0]).value == 'await')):
         # TODO: test case
         # ignore AWAIT
         atom_child, *trailer_factor_children = node.children[1:]
@@ -940,10 +942,10 @@ def cvt_raise_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     exc = cvt(node.children[1], ctx)
     if len(node.children) > 2:
         # TODO: test case
-        if node.children[2].value == 'from':  # type: ignore
+        if xcast(Leaf, node.children[2]).value == 'from':
             raise_from = cvt(node.children[3], ctx)
-            exc2 = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
-            exc3 = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
+            exc2 = ast_cooked.OMITTED_NODE
+            exc3 = ast_cooked.OMITTED_NODE
         else:
             raise_from = ast_cooked.OMITTED_NODE
             exc2 = cvt(node.children[3], ctx)
@@ -1017,11 +1019,11 @@ def cvt_subscript(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     assert ctx.is_REF, [node]
     if len(node.children) == 1:
         if node.children[0].type == token.COLON:
-            expr1 = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
+            expr1 = ast_cooked.OMITTED_NODE
         else:
             expr1 = cvt(node.children[0], ctx)
-        expr2 = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
-        expr3 = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
+        expr2 = ast_cooked.OMITTED_NODE
+        expr3 = ast_cooked.OMITTED_NODE
     else:
         i = 0
         if node.children[i].type == token.COLON:
@@ -1161,7 +1163,7 @@ def cvt_tname(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     assert ctx.is_BINDING, [node]
     name = cvt(node.children[0], ctx)  # Mark as binds even if no RHS
     if len(node.children) == 1:
-        type_expr = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
+        type_expr = ast_cooked.OMITTED_NODE
     else:
         type_expr = cvt(node.children[2], ctx.to_REF())
     return ast_cooked.TnameNode(name=name, type_expr=type_expr)
@@ -1255,7 +1257,7 @@ def cvt_with_item(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     assert ctx.is_REF, [node]
     item = cvt(node.children[0], ctx)
     if len(node.children) == 1:
-        as_item = ast_cooked.OMITTED_NODE  # type: ast_cooked.Base
+        as_item = ast_cooked.OMITTED_NODE
     else:
         as_item = cvt(node.children[2], ctx.to_BINDING())
     return ast_cooked.WithItemNode(item=item, as_item=as_item)
@@ -1289,7 +1291,7 @@ def cvt_yield_expr(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
         ch1 = node.children[1]
         assert ch1.type == syms.yield_arg, [node]
         if len(ch1.children) == 2:
-            assert ch1.children[0].value == 'from', [node]
+            assert xcast(Leaf, ch1.children[0]).value == 'from', [node]
             return cvt(ch1.children[1], ctx)
         assert len(ch1.children) == 1
         return cvt(ch1.children[0], ctx)
@@ -1341,8 +1343,8 @@ def cvt_token_string(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     astns = node if isinstance(node, list) else [node]
     typing_debug.assert_all_isinstance(Leaf, astns)  # TODO: delete
     astn_ranges = [ctx.src_file.astn_to_range(astn) for astn in astns]
-    if (re.match('[^"\']*[bB][^"]*"', astns[0].value) or  # type: ignore
-            re.match("[^'\"]*[bB][^']*'", astns[0].value)):  # type: ignore
+    value = xcast(Leaf, astns[0]).value
+    if re.match('[^"\']*[bB][^"]*"', value) or re.match("[^'\"]*[bB][^']*'", value):
         return ast_cooked.StringBytesNode(astns=astn_ranges)
     return ast_cooked.StringNode(astns=astn_ranges)
 
@@ -1608,12 +1610,9 @@ class Node(pytree.Node):
     __slots__ = ['type', 'children', 'context', 'prefix', 'fixers_applied']
 
 
-def _convert(
-        grammar: pgen2_grammar.Grammar,
-        raw_node: Tuple[int, Text, Tuple[Text, int, int], Optional[List[Union[Node, Leaf]]]],
-        Leaf=Leaf,
-        Node=Node,
-) -> Union[Leaf, Node]:
+def _convert(grammar: pgen2_grammar.Grammar,
+             raw_node: Tuple[int, Text, Tuple[Text, int, int], Optional[List[Union[Node, Leaf]]]]
+            ) -> Union[Leaf, Node]:
     """Convert raw node information to a Node or Leaf instance.
 
     Derived from pytree.convert, by modifying the test for only a

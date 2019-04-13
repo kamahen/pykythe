@@ -69,7 +69,7 @@ from dataclasses import dataclass
 import functools
 import logging  # pylint: disable=unused-import
 from typing import (  # pylint: disable=unused-import
-    Any, Mapping, MutableMapping, Iterable, List, Optional, Sequence, Text, Tuple, TypeVar)
+    Any, Mapping, MutableMapping, Iterable, List, Optional, Sequence, Text, Tuple, TypeVar, Union)
 import typing
 from mypy_extensions import Arg  # pylint: disable=unused-import
 
@@ -116,7 +116,7 @@ class FqnCtx(pod.PlainOldData):
     """
 
     fqn_dot: Text
-    bindings: typing.ChainMap[Text, Text]  # pylint: disable=no-member  # type: ignore
+    bindings: typing.ChainMap[Text, Text]
     class_fqn: Optional[Text]
     class_astn: Optional[ast.Astn]
     python_version: int
@@ -633,6 +633,8 @@ class DecoratorDottedNameNode(ListBase):
     NameRefNode (see ast_raw.cvt_decorator).
     """
 
+    items: Sequence['NameRefNode']
+
     def __post_init__(self) -> None:
         # self.items = typing.cast(Sequence[NameRawNode], items)
         assert isinstance(self.items[0], NameRefNode)
@@ -653,10 +655,11 @@ class DecoratorNode(Base):
     __slots__ = ['name', 'args']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
-        atom = functools.reduce(
+        atom_reduced = functools.reduce(
             lambda atom, name: AtomDotNode(binds=False, atom=atom, attr_name=name.name),
-            self.name.items[1:], self.name.items[0]).add_fqns(ctx)
-        return AtomCallNode(atom=atom, args=[arg.add_fqns(ctx) for arg in self.args])
+            self.name.items[1:], self.name.items[0])
+        return AtomCallNode(atom=atom_reduced.add_fqns(ctx),
+                            args=[arg.add_fqns(ctx) for arg in self.args])
 
 
 class DelStmt(ListBase):
@@ -700,6 +703,8 @@ class DictGenListSetMakerCompForNode(Base):
 
 class DottedNameNode(ListBase):
     """Corresponds to `dotted_name`."""
+
+    items: Sequence['NameRawNode']
 
     def __post_init__(self) -> None:
         # self.items = typing.cast(Sequence[NameRawNode], items)
@@ -825,7 +830,7 @@ class FuncDefStmt(Base):
     subclass of Base and not of Base.
     """
 
-    name: 'NameBindsNode'
+    name: Union['NameBindsNode', 'NameBindsGlobalNode']
     parameters: Sequence[Base]
     return_type: Base
     suite: Base
@@ -947,7 +952,7 @@ class ImportDottedAsNameNode(Base):
     # TODO: new ast_cooked class ImportDottedNode for as_name=None
 
     dotted_name: DottedNameNode
-    as_name: Optional['NameBindsNode']
+    as_name: Optional[Union['NameBindsNode', 'NameBindsGlobalNode']]
     __slots__ = ['dotted_name', 'as_name']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
@@ -972,6 +977,8 @@ class ImportDottedAsNameNode(Base):
 class ImportDottedAsNamesFqn(ListBase):
     """Corresponds to `dotted_as_names`."""
 
+    items: Sequence[ImportDottedAsNameFqn]
+
     def __post_init__(self) -> None:
         # self.items = typing.cast(Sequence[ImportDottedAsNameFqn], items)
         typing_debug.assert_all_isinstance((ImportDottedAsNameFqn, ImportDottedFqn),
@@ -983,6 +990,8 @@ class ImportDottedAsNamesFqn(ListBase):
 
 class ImportDottedAsNamesNode(ListBase):
     """Created by ImportDottedAsNamesNode.add_fqns."""
+
+    items: Sequence[ImportDottedAsNameNode]
 
     def __post_init__(self) -> None:
         # self.items = typing.cast(Sequence[ImportDottedAsNameNode], items)
@@ -1141,6 +1150,8 @@ class NameBindsGlobalNode(Base):
     name: ast.Astn
     __slots__ = ['name']
 
+    # TODO: test case
+
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # See also comments in NameRefNode.add_fqns
         name = self.name.value
@@ -1151,7 +1162,7 @@ class NameBindsGlobalNode(Base):
 
 
 @dataclass(frozen=True)
-class NameRefUnknown(BaseNoFqnProcessing):
+class NameBindsUnknown(BaseNoFqnProcessing):
     """Created by NameBindsGlobalNode.add_fqns."""
 
     name: ast.Astn
@@ -1293,7 +1304,7 @@ class OmittedNode(EmptyBase):
 
 
 # Singleton OmittedNode, to avoid creating many of them.
-OMITTED_NODE = OmittedNode()
+OMITTED_NODE = OmittedNode()  # type: Base
 
 
 @dataclass(frozen=True)

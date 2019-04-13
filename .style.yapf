@@ -224,7 +224,7 @@ split_before_arithmetic_operator=False
 
 # Set to True to prefer splitting before '&', '|' or '^' rather than
 # after.
-split_before_bitwise_operator=True
+split_before_bitwise_operator=False
 
 # Split before the closing bracket if a list or dict literal doesn't fit on
 # a single line.

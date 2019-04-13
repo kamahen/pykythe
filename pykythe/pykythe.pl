@@ -1540,6 +1540,9 @@ kynode('NameBindsGlobalFqn'{fqn: Fqn, name: NameAstn},
 kynode('NameBindsGlobalUnknown'{fqn_scope: FqnScope, name: NameAstn},
        [var_binds_lookup(FqnScope, NameAstn)]) -->> !,
     [ ].  % The defines/binding edge is added in eval_single_type//2.
+kynode('NameBindsUnknown'{fqn_scope: FqnScope, name: NameAstn},
+       [var_binds_lookup(FqnScope, NameAstn)]) -->> !,
+    [ ].  % The ref edge is added in eval_single_type//2.
 kynode('NameRefFqn'{fqn: Fqn, name: NameAstn},
        [var(Fqn)]) -->> !, % result is same as NameBinds
     kyanchor_node_kyedge_fqn(NameAstn, '/kythe/edge/ref', Fqn). % only difference from NameBindsFqn
