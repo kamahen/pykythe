@@ -67,11 +67,8 @@ import collections
 import dataclasses
 from dataclasses import dataclass
 import functools
-import logging  # pylint: disable=unused-import
-from typing import (  # pylint: disable=unused-import
-    Any, Mapping, MutableMapping, Iterable, List, Optional, Sequence, Text, Tuple, TypeVar, Union)
+from typing import Any, Mapping, Iterable, List, Optional, Sequence, Text, TypeVar, Union
 import typing
-from mypy_extensions import Arg  # pylint: disable=unused-import
 
 from . import ast, fakesys, pod, typing_debug
 from .typing_debug import cast as xcast
@@ -633,10 +630,14 @@ class DecoratorDottedNameNode(ListBase):
     NameRefNode (see ast_raw.cvt_decorator).
     """
 
-    items: Sequence['NameRefNode']
+    # TODO: the following should be NameRefNode for the first item and
+    #       NameRawNode for the rest (in other words,
+    #       DecoratorDottedNameNode shouldn't be a ListBase).
+    items: List[Union['NameRefNode', 'NameRawNode']]
 
     def __post_init__(self) -> None:
         # self.items = typing.cast(Sequence[NameRawNode], items)
+        assert isinstance(self.items, list)  # TODO: delete
         assert isinstance(self.items[0], NameRefNode)
         typing_debug.assert_all_isinstance(NameRawNode, self.items[1:])
 
@@ -704,7 +705,7 @@ class DictGenListSetMakerCompForNode(Base):
 class DottedNameNode(ListBase):
     """Corresponds to `dotted_name`."""
 
-    items: Sequence['NameRawNode']
+    items: List['NameRawNode']
 
     def __post_init__(self) -> None:
         # self.items = typing.cast(Sequence[NameRawNode], items)

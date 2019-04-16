@@ -32,13 +32,12 @@ import enum
 import io
 import logging
 import re
-import sys
 from lib2to3 import pygram
 from lib2to3 import pytree
 from lib2to3.pygram import python_symbols as syms
-from lib2to3.pgen2 import driver, grammar as pgen2_grammar, token, tokenize
+from lib2to3.pgen2 import driver, grammar as pgen2_grammar, parse as pgen2_parse, token, tokenize
 
-from typing import (Callable, Dict, FrozenSet, List, Optional, Sequence, Text, Tuple, Union)  # pylint: disable=unused-import
+from typing import Any, Callable, Dict, FrozenSet, List, Optional, Sequence, Text, Tuple, Union
 import typing
 
 # The following requires pip3 install mypy_extensions
@@ -49,8 +48,8 @@ from . import ast, ast_cooked, fakesys, pod, typing_debug
 from .typing_debug import cast as xcast
 
 
-def cvt_parse_tree(
-        parse_tree: pytree.Base, python_version: int, src_file: ast.File) -> ast_cooked.Base:
+def cvt_parse_tree(parse_tree: Union['Node', 'Leaf'], python_version: int,
+                   src_file: ast.File) -> ast_cooked.Base:
     """Convert a lib2to3.pytree to ast_cooked.Base."""
     return cvt(parse_tree, new_ctx(python_version, src_file))
 
@@ -135,21 +134,21 @@ class Ctx(pod.PlainOldData):
         # deterministic results.
         assert self.python_version in (2, 3)
 
-    def to_BINDING(self) -> 'Ctx':
+    def to_BINDING(self) -> 'Ctx':  # pylint: disable=invalid-name
         return dataclasses.replace(self, name_ctx=NameCtx.BINDING)
 
-    def to_RAW(self) -> 'Ctx':
+    def to_RAW(self) -> 'Ctx':  # pylint: disable=invalid-name
         return dataclasses.replace(self, name_ctx=NameCtx.RAW)
 
-    def to_REF(self) -> 'Ctx':
+    def to_REF(self) -> 'Ctx':  # pylint: disable=invalid-name
         return dataclasses.replace(self, name_ctx=NameCtx.REF)
 
     @property
-    def is_BINDING(self) -> bool:
+    def is_BINDING(self) -> bool:  # pylint: disable=invalid-name
         return self.name_ctx is NameCtx.BINDING
 
     @property
-    def is_REF(self) -> bool:
+    def is_REF(self) -> bool:  # pylint: disable=invalid-name
         return self.name_ctx is NameCtx.REF
 
 
@@ -214,7 +213,7 @@ def cvt_argument(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
                 return ast_cooked.ArgumentNode(name=name_cvt.name, arg=cvt(node.children[2], ctx))
             logging.warning('argument not in form name=expr: %r', node)  # pragma: no cover
             return cvt(node.children[2], ctx)  # pragma: no cover
-        assert node.children[1].type == syms.comp_for, [node]
+        assert node.children[1].type == syms.comp_for, [node]  # pylint: disable=no-member
         assert len(node.children) == 2, [node]
         # the arg is a generator
         return ast_cooked.DictGenListSetMakerCompForNode(
@@ -348,7 +347,10 @@ def cvt_classdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     # The bindings for ClassDefStmt are built up in the calls to
     # parameters and suite.
     # TODO: what happens with `def foo(): global Bar; class Bar: ...` ?
-    name = xcast(ast_cooked.NameBindsNode, cvt(node.children[1], ctx.to_BINDING()))
+    name = typing.cast(Union[ast_cooked.NameBindsNode, ast_cooked.NameBindsGlobalNode],
+                       cvt(node.children[1], ctx.to_BINDING()))
+    assert isinstance(
+        name, (ast_cooked.NameBindsNode, ast_cooked.NameBindsGlobalNode))  # TODO: delete
     ctx_class = new_ctx_from(ctx)  #  new bindings for parameters, suite
     if node.children[2].type == token.LPAR:
         if node.children[3].type == token.RPAR:
@@ -367,7 +369,8 @@ def cvt_classdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 def cvt_comp_for(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """comp_for: [ASYNC] 'for' exprlist 'in' test_list_safe [comp_iter]
     """
-    assert ctx.is_REF, [node]
+    # assert ctx.is_REF, [node]  # Should never be BINDING, but:
+    #     pytype/cpython/Lib/test/badsyntax_nocaret.py
     ch0 = xcast(Leaf, node.children[0])
     if ch0.value == 'async':
         # TODO: test case
@@ -472,7 +475,8 @@ def cvt_decorator(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     # This is partially handled here and partly by
     # DecoratorDottedNameNode.
     item0 = ast_cooked.NameRefNode(name=dotted_names.items[0].name)
-    name = ast_cooked.DecoratorDottedNameNode(items=[item0] + dotted_names.items[1:])
+    name = ast_cooked.DecoratorDottedNameNode(
+        items=[item0] + dotted_names.items[1:])  # type: ignore
     if node.children[2].type == token.LPAR:
         # TODO: test case
         if node.children[3].type == token.RPAR:
@@ -512,7 +516,7 @@ def cvt_dictsetmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     if len(node.children) == 1:
         return ast_cooked.DictSetMakerNode(items=[cvt(node.children[0], ctx)])
     if (len(node.children) == 4 and node.children[1].type == token.COLON and
-            node.children[3].type == syms.comp_for):
+            node.children[3].type == syms.comp_for):  # pylint: disable=no-member
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=ast_cooked.DictKeyValue(items=[
                 cvt(node.children[0], ctx),
@@ -520,12 +524,12 @@ def cvt_dictsetmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             comp_for=xcast(ast_cooked.CompForNode, cvt(node.children[3], ctx)),
         )
     if (len(node.children) == 3 and node.children[0].type == token.DOUBLESTAR and
-            node.children[2].type == syms.comp_for):
+            node.children[2].type == syms.comp_for):  # pylint: disable=no-member
         # TODO: test case
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=cvt(node.children[1], ctx),  # ignore '**'
             comp_for=xcast(ast_cooked.CompForNode, cvt(node.children[2], ctx)))
-    if node.children[1] == syms.comp_for:
+    if node.children[1] == syms.comp_for:  # pylint: disable=no-member
         # TODO: test case
         assert len(node.children) == 2, [node]
         return ast_cooked.DictGenListSetMakerCompForNode(
@@ -797,7 +801,7 @@ def cvt_import_from(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             break
         if child.type == token.DOT:
             # TODO: test case
-            from_dots.append(ast_cooked.ImportDotNode(ctx.src_file.astn_to_range(child)))
+            from_dots.append(ast_cooked.ImportDotNode(dot=ctx.src_file.astn_to_range(child)))
         else:
             assert not from_name, [node]
             from_name = cvt(child, ctx.to_RAW())
@@ -851,7 +855,7 @@ def cvt_lambdef(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 def cvt_listmaker(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """listmaker: (test|star_expr) ( comp_for | (',' (test|star_expr))* [','] )"""
     # Can appear on l.h.s, e.g. "[dd, mm, yy, tm, tz] = data"
-    if len(node.children) > 1 and node.children[1].type == syms.comp_for:
+    if len(node.children) > 1 and node.children[1].type == syms.comp_for:  # pylint: disable=no-member
         assert len(node.children) == 2, [node]
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=cvt(node.children[0], ctx),
@@ -936,6 +940,7 @@ def cvt_print_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:  # pragma: n
 
 def cvt_raise_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """raise_stmt: 'raise' [test ['from' test | ',' test [',' test]]]"""
+    #              0        1     2      3      2   3     4   5
     assert ctx.is_REF, [node]
     if len(node.children) == 1:
         return ast_cooked.RaiseStmt(items=[])
@@ -948,9 +953,12 @@ def cvt_raise_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             exc3 = ast_cooked.OMITTED_NODE
         else:
             raise_from = ast_cooked.OMITTED_NODE
+            assert node.children[2].type == token.COMMA, [node]
             exc2 = cvt(node.children[3], ctx)
-            if len(node.children) > 3:
-                exc2 = cvt(node.children[5], ctx)
+            # TODO: test case
+            if len(node.children) > 4:
+                assert node.children[4].type == token.COMMA, [node]
+                exc3 = cvt(node.children[5], ctx)
             else:
                 exc3 = ast_cooked.OMITTED_NODE
     else:
@@ -994,7 +1002,9 @@ def cvt_sliceop(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """sliceop: ':' [test]"""
     # TODO: test case
     assert ctx.is_REF, [node]
-    return cvt(node.children[1], ctx)
+    if len(node.children) > 1:
+        return cvt(node.children[1], ctx)
+    return ast_cooked.OMITTED_NODE
 
 
 def cvt_small_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -1108,7 +1118,7 @@ def cvt_testlist_gexp(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """testlist_gexp: (test|star_expr) ( comp_for | (',' (test|star_expr))* [','] )"""
     # Can appear on left of assignment
     # Similar to cvt_listmaker
-    if len(node.children) > 1 and node.children[1].type == syms.comp_for:
+    if len(node.children) > 1 and node.children[1].type == syms.comp_for:  # pylint: disable=no-member
         assert len(node.children) == 2, [node]
         return ast_cooked.DictGenListSetMakerCompForNode(
             value_expr=cvt(node.children[0], ctx),
@@ -1119,7 +1129,8 @@ def cvt_testlist_gexp(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
 
 def cvt_testlist_safe(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     """testlist_safe: old_test [(',' old_test)+ [',']]"""
-    assert ctx.is_REF, [node]
+    # assert ctx.is_REF, [node]  # Should never be BINDING, but:
+    # /home/peter/src/pytype/cpython/Lib/test/badsyntax_nocaret.py
     return cvt_children_skip_commas_tuple(node, ctx)
 
 
@@ -1151,7 +1162,6 @@ def cvt_tfplist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     vfplist: vfpdef (',' vfpdef)* [',']
     """
     # TODO: test case
-    assert ctx.is_REF, [node]
     return ast_cooked.TfpListNode(items=cvt_children_skip_commas(node, ctx))
 
 
@@ -1219,25 +1229,40 @@ def cvt_typedargslist(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             i += 1
             continue
         if ch0.type in SYMS_TNAMES:  # pylint: disable=no-member
+            # TODO: Python2 allows a tfplist here, e.g.:
+            #          def open(self, (resid, resname)): ...
+            #       (pytype/cpython/Mac/Demo/PICTbrowse/cicnbrowse.py @1698)
+            # lib2to3/Grammar.txt doesn't show this as being allowed, but it happens
+            ch0_cvt = cvt(ch0, ctx.to_BINDING())
+            if not isinstance(ch0_cvt, ast_cooked.TnameNode):
+                raise pgen2_parse.ParseError(
+                    msg=f'Function def struct unpacking at line {node.get_lineno()}',
+                    type=ch0.type,  # TODO: is this correct?
+                    value=str(node),
+                    context=_leftmost_leaf_context(ch0))
             if i + 1 <= max_i and node.children[i + 1].type == token.EQUAL:
                 args.append(
-                    ast_cooked.TypedArgNode(
-                        tname=xcast(ast_cooked.TnameNode, cvt(ch0, ctx.to_BINDING())),
-                        expr=cvt(node.children[i + 2], ctx),
-                    ))
+                    ast_cooked.TypedArgNode(tname=xcast(ast_cooked.TnameNode, ch0_cvt),
+                                            expr=cvt(node.children[i + 2], ctx)))
                 i += 3
             else:
                 args.append(
-                    ast_cooked.TypedArgNode(
-                        tname=xcast(ast_cooked.TnameNode, cvt(ch0, ctx.to_BINDING())),
-                        expr=ast_cooked.OMITTED_NODE,
-                    ))
+                    ast_cooked.TypedArgNode(tname=xcast(ast_cooked.TnameNode, ch0_cvt),
+                                            expr=ast_cooked.OMITTED_NODE))
                 i += 1
         else:
             assert ch0.type in (token.STAR, token.DOUBLESTAR), [i, ch0, node]
             # ignore '*' or '**'
             i += 1
     return ast_cooked.RawTypedArgsListNode(args=args)
+
+
+def _leftmost_leaf_context(node: pytree.Base) -> Tuple[Any, ...]:
+    leftmost_leaf = next(filter(lambda x: isinstance(x, pytree.Leaf), node.pre_order()), None)
+    if leftmost_leaf:
+        # This is the form of `context` inside pytree (undocumented):
+        return leftmost_leaf._prefix, (leftmost_leaf.lineno, leftmost_leaf.column)  # type: ignore
+    return ()
 
 
 def cvt_while_stmt(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
@@ -1289,7 +1314,7 @@ def cvt_yield_expr(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     # Also, we ignore the `from` if present.
     if len(node.children) == 2:
         ch1 = node.children[1]
-        assert ch1.type == syms.yield_arg, [node]
+        assert ch1.type == syms.yield_arg, [node]  # pylint: disable=no-member
         if len(ch1.children) == 2:
             assert xcast(Leaf, ch1.children[0]).value == 'from', [node]
             return cvt(ch1.children[1], ctx)
@@ -1550,14 +1575,17 @@ def cvt_children_skip_commas_tuple(
 # pylint: enable=dangerous-default-value,invalid-name
 
 
-def parse(src_bytes: bytes, python_version: int) -> pytree.Base:
+def parse(src_bytes: bytes, python_version: int) -> Union['Node', 'Leaf']:
     """Parse a byte string."""
     # See lib2to3.refactor.RefactoringTool._read_python_source
     # TODO: add detect_encoding to typeshed: lib2to3/pgen2/tokenize.pyi
     # TODO: (non-ascii testcase) 網目錦蛇=1
     with io.BytesIO(src_bytes) as src_f:
-        encoding, _ = tokenize.detect_encoding(src_f.readline)  # type: ignore
-    src_str = codecs.decode(src_bytes, encoding)
+        try:
+            encoding, _ = tokenize.detect_encoding(src_f.readline)  # type: ignore
+            src_str = codecs.decode(src_bytes, encoding)
+        except LookupError as exc:
+            raise UnicodeDecodeError(encoding, src_bytes, 0, 1, str(exc))
     lib2to3_logger = logging.getLogger('pykythe')
     grammar = pygram.python_grammar
     if python_version == 3:
@@ -1567,7 +1595,7 @@ def parse(src_bytes: bytes, python_version: int) -> pytree.Base:
     parser_driver = driver.Driver(grammar, convert=_convert, logger=lib2to3_logger)
     if not src_str.endswith('\n'):  # pragma: no cover
         src_str += '\n'  # work around bug in lib2to3
-    return parser_driver.parse_string(src_str)
+    return typing.cast(Union[Node, Leaf], parser_driver.parse_string(src_str))
 
 
 # Node types that get removed if there's only one child. This does not
@@ -1611,8 +1639,8 @@ class Node(pytree.Node):
 
 
 def _convert(grammar: pgen2_grammar.Grammar,
-             raw_node: Tuple[int, Text, Tuple[Text, int, int], Optional[List[Union[Node, Leaf]]]]
-            ) -> Union[Leaf, Node]:
+             raw_node: Tuple[int, Text, Tuple[Text, int, int], Sequence[Union[Node, Leaf]]]
+            ) -> Union[Node, Leaf]:
     """Convert raw node information to a Node or Leaf instance.
 
     Derived from pytree.convert, by modifying the test for only a
@@ -1625,6 +1653,7 @@ def _convert(grammar: pgen2_grammar.Grammar,
     reduction of a grammar rule produces a new complete node, so that
     the tree is built strictly bottom-up.
     """
+    children: Sequence[Union[Node, Leaf]]
     node_type, value, context, children = raw_node
     if children or node_type in grammar.number2symbol:
         assert isinstance(children, list)  # TODO: delete
@@ -1634,7 +1663,7 @@ def _convert(grammar: pgen2_grammar.Grammar,
         # subsequently processed):
 
         if len(children) == 1 and node_type in _EXPR_NODES:
-            return children[0]
+            return children[0]  # type: ignore
         return Node(node_type, children, context=context)
     else:
         return Leaf(node_type, value, context=context)

@@ -615,6 +615,7 @@ pykythe_main :-
     %% TODO: delete {debugger,print}_write_options
     set_prolog_flag(debugger_write_options, [quoted(true), portray(true), max_depth(14), attributes(portray), spacing(next_argument)]),
     set_prolog_flag(print_write_options, [quoted(true), portray(true), max_depth(14), attributes(portray), spacing(next_argument)]),
+    set_prolog_flag(stack_limit, 2_147_483_648),
     set_prolog_flag(report_error, true),         % TODO: delete
     set_prolog_flag(backtrace, true),            % TODO: delete
     set_prolog_flag(backtrace_show_lines, true), % TODO: delete
@@ -814,7 +815,7 @@ process_module_cached_impl(Opts, FromSrcOk, KytheInputStream, KytheJsonPath, Src
        %% the cached result).
        merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab1),
        foldl_process_module_cached_or_from_src(Opts, cached_only, ModulesInSymtab, Symtab1, Symtab),
-       log_if(true, 'Reussed/cache(~w) ~q for ~q', [FromSrcOk, KytheJsonPath, SrcPath])
+       log_if(true, 'Reused/cache(~w) ~q for ~q', [FromSrcOk, KytheJsonPath, SrcPath])
     ).
 
 %! process_module_cached_batch(+Opts:list, +KytheJsonPath:atom, +SrcPath:atom, -Symtab:dict, -KytheBatchPath:atom) is semidet.
@@ -1128,7 +1129,12 @@ run_parse_cmd(Opts, SrcPath, SrcFqn, OutPath) :-
     %% ParseCmd output to stdout and then get it by:
     %%   process_create(ParseCmd, ParseCmdArgs, [stdout(pipe(CmdPipe))]),
     %%   my_json_read_dict(CmdPipe, ...), ...
-    must_once_msg(shell(Cmd, 0), 'Parse failed').
+
+    %% Note that a syntax error is handled specially, so that it seems
+    %% to have succeeded at this point, with nothing to analyze. (See
+    %% process_nodes_impl//2 and the check for 'ParseError'{...} or
+    %% 'DecodeError'{...}).
+    must_once_msg(shell(Cmd, 0), 'Parse-to-AST failed').
 
 link_src_file(SrcPath, OutPath) :- % TODO: delete
     re_replace("/"/g, "@", SrcPath, SrcPathSubs),
@@ -1266,8 +1272,16 @@ process_nodes(Node, SrcInfo, KytheFacts, Exprs, Meta) :-
 process_nodes_impl(Node, SrcInfo) -->>
     kyfile(SrcInfo),
     do_if_file(dump_term('NODE', Node)),
-    kynode(Node, Expr),
-    do_if_file(dump_term('NODE=>Expr', Expr)).
+    %% TODO: return non-zero for parse failure?
+    (  Node = 'ParseError'{context: Context, msg: Msg, type: Type, value: Value, srcpath: SrcPath}
+    -> { log_if(true, 'ERROR: ~w (type=~w) value=~q context:~w file:~q', [Msg, Type, Value, Context, SrcPath]) }
+    ;  Node = 'DecodeError'{encoding:Encoding, start:Start, end:End, reason:Reason, srcpath: SrcPath}
+    -> log_if(true, 'ERROR: bad input (decoding ~w): ~w start=~w end=~w file:~q', [Encoding, Reason, Start, End, SrcPath])
+    ;  Node = 'Crash'{repr: Repr, str: Str, srcpath: SrcPath}
+    -> log_if(true, 'ERROR: crash: ~w repr:~w file:~q', [Str, Repr, SrcPath])
+    ;  kynode(Node, Expr),
+       do_if_file(dump_term('NODE=>Expr', Expr))
+    ).
 
 %! kyfile(+SrcInfo)//[kyfact,file_meta] is det.
 %% Generate the KytheFacts at the file level.

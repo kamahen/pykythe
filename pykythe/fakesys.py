@@ -1,6 +1,6 @@
 """Bare minimal "sys", for safely evaluating strings."""
 
-from typing import (Any, Optional, Tuple, Text)
+from typing import Any, Optional, Tuple, Text
 
 import sys
 from dataclasses import dataclass
@@ -50,9 +50,9 @@ class FakeSys:
             # The following is safe because global and local
             # environments are constrained to a limited version of
             # `sys`.
-            result = eval(expr, {}, {'sys': self.fake_sys_with_version_info})
+            result = eval(expr, {}, {'sys': self.fake_sys_with_version_info})  # pylint: disable=eval-used
             return EvalResult(result=result, exception=None)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-except
             return EvalResult(result=None, exception=exc)
 
 

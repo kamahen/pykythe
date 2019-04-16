@@ -42,6 +42,8 @@ FIND_EXE:=$(shell type -p find)          # /usr/bin/find
 SWIPL_EXE:=$(shell type -p swipl)        # /usr/bin/swipl
 # SWIPL_EXE:=$(realpath ../swipl-devel/build/src/swipl)  # From github
 COVERAGE:=$(shell type -p coverage)      # /usr/local/bin/coverage
+# For running parallel(1): 2 more than the number of CPUs:
+NPROC:=$(shell expr $$(nproc) + 2)
 
 # stuff for running tests (see https://kythe.io/docs/kythe-verifier.html)
 KYTHE:=../kythe
@@ -295,16 +297,26 @@ test_pykythe_pykythe_all:
 	$(TIME) $(PYKYTHE_EXE) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) __main__.py pykythe/*.py
 
 .PHONY: test_python_lib
-test_python_lib:
+test_python_lib: # Also does some other source files I have lying around
 	$(MAKE) $(PYKYTHE_EXE) $(BUILTINS_SYMTAB_FILE)
 	@# TODO: too many args causes "out of file resources":
-	@# $(TIME) $(PYKYTHE_EXE) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) $$(find /usr/lib/python3.7 -name '*.py' | sort)
+	@#     $(TIME) $(PYKYTHE_EXE) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) $$(find /usr/lib/python3.7 -name '*.py' | sort)
 	@# "sort" in the following is to make results more reproducible
-	@# "--group" probably slows things down a bit
-	@# There are roughly 1300 files, so batches of 50-150 are reasonable
+	@# "--group" probably slows things down a bit - there's a noticable dip
+	@#           in the CPU history every so often, which presumably is when
+	@#           the outputs are gathered and printed
+
+	@# There are roughly 1300 files in /usr/lib/python3.7 (6900 in the whole test),
+	@#     so batches of 50-150 are reasonable.
+	@# parallel(1) seems to spawn too many jobs and causes paging,
+	@#     so limit it with the "-j" option
+	@#     (could also use the --semaphore --fg option)
+	@# TODO: /usr has more *.py files than /usr/lib/python3.7 but takes 3x longer
 	set -o pipefail; \
-	find /usr/lib/python3.7 -name '*.py' | sort | \
-	  parallel --will-cite --group -P0 -L50 \
+	find /usr/lib/python3.7 ../mypy ../pytype ../yapf ../importlab ../kythe ../typeshed . \
+	  -name '*.py' -o -name '*.pyi' | sort | \
+	  parallel -v --will-cite --keep-order --group -P0 -L80 -j$(NPROC) \
+	  --joblog=$(TESTOUTDIR)/joblog-$$(date +%Y-%m-%d-%H-%M) \
 	  '/usr/bin/time -f "\t%E real\t%U user\t%S sys\t%I-%O file" \
 	    $(PYKYTHE_EXE) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) {}'
 
@@ -326,7 +338,7 @@ yapf: pyformat
 .PHONY: pylint
 pylint:
 	find . -type f -name '*.py' | grep -v $(TEST_GRAMMAR_DIR) | \
-		grep -v snippets.py | xargs -L1 pylint --disable=missing-docstring
+		grep -v snippets.py | xargs -L1 pylint --disable=missing-docstring,fixme
 
 .PHONY: pyflakes
 pyflakes:
@@ -365,7 +377,8 @@ lint: pylint
 
 .PHONY: clean
 clean:
-	$(RM) -r $(TESTOUTDIR) pykythe/TAGS*
+	@# preserve joblog
+	$(RM) -r $(TESTOUTDIR)/KYTHE $(TESTOUTDIR)/SUBST $(TESTOUTDIR)/pykythe.qlf pykythe/TAGS*
 
 .PHONY: clean-lite clean_lite
 clean-lite clean_lite:
@@ -404,12 +417,6 @@ tkdiff:
 	$(WRITE_TABLES_EXE) -graphstore=$(TESTOUTDIR)/graphstore -out=$(TESTOUTDIR)/tables
 	$(TRIPLES_EXE) "$<" | gzip >"$@"
 	$(TRIPLES_EXE) -graphstore $(TESTOUTDIR)/graphstore
-
-FFF:=$(shell find pykythe test_data -name '*.py')
-zzz:
-	@# for i in $(foreach file,$(wildcard pykythe/*.py) $(wildcard test_data/**.py),$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath $(file))).kythe.entries);do echo $$i; done
-	@echo $(foreach file,$(FFF),$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(realpath $(file))).kythe.entries)
-
 
 .PHONY: add-index-pykythe
 # $(wildcard test_data/**.py) doesn't work, so do it this way:

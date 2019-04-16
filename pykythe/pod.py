@@ -10,10 +10,7 @@ serialization to Prolog terms.
 
 # pylint: disable=too-few-public-methods
 
-import collections
-from lib2to3 import pytree  # For PlainOldDataExtended
-from typing import (  # pylint: disable=unused-import
-    Any, Mapping, MutableMapping, Sequence, Text, TypeVar)
+from typing import Any, Sequence, Text
 
 
 class PlainOldData:

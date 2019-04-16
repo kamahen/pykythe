@@ -17,7 +17,9 @@ The 'typeshed path' is the absolute form of typeshed_dir.
 It uses ${TYPESHED_DIR} and ${TYPESHED_FQN} for substitutions.
 """
 
-import os, stat, sys
+import os
+import stat
+import sys
 
 VERSION = sys.argv[1]
 FROM_DIR, TO_DIR, TYPESHED_DIR, FROM_FILE, TO_FILE = map(os.path.abspath, sys.argv[2:])

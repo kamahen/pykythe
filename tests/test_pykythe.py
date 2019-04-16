@@ -7,11 +7,11 @@ low-level tests that were used early in development.
 import collections
 import dataclasses
 from dataclasses import dataclass
-import logging  # pylint: disable=unused-import
+import logging
 import os
 import pickle
 import sys
-from typing import Any, List  # pylint: disable=unused-import
+from typing import Any
 import unittest
 from lib2to3 import pytree
 from lib2to3.pgen2 import token
@@ -52,7 +52,7 @@ class SomeData2(pod.PlainOldDataExtended):
     __slots__ = ['a', 'b', 'c']
 
 
-class EmptyData(pod.PlainOldData):
+class EmptyData(pod.PlainOldData):  # pylint: disable=too-few-public-methods
     """Simple example of subclassing PlainOldData, with no contents."""
 
 
@@ -76,7 +76,8 @@ class TestPlainOldData(unittest.TestCase):
         self.assertEqual(repr(a_node), "SomeData(a=111, b='foo', c=False)")
         self.assertEqual(repr(b_node), "SomeData(a=999, b='foo', c=False)")
 
-        if False:  # TODO: this fails for b_unpickle because it's frozen
+        # TODO: this fails for b_unpickle because it's frozen
+        if False:  # pylint: disable=using-constant-test
             b_pickle = pickle.dumps(b_node, protocol=pickle.HIGHEST_PROTOCOL)
             b_unpickle = pickle.loads(b_pickle)
             self.assertEqual(repr(b_unpickle), "SomeData(a=999, b='foo', c=True)")
