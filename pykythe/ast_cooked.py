@@ -67,7 +67,7 @@ import collections
 import dataclasses
 from dataclasses import dataclass
 import functools
-from typing import Any, Mapping, Iterable, List, Optional, Sequence, Text, TypeVar, Union
+from typing import Any, Mapping, Iterable, List, Optional, Sequence, TypeVar, Union
 import typing
 
 from . import ast, fakesys, pod, typing_debug
@@ -78,14 +78,14 @@ from .typing_debug import cast as xcast
 # pylint: disable=too-many-lines
 
 
-def add_fqns(cooked_nodes: 'Base', module: Text, python_version: int) -> 'Base':
+def add_fqns(cooked_nodes: 'Base', module: str, python_version: int) -> 'Base':
     """Top-level wrapper for adding FQNs to the cooked AST."""
     return cooked_nodes.add_fqns(
-        FqnCtx(fqn_dot=module + '.',
-               bindings=collections.ChainMap(collections.OrderedDict()),
-               class_fqn=None,
-               class_astn=None,
-               python_version=python_version))
+            FqnCtx(fqn_dot=module + '.',
+                   bindings=collections.ChainMap(collections.OrderedDict()),
+                   class_fqn=None,
+                   class_astn=None,
+                   python_version=python_version))
 
 
 @dataclass(frozen=True)
@@ -112,9 +112,9 @@ class FqnCtx(pod.PlainOldData):
       python_version: 2 or 3
     """
 
-    fqn_dot: Text
-    bindings: typing.ChainMap[Text, Text]
-    class_fqn: Optional[Text]
+    fqn_dot: str
+    bindings: typing.ChainMap[str, str]
+    class_fqn: Optional[str]
     class_astn: Optional[ast.Astn]
     python_version: int
     __slots__ = ['fqn_dot', 'bindings', 'class_fqn', 'class_astn', 'python_version']
@@ -185,7 +185,7 @@ class Base(pod.PlainOldDataExtended):
         #       and then use self.__class__(**attr_values)
         return type(self)(**attr_values)
 
-    def _attr_add_fqns(self, attr: Text, ctx: FqnCtx) -> 'Base':
+    def _attr_add_fqns(self, attr: str, ctx: FqnCtx) -> 'Base':
         # TODO: inline this when fully debugged
         try:
             return xcast(Base, getattr(self, attr).add_fqns(ctx))
@@ -403,9 +403,10 @@ class AssignMultipleExprStmt(Base):
         left_add_fqns = list(reversed([item.add_fqns(ctx) for item in reversed(self.left_list)]))
         if len(left_add_fqns) == 1:
             return AssignExprStmt(left=left_add_fqns[0], expr=expr)
-        if len(left_add_fqns) > 1:
+        elif len(left_add_fqns) > 1:
             return make_stmts(AssignExprStmt(left=left, expr=expr) for left in left_add_fqns)
-        return ExprStmt(expr=expr)
+        else:
+            return ExprStmt(expr=expr)
 
 
 class AssertStmt(ListBase):
@@ -467,7 +468,7 @@ class AtomSubscriptNode(Base):
         return AtomSubscriptNode(atom=self.atom.add_fqns(ctx),
                                  binds=self.binds,
                                  subscripts=[
-                                     subscript.add_fqns(ctx) for subscript in self.subscripts])
+                                         subscript.add_fqns(ctx) for subscript in self.subscripts])
 
 
 @dataclass(frozen=True)
@@ -505,7 +506,7 @@ class BreakStmt(EmptyBase):
 class Class(BaseNoFqnProcessing):
     """Created by ClassDefStmt.add_fqns()."""
 
-    fqn: Text
+    fqn: str
     name: ast.Astn
     bases: Sequence[Base]
     __slots__ = ['fqn', 'name', 'bases']
@@ -515,10 +516,10 @@ class Class(BaseNoFqnProcessing):
 class ClassDefStmt(Base):
     """Corresponds to `classdef`."""
 
-    name: 'NameBindsNode'
+    name: Union['NameBindsNode', 'NameBindsGlobalNode']
     bases: Sequence[Base]
     suite: Base
-    scope_bindings: Mapping[Text, None]
+    scope_bindings: Mapping[str, None]
     __slots__ = ['name', 'bases', 'suite', 'scope_bindings']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
@@ -527,13 +528,13 @@ class ClassDefStmt(Base):
         class_fqn_dot = class_fqn + '.'
         name_add_fqns = xcast(NameBindsFqn, self.name.add_fqns(ctx))  # already in bindings
         class_ctx = dataclasses.replace(
-            ctx,
-            fqn_dot=class_fqn_dot,
-            bindings=ctx.bindings.new_child(
-                collections.OrderedDict((name, class_fqn_dot + name)
-                                        for name in self.scope_bindings)),
-            class_fqn=class_fqn,
-            class_astn=self.name.name)
+                ctx,
+                fqn_dot=class_fqn_dot,
+                bindings=ctx.bindings.new_child(
+                        collections.OrderedDict((name, class_fqn_dot + name)
+                                                for name in self.scope_bindings)),
+                class_fqn=class_fqn,
+                class_astn=self.name.name)
         class_add_fqns = Class(fqn=class_fqn,
                                name=name_add_fqns.name,
                                bases=[base.add_fqns(ctx) for base in self.bases])
@@ -552,7 +553,7 @@ class CompForNode(Base):
     for_exprlist: Base
     in_testlist: Base
     comp_iter: Base
-    scope_bindings: Mapping[Text, None]
+    scope_bindings: Mapping[str, None]
     __slots__ = ['for_astn', 'for_exprlist', 'in_testlist', 'comp_iter', 'scope_bindings']
 
     def scope_ctx(self, ctx: FqnCtx) -> FqnCtx:
@@ -564,13 +565,15 @@ class CompForNode(Base):
             # The bindings "leak" in Python2
             ctx.bindings.update((name, ctx.fqn_dot + name) for name in self.scope_bindings)
             return ctx
-        for_fqn_dot = (f'{ctx.fqn_dot}<comp_for>'
-                       f'[{self.for_astn.start:d},{self.for_astn.end:d}].')
-        return xcast(
-            FqnCtx,
-            dataclasses.replace(ctx,
-                                fqn_dot=for_fqn_dot,
-                                bindings=ctx.bindings.new_child(collections.OrderedDict())))
+        else:
+            for_fqn_dot = (f'{ctx.fqn_dot}<comp_for>'
+                           f'[{self.for_astn.start:d},{self.for_astn.end:d}].')
+            return xcast(
+                    FqnCtx,
+                    dataclasses.replace(ctx,
+                                        fqn_dot=for_fqn_dot,
+                                        bindings=ctx.bindings.new_child(
+                                                collections.OrderedDict())))
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Assume that the caller has created a new child in the
@@ -657,8 +660,8 @@ class DecoratorNode(Base):
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         atom_reduced = functools.reduce(
-            lambda atom, name: AtomDotNode(binds=False, atom=atom, attr_name=name.name),
-            self.name.items[1:], self.name.items[0])
+                lambda atom, name: AtomDotNode(binds=False, atom=atom, attr_name=name.name),
+                self.name.items[1:], self.name.items[0])
         return AtomCallNode(atom=atom_reduced.add_fqns(ctx),
                             args=[arg.add_fqns(ctx) for arg in self.args])
 
@@ -738,10 +741,7 @@ class ExprListNode(Base):
     __slots__ = ['items', 'binds']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
-        return ExprListNode(
-            items=[item.add_fqns(ctx) for item in self.items],
-            binds=self.binds,
-        )
+        return ExprListNode(items=[item.add_fqns(ctx) for item in self.items], binds=self.binds)
 
 
 @dataclass(frozen=True)
@@ -768,17 +768,17 @@ class ExceptClauseNode(Base):
 class FileInput(Base):
     """Corresponds to `file_input`."""
 
-    path: Text
+    path: str
     stmts: Sequence[Base]
-    scope_bindings: Mapping[Text, None]
+    scope_bindings: Mapping[str, None]
     __slots__ = ['path', 'stmts', 'scope_bindings']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         file_ctx = dataclasses.replace(
-            ctx,
-            bindings=ctx.bindings.new_child(
-                collections.OrderedDict((name, ctx.fqn_dot + name)
-                                        for name in self.scope_bindings)))
+                ctx,
+                bindings=ctx.bindings.new_child(
+                        collections.OrderedDict((name, ctx.fqn_dot + name)
+                                                for name in self.scope_bindings)))
         stmts = [stmt.add_fqns(file_ctx) for stmt in self.stmts]
         return FileInput(path=self.path, stmts=stmts, scope_bindings=self.scope_bindings)
 
@@ -815,7 +815,7 @@ class ForStmt(Base):
 class Func(BaseNoFqnProcessing):
     """Created by FuncDefStmt.add_fqns()."""
 
-    fqn: Text
+    fqn: str
     name: ast.Astn
     parameters: Sequence[Base]
     return_type: Base
@@ -835,7 +835,7 @@ class FuncDefStmt(Base):
     parameters: Sequence[Base]
     return_type: Base
     suite: Base
-    scope_bindings: Mapping[Text, None]
+    scope_bindings: Mapping[str, None]
     __slots__ = ['name', 'parameters', 'return_type', 'suite', 'scope_bindings']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
@@ -853,13 +853,13 @@ class FuncDefStmt(Base):
         # self.name is already in bindings
         name_add_fqns = xcast(NameBindsFqn, self.name.add_fqns(ctx))
         func_ctx = dataclasses.replace(
-            ctx,
-            fqn_dot=func_fqn_dot,
-            bindings=ctx.bindings.new_child(
-                collections.OrderedDict((name, func_fqn_dot + name)
-                                        for name in self.scope_bindings)),
-            class_fqn=None,
-            class_astn=None)
+                ctx,
+                fqn_dot=func_fqn_dot,
+                bindings=ctx.bindings.new_child(
+                        collections.OrderedDict((name, func_fqn_dot + name)
+                                                for name in self.scope_bindings)),
+                class_fqn=None,
+                class_astn=None)
         # parameters require special handling because the type+default
         # are evaluated in ctx but the name is evaluated in
         # func_ctx. We can assume that the type+default have already
@@ -869,17 +869,18 @@ class FuncDefStmt(Base):
         # doesn't have a type annotation or default value.
         if (ctx.class_fqn and ctx.class_astn and self.parameters and isinstance(
                 xcast(TypedArgNode, self.parameters[0]).tname.type_expr, OmittedNode) and
-                isinstance(xcast(TypedArgNode, self.parameters[0]).expr, OmittedNode)):
+                    isinstance(xcast(TypedArgNode, self.parameters[0]).expr, OmittedNode)):
             param0 = TypedArgNode(tname=TnameNode(name=xcast(
-                TypedArgNode, self.parameters[0]).tname.name.add_fqns(func_ctx),
+                    TypedArgNode, self.parameters[0]).tname.name.add_fqns(func_ctx),
                                                   type_expr=NameRefGenerated(fqn=ctx.class_fqn)),
                                   expr=OMITTED_NODE)
             parameters = [param0] + [
-                xcast(TypedArgNode, parameter.add_fqns(func_ctx))
-                for parameter in self.parameters[1:]]
+                    xcast(TypedArgNode, parameter.add_fqns(func_ctx))
+                    for parameter in self.parameters[1:]]
         else:
             parameters = [
-                xcast(TypedArgNode, parameter.add_fqns(func_ctx)) for parameter in self.parameters]
+                    xcast(TypedArgNode, parameter.add_fqns(func_ctx))
+                    for parameter in self.parameters]
         func_add_fqns = Func(fqn=func_fqn,
                              name=name_add_fqns.name,
                              parameters=parameters,
@@ -934,13 +935,12 @@ class ImportDotNode(Base):
 class ImportDottedAsNameFqn(Base):
     """Created by ImportDottedAsNameNode.add_fqns (when there's an 'as').
 
-    See ImportDottedFqn for the case when there's no 'as').
+    See ImportDottedFqn for the case when there's no 'as'.
     """
 
     dotted_name: DottedNameNode
     as_name: 'NameBindsFqn'
-    rest_names: List['NameBindsFqn']
-    __slots__ = ['dotted_name', 'as_name', 'rest_names']
+    __slots__ = ['dotted_name', 'as_name']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self  # The components have already been processed
@@ -960,19 +960,11 @@ class ImportDottedAsNameNode(Base):
         dotted_name = xcast(DottedNameNode, self.dotted_name.add_fqns(ctx))
         if self.as_name:
             top_name = xcast(NameBindsFqn, self.as_name.add_fqns(ctx))
+            return ImportDottedAsNameFqn(dotted_name=dotted_name, as_name=top_name)
         else:
             top_name = xcast(NameBindsFqn,
                              NameBindsNode(name=self.dotted_name.items[0].name).add_fqns(ctx))
-        rest_names = []  # type: List['NameBindsFqn']
-        rest_fqn = top_name.fqn
-        for name in self.dotted_name.items[1:]:
-            rest_fqn = rest_fqn + '.' + name.name.value
-            rest_names.append(NameBindsFqn(fqn=rest_fqn, name=name.name))
-        if self.as_name:
-            return ImportDottedAsNameFqn(dotted_name=dotted_name,
-                                         as_name=top_name,
-                                         rest_names=rest_names)
-        return ImportDottedFqn(dotted_name=dotted_name, top_name=top_name, rest_names=rest_names)
+            return ImportDottedFqn(dotted_name=dotted_name, top_name=top_name)
 
 
 class ImportDottedAsNamesFqn(ListBase):
@@ -1014,8 +1006,7 @@ class ImportDottedFqn(Base):
 
     dotted_name: DottedNameNode
     top_name: 'NameBindsFqn'
-    rest_names: List['NameBindsFqn']
-    __slots__ = ['dotted_name', 'top_name', 'rest_names']
+    __slots__ = ['dotted_name', 'top_name']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self  # The components have already been processed
@@ -1044,9 +1035,9 @@ class ImportFromStmt(Base):
         # anything special about them.
         # TODO: don't need add_fqns (nor for ImportDotNode, DottedNameNode)
         return ImportFromStmt(
-            from_dots=[dot.add_fqns(ctx) for dot in self.from_dots],
-            from_name=self.from_name.add_fqns(ctx) if self.from_name else self.from_name,
-            import_part=self.import_part.add_fqns(ctx))
+                from_dots=[dot.add_fqns(ctx) for dot in self.from_dots],
+                from_name=self.from_name.add_fqns(ctx) if self.from_name else self.from_name,
+                import_part=self.import_part.add_fqns(ctx))
 
 
 @dataclass(frozen=True)
@@ -1073,7 +1064,7 @@ class ImportNameNode(Base):
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return ImportNameFqn(
-            dotted_as_names=xcast(ImportDottedAsNamesFqn, self.dotted_as_names.add_fqns(ctx)))
+                dotted_as_names=xcast(ImportDottedAsNamesFqn, self.dotted_as_names.add_fqns(ctx)))
 
 
 @dataclass(frozen=True)
@@ -1089,10 +1080,7 @@ class ListMakerNode(Base):
     __slots__ = ['items', 'binds']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
-        return ListMakerNode(
-            items=[item.add_fqns(ctx) for item in self.items],
-            binds=self.binds,
-        )
+        return ListMakerNode(items=[item.add_fqns(ctx) for item in self.items], binds=self.binds)
 
 
 @dataclass(frozen=True)
@@ -1100,7 +1088,7 @@ class NameBindsFqn(BaseNoFqnProcessing):
     """Created by NameBindsNode.add_fqns."""
 
     name: ast.Astn
-    fqn: Text
+    fqn: str
     __slots__ = ['name', 'fqn']
 
 
@@ -1158,8 +1146,13 @@ class NameBindsGlobalNode(Base):
         name = self.name.value
         if name in ctx.bindings:
             return NameBindsFqn(name=self.name, fqn=ctx.bindings[name] or '')
-        ctx.bindings[name] = ctx.fqn_dot + name
-        return NameBindsUnknown(name=self.name, fqn_scope=ctx.fqn_dot[:-1])
+        else:
+            # See comment with NameRefNode about ctx.bindings[name].
+            # Also, this situation probabl shouldn't happen, even if a global
+            # gets assigned multiple times.
+            # DO NOT: ctx.bindings[name] = ctx.fqn_dot + name
+            # TODO: should this throw an assertion error?
+            return NameBindsUnknown(name=self.name, fqn_scope=ctx.fqn_dot[:-1])
 
 
 @dataclass(frozen=True)
@@ -1167,7 +1160,7 @@ class NameBindsUnknown(BaseNoFqnProcessing):
     """Created by NameBindsGlobalNode.add_fqns."""
 
     name: ast.Astn
-    fqn_scope: Text
+    fqn_scope: str
     __slots__ = ['name', 'fqn_scope']
 
 
@@ -1216,8 +1209,11 @@ class NameRefNode(Base):
         # inside a function definition. To which I say: too bad.
         if name in ctx.bindings:
             return NameRefFqn(name=self.name, fqn=ctx.bindings[name] or '')
-        ctx.bindings[name] = ctx.fqn_dot + name
-        return NameRefUnknown(name=self.name, fqn_scope=ctx.fqn_dot[:-1])
+        else:
+            # Do *not* add to bindings because that means subsequent
+            # uses of this name will resolve:
+            # DO NOT: ctx.bindings[name] = ctx.fqn_dot + name
+            return NameRefUnknown(name=self.name, fqn_scope=ctx.fqn_dot[:-1])
 
 
 @dataclass(frozen=True)
@@ -1225,7 +1221,7 @@ class NameRefFqn(BaseNoFqnProcessing):
     """Created by NameRefNode.add_fqns."""
 
     name: ast.Astn
-    fqn: Text
+    fqn: str
     __slots__ = ['name', 'fqn']
 
 
@@ -1234,7 +1230,7 @@ class NameRefUnknown(BaseNoFqnProcessing):
     """Created by NameRefNode.add_fqns."""
 
     name: ast.Astn
-    fqn_scope: Text
+    fqn_scope: str
     __slots__ = ['name', 'fqn_scope']
 
 
@@ -1247,7 +1243,7 @@ class NameRefGenerated(BaseNoFqnProcessing):
     type for `self` in method definitions) and don't need `add_fqns`.
     """
 
-    fqn: Text
+    fqn: str
     __slots__ = ['fqn']
 
 
@@ -1340,7 +1336,7 @@ class StarFqn(Base):
     """Created by StarNode.add_fqns."""
 
     star: ast.Astn
-    fqn: Text
+    fqn: str
     __slots__ = ['star', 'fqn']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
@@ -1538,14 +1534,14 @@ class WithStmt(Base):
 class Meta(pod.PlainOldDataExtended):
     """Information about the file."""
 
-    kythe_corpus: Text
-    kythe_root: Text
-    path: Text
-    language: Text
-    contents_base64: Text
-    contents: Text
-    sha1: Text
-    encoding: Text
+    kythe_corpus: str
+    kythe_root: str
+    path: str
+    language: str
+    contents_base64: str
+    contents: str
+    sha1: str
+    encoding: str
     __slots__ = [
-        'kythe_corpus', 'kythe_root', 'path', 'language', 'contents_base64', 'contents', 'sha1',
-        'encoding']
+            'kythe_corpus', 'kythe_root', 'path', 'language', 'contents_base64', 'contents',
+            'sha1', 'encoding']

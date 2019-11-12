@@ -23,13 +23,18 @@ from os.path import sep
 #- { @os_path_sep ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
 from os.path import sep as os_path_sep
 
-#- { @xxx  ref/file vname("<unknown>/${ROOT_DIR}/test_data/xxx", _, _, "", python) }
-#- { @foo3 ref/file vname("<unknown>/${ROOT_DIR}/test_data/xxx/foo3", _, _, "", python) }
+#- // Note that .xxx doesn't exist, but we get the value it would
+#- // have if it did exist (and same for foo3):
+#- { @"."  ref/imports vname("${ROOT_FQN}.test_data",          _, _, "", python) }
+#- { @xxx  ref/imports vname("${ROOT_FQN}.test_data.xxx",      _, _, "", python) }
+#- { @foo3 ref/imports FOO3_imports? } // vname("${ROOT_FQN}.test_data.xxx.foo3", _, _, "", python) } // DO NOT SUBMIT - incorrectly does "<unknown>.${ROOT_FQN}.test_data.xxx.foo3"
 #- { @foo3 defines/binding vname("${ROOT_FQN}.test_data.simple.foo3", _, _, "", python) }
 from .xxx import foo3
 
+# Note that foo2 doesn't exist but we know what the module would be if the
+# file(s) did exist.
 #- { @foo2 defines/binding vname("${ROOT_FQN}.test_data.simple.foo2", _, _, "", python) }
-#- { @foo2 ref/file vname("<unknown>/${ROOT_DIR}/test_data/foo2", _, _, "", python) }
+#- { @foo2 ref/imports vname("${ROOT_FQN}.test_data.foo2", _, _, "", python) }
 from . import foo2
 
 # #- // { @None defines/binding None }

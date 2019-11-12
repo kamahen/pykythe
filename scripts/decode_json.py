@@ -21,7 +21,7 @@ for line in sys.stdin:
     if 'fact_value' in as_json:
         if as_json['fact_name'] == '/kythe/x-htmlgz':
             as_json['fact_value'] = zlib.decompress(base64.b64decode(
-                as_json['fact_value'])).decode('utf-8')
+                    as_json['fact_value'])).decode('utf-8')
         elif as_json['fact_name'] == '/pykythe/symtab':
             pass  # It's unencoded
         else:

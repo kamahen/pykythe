@@ -1,6 +1,6 @@
 """Bare minimal "sys", for safely evaluating strings."""
 
-from typing import Any, Optional, Tuple, Text
+from typing import Any, Optional, Tuple
 
 import sys
 from dataclasses import dataclass
@@ -45,7 +45,7 @@ class FakeSys:
     fake_sys_with_version_info: FakeSysWithVersionInfo
     __slots__ = ['fake_sys_with_version_info']
 
-    def eval(self, expr: Text) -> EvalResult:
+    def eval(self, expr: str) -> EvalResult:
         try:
             # The following is safe because global and local
             # environments are constrained to a limited version of

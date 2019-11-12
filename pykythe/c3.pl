@@ -12,6 +12,9 @@
 %% left-right depth-first-search of the class hierarchy and then
 %% discard all but the last occurence of each class.
 
+%% This code depends on classes having "clean" base classes (that is,
+%% only class_type and no import_ref_type).
+
 :- module(c3, [mro/2, mro/3]).
 
 :- use_module(library(apply), [include/3, maplist/3]).
@@ -41,6 +44,9 @@ mro(class_type(Class,ClassDirectBases), Mro) :-
     maplist(class_only, ClassDirectBases, ClassDirectBasesNames),
     append([[[Class]], ClassMro, [ClassDirectBasesNames]], ToMerge),
     mro_merge(ToMerge, Mro).
+%% A module type can happen if an invalid module has been specified
+%% (that is, we can't resolve it), so just skip it.
+mro(module_type(_ModuleType), []).
 
 select_one(List, One) :-
     member(One, List).

@@ -3,24 +3,24 @@
 # Mostly this is tests of '.' binding
 
 #- { @ii defines/binding II }
-#- { II./pykythe/type "[class_type('${TYPESHED_FQN}.stdlib.2and3.builtins.int',[])]" }
-#- { @int ref INT? }  // TODO: should be '${TYPESHED_FQN}.stdlib.2and3.builtins.int'
-#- { INT./pykythe/type "[class_type('${TYPESHED_FQN}.stdlib.2and3.builtins.int',[])]" }
+#- { II./pykythe/type "[import_ref_type(int,'.tmp.pykythe_test.SUBST.BUILTINS.builtins.int',class_type('.tmp.pykythe_test.SUBST.BUILTINS.builtins.int',[]))]" }
+#- { @int ref INT? }  // TODO: should be '${BUILTINS_FQN}.builtins.int'
+#- // { INT./pykythe/type INT_type? } //  "[class_type('${BUILTINS_FQN}.builtins.int',[])]" } // type info is in another file
 ii: int
 
 #- { @iii defines/binding III }
-#- { III./pykythe/type "[class_type('${TYPESHED_FQN}.stdlib.2and3.builtins.int',[])]" }
+#- { III./pykythe/type "[class_type('${BUILTINS_FQN}.builtins.int',[])]" }
 iii = 0
 
 # TODO: validate that the following is *exactly* what typeshed has, with all the conditional executions:
 #- { @ABC defines/binding ABC }
-#- { ABC./pykythe/type "[class_type('${TYPESHED_FQN}.stdlib.2and3.builtins.str',[[class_type('${TYPESHED_FQN}.stdlib.2and3.builtins.object',[])]])]" }
+#- { ABC./pykythe/type "[class_type('${BUILTINS_FQN}.builtins.str',[])]" }
 ABC = " abc "
 
 #- { @ABC ref ABC }
-#- { @strip ref _ABC_strip=vname("${TYPESHED_FQN}.stdlib.2and3.builtins.str.strip", _, _, "", python) }
+#- { @strip ref _ABC_strip=vname("${BUILTINS_FQN}.builtins.str.strip", _, _, "", python) }
 #- // { ABC_strip./pykythe/type ABC_strip_type? } // TODO
-#- { @capitalize ref _ABC_strip_capitalize=vname("${TYPESHED_FQN}.stdlib.2and3.builtins.str.capitalize", _, _, "", python) }
+#- { @capitalize ref _ABC_strip_capitalize=vname("${BUILTINS_FQN}.builtins.str.capitalize", _, _, "", python) }
 #- // { _ABC_strip_capitalize./pykythe/type ABC_strip_capitalize_type? } // TODO
 ABC.strip().capitalize()
 

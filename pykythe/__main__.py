@@ -39,11 +39,11 @@ def main() -> int:  # pylint: disable=too-many-statements
                         default='',
                         help='Value of "root" in Kythe facts')
     parser.add_argument(  # TODO: version should be a triple -- see ast_raw.FAKE_SYS
-        '--python_version',
-        default=3,
-        choices=[2, 3],
-        type=int,
-        help='Python major version')
+            '--python_version',
+            default=3,
+            choices=[2, 3],
+            type=int,
+            help='Python major version')
     args = parser.parse_args()
 
     src_file: Optional[ast.File] = None
@@ -78,12 +78,12 @@ def main() -> int:  # pylint: disable=too-many-statements
                 # TODO: This seems to sometimes be raised from an encoding error
                 #       with msg='unknown encoding: ...', exc.lineno=None, exc.offset=None
                 parse_error = ParseError(
-                    msg=str(exc),
-                    type='',
-                    context=str(
-                        ('', (exc.lineno, exc.offset))) if exc.lineno or exc.offset else '',
-                    value=exc.text or '',
-                    srcpath=args.srcpath)
+                        msg=str(exc),
+                        type='',
+                        context=str(('', (exc.lineno,
+                                          exc.offset))) if exc.lineno or exc.offset else '',
+                        value=exc.text or '',
+                        srcpath=args.srcpath)
             except UnicodeDecodeError as exc:
                 parse_error = DecodeError(encoding=exc.encoding,
                                           start=exc.start,
@@ -123,15 +123,15 @@ def main() -> int:  # pylint: disable=too-many-statements
     # b64encode returns bytes, so use decode() to turn it into a
     # string, because json.dumps can't process bytes.
     meta = ast_cooked.Meta(
-        kythe_corpus=args.kythe_corpus,
-        kythe_root=args.kythe_root,
-        path=args.srcpath,
-        language='python',
-        contents_base64=base64.b64encode(src_content).decode('ascii'),
-        contents=src_content.decode(
-            encoding, errors='ignore'),  # TODO: delete (for debugging only)
-        sha1=hashlib.sha1(src_content).hexdigest(),
-        encoding=encoding)
+            kythe_corpus=args.kythe_corpus,
+            kythe_root=args.kythe_root,
+            path=args.srcpath,
+            language='python',
+            contents_base64=base64.b64encode(src_content).decode('ascii'),
+            contents=src_content.decode(
+                    encoding, errors='ignore'),  # TODO: delete (for debugging only)
+            sha1=hashlib.sha1(src_content).hexdigest(),
+            encoding=encoding)
 
     with open(args.out_fqn_ast, 'w') as out_fqn_ast_file:
         logging.debug('Output fqn= %r', out_fqn_ast_file)
@@ -145,11 +145,11 @@ def main() -> int:  # pylint: disable=too-many-statements
 class DecodeError(pod.PlainOldDataExtended):
     """Encapsulate UnicodeDecodeError."""
 
-    encoding: Text
+    encoding: str
     start: int
     end: int
-    reason: Text
-    srcpath: Text
+    reason: str
+    srcpath: str
     __slots__ = ['encoding', 'start', 'end', 'reason', 'srcpath']
 
 
@@ -157,11 +157,11 @@ class DecodeError(pod.PlainOldDataExtended):
 class ParseError(pod.PlainOldDataExtended):
     """Encapsulate parse.ParseError."""
 
-    msg: Text
-    type: Text  # pytree.type_repr(type)
-    value: Optional[Text]
-    context: Text  # str(context)
-    srcpath: Text
+    msg: str
+    type: str  # pytree.type_repr(type)
+    value: Optional[str]
+    context: str  # str(context)
+    srcpath: str
     __slots__ = ['msg', 'type', 'value', 'context', 'srcpath']
 
 

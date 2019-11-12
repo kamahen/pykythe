@@ -20,6 +20,9 @@ def false():
     return False
 
 
+class CC: pass
+
+
 def testLhsTrailer():
     #- { @i defines/binding TestLhsTrailer_i }
     i = 'abc'
@@ -28,10 +31,17 @@ def testLhsTrailer():
     d[i] = 1
     #- { @d ref TestLhsTrailer_d }
     #- { @i ref TestLhsTrailer_i }
-    #- // TODO: generates the following, which is incorrect:
-    #- // test_data.py3_test_grammar.GrammarTests.testLhsTrailer.<local>.x
-    #- // { @x defines/binding TestLhsTrailer_x? }
+    #- // The following isn't actually wrong but seems weird:
+    #- { @x defines/binding vname("${BUILTINS_FQN}.builtins.int.x", _, _, "", python) }
     d[i].x = 2
+
+    e = {}
+    e[i] = CC()
+    #- { @xx defines/binding vname("${ROOT_FQN}.test_data.bindings.CC.xx", _, _, "", python) }
+    e[i].xx = 'xyz'
+    #- { @capitalize ref vname("${BUILTINS_FQN}.builtins.str.capitalize", _, _, "", python) }
+    e[i].xx.capitalize()
+
     cond = False
     # TODO: add tests for '.', f(i).x = ...
     if cond:  # Test forward global ref
@@ -179,7 +189,7 @@ def testNonLocal():
 
 def testAnnAssign():
     #- { @ee defines/binding TestAnnAssignEe }
-    #- { @int ref Int }  // TODO: builtins.int
+    #- { @int ref Int? } // DO NOT SUBMIT: "${ROOT_FQN}.test_data.bindings.int" =>should be "${BUILTINS_FQN}.builtins.int"
     ee: int = 0
 
     #- @ee ref TestAnnAssignEe
@@ -188,6 +198,18 @@ def testAnnAssign():
     #- { @ee2 defines/binding TestAnnAssignEe2 }
     #- { @int ref Int }
     ee2: int
+
+    #- { @str ref STR_0? }  // DO NOT SUBMIT
+    #- { @zz1 defines/binding ZZ1? }  // DO NOT SUBMIT
+    #- { ZZ1./pykythe/type ZZ1_TYPE? }  // DO NOT SUBMIT - type entry is another file
+    zz1 = str()
+    #- { @capitalize ref vname("${BUILTINS_FQN}.builtins.str.capitalize", _, _, "", python) }
+    zz1.capitalize()
+
+    #- { @int ref vname("${BUILTINS_FQN}.builtins.int", _, _, "", python) }
+    #- { @zz2 defines/binding ZZ2? }  // DO NOT SUBMIT
+    #- { ZZ2./pykythe/type ZZ2_TYPE? }   // DO NOT SUBMIT - gets "[]"????
+    zz2 = int()
 
     #- @ee2 ref TestAnnAssignEe2
     print(ee2)
@@ -207,21 +229,29 @@ class D(C):
         super().__init__()
         self.f2 = 1
 
+    #- { @m1 defines/binding D_m1 }
     def m1(self):
         return self.f1
 
+    #- { @mx defines/binding D_mx }
     def mx(self):
         return self
 
 class E:
     def __init__(self):
+        #- { @f1 defines/binding F1=vname("${ROOT_FQN}.test_data.bindings.E.f1", _, _, "", python) }
+        #- { F1./pykythe/type "[class_type('.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.bindings.D',[[class_type('.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.bindings.C',[])]])]" }
         self.f1 = D()
 
 def testTrailers():
     d = D()
     d.f2
     d.f1
+    #- { @m1 ref D_m1 }
     d.m1()
+    #- { @#0mx ref D_mx }  // because d is class D
+    #- // { @#1mx ref D_mx }  // because class D is only one with attr 'mx' DO NOT SUBMIT
+    #- // { @m1 ref D_m1 } // ditto DO NOT SUBMIT
     d.mx().mx().m1()
     d.f1[0]['a']
     e.f1.f1

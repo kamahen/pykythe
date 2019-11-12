@@ -5,6 +5,9 @@ into a representation for easy entity cross-referencing, using
 entities in the style of the [Kythe](http://kythe.io) indexing
 [schema](http://kythe.io/schema).
 
+## License
+[Apache 2.0](LICENSE)
+
 ## Warning, Avis, Achtung,ご注意
 
 This code is *pre-alpha* and is intended for collaboration with other
@@ -12,6 +15,13 @@ people, to create an industrial-strength indexer for Python. The
 author intends to make significant changes and improvements to the
 code, so if you want to work on it, please contact
 <peter.ludemann@gmail.com> first.
+
+## Competition
+
+[Pytype](https://github.com/google/pytype) has an experimental
+indexer, which runs at least 10x slower and crashes on some inputs.
+It also requires a system such as [Bazel](https://bazel.build), with
+associated BUILD files, to run in parallel.
 
 ## Installation
 
@@ -37,7 +47,9 @@ out (on Linux):
 
 * Install `python3.7`
 
-  This needs the *latest* version of Python 3.7.
+  This needs the *latest* version of Python 3.7. On Ubuntu, you might
+  need to first run `sudo add-apt-repository ppa:deadsnakes/ppa`,
+  then `sudo apt install python3.7`.
 
   If you get an error in `DISPATCH[node.type]`, then it probably means
   that there's a conflict with Ubuntu package `python3-lib2to3`. The
@@ -46,20 +58,33 @@ out (on Linux):
   /usr/lib/python3.7/lib2to3/`. Alternatively, `sudo apt-get install
   2to3 python3-lib2to3 python3-toolz`.
 
+* Install `lib2to3` for Python.
+
+  This might not be needed, depending on the exact state of Python3.x tools
+
+  `sudo apt install python3.7-lib2to3`
+  or
+  `sudo apt-get install 2to3 python3-lib2to3 python3-toolz`
+
+
 * Install [SWI-Prolog](http://www.swi-prolog.org/Download.html). You
   need at least version 8.1.4, so as of 2019-03-27, this means
   using the "devel" download or PPA.
 
   After installing, add the packages
   [edcg](https://github.com/mndrix/edcg) and
-  [rdel](https://github.com/rla/rdet) by these commands:
+  [rdet](https://github.com/rla/rdet) by these commands:
 
-  `echo 'pack_install(edcg, [interactive(false)]).' | swipl`<br>
-  `echo 'pack_install(rdet, [interactive(false)]).' | swipl`
+  `echo 'pack_install(edcg, [interactive(false), upgrade(true)]).' | swipl`<br>
+  `echo 'pack_install(rdet, [interactive(false), upgrade(true)]).' | swipl`
+
+  Check that you have the correct versions (`echo 'forall(pack_property(N, version(V)), writeln(N:V)).' | swipl`):
+  * rdet 1.0.0
+  * edcg 0.9.0
 
 * `git clone https://github.com/python/typeshed.git`
 
-* Optional (and don't work with Python 3.7):
+* Optional:
 
   * Install `mypy` and `pytype` (using `pip`, or by cloning the git
     repository, `cd`-ing into it, then running `sudo -H pip3 install
@@ -80,6 +105,14 @@ out (on Linux):
   `/tmp/pykythe_test/KYTHE/pykythe/test_data/*.json-decoded`
   (requres running `scripts/decode_json.py` -- see `Makefile` rule
   `json-decoded-all`).
+
+* `make -C <pkgdir> add-index-pykythe
+  This creates `/tmp/pykythe_test/tables`, which can be used by
+  the Kythe browser:
+
+  `make -C <pkgdir> run-server`
+
+  You can look run the browser: http://localhost:8080
 
 * You can run `scripts/test3.sh` to see how the system works both with
   processing from source or by reusing the cache (or a combination).
@@ -302,7 +335,7 @@ in multiple repositories.)
 sudo ln -s apt_pkg.cpython-36m-x86_64-linux-gnu.so apt_pkg.cpython-37m-x86_64-linux-gnu.so`
 
 * Requires Python 3.7 `2to3`
-   * On Ubuntu: `sudo apt-get install 2to3 python3-lib2to3 python3-toolz`
+   * (See above with "Install `lib2to3` for Python")
 
 * Requires `mypy_extensions`:
    * `python3.7 -m pip install mypy_extensions`

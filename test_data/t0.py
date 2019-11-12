@@ -1,6 +1,6 @@
 # TODO: delete this (much of it is from other files, for debugging)
 
-#- { @int ref INT? } // TODO: should be '${TYPESHED_FQN}.stdlib.2and3.builtins.int', not '${ROOT_FQN}.test_data.t0.int'
+#- { @int ref INT? } // TODO: should be '${BUILTINS_FQN}.builtins.int', not '${ROOT_FQN}.test_data.t0.int'
 #- { @str ref STR? } // TODO: (as above)
 foo(int, str)
 
@@ -42,8 +42,12 @@ from os.path import sep
 #- { @os ref/imports vname("${TYPESHED_FQN}.stdlib.3.os", _, _, "", python) }
 import os
 
-#- { @print ref PRINT? } // TODO: should be builtins
-#- { PRINT./pykythe/type "[function_type('${TYPESHED_FQN}.stdlib.2and3.builtins.print',[[],[],[],[],[]],[])]" } // TODO: should show keywords
+#- { @pow ref vname("${BUILTINS_FQN}.builtins.pow", _, _, "", python) }
+#- // { POW./pykythe/type POW_type? } // Type is in another file
+pow(1, 2)
+
+#- { @print ref PRINT=vname("${BUILTINS_FQN}.builtins.print", _, _, "", python) }
+#- // { PRINT./pykythe/type PRINT_type? } // "[function_type('${BUILTINS_FQN}.builtins.print',[[],[],[],[],[]],[])]" } // TODO: should show keywords  // info is in another file
 #- { @os ref OS? }
 #- { @path ref vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
 #- { @sep ref vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }

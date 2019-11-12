@@ -92,7 +92,7 @@ class TestPlainOldData(unittest.TestCase):
 
         c_1 = SomeData(a=1, b='abc', c=True)
         self.assertEqual(
-            c_1.as_prolog_str(), "json{'a':1,'b':'abc','c':json{kind:bool,value:'True'}}")
+                c_1.as_prolog_str(), "json{'a':1,'b':'abc','c':json{kind:bool,value:'True'}}")
 
         with self.assertRaises(TypeError):
             # ValueError: Missing field: 'c'
@@ -101,8 +101,9 @@ class TestPlainOldData(unittest.TestCase):
         c_2 = SomeData2(a=1, b='abc', c=False)
         # pylint: disable=line-too-long
         self.assertEqual(
-            c_2.as_prolog_str(),
-            "json{kind:'SomeData2',slots:json{'a':1,'b':'abc','c':json{kind:bool,value:'False'}}}")
+                c_2.as_prolog_str(),
+                "json{kind:'SomeData2',slots:json{'a':1,'b':'abc','c':json{kind:bool,value:'False'}}}"
+        )
 
         with self.assertRaises(TypeError):
             # ValueError: Unknown field names: ['x']
@@ -134,28 +135,30 @@ class TestAnchor(unittest.TestCase):
                    '  bcd = "<br/>"\n').encode('utf-8')
         expected_types = (token.NAME, token.NUMBER, token.STRING)
         expected = [
-            b'a',
-            b'b',
-            b'x',
-            b'y',
-            b'1',
-            b'if',
-            b'a',
-            b'234',
-            b'bcd',
-            b'"<br/>"', ]
+                b'a',
+                b'b',
+                b'x',
+                b'y',
+                b'1',
+                b'if',
+                b'a',
+                b'234',
+                b'bcd',
+                b'"<br/>"', ]
         for python_version in 3, 2:
             parse_tree = ast_raw.parse(content, python_version)
             logging.debug('RAW= %r', parse_tree)
             src_file = ast.make_file('<>', content, 'utf-8')
             self.assertEqual(content.decode('utf-8'), str(parse_tree))
             self.assertEqual(
-                str(parse_tree), ''.join(
-                    str(node) for node in parse_tree.pre_order() if isinstance(node, pytree.Leaf)))
+                    str(parse_tree), ''.join(
+                            str(node)
+                            for node in parse_tree.pre_order()
+                            if isinstance(node, pytree.Leaf)))
             anchor_file = ast.make_file('<>', content, 'utf-8')
             leaf_nodes = [
-                node for node in parse_tree.pre_order()
-                if isinstance(node, pytree.Leaf) and node.type in expected_types]
+                    node for node in parse_tree.pre_order()
+                    if isinstance(node, pytree.Leaf) and node.type in expected_types]
             self.assertEqual(len(leaf_nodes), len(expected))
             for node, expected_str in zip(leaf_nodes, expected):
                 anchor = anchor_file.astn_to_range(node)
@@ -170,13 +173,13 @@ class TestAnchor(unittest.TestCase):
                                         python_version=python_version)
             add_fqns = cooked_nodes.add_fqns(fqn_ctx)
             self.assertEqual(
-                typing_debug.cast(ast_cooked.FileInput, add_fqns).scope_bindings,
-                collections.OrderedDict([
-                    ('a', None),
-                    ('b', None),
-                    ('x', None),
-                    ('y', None),
-                    ('bcd', None), ]))
+                    typing_debug.cast(ast_cooked.FileInput, add_fqns).scope_bindings,
+                    collections.OrderedDict([
+                            ('a', None),
+                            ('b', None),
+                            ('x', None),
+                            ('y', None),
+                            ('bcd', None), ]))
 
 
 class TestFakeSys(unittest.TestCase):
@@ -199,7 +202,7 @@ class TestFakeSys(unittest.TestCase):
         result = fakesys.FAKE_SYS.eval('bool(sysx.version_info >= (3, 7))')
         self.assertTrue(result.exception)
         self.assertIsInstance(
-            result.exception, NameError)  # NameError("name 'sysx' is not defined")
+                result.exception, NameError)  # NameError("name 'sysx' is not defined")
 
 
 if __name__ == '__main__':

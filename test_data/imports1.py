@@ -54,8 +54,6 @@ assert pykythe.test_data.imports_file1.i2 == i2
 
 assert i_f1.i2 == i2
 
-#- { @import_7 ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i7", _, _, "", python) }
-#- { @import_7 defines/binding Imports1_import_7 }
 #- { @#0pykythe defines/binding vname("${ROOT_FQN}.test_data.imports1.pykythe", _, _, "", python) }
 #- { @#0pykythe ref/imports vname("${ROOT_FQN}", _, _, "", python) }
 #- { @#0test_data ref/imports vname("${ROOT_FQN}.test_data", _, _, "", python) }
@@ -65,6 +63,8 @@ assert i_f1.i2 == i2
 #- { @#1test_data ref/imports vname("${ROOT_FQN}.test_data", _, _, "", python) }
 #- { @#1imports_dir1 ref/imports vname("${ROOT_FQN}.test_data.imports_dir1", _, _, "", python) }
 #- { @i7 ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i7", _, _, "", python) }
+#- { @import_7 ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i7", _, _, "", python) }
+#- { @import_7 defines/binding Imports1_import_7 }
 import pykythe.test_data.imports_dir1.i6, pykythe.test_data.imports_dir1.i7 as import_7
 
 #- { @#0pykythe ref vname("${ROOT_FQN}.test_data.imports1.pykythe", _, _, "", python) }

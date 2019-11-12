@@ -22,7 +22,8 @@ import stat
 import sys
 
 VERSION = sys.argv[1]
-FROM_DIR, TO_DIR, TYPESHED_DIR, FROM_FILE, TO_FILE = map(os.path.abspath, sys.argv[2:])
+FROM_DIR, TO_DIR, TYPESHED_DIR, BUILTINS_DIR, FROM_FILE, TO_FILE = map(
+        os.path.abspath, sys.argv[2:])
 
 # In the following, ROOT_FQN_REPL is the same as ROOT_FQN.  This is
 # because we used to check for a double-quote ('"') before the
@@ -34,7 +35,10 @@ FROM_DIR, TO_DIR, TYPESHED_DIR, FROM_FILE, TO_FILE = map(os.path.abspath, sys.ar
 VERSION_PAT = '${VERSION}'
 VERSION_REPL = VERSION
 
-ROOT_DIR = os.path.abspath(os.path.join(TO_DIR, '..'))
+# In the following, the [1:] is to remove the leading "/". DO NOT SUBMIT
+# TODO: Issue #24
+
+ROOT_DIR = os.path.abspath(os.path.join(TO_DIR, '..'))  # [1:]
 ROOT_DIR_PAT = '${ROOT_DIR}'  # followed by nothing or '/'
 ROOT_DIR_REPL = ROOT_DIR
 
@@ -42,13 +46,21 @@ ROOT_FQN = ROOT_DIR.replace('/', '.')
 ROOT_FQN_PAT = '${ROOT_FQN}'  # followed by nothing or '.'
 ROOT_FQN_REPL = ROOT_FQN
 
-TYPESHED_DIR = os.path.abspath(TYPESHED_DIR)
+TYPESHED_DIR = os.path.abspath(TYPESHED_DIR)  # [1:]
 TYPESHED_DIR_PAT = '${TYPESHED_DIR}'  # followed by nothing or '/'
 TYPESHED_DIR_REPL = TYPESHED_DIR
 
 TYPESHED_FQN = TYPESHED_DIR.replace('/', '.')
 TYPESHED_FQN_PAT = '${TYPESHED_FQN}'  # followed by nothing or '.'
 TYPESHED_FQN_REPL = TYPESHED_FQN
+
+BUILTINS_DIR = os.path.abspath(BUILTINS_DIR)  # [1:]
+BUILTINS_DIR_PAT = '${BUILTINS_DIR}'  # followed by nothing or '/'
+BUILTINS_DIR_REPL = BUILTINS_DIR
+
+BUILTINS_FQN = BUILTINS_DIR.replace('/', '.')
+BUILTINS_FQN_PAT = '${BUILTINS_FQN}'  # followed by nothing or '.'
+BUILTINS_FQN_REPL = BUILTINS_FQN
 
 assert not FROM_DIR.endswith('/')
 assert not TO_DIR.endswith('/')
@@ -68,6 +80,8 @@ def cp_file(path_in, path_out):
     contents = contents.replace(ROOT_FQN_PAT, ROOT_FQN_REPL)
     contents = contents.replace(TYPESHED_DIR_PAT, TYPESHED_DIR_REPL)
     contents = contents.replace(TYPESHED_FQN_PAT, TYPESHED_FQN_REPL)
+    contents = contents.replace(BUILTINS_DIR_PAT, BUILTINS_DIR_REPL)
+    contents = contents.replace(BUILTINS_FQN_PAT, BUILTINS_FQN_REPL)
     try:
         with open(path_out, 'r') as file_orig:
             contents_orig = file_orig.read()

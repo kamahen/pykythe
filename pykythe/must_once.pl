@@ -12,6 +12,7 @@
                       fail/1]).
 :- meta_predicate
        must_once(0),
+       must_once_msg(0, +),
        must_once_msg(0, +, +),
        must_once(2, ?, ?),
        must_once(3, ?, ?, ?),

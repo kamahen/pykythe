@@ -3,6 +3,16 @@
 %% Post-process the JSON file generated for builtins, to get just the
 %% the symtab, and output it.
 
+%% If the inputs were general .py files, then we'd need to re-process
+%% this to get to a fixed point. But we can cheat a bit because we're
+%% handling .pyi files with no expressions, as long as the
+%% bootstrap_builtins_symtab.pl file has the right stuff in it.
+%% Unfortunately, this is a bit complicated, because of things
+%% like "class list(MutableSequence[_T], Generic[_T])" and
+%% "class str(Sequence[str], _str_base)" (for Python 3.x, _str_base
+%% is object).
+%% TODO: compute fixed-point of builtins.
+
 %% TODO:
 %% This needs some "manual" adjustment.
 %%   True, False are missing ("keywords" in Python 3, but not in Grammar.txt
@@ -16,13 +26,15 @@
 
 :- module(gen_builtins_symtab, [gen_builtins_symtab_main/0]).
 
+:- use_module(library(apply), [convlist/3]).
 :- use_module(library(base64), [base64/2]).
 :- use_module(library(optparse), [opt_arguments/3]).
 :- use_module(module_path).
 :- use_module(must_once).
 :- use_module(pykythe_utils).
 
-:- ensure_loaded(bootstrap_builtins_symtab).
+:- load_files([bootstrap_builtins_symtab], [silent(true), % TODO: should be a module
+                                            imports([builtins_symtab_primitive/2])]).
 
 :- initialization(gen_builtins_symtab_main, main).
 
@@ -47,16 +59,39 @@ gen_builtins_symtab_main :-
     must_once_msg(PositionalArgs = [KytheInputPath, SymtabOutputPath],
                   'Missing/extra positional args'),
     open(KytheInputPath, read, KytheInputStream),
-    read_symtab_from_cache(KytheInputStream, Symtab),
+
+    read_symtab_from_cache(KytheInputStream, Symtab0),
+    log_if(true, '~q', [done-read_symtab_from_cache(KytheInputPath)]),
+
     read_package_from_cache(KytheInputStream, Package),
+    log_if(true, '~q', [done-read_package_from_cache(KytheInputPath,Package)]),
+
     atom_concat(Package, '.', PackageDot),
-    convdict_pairs(strip_sym(PackageDot), Symtab, BuiltinsPairs),
+    convdict_pairs(strip_sym(PackageDot), Symtab0, BuiltinsPairs0),
+
+    %% object is special: it needs the 'object' type whereas for all
+    %% other classes, 'object' is implied.
+    atom_concat(PackageDot, 'object', ObjectFqn),
+    ObjectType = [class_type(ObjectFqn, [])],
+    maplist(clean_symtab_pair(ObjectType), BuiltinsPairs0, BuiltinsPairs1),
+    replace_key_value(BuiltinsPairs1, 'object', ObjectType, BuiltinsPairs),
+    convdict(clean_symtab_pair(ObjectType), Symtab0, Symtab1),
+    put_dict('object', Symtab1, ObjectType, Symtab),
+    memberchk('object'-ObjectType, BuiltinsPairs),
+    log_if(true, 'ObjectType: ~q', [ObjectType]),
+    must_once(ObjectType == Symtab.'object'),
+    dict_pairs(BuiltinsDict, symtab, BuiltinsPairs),
     convdict(is_module, Symtab, SymtabModules),
-    log_if(false, 'Package: ~q~n', [Package]),
+    log_if(true, 'Package: ~q', [Package]),
     write_atomic_stream(gen_builtins_symtab:write_symtab_fact(
-                            Opts, Symtab, BuiltinsPairs, SymtabModules),
+                            Opts, Symtab, BuiltinsDict, BuiltinsPairs, SymtabModules),
                         SymtabOutputPath),
+    log_if(true, 'Finished gen_builtins_symtab'),
     halt.
+
+replace_key_value(List0, Key, Value, List) :-
+    ( append(Before, [Key-_|After], List0) -> true ; fail ),
+    append(Before, [Key-Value|After], List).
 
 %! strip_sym(+PackageDot:atom, +SymType:(atom-atom), -SymStrippedType:(atom-atom))) is det.
 %% Strip PackageDot from beginning of Sym (if there), succeed if there
@@ -75,25 +110,24 @@ strip_sym(PackageDot, Sym-Type, SymStripped-Type) :-
 is_module(Sym-Type, Sym-Type) :-
     memberchk(module_type(_), Type).
 
-write_symtab_fact(Opts, Symtab, BuiltinsPairs, SymtabModules, Stream) :-
+write_symtab_fact(Opts, Symtab, BuiltinsDict, BuiltinsPairs, SymtabModules, Stream) :-
     memberchk(version(Version), Opts),
-    dict_pairs(BuiltinsDict, symtab, BuiltinsPairs),
     format(Stream, '~k.~n', [builtins_version(Version)]),
     format(Stream, '~k.~n', [builtins_symtab(Symtab)]),
     format(Stream, '~k.~n', [builtins_pairs(BuiltinsPairs)]),
     format(Stream, '~k.~n', [builtins_symtab_modules(SymtabModules)]),
     memberchk(pythonpath(PythonPaths), Opts),
-    must_once(full_path([], '$PYTHONPATH/typing', PythonPaths, '', TypingModule0, _)),
+    must_once(full_path([], 'typing', PythonPaths, '', TypingModule0, _)),
     must_once(module_part(TypingModule0, TypingModule)),
     must_once(\+ token_part(TypingModule0, _)),
-    must_once(is_resolved_path(TypingModule0)),
+    log_if(false, 'TYPING module: ~q (from ~q)', [TypingModule, TypingModule0]), % TODO: delete
+    module_file_exists(TypingModule0),
     %% TODO: delete the following, which are for eventually adding
     %%       support for mypy-style type declarations
-    log_if(false, 'TYPING module: ~q (from ~q)', [TypingModule, TypingModule0]), % TODO: delete
     atomic_list_concat([TypingModule, 'Dict'], '.', TypingDict),
     log_if(false, 'TYPING-Dict: ~q', [Symtab.TypingDict]), % TODO: delete
     do_if(false,
-          forall(member(K-V, BuiltinsPairs), % TODO: delete 
+          forall(member(K-V, BuiltinsPairs), % TODO: delete
                  format('BUILTIN ~q: ~q~n', [K, V]))),
     %% TODO: 'None', 'NoneType', bool, bytes, function
     forall((builtins_symtab_primitive(Primitive, _Type),
@@ -132,10 +166,18 @@ ensure_no_more_package_facts(KytheInputStream, Package) :-
     ;  ensure_no_more_package_facts(KytheInputStream, Package)
     ).
 
-convdict_pairs(Pred, Dict0, Pairs) :-
-    dict_pairs(Dict0, _Tag, Pairs0),
-    convlist(Pred, Pairs0, Pairs).
+clean_symtab_pair(ObjectType, Name-Type, Name-CleanedType) :-
+    maplist(clean_type(ObjectType), Type, CleanedType).
 
+clean_type(ObjectType, class_type(Fqn,Bases), class_type(Fqn,CleanedBases)) :- !,
+    %% similar to pykythe:clean_class/3 (no need to remove cycles),
+    %% and doesn't use global builtins_symtab_primitive/2.
+    exclude(is_object_type(ObjectType), Bases, CleanedBases).
+clean_type(_ObjectType, Type, Type).
+
+is_object_type(_ObjectType, []) :- !.
+is_object_type(ObjectType, ObjectType) :- !.
+is_object_type(ObjectType, [ObjectType]) :- !.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -152,9 +194,14 @@ convdict_pairs(Pred, Dict0, Pairs) :-
 %%       appear as a builtin name, but <class 'ellipsis'> exists.
 
 %% TODO: 'None': ${TYPESHED_FQN}.stdlib.2.types.NoneType
-%%               (and what about Python 3, which doesn't have the 'types' module?)
-%%       (Currently, 'None' has type [])
+%%               (and what about Python 3, which doesn't have the 'types' module,
+%%               except typeshed does have stdlib/3/types.pyi
+%%               See also https://github.com/python/typeshed/issues/2
+%%       (Currently, 'None' is defined as an object, which isn't quite right
+%%       -- it should be NoneType (which has __bool__ in addition to the methods
+%%          that 'object' provides), but that's not defined anywhere.
 
+missing('None', [[fqn_type('${TYPESHED_FQN}.stdlib.2and3.builtins.object')]]).
 missing('False', [[fqn_type('${TYPESHED_FQN}.stdlib.2and3.builtins.bool')]]).
 missing('True',  [[fqn_type('${TYPESHED_FQN}.stdlib.2and3.builtins.bool')]]).
 missing('__build_class__', []). % TODO

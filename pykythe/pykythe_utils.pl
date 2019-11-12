@@ -5,8 +5,11 @@
 
 :- module(pykythe_utils, [
                           absolute_dir/2,
+                          absolute_file_name_rel/2,
+                          absolute_file_name_rel/3,
                           base64_term/2,
                           convdict/3,
+                          convdict_pairs/3,
                           dict_values/2,
                           do_if/2,
                           dump_term/2,
@@ -25,7 +28,7 @@
                           opts/2,
                           print_term_cleaned/3,
                           remove_suffix_star/3,
-                          set_json_dict_tag/2,
+                          safe_delete_file/1,
                           split_atom/4,
                           split_path_string_and_canonicalize/3,
                           term_to_canonical_atom/2,
@@ -37,20 +40,29 @@
 
 :- meta_predicate
        convdict(2, +, -),
+       convdict_pairs(2, +, -),
        do_if(0, 0),
        log_if(0, +),
        log_if(0, +, +),
-       write_atomic_stream(0, +),
-       write_atomic_file(0, +).
+       write_atomic_stream(1, +),
+       write_atomic_file(1, +).
 
+:- style_check(+singleton).
+:- style_check(+var_branches).
+:- style_check(+no_effect).
+:- style_check(+discontiguous).
+
+:- style_check(-var_branches).  % For library(http/json)
 :- use_module(library(apply), [exclude/3, include/3, maplist/2, maplist/3, maplist/4, foldl/4, convlist/3]).
 :- use_module(library(base64), [base64/2]).
 :- use_module(library(filesex), [make_directory_path/1, directory_file_path/3]).
 :- use_module(library(http/json), [json_read_dict/3, json_write_dict/3]).
 :- use_module(library(lists), [append/2, append/3, list_to_set/2, member/2, reverse/2, select/3]).
+:- use_module(library(pairs), [pairs_values/2]).
 :- use_module(library(pcre), [re_replace/4]).
 :- use_module(library(pprint), [print_term/2]).
 :- use_module(library(rbtrees), [ord_list_to_rbtree/2, rb_insert/4, rb_visit/2] ).
+:- use_module(library(rdet), [rdet/1]).
 :- use_module(library(sha), [sha_hash/3, hash_atom/2]).
 :- use_module(library(yall)).
 :- use_module(must_once, [must_once/1, must_once_msg/2, must_once_msg/3, fail/1]).
@@ -61,18 +73,58 @@
 :- style_check(+discontiguous).
 %% :- set_prolog_flag(generate_debug_info, false).
 
+
+:- if(true).  % Turning off rdet can sometimes make debugging easier.
+
+:- maplist(rdet, [
+                  %% base64_string/2, % handled by must_once
+                  base64_term/2,
+                  %% convdict/3, % rdet wrap interferes with meta_predicate declaration
+                  %% do_if/2,    % rdet wrap interferes with meta_predicate declaration
+                  %% log_if/2,   % rdet wrap interferes with meta_predicate declaration
+                  %% log_if/3,   % rdet wrap interferes with meta_predicate declaration
+                  hash_hex/2,
+                  json_read_dict_validate/3,
+                  opt/2,
+                  opts/2,
+                  print_term_cleaned/3,
+                  remove_suffix_star/3,
+                  split_atom/4,
+                  split_path_string_and_canonicalize/3,
+                  term_to_canonical_atom/2
+                  %% write_atomic_stream/2, % rdet wrap interferes with meta_predicate declaration
+                  %% write_atomic_file/2    % rdet wrap interferes with meta_predicate declaration
+                 ]).
+
+:- endif.
+
+%! absolute_file_name_rel(+File, -Absolute) is det.
+%% For now, this is the same as absolute_file_name/2.
+%% However, it is intended that this should look up the corpus root
+%% and remove the prefix (e.g., "/").
+%% TODO: Kythe prefers to have paths without leading "/"; the code
+%%       should use (corpus,root,path) for file names and create a
+%%       filesystem name from a lookup of (corpus,root) to filesystem prefix.
+%% TODO: https://github.com/kamahen/pykythe/issues/24
+absolute_file_name_rel(File, Absolute) :-
+    absolute_file_name(File, Absolute0),
+    Absolute = Absolute0.  % atom_concat('/', Absolute, Absolute0).
+absolute_file_name_rel(File, Absolute, Options) :-
+    absolute_file_name(File, Absolute0, Options),
+    Absolute = Absolute0.  % atom_concat('/', Absolute, Absolute0).
+
 %! absolute_dir(+Path0:atom, -AbsPath:atom) is det.
-%%  Apply absolute_file_name to Path0, giving AbsPath, ensuring it's a
+%%  Apply absolute_file_name_rel to Path0, giving AbsPath, ensuring it's a
 %%  directory and appending '/' to the name.
 absolute_dir(/, /) :- !. % Special case for root dir, which otherwise would become '//'
 absolute_dir(Path0, AbsPath) :-
     remove_suffix_star(Path0, '/', Path),
-    absolute_file_name(Path, AbsPath0, [access(read), file_type(directory), file_errors(fail)]),
-    atom_concat(AbsPath0, '/', AbsPath).
+    absolute_file_name_rel(Path, AbsPath0, [access(read), file_type(directory), file_errors(fail)]),
+    atomic_list_concat([AbsPath0, '/'], AbsPath).
 
 %! base64_term(+Base64:string, -Term) is det.
 %! base64_term(-Base64:string, +Term) is det.
-%% Unlike base64/2, Base64 is always a string (base64(base64(Z, "Zm9v"), Z = foo.
+%% Unlike base64/2, Base64 is always a string - compare base64(Z, "Zm9v"), Z = foo.
 base64_term(Base64, Term) :-
     (  var(Base64)
     -> term_to_atom(Term, Atom),
@@ -86,6 +138,10 @@ convdict(Pred, Dict0, Dict) :-
     dict_pairs(Dict0, Tag, Pairs0),
     convlist(Pred, Pairs0, Pairs),
     dict_pairs(Dict, Tag, Pairs).
+
+convdict_pairs(Pred, Dict0, Pairs) :-
+    dict_pairs(Dict0, _Tag, Pairs0),
+    convlist(Pred, Pairs0, Pairs).
 
 %! dict_values(+Dict, -Values) is det.
 %%    True when Values is an ordered set of the values appearing in Dict.
@@ -109,10 +165,15 @@ dump_term(Msg, Term) :-
     dump_term(Msg, Term, [tab_width(0),
                           indent_arguments(2),
                           right_margin(120)]).
+
 %! dump_term(+Msg:atom, +Term, +Options:list) is det.
 %% TODO: use debug/3, etc. instead (also print_message/2).
 %% TODO: Delete this debugging code
 dump_term(Msg, Term, Options) :-
+    must_once(dump_term_impl(Msg, Term, Options)).
+
+%! dump_term_impl(+Msg:atom, +Term, +Options:list) is det.
+dump_term_impl(Msg, Term, Options) :-
     (  Msg = ''
     -> true
     ;  log_if(true, '% === ~w ===~n', [Msg])
@@ -214,10 +275,7 @@ my_json_read_dict(Stream, Dict) :-
     %%       and remove autoload below.
     current_prolog_flag(autoload, AutoloadFlag),
     set_prolog_flag(autoload, true), % TODO: Otherwise gets error: json:term_to_dict/3 - undefined select/3
-    json_read_dict(Stream, Dict, [value_string_as(atom), end_of_file(end_of_file)]),
-    %% use the tag 'json' for json dicts, to ensure we don't accidentally
-    %% instantiate to something unintended, e.g., in portray/1.
-    set_json_dict_tag(json, Dict),
+    json_read_dict(Stream, Dict, [value_string_as(atom), end_of_file(end_of_file), default_tag(json)]),
     set_prolog_flag(autoload, AutoloadFlag).
 
 %! opts(Opts:list, Items:list) is det.
@@ -241,7 +299,7 @@ print_term_cleaned(Term, Options, TermStr) :-
 %! remove_suffix_star(+Full:atom, +Suffix:atom, -NoSuffix:atom) is det.
 %% Repeatedly removes suffix if present.
 remove_suffix_star(Full, Suffix, NoSuffix) :-
-    (  atom_concat(Full1, Suffix, Full)
+    (  atom_concat(Full1, Suffix, Full) % DO NOT SUBMIT - sub_atom/5
     -> remove_suffix_star(Full1, Suffix, NoSuffix)
     ;  NoSuffix = Full
     ).
@@ -254,20 +312,6 @@ safe_delete_file(Path) :-
     %% error(instantiation_error, _).
     catch(delete_file(Path), _Error, true).
 
-set_json_dict_tag(DefaultTag, Term) :-
-    (  is_dict(Term),
-       dict_pairs(Term, DefaultTag, Pairs) % instantiates the tag
-    -> pairs_values(Pairs, Values),
-       maplist(set_json_dict_tag(DefaultTag), Values)
-    ;  is_dict(Term)            % tag != DefaultTag
-    -> dict_pairs(Term, _, Pairs), % the tag is already set -- leave it
-       pairs_values(Pairs, Values),
-       maplist(set_json_dict_tag(DefaultTag), Values)
-    ;  is_list(Term)
-    -> maplist(set_json_dict_tag(DefaultTag), Term)
-    ;  true                     % do nothing for non-dicts
-    ).
-
 %! split_atom(+Atom:atom, +SepChars:atom, +PadChars:atom, -SubAtoms:list(atom)) is det.
 %% Like split_string, but result is a list of atoms.
 split_atom(Atom, SepChars, PadChars, SubAtoms) :-
@@ -277,8 +321,8 @@ split_atom(Atom, SepChars, PadChars, SubAtoms) :-
 %! split_path_string_and_canonicalize(+OptName:atom, +Opts0:list, -Opts:list) is det.
 %%  Find the option given by OptName in Opts0, split the value into
 %%  components in a list, add back into Opts (can be in a different
-%%  position in the list).  The resulting list of files are all in
-%%  canonical form, using absolute_file_name/3.
+%%  position in the list).  The resulting list of dirs are all in
+%%  canonical form, using absolute_dir/2.
 split_path_string_and_canonicalize(OptName, Opts0, [NewOpt|Opts1]) :-
     Opt =.. [OptName, PathStr],
     select(Opt, Opts0, Opts1),
@@ -331,9 +375,8 @@ term_to_canonical_atom(Term, Atom) :-
 
 %% The following is several times faster than the above.  (For 11,000
 %% items, make_rb is about 20x faster than the equivalent loop for a
-%% dict, but there's still significant cost inverting to/from rbtree).
-%% It would be better to just leave everything as a RB-tree,
-%% TODO: convert everything to RB-tree.
+%% dict, but there's still significant cost converting to/from rbtree).
+%% TODO: It would be better to just leave everything as a RB-tree.
 
 update_new_dict(KVs, Dict0, Dict) :-
     dict_pairs(Dict0, Tag, KVs0),
@@ -395,6 +438,7 @@ write_atomic_stream(WritePred, Path) :-
 %! write_atomic_file(+WritePred, +Path) is semidet.
 %% Similar to write_atomic_stream, except it passes a path to Pred
 %% instead of a stream.
+%% WritePred must take the stream as its last argument.
 write_atomic_file(WritePred, Path) :-
     directory_file_path(PathDir, _, Path),
     make_directory_path(PathDir),

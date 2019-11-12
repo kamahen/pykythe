@@ -96,7 +96,7 @@ column_limit=99
 continuation_align_style=SPACE
 
 # Indent width used for line continuations.
-continuation_indent_width=4
+continuation_indent_width=8
 
 # Put closing brackets on a separate line, dedented, if the bracketed
 # expression can't fit in a single line. Applies to all kinds of brackets,
@@ -213,6 +213,10 @@ space_between_ending_comma_and_closing_bracket=True
 
 # Split before arguments
 split_all_comma_separated_values=False
+
+# Split before arguments, but do not split all subexpressions recursively
+# (unless needed).
+split_all_top_level_comma_separated_values=False
 
 # Split before arguments if the argument list is terminated by a
 # comma.

@@ -10,15 +10,27 @@ def foo():
     root[:] = [root]
 
 
-#- { @os ref/imports OS_imports? } // TODO: should be ${TYPESHED_FQN}.stdlib.3.os, not ${TYPESHED_FQN}.stdlib.3.os.path
-#- { @path ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
-import os.path  # // TODO: fix this bug(#19)
+#- { @#0os ref/imports vname("${TYPESHED_FQN}.stdlib.3.os", _, _, "", python) }
+#- { @#0path ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
+#- { @#0sep ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
+#- { @os_path_sep defines/binding OS_PATH_SEP_local=vname("${ROOT_FQN}.test_data.t5.os_path_sep", _, _, "", python) }
+import os.path.sep as os_path_sep  # // DO NOT SUBMIT: verify fix this bug(#19) https://github.com/kamahen/pykythe/issues/19
 
-#- { @sep ref SEP? } // =vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
-#- { SEP./pykythe/type SEP_type? }  // TODO: Should be str, not []
-#- { @path ref PATH? } // =vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
-#- // { PATH./pykythe/type PATH_type? } // TODO: this gives correct module part but path needs to be cleaned up
-#- { @os ref OS?=vname("${ROOT_FQN}.test_data.t5.os", _, _, "", python) }
-#- { OS./pykythe/type OS_type? } // "[module_type(module_alone('${TYPESHED_FQN}.stdlib.3.os',''))]" }
-#- // TODO: should have @os ref/imports and maybe also @path ref/imports
+#- { @os_path_sep ref OS_PATH_SEP_local }
+print(os_path_sep)
+
+#- { @os ref/imports OS=vname("${TYPESHED_FQN}.stdlib.3.os", _, _, "", python) }
+#- { @path ref/imports OS_PATH=vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
+#- { @sep ref/imports OS_PATH_SEP=vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
+#- { @os defines/binding OS_local=vname("${ROOT_FQN}.test_data.t5.os", _, _, "", python) }
+import os.path.sep  # // DO NOT SUBMIT: verify fix this bug(#19) https://github.com/kamahen/pykythe/issues/19
+
+#- { @os ref OS_local }
+#- { @path ref OS_PATH }
+#- { @sep ref OS_PATH_SEP }
 print(os.path.sep)
+
+#- { @os ref/imports OS }
+#- { @os defines/binding OS_local }
+import os
+

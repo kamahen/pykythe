@@ -1,15 +1,17 @@
 # TODO: DELETE the following when they're in another test file
-#- { @i5    ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i5", _, _, "", python) }
-#- { @#1"." ref/imports vname("${ROOT_FQN}.test_data.imports_dir1", _, _, "", python) }
-#- { @#0"." ref/imports vname("${ROOT_FQN}.test_data", _, _, "", python) }
+#- { @i5    ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i5",     _, _, "", python) }
+#- { @#1"." ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i1_sub", _, _, "", python) }
+#- { @#0"." ref/imports vname("${ROOT_FQN}.test_data.imports_dir1",        _, _, "", python) }
 from .. import i5
 
-#- { @#0"."   ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i1_sub", _, _, "", python) }
-#- { @#0i4a   ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i1_sub.i4a", _, _, "", python) }
+#- { @#0"."   ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i1_sub",         _, _, "", python) }
+#- { @#0i4a   ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i1_sub.i4a",     _, _, "", python) }
 #- { @#0loc   ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i1_sub.i4a.loc", _, _, "", python) }
-#- { @i4a_loc ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i1_sub.i4a.loc", _, _, "", python) }
+#- { @i4a_loc ref/imports VAR_i4a_loc?=vname("${ROOT_FQN}.test_data.imports_dir1.i1_sub.i4a.loc", _, _, "", python) }
+#- // { VAR_i4a_loc./pykythe/pytype TYPE_i4a_loc? }  // DO NOT SUBMIT -- type is in other file
 from .i4a import loc as i4a_loc
 
+#- { @i4a_loc ref VAR_i4a_loc2? }
 assert i4a_loc == "pykythe/test_data/imports_dir/i1_sub/i4a.py"
 
 loc = "pykythe/test_data/imports_dir/i1_sub/i4.py"
@@ -17,7 +19,7 @@ loc = "pykythe/test_data/imports_dir/i1_sub/i4.py"
 class III:
     y = 'yyy'
     def __init__(self):
-        #- { @x defines/binding III_x? } // TODO: should match III().x in i1.py
+        #- { @x defines/binding vname("${ROOT_FQN}.test_data.imports_dir1.i1_sub.i4.III.x", _, _, "", python) } // TODO: should match III().x in i1.py
         self.x = loc
 
 print("Entering " + loc + " ... " + __file__)
@@ -34,8 +36,8 @@ import pykythe.test_data.imports_dir1.i8.i9 as i8_i9
 #- { @i5 ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i5", _, _, "", python) }
 from .. import i5
 
-#- { @#0"."  ref/imports vname("${ROOT_FQN}.test_data",                        _, _, "", python) }
-#- { @#1"."  ref/imports vname("${ROOT_FQN}.test_data.imports_dir1",           _, _, "", python) }
+#- { @#1"." ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i1_sub",      _, _, "", python) }
+#- { @#0"." ref/imports vname("${ROOT_FQN}.test_data.imports_dir1",             _, _, "", python) }
 #- { @#0i8   ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i8",        _, _, "", python) }
 #- { @#0i9   ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i8.i9",     _, _, "", python) }
 #- { @#0loc  ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i8.i9.loc", _, _, "", python) }
