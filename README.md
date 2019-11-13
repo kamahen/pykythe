@@ -16,6 +16,13 @@ author intends to make significant changes and improvements to the
 code, so if you want to work on it, please contact
 <peter.ludemann@gmail.com> first.
 
+## Browsing
+
+Pykythe works with [underhood](https://github.com/TreeTide/underhood)
+to allow source code browsing. A rough outline of how to set up the
+servers in the Makefile rule `run-underhood-all` (after
+running `add-index-pykythe` to set up the serving tables).
+
 ## Competition
 
 [Pytype](https://github.com/google/pytype) has an experimental

@@ -387,12 +387,15 @@
                   symrej_accum_found/7,
                   symtab_as_kyfact/3,
                   symtab_pykythe_types/4,
+                  transform_kythe_fact/2,
+                  transform_kythe_vname/2,
+                  transform_kythe_path/2,
                   wrap_import_ref/4
                   %% symtab_lookup/4,
                   %% path_batch_suffix/3,
                   %% write_batch_symtab/2, % Is det, but expansion confuses write_atomic_stream/2.
                   %% write_to_protobuf/4,  % Is det, but expansion confuses write_atomic_file/2.
-                  %% write_facts/3  % TODO: failed to analyse
+                  %% write_kythe_facts/3  % TODO: failed to analyse
                  ]).
 
 :- endif.
@@ -554,7 +557,7 @@ edcg:pred_info(exprs, 1,                               [expr]).
 %%
 %% After changing to Prolog term for AST, the low-hanging fruit
 %% appears to be:
-%%    write_facts/2        (15%)
+%%    write_kythe_facts/2  (15%)
 %%    write_batch_symtab/3 (11%) <== mostly in format/3 - would term_string/2 be better?
 %%    put_dict/4           (25%)
 %%      - garbage_collect             (13%)
@@ -977,7 +980,7 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, KytheJsonPath, Symtab, KytheFactsFromE
     %% TODO: don't preserve order (for debugging) - use sort/2 to dedup:
     list_to_set(KytheFactsCleaned, KytheFacts),
     log_if(true, 'Writing Kythe facts for ~q', [Meta.path]),
-    write_atomic_stream(write_facts(KytheFacts), KytheJsonPath),
+    write_atomic_stream(write_kythe_facts(KytheFacts), KytheJsonPath),
     (  path_batch_suffix(KytheJsonPath, Opts, KytheBatchPath)
     -> write_atomic_stream(write_batch_symtab(Symtab, Version), KytheBatchPath)
     ;  true
@@ -988,6 +991,45 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, KytheJsonPath, Symtab, KytheFactsFromE
     write_atomic_file(write_to_protobuf(EntriesCmd, SrcPath, KytheJsonPath), KytheEntriesPath),
     log_if(true, 'Finished output ~q (~q) to ~q (~q)', [SrcPath, SrcFqn, KytheEntriesPath, KytheJsonPath]),
     !.                          % for memory usage
+
+%! transform_kythe_fact(+Fact0, -Fact1) is det.
+%% TODO: This is a hack; the correct solution is to modify
+%%       pykythe_utils:absolute_file_name_rel to give the path
+%%       in the desired form, but there may be some subtle
+%%       knock-on effects (e.g., some code that depends on
+%%       the derived module FQN starting with ".", so that
+%%       split_atom(Fqn, '.', '', [''|_]) is assumed.
+transform_kythe_fact(json{source:Source0, fact_name:FactName, fact_value:FactValue},
+                     json{source:Source1, fact_name:FactName, fact_value:FactValue}) :- !,
+    transform_kythe_vname(Source0, Source1).
+transform_kythe_fact(json{source:Source0, fact_name:'/', edge_kind:EdgeKind, target:Target0},
+                     json{source:Source1, fact_name:'/', edge_kind:EdgeKind, target:Target1}) :- !,
+    transform_kythe_vname(Source0, Source1),
+    transform_kythe_vname(Target0, Target1).
+transform_kythe_fact(Fact, Fact) :-
+    domain_error(json, Fact).
+
+transform_kythe_vname(json{corpus:Corpus, root:Root},
+                      json{corpus:Corpus, root:Root}) :- !.
+transform_kythe_vname(json{corpus:Corpus, root:Root, path:Path0},
+                      json{corpus:Corpus, root:Root, path:Path1}) :- !,
+    transform_kythe_path(Path0, Path1).
+transform_kythe_vname(json{path:Path0, language:Language},
+                      json{path:Path1, language:Language}) :- !,
+    transform_kythe_path(Path0, Path1).
+transform_kythe_vname(json{corpus:Corpus, root:Root, language:Language, signature:Signature},
+                      json{corpus:Corpus, root:Root, language:Language, signature:Signature}) :- !.
+transform_kythe_vname(json{corpus:Corpus, root:Root, language:Language, signature:Signature, path:Path0},
+                      json{corpus:Corpus, root:Root, language:Language, signature:Signature, path:Path1}) :- !,
+    transform_kythe_path(Path0, Path1).
+transform_kythe_vname(Source, Source) :-
+    domain_error(json-source, Source).
+
+transform_kythe_path(AbsPath, RelPath) :-
+    %% Strip off the leading '/' - equivalent to atom_concat('/', RelPath, AbsPath)
+    %% TODO: Issue #24
+    sub_atom(AbsPath, 0, 1, _, '/'),   % First char is '/'
+    sub_atom(AbsPath, 1, _, 0, RelPath). % Strip first char.
 
 %! parse_and_get_meta(+Opts:list, +SrcPath:atom, +SrcFqn:atom, -Meta:dict, -Nodes) is det.
 parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes) :-
@@ -1150,10 +1192,14 @@ kind_precedence(variable, -80).
 kind_precedence(record, -50).
 kind_precedence(function, -49).
 
-%! write_facts(+KytheFacts, +KytheStream) is det.
-write_facts(KytheFacts, KytheStream) :-
+%! write_kythe_facts(+KytheFacts, +KytheStream) is det.
+write_kythe_facts(KytheFacts, KytheStream) :-
     %% write(KytheStream, "%% === Kythe ==="), nl(KytheStream),
-    maplist(json_write_dict_nl(KytheStream), KytheFacts).
+    maplist(transform_and_write_kythe_fact(KytheStream), KytheFacts).
+
+transform_and_write_kythe_fact(KytheStream, KytheFact) :-
+    transform_kythe_fact(KytheFact, KytheFact2),
+    json_write_dict_nl(KytheStream, KytheFact2).
 
 %! write_batch_symtab(+Symtab, +Version, +KytheStream) is det.
 write_batch_symtab(Symtab, Version, KytheStream) :-

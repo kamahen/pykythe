@@ -35,32 +35,35 @@ FROM_DIR, TO_DIR, TYPESHED_DIR, BUILTINS_DIR, FROM_FILE, TO_FILE = map(
 VERSION_PAT = '${VERSION}'
 VERSION_REPL = VERSION
 
-# In the following, the [1:] is to remove the leading "/". DO NOT SUBMIT
+# In the following, the [1:] is to remove the leading "/".
+# The "." is put into the FQN (for now).
+# See pykythe:transform_kythe_path/2.
+# TODO: align xxx_DIR, xxx_FQN so that there's no leading '.' in xxx_FQN
 # TODO: Issue #24
 
-ROOT_DIR = os.path.abspath(os.path.join(TO_DIR, '..'))  # [1:]
+ROOT_DIR = os.path.abspath(os.path.join(TO_DIR, '..'))[1:]
 ROOT_DIR_PAT = '${ROOT_DIR}'  # followed by nothing or '/'
 ROOT_DIR_REPL = ROOT_DIR
 
 ROOT_FQN = ROOT_DIR.replace('/', '.')
 ROOT_FQN_PAT = '${ROOT_FQN}'  # followed by nothing or '.'
-ROOT_FQN_REPL = ROOT_FQN
+ROOT_FQN_REPL = '.' + ROOT_FQN
 
-TYPESHED_DIR = os.path.abspath(TYPESHED_DIR)  # [1:]
+TYPESHED_DIR = os.path.abspath(TYPESHED_DIR)[1:]
 TYPESHED_DIR_PAT = '${TYPESHED_DIR}'  # followed by nothing or '/'
 TYPESHED_DIR_REPL = TYPESHED_DIR
 
 TYPESHED_FQN = TYPESHED_DIR.replace('/', '.')
 TYPESHED_FQN_PAT = '${TYPESHED_FQN}'  # followed by nothing or '.'
-TYPESHED_FQN_REPL = TYPESHED_FQN
+TYPESHED_FQN_REPL = '.' + TYPESHED_FQN
 
-BUILTINS_DIR = os.path.abspath(BUILTINS_DIR)  # [1:]
+BUILTINS_DIR = os.path.abspath(BUILTINS_DIR)[1:]
 BUILTINS_DIR_PAT = '${BUILTINS_DIR}'  # followed by nothing or '/'
 BUILTINS_DIR_REPL = BUILTINS_DIR
 
 BUILTINS_FQN = BUILTINS_DIR.replace('/', '.')
 BUILTINS_FQN_PAT = '${BUILTINS_FQN}'  # followed by nothing or '.'
-BUILTINS_FQN_REPL = BUILTINS_FQN
+BUILTINS_FQN_REPL = '.' + BUILTINS_FQN
 
 assert not FROM_DIR.endswith('/')
 assert not TO_DIR.endswith('/')

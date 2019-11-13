@@ -51,7 +51,7 @@ assert III().x == "pykythe/test_data/imports_dir/i1_sub/i4.py"
 #- { @i4_b ref I4_B }
 #- { @III ref _I4_B_III=vname("${ROOT_FQN}.test_data.imports_dir1.i1_sub.i4.III", _, _, "", python) }
 #- { @y ref _I4_B_III_Y=vname("${ROOT_FQN}.test_data.imports_dir1.i1_sub.i4.III.y", _, _, "", python) }
-#- { I4_B./pykythe/type "[module_type(module_alone('${ROOT_FQN}.test_data.imports_dir1.i1_sub.i4','${ROOT_DIR}/test_data/imports_dir1/i1_sub/i4.py'))]" }
+#- { I4_B./pykythe/type "[module_type(module_alone('${ROOT_FQN}.test_data.imports_dir1.i1_sub.i4','/${ROOT_DIR}/test_data/imports_dir1/i1_sub/i4.py'))]" }
 #- // { _I4_B_III?./pykythe/type I4_B_III_type? }  // TODO: should be here
 #- // { _I4_B_III_Y?./pykythe/type I4_B_III_Y_type? }  // TODO: should be here
 i4_b.III.y

@@ -229,13 +229,13 @@ json_read_dict_validate(KytheInputStream, FactName, Dict) :-
     my_json_read_dict(KytheInputStream, Dict),
     ensure_dict_fact(Dict, fact_name, FactName).
 
-%! json_write_dict_nl(+KytheStream:stream, +AnchorAsDict:json_dict) is det.
+%! json_write_dict_nl(+KytheStream:stream, +JsonAsDict:json_dict) is det.
 %% Output a single Kythe fact.
-json_write_dict_nl(KytheStream, AnchorAsDict) :-
+json_write_dict_nl(KytheStream, JsonAsDict) :-
     %% The tags are ignored unless option tag(type) is specified
     %% (which it isn't). All dicts should have the tag 'json', for
     %% simplicity.
-    json_write_dict(KytheStream, AnchorAsDict, [width(0)]),
+    json_write_dict(KytheStream, JsonAsDict, [width(0)]),
     nl(KytheStream).
 
 log_if(Cond, Fmt) :- log_if(Cond, Fmt, []).

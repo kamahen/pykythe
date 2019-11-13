@@ -594,7 +594,7 @@ push_to_github_setup:
 .PHONY: push_to_github
 push_to_github:
 	@# TODO: remove ../typeshed from following:
-	-grep SUBMIT $$(find tests pykythe scripts ../typeshed $(TEST_GRAMMAR_DIR) tests -type f); if [ $$? -eq 0 ]; then exit 1; fi  # DO NOT SUBMIT - uncomment this
+	-grep SUBMIT $$(find tests pykythe scripts ../typeshed $(TEST_GRAMMAR_DIR) tests -type f); if [ $$? -eq 0 ]; then exit 1; fi  # DO NOT SUBMIT - enable this test
 	cd $(TESTGITHUB)/pykythe && git pull
 	rsync -aAHX --delete --exclude .git \
 		--exclude .coverage --exclude htmlcov --exclude __pykythe__ \
@@ -672,9 +672,13 @@ run-pytype-server:
 
 ######### DO NOT SUBMIT -- underhood
 
+# Run target add-index-pykythe before doing this, to
+# set up the serving tables.
+
 # See
 #   ../underhood/production/underhood/underhood_image.nix
 #   ../underhood/treetide/underhood/ui/webpack.config.js
+# https://github.com/TreeTide/underhood
 
 run-underhood-frontend:
 	@# 8081 matches webpack.config.js
@@ -691,6 +695,7 @@ run-underhood-ui:
 
 run-underhood-all:
 	exit 1  # Better to run the following in separate terminals
+	$(MAKE) add-index-pykythe
 	$(MAKE) run-server &
 	$(MAKE) run-underhood-frontend &
 	sleep 5
