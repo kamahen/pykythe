@@ -61,18 +61,25 @@ KYTHE_GENFILES:=$(KYTHE)/bazel-genfiles
 
 BROWSE_PORT_PYKYTHE:=8080  # underhood assumes port 8080: underhood/treetide/underhood/ui/webpack.config.js
 BROWSE_PORT_PYTYPE:=8089
-# VERIFIER_EXE:=/opt/kythe/tools/verifier
+VERIFIER_EXE:=/opt/kythe/tools/verifier
 # DO NOT SUBMIT -- make this more generic:
-# TODO: Something happened with v0.0.31 or later that is incompatible
-#       with older servers (which support the UI) ... DO NOT SUBMIT
-ENTRYSTREAM_EXE:=$(HOME)/Downloads/kythe-v0.0.30/tools/entrystream
-WRITE_ENTRIES_EXE:=$(HOME)/Downloads/kythe-v0.0.30/tools/write_entries
-WRITE_TABLES_EXE:=$(HOME)/Downloads/kythe-v0.0.30/tools/write_tables
-HTTP_SERVER_EXE:=$(HOME)/Downloads/kythe-v0.0.30/tools/http_server
-HTTP_SERVER_RESOURCES:=$(HOME)/Downloads/kythe-v0.0.30/web/ui
+# Note: Something happened with v0.0.31 or later that is incompatible
+#       with older servers (which support the UI). However,
+#       the underhood server does work with the later versions.
+# ENTRYSTREAM_EXE:=$(HOME)/Downloads/kythe-v0.0.30/tools/entrystream
+# WRITE_ENTRIES_EXE:=$(HOME)/Downloads/kythe-v0.0.30/tools/write_entries
+# WRITE_TABLES_EXE:=$(HOME)/Downloads/kythe-v0.0.30/tools/write_tables
+# HTTP_SERVER_EXE:=$(HOME)/Downloads/kythe-v0.0.30/tools/http_server
+# HTTP_SERVER_RESOURCES:=$(HOME)/Downloads/kythe-v0.0.30/web/ui
+# Note: The following should contain v0.0.30 (34 doesn't work properly):
+ENTRYSTREAM_EXE:=/opt/kythe/tools/entrystream
+WRITE_ENTRIES_EXE:=/opt/kythe/tools/write_entries
+WRITE_TABLES_EXE:=/opt/kythe/tools/write_tables
+HTTP_SERVER_EXE:=/opt/kythe/tools/http_server
+HTTP_SERVER_RESOURCES:=/opt/kythe/web/ui
 
 # If Kythe built from source:
-VERIFIER_EXE:=$(KYTHE_BIN)/kythe/cxx/verifier/verifier
+# VERIFIER_EXE:=$(KYTHE_BIN)/kythe/cxx/verifier/verifier
 # ENTRYSTREAM_EXE:=$(KYTHE_BIN)/kythe/go/platform/tools/entrystream/entrystream
 # WRITE_ENTRIES_EXE:=$(KYTHE_BIN)/kythe/go/storage/tools/write_entries/write_entries
 # WRITE_TABLES_EXE:=$(KYTHE_BIN)/kythe/go/serving/tools/write_tables/write_tables
@@ -519,10 +526,10 @@ table-t8:
 
 # TODO: pre-req:  prep_server
 .PHONY: run_server run-server
+# -public_resources=$(HTTP_SERVER_RESOURCES)
 run_server run-server: # web_ui  # TODO: uncomment web_ui
 	@# This is wrong: -listen=localhost:$(BROWSE_PORT_PYKYTHE)
 	$(HTTP_SERVER_EXE) -serving_table=$(TESTOUTDIR)/tables \
-	  -public_resources=$(HTTP_SERVER_RESOURCES) \
 	  -listen=:$(BROWSE_PORT_PYKYTHE)
 	@# To view items with server running:
 	@ $(KYTHE_EXE) -api http://localhost:$(BROWSE_PORT_PYKYTHE) nodes -max_fact_size=200 'kythe://test-corpus?lang=python?root=test-root#.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.t8.III'
