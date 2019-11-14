@@ -992,8 +992,8 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, KytheJsonPath, Symtab, KytheFactsFromE
     ;  true
     ),
     log_if(true, 'Converting to Kythe protobuf'),
-    must_once(atom_concat(KytheJsonPathPrefix, KytheOutSuffix, KytheJsonPath)), % DO NOT SUBMIT - sub_atom/5
-    atomic_list_concat([KytheJsonPathPrefix, EntriesSuffix], KytheEntriesPath),
+    remove_suffix(KytheJsonPath, KytheOutSuffix, KytheJsonPathNoSuffix),
+    atomic_list_concat([KytheJsonPathNoSuffix, EntriesSuffix], KytheEntriesPath),
     write_atomic_file(write_to_protobuf(EntriesCmd, SrcPath, KytheJsonPath), KytheEntriesPath),
     log_if(true, 'Finished output ~q (~q) to ~q (~q)', [SrcPath, SrcFqn, KytheEntriesPath, KytheJsonPath]),
     !.                          % for memory usage
@@ -1012,8 +1012,6 @@ transform_kythe_fact(json{source:Source0, fact_name:'/', edge_kind:EdgeKind, tar
                      json{source:Source1, fact_name:'/', edge_kind:EdgeKind, target:Target1}) :- !,
     transform_kythe_vname(Source0, Source1),
     transform_kythe_vname(Target0, Target1).
-%% transform_kythe_fact(msg{text: Msg},  %% DO NOT SUBMIT -- shouldn't appear
-%%                      msg{text: Msg}) :- !.
 transform_kythe_fact(Fact, Fact) :-
     domain_error(json, Fact).
 
@@ -1316,7 +1314,7 @@ symtab_pykythe_types(Symtab) -->>
 %! add_kyfact_types(+Prefix, +Fqn-Type:pair)//[kyfact,file_meta] is det.
 %% Generate kyfact if its FQN (in symtab) starts with Prefix
 add_kyfact_types(Prefix, Fqn-Type) -->>
-    (  { atom_concat(Prefix, _Fqn2, Fqn) } % DO NOT SUBMIT - use sub_atom/5
+    (  { has_prefix(Fqn, Prefix) }
        %% If we don't want the builtins, do this test:
        %%   builtins_pairs(BuiltinsPairs), % inefficient - should use a dict
        %%   \+ memberchk(Fqn2-_, BuiltinsPairs),
@@ -2092,7 +2090,7 @@ kyanchor(Start, End, Source) -->>
     Meta/file_meta,             % TODO: delete
     { Len is End - Start },
     { must_once(sub_string(Meta.contents, Start, Len, _, Token)) },
-    { anchor_signature(Start, End, Token, Signature) },
+    { anchor_signature_str(Start, End, Token, Signature) },
     signature_source(Signature, Source),
     %% https://github.com/kythe/kythe/issues/1725
     %% - there is no need to generate kyedge(Source, '/kythe/edge/childof', json{path: Meta.path})
@@ -2100,11 +2098,11 @@ kyanchor(Start, End, Source) -->>
     kyfact(Source, '/kythe/loc/start', Start),
     kyfact(Source, '/kythe/loc/end', End).
 
-anchor_signature(Start, End, Token, Signature) :-
+anchor_signature_str(Start, End, Token, Signature) :-
     format(atom(Signature), '@~d:~d<~w>', [Start, End, Token]).
 
-anchor_signature('Astn'{start:Start, end:End, value:Token}, Signature) :-
-    anchor_signature(Start, End, Token, Signature).
+anchor_signature_str('Astn'{start:Start, end:End, value:Token}, Signature) :-
+    anchor_signature_str(Start, End, Token, Signature).
 
 %! kyedge_fqn(+Source:dict, +EdgeKind:atom, +Fqn:atom)//[kyfact,file_meta] is det.
 %% High-level create a Kythe edge fact to a target identified by an
@@ -2897,7 +2895,7 @@ possible_class_from_attr(SymRej, AttrName, Type) :-
     \+ common_attr(AttrName),
     atomic_list_concat(['.', AttrName], DotAttrName),
     symtab_lookup_raw(SymRej, Fqn, _), % backtracks over symtab
-    atom_concat(ClassFqn, DotAttrName, Fqn), % DO NOT SUBMIT - sub_atom/5
+    remove_suffix(Fqn, DotAttrName, ClassFqn),
     %% There are some corner cases that the following doesn't handle,
     %% such as a class defined within a function but they're rare:
     \+ sub_atom(ClassFqn, _, _, _, '<'), % doesn't contain '<local>', '<comp_for>', etc.
@@ -2936,7 +2934,6 @@ class_no_base(X, X).
 %% (e.g., can't resolve a name).
 log_kyfact_msg(Fmt, Args) -->>
     { format(string(LogMsg), Fmt, Args) },
-    %% { log_if(true, '**** ~w', [LogMsg]) },  %% DO NOT SUBMIT - delete
     [ msg{text: LogMsg} ]:kyfact.
 
 %! common_attr(?AttrName) is semidet.
@@ -3212,10 +3209,10 @@ symtab_if_file(Msg) -->>
 %% If Fqn has Prefix as a prefix, and the result isn't in the builtins,
 %% return the de-prefixed FQN with its type.
 starts_with_fqn_type(Prefix, Fqn-Type, Fqn2-Type) :-
-    (  atom_concat(Prefix, Fqn2a, Fqn) % DO NOT SUBMIT - use sub_atom/5
+    (  remove_prefix(Fqn, Prefix, Fqn2a)
     -> join_fqn(['<>', Fqn2a], Fqn2)
     %% For debugging, the following can be used to show additional symtab entries:
-    %% ;  atom_concat('.home.peter.src.typeshed.stdlib.2and3.lib2to3.', Fqn2a, Fqn), % DO NOT SUBMIT - use sub_atom/5
+    %% ;  remove_prefix(Fqn, '.home.peter.src.typeshed.stdlib.2and3.lib2to3.', Fqn2a)
     %%    join_fqn(['<lib2to3>', Fqn2a], Fqn2)
     ),
     builtins_pairs(BuiltinsPairs), % TODO: this is inefficient.
@@ -3306,18 +3303,17 @@ test(kyImportDottedAsNamesFqn_top) :-
     %% Module_os_path_sep = module_and_token('___.typeshed.stdlib.3.os.path',
     %%                                       '___/typeshed/stdlib/3/os/path.pyi', sep)
     full_module_part(Module_os_path_sep, ModuleModule_os_path_sep),
-    atom_concat(TypeshedFqn, '.stdlib.3.os.path.sep', ModuleModule_os_path_sep), % DO NOT SUBMIT - sub_atom/5
-    assertion(atom_concat(TypeshedFqn, '.stdlib.3.os.path.sep', ModuleModule_os_path_sep)), % DO NOT SUBMIT - sub_atom/5
-    assertion(atom_concat(_, '.typeshed', TypeshedFqn)),
+    remove_suffix(ModuleModule_os_path_sep, '.stdlib.3.os.path.sep', TypeshedFqn),
+    assertion(has_suffix(TypeshedFqn, '.typeshed')),
     assertion(token_part(Module_os_path_sep, sep)),
 
     %% Module_os_path = module_alone('___.typeshed.stdlib.3.os.path', '___/typeshed/stdlib/3/os/path.pyi')
     full_module_part(Module_os_path, ModuleModule_os_path),
-    assertion(atom_concat(TypeshedFqn, '.stdlib.3.os.path', ModuleModule_os_path)),
+    assertion(atomic_list_concat([TypeshedFqn, '.stdlib.3.os.path'], ModuleModule_os_path)),
 
     %% Module_os = module_alone('___.typeshed.stdlib.3.os', '___/typeshed/stdlib/3/os/__init__.pyi')
     full_module_part(Module_os, ModuleModule_os),
-    assertion(atom_concat(TypeshedFqn, '.stdlib.3.os', ModuleModule_os)),
+    assertion(atomic_list_concat([TypeshedFqn, '.stdlib.3.os'], ModuleModule_os)),
 
     _FromDots = [],
     DottedNameItems = ['NameRawNode'{name:OsAstn}, 'NameRawNode'{name:PathAstn}, 'NameRawNode'{name:SepAstn}],
@@ -3329,7 +3325,7 @@ test(kyImportDottedAsNamesFqn_top) :-
 
     convset(kyfact_edge('/kythe/edge/ref/imports',     imports), KyFactsAll, KyFactsImports),
     convset(kyfact_edge('/kythe/edge/defines/binding', binding), KyFactsAll, KyFactsBinding),
-    maplist(anchor_signature, [OsAstn, PathAstn, SepAstn], [OsSig, PathSig, SepSig]),
+    maplist(anchor_signature_str, [OsAstn, PathAstn, SepAstn], [OsSig, PathSig, SepSig]),
     assertion(KyFactsImports == [imports{source:OsSig,   target:ModuleModule_os},
                                  imports{source:PathSig, target:ModuleModule_os_path},
                                  imports{source:SepSig,  target:ModuleModule_os_path_sep}]),
@@ -3345,8 +3341,9 @@ test(kyImportDottedAsNamesFqn_top) :-
     %% The following ("dummy_dir.dummy") depends on the source file
     %% specified when running the tests.
     %% See Makefile rule pykythe_test.
-    assertion(atom_concat(_, '.pykythe.test_data.dummy_dir.dummy_file.os', OsVar)),
-    assertion(KyFactsBinding == [binding{source:'@7:9<os>',  %% OsAstn, DO NOT SUBMIT
+    assertion(has_suffix(OsVar, '.pykythe.test_data.dummy_dir.dummy_file.os')),
+    anchor_signature_str(OsAstn, OsSignature),
+    assertion(KyFactsBinding == [binding{source:OsSignature,
                                  target:OsVar}]),
     assertion([] == KytheFacts),
     assertion(Exprs == [assign_import{binds_fqn:BindsFqn,
@@ -3374,11 +3371,11 @@ test(kyImportDottedAsNamesFqn_as) :-
 
     %% Module_os_path = module_alone('___.typeshed.stdlib.3.os.path', '___/typeshed/stdlib/3/os/path.pyi')
     full_module_part(Module_os_path, ModuleModule_os_path),
-    assertion(atom_concat(TypeshedFqn, '.stdlib.3.os.path', ModuleModule_os_path)),
+    assertion(has_suffix(ModuleModule_os_path, '.stdlib.3.os.path')),
 
     %% Module_os = module_alone('___.typeshed.stdlib.3.os', '___/typeshed/stdlib/3/os/__init__.pyi')
     full_module_part(Module_os, ModuleModule_os),
-    assertion(atom_concat(TypeshedFqn, '.stdlib.3.os', ModuleModule_os)),
+    assertion(has_suffix(ModuleModule_os, '.stdlib.3.os')),
 
     FromDots = [],
     DottedNameItems = ['NameRawNode'{name:OsAstn}, 'NameRawNode'{name:PathAstn}],
@@ -3390,7 +3387,7 @@ test(kyImportDottedAsNamesFqn_as) :-
 
     convset(kyfact_edge('/kythe/edge/ref/imports',     imports), KyFactsAll, KyFactsImports),
     convset(kyfact_edge('/kythe/edge/defines/binding', binding), KyFactsAll, KyFactsBinding),
-    maplist(anchor_signature, [OsAstn, PathAstn, OsPathAstn], [OsSig, PathSig, OsPathSig]),
+    maplist(anchor_signature_str, [OsAstn, PathAstn, OsPathAstn], [OsSig, PathSig, OsPathSig]),
     assertion(KyFactsImports == [imports{source:OsSig,     target:ModuleModule_os},
                                  imports{source:PathSig,   target:ModuleModule_os_path},
                                  imports{source:OsPathSig, target:ModuleModule_os_path}]),
@@ -3405,9 +3402,9 @@ test(kyImportDottedAsNamesFqn_as) :-
     %% The following ("dummy_dir.dummy_file.os_path") depends on the
     %% source file specified when running the tests.
     %% See Makefile rule pykythe_test.
-    assertion(atom_concat(_, '.pykythe.test_data.dummy_dir.dummy_file.os_path', OsPathVar)),
+    assertion(has_suffix(OsPathVar, '.pykythe.test_data.dummy_dir.dummy_file.os_path')),
     assertion(KyFactsBinding == [binding{source:OsPathSig,
-                                 target:OsPathVar}]),
+                                         target:OsPathVar}]),
     assertion([] == KytheFacts),
     assertion(Exprs == [assign_import{binds_fqn:BindsFqn,
                                       module_and_maybe_token:Module_os_path,

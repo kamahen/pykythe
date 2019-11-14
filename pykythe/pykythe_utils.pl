@@ -18,6 +18,8 @@
                           ensure_dict_fact_base64/3,
                           get_dict_default/4,
                           hash_hex/2,
+                          has_prefix/2,
+                          has_suffix/2,
                           json_read_dict_validate/3,
                           json_write_dict_nl/2,
                           log_if/2,
@@ -27,6 +29,9 @@
                           opt/2,
                           opts/2,
                           print_term_cleaned/3,
+                          remove_suffix_star/3,
+                          remove_prefix/3,
+                          remove_suffix/3,
                           remove_suffix_star/3,
                           safe_delete_file/1,
                           split_atom/4,
@@ -299,8 +304,8 @@ print_term_cleaned(Term, Options, TermStr) :-
 %! remove_suffix_star(+Full:atom, +Suffix:atom, -NoSuffix:atom) is det.
 %% Repeatedly removes suffix if present.
 remove_suffix_star(Full, Suffix, NoSuffix) :-
-    (  atom_concat(Full1, Suffix, Full) % DO NOT SUBMIT - sub_atom/5
-    -> remove_suffix_star(Full1, Suffix, NoSuffix)
+    (  remove_suffix(Full, Suffix, NoSuffix0)
+    -> remove_suffix_star(NoSuffix0, Suffix, NoSuffix)
     ;  NoSuffix = Full
     ).
 
@@ -451,3 +456,22 @@ write_atomic_file(WritePred, Path) :-
     ;  pykythe_utils:safe_delete_file(TmpPath),
        fail
     ).
+
+%! remove_suffix(+Atom, +Suffix, -FirstPart) is semidet.
+remove_suffix(Atom, Suffix, FirstPart) :-
+    %% TODO: compare with:
+    %%       sub_atom(Atom, Before, _, 0, Suffix),
+    %%       Before0 is Before - 1,
+    %%       sub_atom(Atom, 0, Before0, _, FirstPart)
+    atom_concat(FirstPart, Suffix, Atom).
+
+%! remove_prefix(+Atom, +Prefix, -SecondPart) is semidet.
+remove_prefix(Atom, Prefix, SecondPart) :-
+    sub_atom(Atom, 0, Len, After, Prefix),
+    sub_atom(Atom, Len, After, 0, SecondPart).
+
+has_suffix(Atom, Suffix) :-
+    sub_atom(Atom, _, _, 0, Suffix).
+
+has_prefix(Atom, Prefix) :-
+    sub_atom(Atom, 0, _, _, Prefix).
