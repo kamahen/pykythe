@@ -61,7 +61,8 @@ KYTHE_GENFILES:=$(KYTHE)/bazel-genfiles
 
 BROWSE_PORT_PYKYTHE:=8080  # underhood assumes port 8080: underhood/treetide/underhood/ui/webpack.config.js
 BROWSE_PORT_PYTYPE:=8089
-VERIFIER_EXE:=/opt/kythe/tools/verifier
+# (VERIFIER_EXE is defined below, using the version built from source)
+# VERIFIER_EXE:=/opt/kythe/tools/verifier
 # DO NOT SUBMIT -- make this more generic:
 # Note: Something happened with v0.0.31 or later that is incompatible
 #       with older servers (which support the UI). However,
@@ -79,7 +80,7 @@ HTTP_SERVER_EXE:=/opt/kythe/tools/http_server
 HTTP_SERVER_RESOURCES:=/opt/kythe/web/ui
 
 # If Kythe built from source:
-# VERIFIER_EXE:=$(KYTHE_BIN)/kythe/cxx/verifier/verifier
+VERIFIER_EXE:=$(KYTHE_BIN)/kythe/cxx/verifier/verifier
 # ENTRYSTREAM_EXE:=$(KYTHE_BIN)/kythe/go/platform/tools/entrystream/entrystream
 # WRITE_ENTRIES_EXE:=$(KYTHE_BIN)/kythe/go/storage/tools/write_entries/write_entries
 # WRITE_TABLES_EXE:=$(KYTHE_BIN)/kythe/go/serving/tools/write_tables/write_tables
@@ -400,7 +401,7 @@ test_python_lib: # Also does some other source files I have lying around
 
 .PHONY: test_single_src
 # This is an example of running on a single source
-SINGLE_SRC=/usr/lib/python3.7/lib2to3/fixer_util.py
+SINGLE_SRC=/usr/lib/python3.7/multiprocessing/connection.py
 test_single_src:
 	$(MAKE) $(PYKYTHE_EXE) $(BUILTINS_SYMTAB_FILE)
 	$(TIME) $(PYKYTHE_EXE) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) $(SINGLE_SRC)
@@ -513,9 +514,9 @@ add-index-pykythe: \
 	set -o pipefail; \
 	    cat $$(find $(KYTHEOUTDIR) -name '*.kythe.json') | \
 	    egrep -v '^{"fact_name":"/pykythe/symtab"' | \
-	    $(ENTRYSTREAM_EXE) --read_format=json | \
-	    $(WRITE_ENTRIES_EXE) -graphstore $(TESTOUTDIR)/graphstore
-	$(WRITE_TABLES_EXE) -graphstore=$(TESTOUTDIR)/graphstore -out=$(TESTOUTDIR)/tables
+	    time $(ENTRYSTREAM_EXE) --read_format=json | \
+	    time $(WRITE_ENTRIES_EXE) -graphstore $(TESTOUTDIR)/graphstore
+	time $(WRITE_TABLES_EXE) -graphstore=$(TESTOUTDIR)/graphstore -out=$(TESTOUTDIR)/tables
 	@# To view items without server running:
 	@ $(KYTHE_EXE) -api /tmp/pykythe_test/tables nodes -max_fact_size=200 'kythe://test-corpus?lang=python?root=test-root#.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.t8.III'
 
@@ -701,7 +702,7 @@ run-underhood-ui:
 	@# View UI at http://localhost:9000
 
 run-underhood-all:
-	exit 1  # Better to run the following in separate terminals
+	# exit 1  # Better to run the following in separate terminals, for easier cleanup.
 	$(MAKE) add-index-pykythe
 	$(MAKE) run-server &
 	$(MAKE) run-underhood-frontend &

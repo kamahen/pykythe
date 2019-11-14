@@ -275,3 +275,19 @@ testDictFor()
 #- @testListFor ref TestListFor
 testListFor()
 testGexpFor()
+
+
+def test_global_import():
+    #- // TODO: should the following be 'ref' or 'defines/binding'?
+    #- { @foo_sep ref G_foo_sep=vname("${ROOT_FQN}.test_data.bindings.foo_sep", _, _, "", python) }
+    global foo_sep
+    #- { @foo_sep defines/binding G_foo_sep }
+    #- { @foo_sep ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
+    from os.path import sep as foo_sep
+
+    #- // TODO: should the following be 'ref' or 'defines/binding'?
+    #- { @foo_sep2 ref G_foo_sep2=vname("${ROOT_FQN}.test_data.bindings.foo_sep2", _, _, "", python) }
+    global foo_sep2
+    #- { @foo_sep2 defines/binding G_foo_sep2 }
+    #- { @foo_sep2 ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
+    import os.path.sep as foo_sep2

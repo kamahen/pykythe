@@ -307,6 +307,7 @@
                   kyImportDottedAsNamesFqn/7,
                   kyImportDottedAsNamesFqn_top/8,
                   kyImportDottedAsNamesFqn_as/9,
+                  kyImportDottedAsNamesFqn_as_unknown/9,
                   kyImportDottedAsNamesFqn_from_part/8,
                   kyImportDottedAsNamesFqn_from_part2/9,
                   kyImportFromStmt/9,
@@ -467,6 +468,7 @@ edcg:pred_info(expr_normalized, 1,                     [kyfact,expr,file_meta]).
 edcg:pred_info(import_from, 1,                         [kyfact,expr,file_meta]).
 edcg:pred_info(kyImportDottedAsNamesFqn, 2,            [kyfact,expr,file_meta]).
 edcg:pred_info(kyImportDottedAsNamesFqn_as, 4,         [kyfact,expr,file_meta]).
+edcg:pred_info(kyImportDottedAsNamesFqn_as_unknown, 4, [kyfact,expr,file_meta]).
 edcg:pred_info(kyImportDottedAsNamesFqn_from_dots, 4,  [kyfact,expr,file_meta]).
 edcg:pred_info(kyImportDottedAsNamesFqn_from_part, 3,  [kyfact,expr,file_meta]).
 edcg:pred_info(kyImportDottedAsNamesFqn_from_part2, 4, [kyfact,expr,file_meta]).
@@ -932,7 +934,11 @@ process_module_from_src_impl(Opts, KytheJsonPath, SrcPath, SrcFqn, Symtab0, Symt
            'Processing from source ~q (output: ~q) for ~q ~w', [SrcPath, KytheJsonPath, SrcFqn, Stats0]),
     parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes),
     process_nodes(Nodes, src{src_fqn: Meta.src_fqn, src_path: Meta.path},
-                  KytheFactsFromNodes, Exprs, Meta),
+                  KytheFactsFromNodes0, Exprs, Meta),
+    %% DO NOT SUBMIT -- why does the following log_kythe_fact_msgs need to be
+    %%                  done here? -- if it isn't done, then an empty(?)
+    %%                  fact gets given to verifier
+    log_kythe_fact_msgs(KytheFactsFromNodes0, KytheFactsFromNodes),
     modules_in_exprs(Exprs, ModulesInExprs),
     log_if(trace_file(SrcPath),
            'MODULES_IN_EXPRS: ~q', [[ModulesInExprs, src=SrcPath, SrcFqn]]),
@@ -1006,6 +1012,8 @@ transform_kythe_fact(json{source:Source0, fact_name:'/', edge_kind:EdgeKind, tar
                      json{source:Source1, fact_name:'/', edge_kind:EdgeKind, target:Target1}) :- !,
     transform_kythe_vname(Source0, Source1),
     transform_kythe_vname(Target0, Target1).
+%% transform_kythe_fact(msg{text: Msg},  %% DO NOT SUBMIT -- shouldn't appear
+%%                      msg{text: Msg}) :- !.
 transform_kythe_fact(Fact, Fact) :-
     domain_error(json, Fact).
 
@@ -1854,7 +1862,6 @@ kyImportDottedAsNamesFqn('ImportDottedFqn'{
     %% BindsFqn is just the "top name" (e.g., "${FQN}.os" for
     %% "os.path") so don't need to do anything special for it.
     kyImportDottedAsNamesFqn_top(DottedNameItems, BindsFqn, BindsNameAstn).
-
 kyImportDottedAsNamesFqn('ImportDottedAsNameFqn'{
                              dotted_name: 'DottedNameNode'{items: DottedNameItems},
                              as_name: 'NameBindsFqn'{fqn: BindsFqn, name: BindsNameAstn}},
@@ -1862,6 +1869,13 @@ kyImportDottedAsNamesFqn('ImportDottedAsNameFqn'{
     %% From "import foo as baz" or "import foo.bar as baz"
     kyImportDottedAsNamesFqn_as([], % FromDots
                                 DottedNameItems, BindsFqn, BindsNameAstn).
+kyImportDottedAsNamesFqn('ImportDottedAsNameFqn'{
+                             dotted_name: 'DottedNameNode'{items: DottedNameItems},
+                             as_name: 'NameBindsUnknown'{fqn_scope: FqnScope, name: BindsNameAstn}},
+                         unused_import('ImportDottedAsNameFqn',BindsNameAstn:FqnScope)) -->>
+    %% From "global baz; import foo as baz" or "global baz; import foo.bar as baz"
+    kyImportDottedAsNamesFqn_as_unknown([], % FromDots
+                                        DottedNameItems, FqnScope, BindsNameAstn).
 
 %! kyImportFromStmt(+FromDots:list, +FromName, +AsNameNode, +ImportPart)//[kyfact,expr,file_meta] is det.
 %% Corresponds to a single item of `import_from`: "from ... import ..."
@@ -1889,6 +1903,15 @@ kyImportFromStmt(FromDots,
     { append(DottedNameItems, [RawNameAstn], DottedNameItemsComb) -> true ; fail, DottedNameItemsComb = '***' },
     kyImportDottedAsNamesFqn_as(FromDots,
                                 DottedNameItemsComb, BindsFqn, AsNameAstn).
+kyImportFromStmt(FromDots,
+                 'DottedNameNode'{items:DottedNameItems},
+                 'AsNameNode'{name:RawNameAstn, % 'NameRawNode'{name:NameAstn},
+                              as_name:'NameBindsUnknown'{fqn_scope: FqnScope, name: AsNameAstn}},
+                 unused_import('AsNameNode',AsNameAstn)) -->>
+    %% From "global zot; from foo import baz as zot" and many variations
+    { append(DottedNameItems, [RawNameAstn], DottedNameItemsComb) -> true ; fail, DottedNameItemsComb = '***' },
+    kyImportDottedAsNamesFqn_as_unknown(FromDots,
+                                        DottedNameItemsComb, FqnScope, AsNameAstn).
 
 %%! kyImportDottedAsNamesFqn_top(+DottedNameItems:list, +BindsFqn:atom, +BindsNameAstn:astn)//[kyfact,expr,file_meta] is det.
 kyImportDottedAsNamesFqn_top(DottedNameItems, BindsFqn, BindsNameAstn) -->>
@@ -1924,6 +1947,23 @@ kyImportDottedAsNamesFqn_as(FromDots, DottedNameItems, BindsFqn, BindsNameAstn) 
                                    modules_to_import: ModulesAndMaybeTokenToImport
                                   } },
     kyanchor_node_kyedge_fqn(BindsNameAstn, '/kythe/edge/defines/binding', BindsFqn),
+    [ AssignImport ]:expr.
+
+%%! kyImportDottedAsNamesFqn_as_unknown(+FromDots, +DottedNameItems:list, +FqnScope:atom, +BindsNameAstn:astn)//[kyfact,expr,file_meta] is det.
+kyImportDottedAsNamesFqn_as_unknown(FromDots, DottedNameItems, FqnScope, BindsNameAstn) -->>
+    %% TODO: this is cut&paste from kyImportDottedAsNamesFqn_as//4 - refactor
+    %%       the common part
+    kyImportDottedAsNamesFqn_from_part(DottedNameItems, FromDots, ModulesAndMaybeTokenToImport),
+    { node_astn(BindsNameAstn, Start, End, _) },
+    { last(ModulesAndMaybeTokenToImport, FMP) },
+    { full_module_part(FMP, FMPname) },
+    kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref/imports', FMPname),
+    { AssignImport = assign_import_unknown{fqn_scope: FqnScope,
+                                           binds_astn: BindsNameAstn,
+                                           module_and_maybe_token: FMP,
+                                           modules_to_import: ModulesAndMaybeTokenToImport
+                                          } },
+    %% /kythe/edge/defines/binding will be added in eval_single_type//2.
     [ AssignImport ]:expr.
 
 %%! kyImportDottedAsNamesFqn_from_part(+NameItems:list, +FromDots:list, -ModulesAndMaybeTokenToImport:list)//[kyfact,expr,file_meta] is det.
@@ -2247,6 +2287,15 @@ eval_assign_expr(assign_import{binds_fqn: BindsFqn,
     %% foldl_process_module_cached_or_from_src/5 in
     %% maybe_process_module_cached_impl/7).
     maplist_kyfact_symrej(eval_assign_import, ModulesAndMaybeToken).
+eval_assign_expr(assign_import_unknown{fqn_scope: FqnScope,
+                                       binds_astn: BindsNameAstn,
+                                       module_and_maybe_token: _ModuleAndMaybeToken,
+                                       modules_to_import: ModulesAndMaybeToken
+                                      }) -->>
+    !,
+    maplist_kyfact_symrej(eval_assign_import, ModulesAndMaybeToken),
+    resolve_unknown_fqn(FqnScope, BindsNameAstn, ResolvedBindsFqn, _Type),
+    kyanchor_node_kyedge_fqn(BindsNameAstn, '/kythe/edge/defines/binding', ResolvedBindsFqn).
 eval_assign_expr(Expr) -->> !,  % catch-all
     eval_single_type(Expr, _).
 
@@ -2467,6 +2516,7 @@ eval_single_type(dot_op(Atom, AttrAstn), EvalType) -->> !,
        %% we'll also get other common types such as 'str' by looking
        %% in there.
        { AttrAstn = astn(Start, End, AttrName) },
+       %% TODO: special handling of super().__init__ (see test_data/c3_a.py)
        possible_classes_from_attr(AttrName, Classes),
        log_possible_classes_from_attr('ref', AttrAstn, Classes),
        kyanchor(Start, End, Source),
@@ -2881,11 +2931,12 @@ class_no_base(import_ref_type(_Name, _Fqn, Type), TypeNoBase) :- !,
 class_no_base(X, X).
 
 %! log_kyfact_msg(+Fmt, +Args)//kyfact,file_meta] is det.
-%% Add a message to the kyfact accumulator. This is for messages that
-%% mnight appear on one pass but not on a later pass (e.g., can't
-%% resolve a name).
+%% Add a message to the kyfact accumulator. This is to ensure that
+%% messages that might appear on one pass but not on a later pass
+%% (e.g., can't resolve a name).
 log_kyfact_msg(Fmt, Args) -->>
     { format(string(LogMsg), Fmt, Args) },
+    %% { log_if(true, '**** ~w', [LogMsg]) },  %% DO NOT SUBMIT - delete
     [ msg{text: LogMsg} ]:kyfact.
 
 %! common_attr(?AttrName) is semidet.

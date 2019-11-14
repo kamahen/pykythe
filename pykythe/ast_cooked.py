@@ -939,7 +939,7 @@ class ImportDottedAsNameFqn(Base):
     """
 
     dotted_name: DottedNameNode
-    as_name: 'NameBindsFqn'
+    as_name: Union['NameBindsFqn', 'NamesBindsUnknown']
     __slots__ = ['dotted_name', 'as_name']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
@@ -959,7 +959,9 @@ class ImportDottedAsNameNode(Base):
     def add_fqns(self, ctx: FqnCtx) -> Base:
         dotted_name = xcast(DottedNameNode, self.dotted_name.add_fqns(ctx))
         if self.as_name:
-            top_name = xcast(NameBindsFqn, self.as_name.add_fqns(ctx))
+            # top_name = xcast(Union[NameBindsFqn, NameBindsUnknown], self.as_name.add_fqns(ctx))
+            top_name = self.as_name.add_fqns(ctx)
+            assert isinstance(top_name, (NameBindsFqn, NameBindsUnknown))
             return ImportDottedAsNameFqn(dotted_name=dotted_name, as_name=top_name)
         else:
             top_name = xcast(NameBindsFqn,
@@ -1005,7 +1007,7 @@ class ImportDottedFqn(Base):
     """
 
     dotted_name: DottedNameNode
-    top_name: 'NameBindsFqn'
+    top_name: 'NameBindsFqn, NameBindsUnknown'
     __slots__ = ['dotted_name', 'top_name']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
