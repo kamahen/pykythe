@@ -41,6 +41,11 @@ out (on Linux):
 
 * `git clone https://github.com/google/kythe.git`
 
+* `git submodule update --init --recursive`
+  * You should do this each time you do `git pull` on the `pykythe`
+    respository. (You can make this automatic by:
+    `git config --global alias.update '!git pull && git submodule update --init --recursive'`)
+
 * Follow the instructions for building `kythe` (including installing
   Bazel).
 

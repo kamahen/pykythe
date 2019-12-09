@@ -53,6 +53,7 @@ COVERAGE:=$(shell type -p coverage)      # /usr/local/bin/coverage
 # For running parallel(1) - by experiment this works (2x the number of CPUs)
 # (larger numbers smooth things out for processing large/small source files):
 NPROC:=$(shell expr $$(nproc) \* 2)
+NPROC_BAZEL:=$(shell expr $$(nproc))
 
 # stuff for running tests (see https://kythe.io/docs/kythe-verifier.html)
 KYTHE:=../kythe
@@ -112,7 +113,7 @@ ENTRIESCMD_OPT:=--entriescmd=$(ENTRYSTREAM_EXE)
 #            of the form "pykythe.test_data.___"
 #            (see also fix_for_verifier.py and ${ROOT_DIR} etc. substitutions
 PWD_REAL:=$(abspath .)
-TYPESHED_REAL:=$(abspath ../typeshed)
+TYPESHED_REAL:=$(abspath ./typeshed)
 SUBSTDIR:=$(TESTOUTDIR)/SUBST
 KYTHEOUTDIR:=$(TESTOUTDIR)/KYTHE
 BUILTINS_SYMTAB_FILE:=$(TESTOUTDIR)/KYTHE/builtins_symtab.pl
@@ -139,8 +140,8 @@ else
     BATCH_OPT:=--batch_suffix='-batch-$(BATCH_ID)'
 endif
 # TODO: parameterize following for python3.6, etc.:
-PYTHONPATH_OPT:=--pythonpath='$(PYTHONPATH_DOT):$(PYTHONPATH_BUILTINS):../typeshed/stdlib/3.7:../typeshed/stdlib/3:../typeshed/stdlib/2and3:/usr/lib/python3.7'
-PYTHONPATH_OPT_NO_SUBST:=--pythonpath='$(PYTHONPATH_DOT):../typeshed/stdlib/3.7:../typeshed/stdlib/3:../typeshed/stdlib/2and3:/usr/lib/python3.7'
+PYTHONPATH_OPT:=--pythonpath='$(PYTHONPATH_DOT):$(PYTHONPATH_BUILTINS):$(TYPESHED_REAL)/stdlib/3.7:$(TYPESHED_REAL)/stdlib/3:$(TYPESHED_REAL)/stdlib/2and3:/usr/lib/python3.7'
+PYTHONPATH_OPT_NO_SUBST:=--pythonpath='$(PYTHONPATH_DOT):$(TYPESHED_REAL)/stdlib/3.7:$(TYPESHED_REAL)/stdlib/3:$(TYPESHED_REAL)/stdlib/2and3:/usr/lib/python3.7'
 PYKYTHE_OPTS0=$(VERSION_OPT) $(BATCH_OPT) \
 	--builtins_symtab=$(BUILTINS_SYMTAB_FILE) \
 	$(PYKYTHEOUT_OPT) $(PARSECMD_OPT) $(ENTRIESCMD_OPT) $(KYTHE_CORPUS_ROOT_OPT)
@@ -177,7 +178,7 @@ $(SUBSTDIR_PWD_REAL)/%: % scripts/fix_for_verifier.py
 	@#       *.py files all processed, but for some reason
 	@#       some __init__.py files aren't (or maybe only pykythe/__init__.py)
 	@# for i in $$(find $(SUBSTDIR_PWD_REAL) -type d); do touch "$$i/__init__.py"; done
-	@$(PYTHON3_EXE) scripts/fix_for_verifier.py "${VERSION}" "$(TEST_GRAMMAR_DIR)" "$(SUBSTDIR)$(abspath $(TEST_GRAMMAR_DIR))" "$(abspath ../typeshed)" "$(PYTHONPATH_BUILTINS)" \
+	@$(PYTHON3_EXE) scripts/fix_for_verifier.py "${VERSION}" "$(TEST_GRAMMAR_DIR)" "$(SUBSTDIR)$(abspath $(TEST_GRAMMAR_DIR))" "$(TYPESHED_REAL)" "$(PYTHONPATH_BUILTINS)" \
 		"$(abspath $<)" "$@"
 
 ########
@@ -354,7 +355,7 @@ test_c3_a:  # run c3_a, to ensure it behaves as expected
 test_grammar: $(TESTOUT_TARGETS) # TODO: test_grammar2
 
 # TODO: The following needs something like this added to TESTOUT_SRCS:
-#        abspath ../typeshed/stdlib/3/builtins.pyi
+#        abspath ./typeshed/stdlib/3/builtins.pyi
 
 .PHONY: test_grammar2
 test_grammar2: $(TESTOUT_TYPESHED)/stdlib/3/builtins.kythe.json
@@ -392,7 +393,7 @@ test_python_lib: # Also does some other source files I have lying around
 	@# TODO: use annotate-output (from package devscripts) to add the timestamps
 	@#       and remove the timestamps from pykytype's logging.
 	set -o pipefail; \
-	find /usr/lib/python3.7 ../mypy ../pytype ../yapf ../importlab ../kythe ../typeshed . \
+	find /usr/lib/python3.7 ../mypy ../pytype ../yapf ../importlab ../kythe ./typeshed . \
 	  -name '*.py' -o -name '*.pyi' | sort | \
 	  parallel -v --will-cite --keep-order --group -P0 -L80 -j$(NPROC) \
 	  --joblog=$(TESTOUTDIR)/joblog-$$(date +%Y-%m-%d-%H-%M) \
@@ -518,7 +519,8 @@ add-index-pykythe: \
 	    time $(WRITE_ENTRIES_EXE) -graphstore $(TESTOUTDIR)/graphstore
 	time $(WRITE_TABLES_EXE) -graphstore=$(TESTOUTDIR)/graphstore -out=$(TESTOUTDIR)/tables
 	@# To view items without server running:
-	@ $(KYTHE_EXE) -api /tmp/pykythe_test/tables nodes -max_fact_size=200 'kythe://test-corpus?lang=python?root=test-root#.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.t8.III'
+	@ # $(KYTHE_EXE) -api /tmp/pykythe_test/tables nodes -max_fact_size=200 'kythe://test-corpus?lang=python?root=test-root#.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.t8.III'
+	@ # https://kythe.io/docs/kythes-command-line-tool.html
 
 .PHONY: table-t8
 table-t8:
@@ -544,9 +546,9 @@ kythe-kythe:
 build_kythe build-kythe:
 	cd ../kythe && git remote show origin && git pull --recurse-submodules
 	-# cd ../kythe && git pull --recurse-submodules
-	cd ../kythe && nice bazel build --jobs=3 @local_config_cc//:toolchain
-	cd ../kythe && nice bazel build --jobs=3 //...
-	cd ../kythe && nice bazel test -k --jobs=3 //...
+	cd ../kythe && nice bazel build --jobs=$(NPROC_BAZEL) @local_config_cc//:toolchain
+	cd ../kythe && nice bazel build --jobs=$(NPROC_BAZEL) //...
+	cd ../kythe && nice bazel test -k --jobs=$(NPROC_BAZEL) //...
 	cd ../kythe && LEIN_JAVA_CMD=/usr/lib/jvm/java-8-openjdk-amd64/bin/java nice bazel build //kythe/web/ui
 	cd ../kythe && bazel shutdown
 
@@ -601,14 +603,14 @@ push_to_github_setup:
 
 .PHONY: push_to_github
 push_to_github:
-	@# TODO: remove ../typeshed from following:
-	-grep SUBMIT $$(find tests pykythe scripts ../typeshed $(TEST_GRAMMAR_DIR) tests -type f); if [ $$? -eq 0 ]; then exit 1; fi  # DO NOT SUBMIT - enable this test
+	@# TODO: remove ./typeshed from following:
+	-grep SUBMIT $$(find tests pykythe scripts ./typeshed $(TEST_GRAMMAR_DIR) tests -type f); if [ $$? -eq 0 ]; then exit 1; fi  # DO NOT SUBMIT - enable this test
 	cd $(TESTGITHUB)/pykythe && git pull
 	rsync -aAHX --delete --exclude .git \
 		--exclude .coverage --exclude htmlcov --exclude __pykythe__ \
 		--exclude snippets.py --exclude typescript.gz \
 		./ $(TESTGITHUB)/pykythe/
-	rsync -aAHX --delete ../kythe ../typeshed $(TESTGITHUB)/
+	rsync -aAHX --delete ../kythe $(TESTGITHUB)/
 	-cd $(TESTGITHUB)/pykythe && git status
 	-cd $(TESTGITHUB)/pykythe && git difftool --no-prompt --tool=tkdiff
 	@echo '# pushd $(TESTGITHUB)/pykythe && git commit -mCOMMIT-MSG' -a
@@ -698,7 +700,7 @@ run-underhood-frontend:
 run-underhood-ui:
 	@# treetide/underhood/ui/webpack.config.js
 	cd ../underhood/treetide/underhood/ui && \
-	nix-shell --run 'npm run start:dev'
+	nix-shell --run 'npm run-script start:dev'
 	@# View UI at http://localhost:9000
 
 run-underhood-all:

@@ -999,12 +999,13 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, KytheJsonPath, Symtab, KytheFactsFromE
     !.                          % for memory usage
 
 %! transform_kythe_fact(+Fact0, -Fact1) is det.
+
 %% TODO: This is a hack; the correct solution is to modify
-%%       pykythe_utils:absolute_file_name_rel to give the path
-%%       in the desired form, but there may be some subtle
-%%       knock-on effects (e.g., some code that depends on
-%%       the derived module FQN starting with ".", so that
-%%       split_atom(Fqn, '.', '', [''|_]) is assumed.
+%%       pykythe_utils:absolute_file_name_rel to give the path in the
+%%       desired form, but there may be some subtle knock-on effects
+%%       (e.g., some code that depends on the derived module FQN
+%%       starting with ".", so that split_atom(Fqn, '.', '', [''|_])
+%%       is assumed.
 transform_kythe_fact(json{source:Source0, fact_name:FactName, fact_value:FactValue},
                      json{source:Source1, fact_name:FactName, fact_value:FactValue}) :- !,
     transform_kythe_vname(Source0, Source1).
@@ -1430,7 +1431,7 @@ kyfile(SrcInfo) -->>
     Meta/file_meta,
     Meta_path = Meta.path, SrcInfo_src_path = SrcInfo.src_path,
     { must_once(Meta_path == SrcInfo_src_path) },
-    { Source = json{path: Meta.path} },
+    { Source = json{path: Meta.path} }, % TODO: language:'python' - https://github.com/kythe/kythe/issues/4246
     %% If the following is changed, also change the validation
     %% in process_module_cached_impl/7.
     kyfact(Source, '/pykythe/version', Meta.version),

@@ -1710,7 +1710,7 @@ def parse(src_bytes: bytes, python_version: int) -> Union['Node', 'Leaf']:
         # TODO: why doesn't lib2to3.pygram do this for "exec"?
         del grammar.keywords["print"]
         del grammar.keywords["exec"]
-    parser_driver = driver.Driver(grammar, convert=_convert, logger=lib2to3_logger)
+    parser_driver = driver.Driver(grammar, convert=_convert, logger=lib2to3_logger)  # type: ignore
     if not src_str.endswith('\n'):  # pragma: no cover
         src_str += '\n'  # work around bug in lib2to3
     return typing.cast(Union[Node, Leaf], parser_driver.parse_string(src_str))
