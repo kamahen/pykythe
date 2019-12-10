@@ -39,7 +39,7 @@ out (on Linux):
   sources are in this, including those from other projects such as
   `kythe` and `typeshed`).
 
-* `git clone https://github.com/google/kythe.git`
+* `git clone --recursive https://github.com/google/kythe.git`
 
 * `git submodule update --init --recursive`
   * You should do this each time you do `git pull` on the `pykythe`

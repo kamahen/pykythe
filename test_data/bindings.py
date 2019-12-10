@@ -240,7 +240,7 @@ class D(C):
 class E:
     def __init__(self):
         #- { @f1 defines/binding F1=vname("${ROOT_FQN}.test_data.bindings.E.f1", _, _, "", python) }
-        #- { F1./pykythe/type "[class_type('.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.bindings.D',[[class_type('.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.bindings.C',[])]])]" }
+        #- { F1./pykythe/type "[class_type('${ROOT_FQN}.test_data.bindings.D',[[class_type('${ROOT_FQN}.test_data.bindings.C',[])]])]" }
         self.f1 = D()
 
 def testTrailers():

@@ -72,12 +72,14 @@ BROWSE_PORT_PYTYPE:=8089
 # WRITE_ENTRIES_EXE:=$(HOME)/Downloads/kythe-v0.0.30/tools/write_entries
 # WRITE_TABLES_EXE:=$(HOME)/Downloads/kythe-v0.0.30/tools/write_tables
 # HTTP_SERVER_EXE:=$(HOME)/Downloads/kythe-v0.0.30/tools/http_server
+# # TODO: remove HTTP_SERVER_RESOURCES
 # HTTP_SERVER_RESOURCES:=$(HOME)/Downloads/kythe-v0.0.30/web/ui
 # Note: The following should contain v0.0.30 (34 doesn't work properly):
 ENTRYSTREAM_EXE:=/opt/kythe/tools/entrystream
 WRITE_ENTRIES_EXE:=/opt/kythe/tools/write_entries
 WRITE_TABLES_EXE:=/opt/kythe/tools/write_tables
 HTTP_SERVER_EXE:=/opt/kythe/tools/http_server
+# TODO: remove HTTP_SERVER_RESOURCES
 HTTP_SERVER_RESOURCES:=/opt/kythe/web/ui
 
 # If Kythe built from source:
@@ -520,6 +522,8 @@ add-index-pykythe: \
 	time $(WRITE_TABLES_EXE) -graphstore=$(TESTOUTDIR)/graphstore -out=$(TESTOUTDIR)/tables
 	@# To view items without server running:
 	@ # $(KYTHE_EXE) -api /tmp/pykythe_test/tables nodes -max_fact_size=200 'kythe://test-corpus?lang=python?root=test-root#.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.t8.III'
+	@ # TODO: requires server running: https://github.com/kythe/kythe/issues/4248
+	@ # $(KYTHE_EXE) -api http://localhost:$(BROWSE_PORT_PYKYTHE) xrefs -definitions all -node_definitions -page_size 999999 -references all 'kythe://test-corpus?lang=python?root=test-root#.tmp.pykythe_test.SUBST.home.peter.src.pykythe.pykythe.pod.PlainOldData'
 	@ # https://kythe.io/docs/kythes-command-line-tool.html
 
 .PHONY: table-t8
@@ -535,12 +539,12 @@ run_server run-server: # web_ui  # TODO: uncomment web_ui
 	$(HTTP_SERVER_EXE) -serving_table=$(TESTOUTDIR)/tables \
 	  -listen=:$(BROWSE_PORT_PYKYTHE)
 	@# To view items with server running:
-	@ $(KYTHE_EXE) -api http://localhost:$(BROWSE_PORT_PYKYTHE) nodes -max_fact_size=200 'kythe://test-corpus?lang=python?root=test-root#.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.t8.III'
+	@ $(KYTHE_EXE) -api http://localhost:$(BROWSE_PORT_PYKYTHE) nodes -max_fact_size=200 'kythe://test-corpus?lang=python?root=test-root#tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.t8.III'
 
 
 .PHONY: kythe-kythe
 kythe-kythe:
-	$(KYTHE_EXE) -api http://localhost:8080  # nodes -max_fact_size 999
+	$(KYTHE_EXE) -api http://localhost:$(BROWSE_PORT_PYKYTHE)  # nodes -max_fact_size 999
 
 .PHONY: build_kythe build-kythe
 build_kythe build-kythe:
