@@ -14,14 +14,74 @@ import traceback
 from lib2to3 import pytree
 from lib2to3.pgen2 import parse as pgen2_parse
 from lib2to3.pgen2 import tokenize as pgen2_tokenize
-from typing import Optional, Text, Union
+from typing import Iterable, Optional, Text, Tuple, Union
 
-from .typing_debug import cast as xcast
-from . import ast, ast_raw, ast_cooked, pod
+from . import ast, ast_raw, ast_cooked, ast_color, pod
+
+# TODO: a bit more refactoring - look at error types, for example.
+
+RawBaseType = Union[ast_raw.Node, ast_raw.Leaf]
 
 
-def main() -> int:  # pylint: disable=too-many-statements
+def main() -> int:
     """Main (uses sys.argv)."""
+    src_file: Optional[ast.File] = None
+    parse_error: Optional['CompilationError'] = None
+    parse_tree: Optional[RawBaseType] = None
+    with_fqns: Union['CompilationError', ast_cooked.Base]
+    # TODO: add to ast.File: args.root, args.corpus (even though they're in Meta)
+
+    args = _get_args()
+    src_file, parse_error = _make_file(args)
+    if src_file:
+        assert not parse_error
+        parse_tree, parse_error = _parse_file(src_file, args)
+        if parse_tree:
+            assert not parse_error
+            parse_tree, with_fqns, parse_error = _process_ast(src_file, parse_tree, args)
+        else:
+            assert parse_error
+            with_fqns = parse_error
+
+        # b64encode returns bytes, so use decode() to turn it into a
+        # string, because json.dumps can't process bytes -- it
+        # processes UTF-8 encoded strings.
+        meta = ast_cooked.Meta(kythe_corpus=args.kythe_corpus,
+                               kythe_root=args.kythe_root,
+                               path=args.srcpath,
+                               language='python',
+                               contents_base64=base64.b64encode(src_file.contents_bytes),
+                               contents_str=src_file.contents_str,
+                               contents_bytes=src_file.contents_bytes,
+                               sha1=hashlib.sha1(src_file.contents_bytes).hexdigest(),
+                               encoding=src_file.encoding)
+    else:
+        assert parse_error
+        parse_tree = None
+        logging.error('Parse error: %s', parse_error)
+        with_fqns = parse_error
+        meta = ast_cooked.Meta(kythe_corpus=args.kythe_corpus,
+                               kythe_root=args.kythe_root,
+                               path=args.srcpath,
+                               language='python',
+                               contents_base64=b'',
+                               contents_str='',
+                               contents_bytes=b'',
+                               sha1=hashlib.sha1(b'').hexdigest(),
+                               encoding='ascii')
+
+    colored = ast_color.ColorFile(src_file, parse_tree, dict(with_fqns.name_astns())).color()
+
+    with open(args.out_fqn_ast, 'w') as out_fqn_ast_file:
+        logging.debug('Output fqn= %r', out_fqn_ast_file)
+        print(meta.as_prolog_str() + '.', file=out_fqn_ast_file)
+        print(with_fqns.as_prolog_str() + '.', file=out_fqn_ast_file)
+        print(ast_color.colored_list_as_prolog_str(colored) + '.', file=out_fqn_ast_file)
+    logging.debug('Finished')
+    return 0
+
+
+def _get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Parse Python file, generating Kythe facts')
     # TODO: allow nargs='+' for multiple inputs?
     parser.add_argument('--srcpath', required=True, help='Input file')
@@ -44,105 +104,112 @@ def main() -> int:  # pylint: disable=too-many-statements
             choices=[2, 3],
             type=int,
             help='Python major version')
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    src_file: Optional[ast.File] = None
-    parse_error: Optional[Union[DecodeError, ParseError]] = None
-    parse_tree: Optional[Union[ast_raw.Node, ast_raw.Leaf]] = None
-    with_fqns: Union[DecodeError, ParseError, Crash, ast_cooked.Base]
-    with open(args.srcpath, 'rb') as src_f:
-        src_content = xcast(bytes, src_f.read())
-        encoding = 'utf-8'  # TODO: get encoding from lib2to3.pgen2.tokenize.detect_encoding
-        # TODO: add to ast.File: args.root, args.corpus (even though in Meta)
-        try:
-            src_file = ast.make_file(path=args.srcpath, content=src_content, encoding=encoding)
-            parse_error = None
-        except UnicodeDecodeError as exc:
-            # exc.object is the entire string, which can be determined
-            # from the file
-            parse_error = DecodeError(encoding=exc.encoding,
-                                      start=exc.start,
-                                      end=exc.end,
-                                      reason=exc.reason,
-                                      srcpath=args.srcpath)
-        if src_file:
-            try:
-                parse_tree = ast_raw.parse(src_content, args.python_version)
-            except pgen2_tokenize.TokenError as exc:
-                parse_error = ParseError(msg=str(exc),
-                                         type='',
-                                         context='',
-                                         value='',
-                                         srcpath=args.srcpath)
-            except SyntaxError as exc:
-                # TODO: This seems to sometimes be raised from an encoding error
-                #       with msg='unknown encoding: ...', exc.lineno=None, exc.offset=None
-                parse_error = ParseError(
-                        msg=str(exc),
-                        type='',
-                        context=str(('', (exc.lineno,
-                                          exc.offset))) if exc.lineno or exc.offset else '',
-                        value=exc.text or '',
-                        srcpath=args.srcpath)
-            except UnicodeDecodeError as exc:
-                parse_error = DecodeError(encoding=exc.encoding,
-                                          start=exc.start,
-                                          end=exc.end,
-                                          reason=exc.reason,
-                                          srcpath=args.srcpath)
-            except pgen2_parse.ParseError as exc:
-                parse_error = ParseError(msg=str(exc),
-                                         type=pytree.type_repr(exc.type),
-                                         value=exc.value or '',
-                                         context=str(exc.context),
-                                         srcpath=args.srcpath)
 
-    if src_file and parse_tree:
-        assert not parse_error
-        logging.debug('RAW= %r', parse_tree)
-        try:
-            cooked_nodes = ast_raw.cvt_parse_tree(parse_tree, args.python_version, src_file)
-            with_fqns = ast_cooked.add_fqns(cooked_nodes, args.module, args.python_version)
-        except pgen2_parse.ParseError as exc:
-            parse_error = ParseError(msg=str(exc),
-                                     type=pytree.type_repr(exc.type),
-                                     value=exc.value or '',
-                                     context=str(exc.context),
-                                     srcpath=args.srcpath)
-            with_fqns = parse_error
-            logging.error('Parse error: %s', parse_error)
-        except Exception as exc:  # pylint: disable=broad-except
-            logging.error('Caught error in cvt_parse_tree/with_fqns: %s %r', exc, exc)
-            traceback.print_exc()
-            with_fqns = Crash(str=str(exc), repr=repr(exc), srcpath=args.srcpath)
-    else:
-        logging.error('Parse error: %s', parse_error)
-        assert parse_error
+def _make_file(
+        args: argparse.Namespace) -> Tuple[Optional[ast.File], Optional['CompilationError']]:
+    parse_error: Optional['CompilationError']
+    try:
+        src_file: Optional[ast.File] = ast.make_file(path=args.srcpath)
+        parse_error = None
+    except SyntaxError as exc:
+        # TODO: This seems to sometimes be raised from an encoding error with
+        #       msg='unknown encoding: ...', exc.lineno=None, exc.offset=None
+        parse_error = ParseError(
+                msg=str(exc),
+                type='',
+                context=str(('', (exc.lineno, exc.offset))) if exc.lineno or exc.offset else '',
+                value=exc.text or '',
+                srcpath=args.srcpath)
+    except UnicodeDecodeError as exc:
+        src_file = None
+        # exc.object is the entire string, which can be determined
+        # from the file
+        parse_error = DecodeError(encoding=exc.encoding,
+                                  start=exc.start,
+                                  end=exc.end,
+                                  reason=exc.reason,
+                                  srcpath=args.srcpath)
+    return src_file, parse_error
+
+
+def _parse_file(src_file: ast.File,
+                args: argparse.Namespace) -> Tuple[RawBaseType, Optional['CompilationError']]:
+    parse_error: Optional['CompilationError']
+    try:
+        parse_tree = ast_raw.parse(src_file, args.python_version)
+        parse_error = None
+    except pgen2_tokenize.TokenError as exc:
+        parse_error = ParseError(msg=str(exc), type='', context='', value='', srcpath=args.srcpath)
+    except SyntaxError as exc:
+        # TODO: This seems to sometimes be raised from an encoding error with
+        #       msg='unknown encoding: ...', exc.lineno=None, exc.offset=None
+        parse_error = ParseError(
+                msg=str(exc),
+                type='',
+                context=str(('', (exc.lineno, exc.offset))) if exc.lineno or exc.offset else '',
+                value=exc.text or '',
+                srcpath=args.srcpath)
+    except UnicodeDecodeError as exc:
+        parse_error = DecodeError(encoding=exc.encoding,
+                                  start=exc.start,
+                                  end=exc.end,
+                                  reason=exc.reason,
+                                  srcpath=args.srcpath)
+    except pgen2_parse.ParseError as exc:
+        parse_error = ParseError(msg=str(exc),
+                                 type=pytree.type_repr(exc.type),
+                                 value=exc.value or '',
+                                 context=str(exc.context),
+                                 srcpath=args.srcpath)
+    return parse_tree, parse_error
+
+
+def _process_ast(
+        src_file: ast.File, parse_tree: RawBaseType, args: argparse.Namespace
+) -> Tuple[Optional[RawBaseType], Union['Crash', 'ParseError', ast_cooked.Base],
+           Optional['ParseError']]:
+    logging.debug('RAW= %r', parse_tree)
+    new_parse_tree: Optional[RawBaseType]
+    with_fqns: Union[ast_cooked.Base, 'ParseError', 'Crash']
+    parse_error: Optional['ParseError']
+    try:
+        cooked_nodes = ast_raw.cvt_parse_tree(parse_tree, args.python_version, src_file)
+        with_fqns = ast_cooked.add_fqns(cooked_nodes, args.module, args.python_version)
+        parse_error = None
+        new_parse_tree = parse_tree
+    except pgen2_parse.ParseError as exc:
+        parse_error = ParseError(msg=str(exc),
+                                 type=pytree.type_repr(exc.type),
+                                 value=exc.value or '',
+                                 context=str(exc.context),
+                                 srcpath=args.srcpath)
+        # This can happen with, e.g. function def struct unpacking
+        new_parse_tree = None
         with_fqns = parse_error
+        logging.error('Parse error: %s', parse_error)
+    except Exception as exc:  # pylint: disable=broad-except
+        new_parse_tree = parse_tree
+        logging.error('Caught error in cvt_parse_tree/with_fqns: %s %r', exc, exc)
+        traceback.print_exc()
+        with_fqns = Crash(str=str(exc), repr=repr(exc), srcpath=args.srcpath)
+    return new_parse_tree, with_fqns, parse_error
 
-    # b64encode returns bytes, so use decode() to turn it into a
-    # string, because json.dumps can't process bytes.
-    meta = ast_cooked.Meta(
-            kythe_corpus=args.kythe_corpus,
-            kythe_root=args.kythe_root,
-            path=args.srcpath,
-            language='python',
-            contents_base64=base64.b64encode(src_content).decode('ascii'),
-            contents=src_content.decode(
-                    encoding, errors='ignore'),  # TODO: delete (for debugging only)
-            sha1=hashlib.sha1(src_content).hexdigest(),
-            encoding=encoding)
 
-    with open(args.out_fqn_ast, 'w') as out_fqn_ast_file:
-        logging.debug('Output fqn= %r', out_fqn_ast_file)
-        print(meta.as_prolog_str() + '.', file=out_fqn_ast_file)
-        print(with_fqns.as_prolog_str() + '.', file=out_fqn_ast_file)
-    logging.debug('Finished')
-    return 0
+class CompilationError(pod.PlainOldDataExtended):
+    """Base error class that defines do-nothing pre_order, name_astns."""
+
+    def pre_order(self) -> Iterable[pytree.Base]:  # pylint: disable=no-self-use
+        yield from ()
+
+    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:  # pylint: disable=no-self-use
+        """Do-nothing version of ast_cooked.Base.name_astns()."""
+        yield from ()
 
 
 @dataclass(frozen=True)
-class DecodeError(pod.PlainOldDataExtended):
+class DecodeError(CompilationError):
     """Encapsulate UnicodeDecodeError."""
 
     encoding: str
@@ -154,7 +221,7 @@ class DecodeError(pod.PlainOldDataExtended):
 
 
 @dataclass(frozen=True)
-class ParseError(pod.PlainOldDataExtended):
+class ParseError(CompilationError):
     """Encapsulate parse.ParseError."""
 
     msg: str
@@ -166,7 +233,7 @@ class ParseError(pod.PlainOldDataExtended):
 
 
 @dataclass(frozen=True)
-class Crash(pod.PlainOldDataExtended):
+class Crash(CompilationError):
     """Encapsulate general exeception."""
 
     str: Text

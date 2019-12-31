@@ -19,4 +19,5 @@ def cast(typ: Type[_T], val: Any, extra_info: Any = None) -> _T:
 def assert_all_isinstance(typ: Union[type, Tuple[type, ...]],
                           val: Sequence[Any],
                           extra_info: Any = None) -> None:
-    assert all(isinstance(v, typ) for v in val), dict(type=typ, val=val, extra_info=extra_info)
+    for v in val:
+        assert isinstance(v, typ), dict(type=typ, val=val, extra_info=extra_info)

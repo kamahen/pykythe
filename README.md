@@ -27,8 +27,10 @@ running `add-index-pykythe` to set up the serving tables).
 
 [Pytype](https://github.com/google/pytype) has an experimental
 indexer, which runs at least 10x slower and crashes on some inputs.
-It also requires a system such as [Bazel](https://bazel.build), with
-associated BUILD files, to run in parallel.
+(Pykythe does about 100-200 files per minute on a 4 CPU workstation
+and can process the entire Python3 library without crashing.) 
+Pytype also requires a system such as [Bazel](https://bazel.build)
+with associated BUILD files, or ninja, to run in parallel.
 
 ## Installation
 
@@ -322,6 +324,26 @@ file to an output file, e.g.
 `kytheout_pattern='s!/stuff/to/remove/(.*/)([^/]*)\..*}!/path/to/dir/\\1\\2.kythe.json!'`
 ... this probably should allow multiple patterns, to accomodate files
 in multiple repositories.)
+
+### Base64
+
+For the JSON version of Kythe facts, base64 encoding is used, to
+handle the off-chance of some data being pure binary and not
+UTF8. Unfortunately, Prolog's base64 support isn't super fast, nor is
+its UTF8 encoding/decoding (the latter is needed because base64 works
+on ASCII only, so encoding/decoding from Unicode is needed).
+
+For performance reasons, the Kythe facts are all kept as regular
+strings (or atoms), and converted to base64 only on output. This is
+because each pass over the AST creates Kythe facts, and there's a
+significant saving by only doing it once. (Some micro-optimizations
+are possible by distinguishing between strings that can only be ASCII
+and those that can be any Unicode; these probably aren't worth doing
+and things are simpler by just assuming UTF8 everywhere).
+
+In addition, the symtab isn't base64-encoded -- when converting to
+Kythe serving tables, the symtab needs to be removed (e.g., by
+`egrep -v '^{"fact_name":"/pykythe/symtab"'`).
 
 ## Known issues
 

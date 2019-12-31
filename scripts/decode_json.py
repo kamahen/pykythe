@@ -25,5 +25,17 @@ for line in sys.stdin:
         elif as_json['fact_name'] == '/pykythe/symtab':
             pass  # It's unencoded
         else:
-            as_json['fact_value'] = base64.b64decode(as_json['fact_value']).decode('utf-8')
+            # TODO: This doesn't work for iso-8859-1,
+            #       e.g.: source for pytype/cpython/Tools/i18n/pygettext.py
+            #       It would be best if this program had an argument with the
+            #       file name, so that a nice message could be output.
+            try:
+                as_json['fact_value'] = base64.b64decode(as_json['fact_value']).decode('utf-8')
+            except UnicodeDecodeError:
+                try:
+                    as_json['fact_value'] = base64.b64decode(
+                            as_json['fact_value']).decode('iso-8859-1')
+                except UnicodeDecodeError:
+                    as_json['fact_value'] = base64.b64decode(as_json['fact_value']).decode(
+                            'utf-8', 'surrogateescape')
     print(json.dumps(as_json))

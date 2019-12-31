@@ -27,7 +27,7 @@
 :- module(gen_builtins_symtab, [gen_builtins_symtab_main/0]).
 
 :- use_module(library(apply), [convlist/3]).
-:- use_module(library(base64), [base64/2]).
+:- use_module(library(base64), [base64/2 as base64_ascii]).
 :- use_module(library(optparse), [opt_arguments/3]).
 :- use_module(module_path).
 :- use_module(must_once).
@@ -140,7 +140,7 @@ read_symtab_from_cache(KytheInputStream, SymtabFromCache) :-
     json_read_dict_validate(KytheInputStream, '/pykythe/version', _JsonVersion),
     json_read_dict_validate(KytheInputStream, '/pykythe/text/sha1', _JsonSha1),
     json_read_dict_validate(KytheInputStream, '/kythe/node/kind', JsonPath),
-    ensure_dict_fact_base64(JsonPath, fact_value, 'file'),
+    ensure_dict_fact_base64_ascii(JsonPath, fact_value, 'file'),
         json_read_dict_validate(KytheInputStream, '/kythe/text/encoding', _JsonEncoding),
     json_read_dict_validate(KytheInputStream, '/pykythe/symtab', JsonSymtab),
     ensure_dict_fact(JsonSymtab, fact_value, SymtabFromCacheStr),
@@ -150,7 +150,7 @@ read_symtab_from_cache(KytheInputStream, SymtabFromCache) :-
 read_package_from_cache(KytheInputStream, Package) :-
     my_json_read_dict(KytheInputStream, JsonDict),
     (  JsonDict.fact_name == '/kythe/node/kind',
-       base64(package, JsonDict.fact_value)
+       base64_utf8(package, JsonDict.fact_value)
     -> Package = JsonDict.source.signature,
        ensure_no_more_package_facts(KytheInputStream, Package)
     ;  read_package_from_cache(KytheInputStream, Package)
@@ -158,10 +158,10 @@ read_package_from_cache(KytheInputStream, Package) :-
 
 ensure_no_more_package_facts(KytheInputStream, Package) :-
     my_json_read_dict(KytheInputStream, JsonDict),
-    (  JsonDict == end_of_file
+    (  JsonDict == @(end)
     -> true
     ;  JsonDict.fact_name == '/kythe/node/kind',
-       base64(package, JsonDict.fact_value)
+       base64_ascii(package, JsonDict.fact_value)
     -> throw(error(multiple_package(Package, JsonDict.source.signature), _))
     ;  ensure_no_more_package_facts(KytheInputStream, Package)
     ).

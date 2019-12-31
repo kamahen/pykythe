@@ -31,8 +31,8 @@ TODO: remove all "#- //" lines (these are "to be implemented" syntactic items).
 # regression test, the filterwarnings() call has been added to
 # regrtest.py.
 
-#- { Pkg=vname("${ROOT_FQN}.test_data.py3_test_grammar", "test-corpus", "test-root", "", python).node/kind package }
-#- { File=vname("", "test-corpus", "test-root", "${ROOT_DIR}/test_data/py3_test_grammar.py", "").node/kind file }
+#- { Pkg=vname("${ROOT_FQN}.test_data.py3_test_grammar", "CORPUS", "ROOT", "", python).node/kind package }
+#- { File=vname("", "CORPUS", "ROOT", "${ROOT_DIR}/test_data/py3_test_grammar.py", "").node/kind file }
 #- { File childof Pkg }
 #- { File.text _ }  // The contents of this file
 #- { File.text/encoding "utf-8" }

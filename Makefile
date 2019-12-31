@@ -1,5 +1,6 @@
 # Simple scripts for testing etc.
 
+# time make  --warn-undefined-variables -C ~/src/pykythe clean etags show-vars test make-tables json-decoded-all # test_python_lib # test_single_src
 # make -C ~/src/pykythe clean etags test test_python_lib
 # make -C ~/src/pykythe clean_lite etags test
 # You should be able to run with --jobs parameter and get the same
@@ -33,7 +34,7 @@
 # Because of some pre-processing, $HOME/src/pykythe/* files show in
 # /tmp/pykythe_test/SUBST/$HOME/src/pykythe/pykythe/ast_raw.py
 # e.g.:
-# http://localhost:8080/#/tmp/pykythe_test/SUBST/home/peter/src/pykythe/pykythe/ast_raw.py?root=test-root&corpus=test-corpus&signature
+# http://localhost:8080/#/tmp/pykythe_test/SUBST/home/peter/src/pykythe/pykythe/ast_raw.py?root=ROOT&corpus=CORPUS&signature
 
 # A word about abspath and realpath ...
 #   Bash realpath resolves symlinks unless --no-symlinks is specified.
@@ -52,6 +53,7 @@ SWIPL_EXE:=$(shell type -p swipl)        # /usr/bin/swipl
 COVERAGE:=$(shell type -p coverage)      # /usr/local/bin/coverage
 # For running parallel(1) - by experiment this works (2x the number of CPUs)
 # (larger numbers smooth things out for processing large/small source files):
+# TODO: parallel(1) can specify -j +3, for example
 NPROC:=$(shell expr $$(nproc) \* 2)
 NPROC_BAZEL:=$(shell expr $$(nproc))
 
@@ -66,8 +68,8 @@ BROWSE_PORT_PYTYPE:=8089
 # VERIFIER_EXE:=/opt/kythe/tools/verifier
 # DO NOT SUBMIT -- make this more generic:
 # Note: Something happened with v0.0.31 or later that is incompatible
-#       with older servers (which support the UI). However,
-#       the underhood server does work with the later versions.
+#       with older servers (which support the UI).
+#       See also https://github.com/TreeTide/underhood/issues/12
 # ENTRYSTREAM_EXE:=$(HOME)/Downloads/kythe-v0.0.30/tools/entrystream
 # WRITE_ENTRIES_EXE:=$(HOME)/Downloads/kythe-v0.0.30/tools/write_entries
 # WRITE_TABLES_EXE:=$(HOME)/Downloads/kythe-v0.0.30/tools/write_tables
@@ -131,9 +133,9 @@ TESTOUT_TARGETS:=$(shell $(FIND_EXE) $(TEST_GRAMMAR_DIR) -name '*.py' | sort | \
     sed -e 's!^!$(KYTHEOUTDIR)$(SUBSTDIR_PWD_REAL)/!' -e 's!\.py$$!.kythe.verifier!')
 TESTOUT_TYPESHED:=$(KYTHEOUTDIR)$(TYPESHED_REAL)
 # Note: kythe_corpus would normally be '' or '/'; it is set to
-#       'test-corpus' to verify that it gets passed through properly
+#       'CORPUS' to verify that it gets passed through properly
 #       ('' could be happend if something fails pass the value).
-KYTHE_CORPUS_ROOT_OPT:=--kythe_corpus='test-corpus' --kythe_root='test-root'
+KYTHE_CORPUS_ROOT_OPT:=--kythe_corpus='CORPUS' --kythe_root='ROOT'
 VERSION_OPT:=--version='$(VERSION)'
 PYKYTHEOUT_OPT:=--kytheout='$(KYTHEOUTDIR)'
 ifeq ($(BATCH_ID),)
@@ -326,11 +328,11 @@ etags: pykythe/TAGS
 pykythe/TAGS: pykythe/TAGS-py pykythe/TAGS-pl
 	cat pykythe/TAGS-pl pykythe/TAGS-py >$@
 
-pykythe/TAGS-pl: pykythe/*.pl
-	cd pykythe ; etags -l prolog -o ../$@ *.pl
+pykythe/TAGS-pl: pykythe/*.pl tests/test_pykythe.py
+	cd pykythe ; etags -l prolog -o ../$@ *.pl ../scripts/*.pl
 
 pykythe/TAGS-py: pykythe/*.py
-	cd pykythe ; etags -l python -o ../$@ *.py
+	cd pykythe ; etags -l python -o ../$@ *.py tests/test_pykythe.py
 
 .PHONY: test
 test: all_tests
@@ -340,6 +342,9 @@ all_tests: etags unit_tests pykythe_test test_imports1 test_grammar test_pykythe
 
 .PHONY: unit_tests
 unit_tests: tests/test_pykythe.py \
+		pykythe/ast.py \
+		pykythe/ast_color.py \
+		pykythe/ast_cooked.py \
 		pykythe/ast_raw.py \
 		pykythe/fakesys.py \
 		pykythe/pod.py
@@ -394,10 +399,12 @@ test_python_lib: # Also does some other source files I have lying around
 	@# TODO: /usr has more *.py files than /usr/lib/python3.7 but takes 3x longer
 	@# TODO: use annotate-output (from package devscripts) to add the timestamps
 	@#       and remove the timestamps from pykytype's logging.
+	@# TODO: paralall -L80 means it processes in clumps of 80 --
+	@#       parameterize this on NPROC?
 	set -o pipefail; \
 	find /usr/lib/python3.7 ../mypy ../pytype ../yapf ../importlab ../kythe ./typeshed . \
 	  -name '*.py' -o -name '*.pyi' | sort | \
-	  parallel -v --will-cite --keep-order --group -P0 -L80 -j$(NPROC) \
+	  parallel -v --will-cite --keep-order --group -L80 -j$(NPROC) \
 	  --joblog=$(TESTOUTDIR)/joblog-$$(date +%Y-%m-%d-%H-%M) \
 	  '/usr/bin/time -f "\t%E real\t%U user\t%S sys\t%I-%O file" \
 	    $(PYKYTHE_EXE) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) {}'
@@ -405,14 +412,18 @@ test_python_lib: # Also does some other source files I have lying around
 .PHONY: test_single_src
 # This is an example of running on a single source
 SINGLE_SRC=/usr/lib/python3.7/multiprocessing/connection.py
+SINGLE_SRC=/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/a10.py
 test_single_src:
+	$(MAKE) $(SINGLE_SRC)
 	$(MAKE) $(PYKYTHE_EXE) $(BUILTINS_SYMTAB_FILE)
 	$(TIME) $(PYKYTHE_EXE) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) $(SINGLE_SRC)
 
 # Reformat all the source code (uses .style.yapf)
 .PHONY: pyformat
 pyformat:
-	find . -type f -name '*.py' | grep -v $(TEST_GRAMMAR_DIR) | xargs yapf -i
+	find . -type f -name '*.py' | \
+		grep -v $(TEST_GRAMMAR_DIR) | grep -v /typeshed/ | \
+		xargs yapf -i
 
 .PHONY: yapf
 yapf: pyformat
@@ -425,8 +436,8 @@ black:
 
 .PHONY: pylint
 pylint:
-	find . -type f -name '*.py' | grep -v $(TEST_GRAMMAR_DIR) | \
-		grep -v snippets.py | xargs -L1 pylint --disable=missing-docstring,fixme,no-else-return
+	find . -type f -name '*.py' | grep -v $(TEST_GRAMMAR_DIR) | grep -v /typeshed/ | \
+		grep -v snippets.py | xargs -L1 pylint --disable=missing-docstring,fixme,no-else-return,bad-continuation
 
 .PHONY: pyflakes
 pyflakes:
@@ -511,25 +522,34 @@ tkdiff:
 TEST_FILES:=$(shell find pykythe test_data -name '*.py')
 add-index-pykythe: \
 		$(foreach file,$(TEST_FILES),$(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(abspath $(file))).kythe.entries)
+	$(MAKE) make-tables
+
+.PHONY: make-tables
+make-tables: # add-index-pykythe
 	$(RM) -r $(TESTOUTDIR)/graphstore $(TESTOUTDIR)/tables
 	mkdir -p $(TESTOUTDIR)/graphstore $(TESTOUTDIR)/tables
 	@# cat $(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(abspath pykythe))/*.kythe.json
 	set -o pipefail; \
-	    cat $$(find $(KYTHEOUTDIR) -name '*.kythe.json') | \
+	    cat $$(find $(KYTHEOUTDIR) -name '*.kythe.json') /dev/null | \
 	    egrep -v '^{"fact_name":"/pykythe/symtab"' | \
 	    time $(ENTRYSTREAM_EXE) --read_format=json | \
 	    time $(WRITE_ENTRIES_EXE) -graphstore $(TESTOUTDIR)/graphstore
 	time $(WRITE_TABLES_EXE) -graphstore=$(TESTOUTDIR)/graphstore -out=$(TESTOUTDIR)/tables
 	@# To view items without server running:
-	@ # $(KYTHE_EXE) -api /tmp/pykythe_test/tables nodes -max_fact_size=200 'kythe://test-corpus?lang=python?root=test-root#.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.t8.III'
+	@ # $(KYTHE_EXE) -api /tmp/pykythe_test/tables nodes -max_fact_size=200 'kythe://CORPUS?lang=python?root=ROOT#.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.imports_dir1.i1_sub.i4.III'
 	@ # TODO: requires server running: https://github.com/kythe/kythe/issues/4248
-	@ # $(KYTHE_EXE) -api http://localhost:$(BROWSE_PORT_PYKYTHE) xrefs -definitions all -node_definitions -page_size 999999 -references all 'kythe://test-corpus?lang=python?root=test-root#.tmp.pykythe_test.SUBST.home.peter.src.pykythe.pykythe.pod.PlainOldData'
+	@ # $(KYTHE_EXE) -api http://localhost:$(BROWSE_PORT_PYKYTHE) xrefs -definitions all -node_definitions -page_size 999999 -references all 'kythe://CORPUS?lang=python?root=ROOT#.tmp.pykythe_test.SUBST.home.peter.src.pykythe.pykythe.pod.PlainOldData'
 	@ # https://kythe.io/docs/kythes-command-line-tool.html
 
-.PHONY: table-t8
-table-t8:
-	set -o pipefail; cat /tmp/pykythe_test/KYTHE/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t8.kythe.json | egrep -v '^{"fact_name":"/pykythe/symtab"' | /opt/kythe/tools/entrystream --read_format=json | /opt/kythe/tools/write_entries -graphstore /tmp/pykythe_test/graphstore-t8
-	/opt/kythe/tools/write_tables -graphstore=/tmp/pykythe_test/graphstore-t8 -out=/tmp/pykythe_test/tables-t8
+make-js:
+	$(RM) -r $(TESTOUTDIR)/browser
+	mkdir -p $(TESTOUTDIR)/browser/files
+	set -o pipefail; \
+	    cat $$(find $(KYTHEOUTDIR) -name '*.kythe.json' | grep /pykythe/test_data) /dev/null | \
+	    egrep -v '^{"fact_name":"/pykythe/symtab"' | \
+	    time $(SWIPL_EXE) -g get_and_print_color_text -t halt scripts/extract_color.pl -- \
+		--filesdir=$(TESTOUTDIR)/browser/files
+	ln browser/static/* $(TESTOUTDIR)/browser/
 
 # TODO: pre-req:  prep_server
 .PHONY: run_server run-server
@@ -539,8 +559,10 @@ run_server run-server: # web_ui  # TODO: uncomment web_ui
 	$(HTTP_SERVER_EXE) -serving_table=$(TESTOUTDIR)/tables \
 	  -listen=:$(BROWSE_PORT_PYKYTHE)
 	@# To view items with server running:
-	@ $(KYTHE_EXE) -api http://localhost:$(BROWSE_PORT_PYKYTHE) nodes -max_fact_size=200 'kythe://test-corpus?lang=python?root=test-root#tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.t8.III'
+	@ $(KYTHE_EXE) -api http://localhost:$(BROWSE_PORT_PYKYTHE) nodes -max_fact_size=200 'kythe://CORPUS?lang=python?root=ROOT#tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.t8.III'
 
+run-server-pytype:
+	$(HTTP_SERVER_EXE) -serving_table=/tmp/pytype-tables -listen=:$(BROWSE_PORT_PYKYTHE)
 
 .PHONY: kythe-kythe
 kythe-kythe:
@@ -582,6 +604,7 @@ snapshot:
 		--exclude=.cayley_history \
 		--exclude=.mypy_cache \
 		--exclude=__pycache__ \
+		--exclude=.pytype \
 		--exclude=.lgt_tmp \
 		--exclude=typescript --exclude=typescript.gz \
 		--gzip --file \
@@ -594,7 +617,7 @@ snapshot:
 
 #@#@# PHONY: ls_decor
 #@#@# ls_decor:
-#@#@# 	$(KYTHE_EXE) -api $(TESTOUTDIR)/tables decor kythe://test-corpus?path=$(TEST_GRAMMAR_DIR)/$(TEST_GRAMMAR_FILE).py
+#@#@# 	$(KYTHE_EXE) -api $(TESTOUTDIR)/tables decor kythe://CORPUS?path=$(TEST_GRAMMAR_DIR)/$(TEST_GRAMMAR_FILE).py
 
 .PHONY: push_to_github_setup
 push_to_github_setup:
@@ -656,7 +679,9 @@ pytype:
 	    time pyxref --protocols --python_version=3.7 --imports_info=$$(pwd)/.pytype/imports/pykythe.pykythe.$$(basename $$i .py).imports $$i >/tmp/$$(basename $$i .py).pyxref.json;  \
 	done
 	@# if there are problems with above, add --debug option >/tmp/$$(basename $$i .py).pyxref.debug
+	@# TODO: modify $(MAKE) make-tables to use /tmp/*.pyxref.json
 
+	@ # TODO: use parameterized $(MAKE) make-tables
 	$(RM) -r /tmp/pytype-graphstore /tmp/pytype-tables
 	mkdir -p /tmp/pytype-graphstore /tmp/pytype-tables
 	set -o pipefail; \
@@ -664,6 +689,8 @@ pytype:
 	    $(ENTRYSTREAM_EXE) --read_format=json | \
 	    $(WRITE_ENTRIES_EXE) -graphstore /tmp/pytype-graphstore
 	$(WRITE_TABLES_EXE) -graphstore=/tmp/pytype-graphstore -out=/tmp/pytype-tables
+	# $(MAKE) run-server-pytype
+
 
 run-pytype-server:
 	@# This is wrong: -listen=localhost:$(BROWSE_PORT_PYKYTHE)

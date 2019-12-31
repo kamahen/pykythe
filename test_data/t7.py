@@ -2,8 +2,8 @@
 
 # This used to generate two facts; nonredundant_pytype_fact/2 fixes this.
 
-#  App(fact, (App(vname, (.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.t7.B._init2, test-corpus, test-root, "", python)), "", "", /pykythe/type, []))
-#  App(fact, (App(vname, (.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.t7.B._init2, test-corpus, test-root, "", python)), "", "", /pykythe/type, [function_type('.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.t7.B._init2',[[]],[])]))
+#  App(fact, (App(vname, (.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.t7.B._init2, CORPUS, ROOT, "", python)), "", "", /pykythe/type, []))
+#  App(fact, (App(vname, (.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.t7.B._init2, CORPUS, ROOT, "", python)), "", "", /pykythe/type, [function_type('.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.t7.B._init2',[[]],[])]))
 
 
 class B:

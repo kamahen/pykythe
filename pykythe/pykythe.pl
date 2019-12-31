@@ -192,7 +192,7 @@
 :- use_module(library(aggregate), [aggregate_all/3, foreach/2]).
 :- use_module(library(apply), [exclude/3, include/3, maplist/2, maplist/3, maplist/4, foldl/4, convlist/3]).
 :- use_module(library(assoc), [is_assoc/1, max_assoc/3, min_assoc/3]).
-:- use_module(library(base64), [base64/2]).
+:- use_module(library(base64), [base64/2 as base64_ascii]).
 :- use_module(library(debug), [assertion/1, debug/3]).
 :- use_module(library(edcg)).   % requires: ?- pack_install(edcg).
 :- use_module(library(error), [must_be/2]).
@@ -251,7 +251,7 @@
 
 % %% Other imported predicates:
 % :- maplist(rdet, [aggregate_all/3,
-%                   base64/2,
+%                   base64_ascii/2,
 %                   dict_values/2,
 %                   directory_file_path/3,
 %                   foreach/2,
@@ -270,7 +270,7 @@
 %%    which seems to come from prolog_codewalk:walk_called_by_body.
 
 :- maplist(rdet, [
-                  'NameRawNode_astn_and_name'/3,
+                  'NameBareNode_astn_and_name'/3,
                   add_rej_to_symtab/3,
                   assign_exprs/6,
                   assign_exprs_count/7,
@@ -311,8 +311,8 @@
                   kyImportDottedAsNamesFqn_from_part/8,
                   kyImportDottedAsNamesFqn_from_part2/9,
                   kyImportFromStmt/9,
-                  kyanchor/6,
-                  kyanchor_kyedge_fqn/7,
+                  kyanchor/7,
+                  kyanchor_kyedge_fqn/8,
                   kyanchor_node/5,
                   kyanchor_node/6,
                   kyanchor_node_kyedge_fqn/6,
@@ -321,7 +321,6 @@
                   kyedge_fqn/6,
                   kyfact/6,
                   kyfact_attr/6,
-                  kyfact_base64/6,
                   kyfact_signature_node/6,
                   kyfacts/5,
                   kyfacts_signature_node/5,
@@ -357,7 +356,7 @@
                   normalize_type/2,
                   object_fqn/1,
                   output_kythe/8,
-                  parse_and_get_meta/5,
+                  parse_and_get_meta/6,
                   %% process_module_cached_or_from_src/6,  % wrapped in must_once
                   process_module_cached_or_from_src_setup/4,
                   %% process_module_from_src/6,
@@ -370,7 +369,7 @@
                   pykythe_main2/0,
                   pykythe_opts/2,
                   %% maybe_read_cache/5,
-                  read_nodes/3,
+                  read_nodes/4,
                   remove_class_cycles/3,
                   remove_class_cycles_one/4,
                   reorder_kythefacts_from_nodes/3,
@@ -442,8 +441,8 @@ edcg:pred_info(log_kyfact_msg, 2,                      [kyfact,file_meta]).
 edcg:pred_info(maplist_kyfact, 2,                      [kyfact,file_meta]).
 edcg:pred_info(maplist_kyfact, 3,                      [kyfact,file_meta]).
 
-edcg:pred_info(kyanchor, 3,                            [kyfact,file_meta]).
-edcg:pred_info(kyanchor_kyedge_fqn, 4,                 [kyfact,file_meta]).
+edcg:pred_info(kyanchor, 4,                            [kyfact,file_meta]).
+edcg:pred_info(kyanchor_kyedge_fqn, 5,                 [kyfact,file_meta]).
 edcg:pred_info(kyanchor_node, 2,                       [kyfact,file_meta]).
 edcg:pred_info(kyanchor_node, 3,                       [kyfact,file_meta]).
 edcg:pred_info(kyanchor_node_kyedge_fqn, 3,            [kyfact,file_meta]).
@@ -452,7 +451,6 @@ edcg:pred_info(kyedge, 3,                              [kyfact,file_meta]).
 edcg:pred_info(kyedge_fqn, 3,                          [kyfact,file_meta]).
 edcg:pred_info(kyfact, 3,                              [kyfact,file_meta]).
 edcg:pred_info(kyfact_attr, 3,                         [kyfact,file_meta]).
-edcg:pred_info(kyfact_base64, 3,                       [kyfact,file_meta]).
 edcg:pred_info(kyfact_signature_node, 3,               [kyfact,file_meta]).
 edcg:pred_info(kyfacts, 2,                             [kyfact,file_meta]).
 edcg:pred_info(kyfacts_signature_node, 2,              [kyfact,file_meta]).
@@ -685,7 +683,7 @@ interrupt(_Signal) :-
 %% Process the command line, getting the source file and options.
 pykythe_opts(SrcPaths, Opts) :-
     current_prolog_flag(version, PrologVersion),
-    must_once_msg(PrologVersion >= 80104, 'SWI-Prolog version is too old'),  % Sync this with README.md
+    must_once_msg(PrologVersion >= 80119, 'SWI-Prolog version is too old'),  % Sync this with README.md
     OptsSpec =
        [[opt(parsecmd), type(atom), default('parsecmd-must-be-specified'), longflags([parsecmd]),
          help('Command for running parser than generates fqn.kythe.json file')],
@@ -878,7 +876,7 @@ foldl_process_module_cached_or_from_src(Opts, FromSrcOk, [M|Modules], Symtab0, S
 maybe_read_cache(KytheInputStream, KytheJsonPath, SrcPath, Version, SymtabFromCache) :-
     json_read_dict_validate(KytheInputStream, '/pykythe/version', JsonVersion),
     %% ignore Signature for /pykythe/version
-    ensure_dict_fact_base64(JsonVersion, fact_value, CacheVersion),
+    ensure_dict_fact_base64_ascii(JsonVersion, fact_value, CacheVersion),
     %% short-circuit other tests if version mismatch
     (  CacheVersion == Version
     -> true
@@ -887,7 +885,7 @@ maybe_read_cache(KytheInputStream, KytheJsonPath, SrcPath, Version, SymtabFromCa
        fail
     ),
     json_read_dict_validate(KytheInputStream, '/pykythe/text/sha1', JsonSha1),
-    ensure_dict_fact_base64(JsonSha1, fact_value, JsonSha1Hex),
+    ensure_dict_fact_base64_ascii(JsonSha1, fact_value, JsonSha1Hex),
     read_file_to_string(SrcPath, SrcText, [file_errors(fail)]),
     hash_hex(SrcText, SrcSha1Hex),
     (  SrcSha1Hex == JsonSha1Hex
@@ -897,11 +895,12 @@ maybe_read_cache(KytheInputStream, KytheJsonPath, SrcPath, Version, SymtabFromCa
        fail
     ),
     json_read_dict_validate(KytheInputStream, '/kythe/node/kind', JsonPath),
-    ensure_dict_fact_base64(JsonPath, fact_value, 'file'),
+    ensure_dict_fact_base64_ascii(JsonPath, fact_value, 'file'),
     json_read_dict_validate(KytheInputStream, '/kythe/text/encoding', _JsonEncoding),
     json_read_dict_validate(KytheInputStream, '/pykythe/symtab', JsonSymtab),
     ensure_dict_fact(JsonSymtab, fact_value, SymtabFromCacheStr),
     %% base64_term(SymtabFromCacheBase64, SymtabFromCache). - Too slow.
+    %% DO NOT SUBMIT - fast_term_serialized(?Term, ?String)
     term_string(SymtabFromCache, SymtabFromCacheStr).
 
 %! merge_cache_into_symtab(+SymtabFromCache, +Symtab0,- Symtab) is det.
@@ -932,8 +931,8 @@ process_module_from_src_impl(Opts, KytheJsonPath, SrcPath, SrcFqn, Symtab0, Symt
     stats(Stats0),
     log_if(true,
            'Processing from source ~q (output: ~q) for ~q ~w', [SrcPath, KytheJsonPath, SrcFqn, Stats0]),
-    parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes),
-    process_nodes(Nodes, src{src_fqn: Meta.src_fqn, src_path: Meta.path},
+    parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes, ColorText),
+    process_nodes(Nodes, src{src_fqn: Meta.src_fqn, src_path: Meta.path, color_text:ColorText},
                   KytheFactsFromNodes0, Exprs, Meta),
     %% DO NOT SUBMIT -- why does the following log_kythe_fact_msgs need to be
     %%                  done here? -- if it isn't done, then an empty(?)
@@ -1006,8 +1005,15 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, KytheJsonPath, Symtab, KytheFactsFromE
 %%       (e.g., some code that depends on the derived module FQN
 %%       starting with ".", so that split_atom(Fqn, '.', '', [''|_])
 %%       is assumed.
+%% TODO: Note that this also changes fact_value to base64 and has special
+%%       cases for symtab and text
 transform_kythe_fact(json{source:Source0, fact_name:FactName, fact_value:FactValue},
-                     json{source:Source1, fact_name:FactName, fact_value:FactValue}) :- !,
+                     json{source:Source1, fact_name:FactName, fact_value:FactValueBase64}) :- !,
+    %% Symtab is never transformed to base64; it's filtered out when creating protobufs
+    (  ( FactName == '/kythe/text'; FactName == '/pykythe/symtab' )
+    -> FactValueBase64 = FactValue
+    ;  base64_utf8(FactValue, FactValueBase64)
+    ),
     transform_kythe_vname(Source0, Source1).
 transform_kythe_fact(json{source:Source0, fact_name:'/', edge_kind:EdgeKind, target:Target0},
                      json{source:Source1, fact_name:'/', edge_kind:EdgeKind, target:Target1}) :- !,
@@ -1021,8 +1027,8 @@ transform_kythe_vname(json{corpus:Corpus, root:Root},
 transform_kythe_vname(json{corpus:Corpus, root:Root, path:Path0},
                       json{corpus:Corpus, root:Root, path:Path1}) :- !,
     transform_kythe_path(Path0, Path1).
-transform_kythe_vname(json{path:Path0, language:Language},
-                      json{path:Path1, language:Language}) :- !,
+transform_kythe_vname(json{corpus:Corpus, root: Root, path:Path0, language:Language},
+                      json{corpus:Corpus, root: Root, path:Path1, language:Language}) :- !,
     transform_kythe_path(Path0, Path1).
 transform_kythe_vname(json{corpus:Corpus, root:Root, language:Language, signature:Signature},
                       json{corpus:Corpus, root:Root, language:Language, signature:Signature}) :- !.
@@ -1038,15 +1044,15 @@ transform_kythe_path(AbsPath, RelPath) :-
     sub_atom(AbsPath, 0, 1, _, '/'),   % First char is '/'
     sub_atom(AbsPath, 1, _, 0, RelPath). % Strip first char.
 
-%! parse_and_get_meta(+Opts:list, +SrcPath:atom, +SrcFqn:atom, -Meta:dict, -Nodes) is det.
-parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes) :-
+%! parse_and_get_meta(+Opts:list, +SrcPath:atom, +SrcFqn:atom, -Meta:dict, -Nodes, -ColorText) is det.
+parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes, ColorText) :-
     opts(Opts, [pythonpath(Pythonpaths), version(Version)]),
     builtins_version(BuiltinsVersion),
     must_once_msg(BuiltinsVersion == Version,
                   'builtins_version(~q) should be ~q', [BuiltinsVersion, Version]),
     run_parse_cmd(Opts, SrcPath, SrcFqn, ParsedPath),
     log_if(true, 'Python parser: finished ~q', [ParsedPath]),
-    read_nodes(ParsedPath, Nodes, Meta),
+    read_nodes(ParsedPath, Nodes, Meta, ColorText),
     log_if(true, 'Processed AST nodes from Python parser'),
     %% Fill in dict items that were left uninstantiated in simplify_meta/2 (read_nodes/3):
     Meta.pythonpaths = Pythonpaths,
@@ -1079,8 +1085,7 @@ nonredundant_pytype_fact(Symtab, Fact) :-
     Fact.fact_name == '/pykythe/type',
     !,
     (  get_dict(Fact.source.signature, Symtab, SymtabType)
-    -> base64(FactTypeStr, Fact.fact_value),
-       term_string(FactType, FactTypeStr),
+    -> term_string(FactType, Fact.fact_value),
        log_if((SymtabType \= FactType, FactType \= []),
               'WARNING: ~q: Inconsistent symtab=~q, expr(ignored)=~q',
               [Fact.source.signature, SymtabType, FactType]),
@@ -1152,9 +1157,8 @@ clean_kythe_facts(KytheFacts0, KytheFacts) :-
 %% The `Kindsout` dict is keyed by the `Source` values of the 'kind' facts
 %% and contains a set of all the fact_values.
 kythe_kinds([], Kinds, [], Kinds).
-kythe_kinds([json{fact_name:'/kythe/node/kind', fact_value:KindValue64, source:Source}|Facts],
+kythe_kinds([json{fact_name:'/kythe/node/kind', fact_value:KindValue, source:Source}|Facts],
             KindsIn, FactsOut, KindsOut) :-
-    base64(KindValue, KindValue64),
     KindValue \= 'anchor',  % should never have another kind
     KindValue \= 'package', % should never have another kind
     KindValue \= 'file',    % This is special (see maybe_read_cache/5)
@@ -1170,7 +1174,7 @@ kythe_kinds([Fact|Facts], Kinds, [Fact|FactsOut], KindsOut) :-
 %! clean_kind(+SourceAtom-Kinds:pair, -Fact:dict) is det.
 %% Clean a single item, creating its JSON representation.
 clean_kind(SourceAtom-Kinds,
-           json{source:Source, fact_name:'/kythe/node/kind', fact_value:Kind64}) :-
+           json{source:Source, fact_name:'/kythe/node/kind', fact_value:Kind}) :-
     %% See kyfact//3.
     term_to_atom(Source, SourceAtom),
     (  Kinds = [Kind]
@@ -1179,8 +1183,7 @@ clean_kind(SourceAtom-Kinds,
            maplist(precedence_and_kind, Kinds, PKs)),
        keysort(PKs, [_-Kind|_]),
        log_if(true, 'INFO: Cleaned kind: ~q->~q for ~q', [Kinds, Kind, Source])
-    ),
-    base64(Kind, Kind64).
+    ).
 
 %! precedence_and_kind(+Kind, -PrecedenceKind:pair) is det.
 %% Map each kind to a pair with it precedence (for keysort)
@@ -1288,21 +1291,21 @@ version_as_kyfact(Version, Meta,
                                     corpus: Meta.kythe_corpus,
                                     root: Meta.kythe_root},
                        fact_name: '/pykythe/version',
-                       fact_value: VersionStr64}) :-
-    base64(Version, VersionStr64).
+                       fact_value: Version}).
 
 %! symtab_as_kyfact(+Symtab, +Meta, -KytheFactAsJsonDict) is det.
 %% Convert the symtab into a Kythe fact.
 %% The entire symtab is output, including all imported symbols.
-%% Note that the vaue is an unencoded string, for performance (reading and writing).
+%% Note that the vaue is an unencoded string, for performance (reading
+%% and writing) - see transform_kythe_fact/2
 symtab_as_kyfact(Symtab, Meta,
                  json{source: Source,
                       fact_name: '/pykythe/symtab',
                       fact_value: SymtabStr}) :-
-    %% too slow: base64_term(SymtabStr64, Symtab),
     term_string(Symtab, SymtabStr),
     %% TODO: see also kyfile//1 Source which has only `path` (not `language`):
-    Source = json{path: Meta.path, language: Meta.language}.
+    Source = json{corpus:Meta.kythe_corpus, root:Meta.kythe_root,
+                  path: Meta.path, language: Meta.language}.
 
 %! symtab_pykythe_types(+Symtab)//[kyfact,file_meta] is det.
 %% Generate /pykythe/type facts from the symtab (for debugging).
@@ -1327,15 +1330,18 @@ add_kyfact_types(Prefix, Fqn-Type) -->>
 
 %! read_nodes(+FqnExprPath:atom, -Nodes, -Meta:dict) is det.
 %% Read the JSON node tree (with FQNs) into Nodes and file meta-data into Meta.
-read_nodes(FqnExprPath, Nodes, Meta) :-
+read_nodes(FqnExprPath, Nodes, Meta, ColorText) :-
     open(FqnExprPath, read, FqnExprStream),
     read_term(FqnExprStream, MetaDict, []),
     read_term(FqnExprStream, NodesDict, []),
+    read_term(FqnExprStream, ColorTextDict, []),
     %% sanity check that capitalized strings were quoted:
     must_once(ground(MetaDict)),
     must_once(ground(NodesDict)),
+    must_once(ground(ColorTextDict)),
     simplify_meta(MetaDict, Meta),
-    simplify_ast(NodesDict, Nodes).
+    simplify_ast(NodesDict, Nodes),
+    maplist(simplify_color, ColorTextDict, ColorText).
 
 %! simplify_meta(+MetaDictJson:dict, -Meta:dict) is det.
 %% Simplify the file meta-data. The argument is the Prolog dict form
@@ -1349,13 +1355,14 @@ simplify_meta(MetaDictJson, Meta) :-
             path: Path,
             language: Language,
             contents_base64: ContentsBase64,
-            contents: Contents, % TODO: delete (for debugging only)
+            contents_str: ContentsStr, % TODO: delete (for debugging only)
+            contents_bytes: ContentsBytes, % TODO: delete (for debugging only)
             sha1: Sha1,
             encoding: Encoding}},
     canonical_path(Path, CanonicalPath),
     %% For debugging, might want to use contents_base64:"LS0t",
     %%     derived from:
-    %%     base64('---', 'LS0t').
+    %%     base64_ascii('---', 'LS0t').
     %% Note that keys 'src_fqn', 'pythonpaths', 'opts', 'version' get added later
     Meta = meta{kythe_corpus: KytheCorpus,
                 kythe_root: KytheRoot,
@@ -1363,7 +1370,8 @@ simplify_meta(MetaDictJson, Meta) :-
                 language: Language,
                 encoding: Encoding,
                 contents_base64: ContentsBase64,
-                contents: Contents,
+                contents_str: ContentsStr,
+                contents_bytes: ContentsBytes,
                 sha1: Sha1,
                 src_fqn: _,
                 pythonpaths: _,
@@ -1398,6 +1406,36 @@ simplify_ast(json{kind: Kind, slots: Slots}, Value) :-
 simplify_ast_slot_pair(Key-Value, Key-Value2) :-
     simplify_ast(Value, Value2).
 
+%! simplify_color(+ColorDictJson:dict, -Color:dict) is det.
+simplify_color(json{ kind:'Color',
+                     slots:json{ astn:json{ kind:'Astn',
+                                            slots:json{end:End,start:Start,value:Value}
+                                          },
+                                 column:Column,
+                                 lineno:Lineno,
+                                 token_color:TokenColor
+                               }
+                   },
+              color{end:End,
+                    start:Start,
+                    value:Value,
+                    signature:Signature,
+                    column:Column,
+                    lineno:Lineno,
+                    token_color:TokenColor}) :-
+    (  no_signature(TokenColor)
+    -> Signature = ''
+    ;  anchor_signature_str(Start, End, Value, Signature)
+    ).
+
+no_signature('<COMMENT>').
+no_signature('<KEYWORD>').
+no_signature('<NEWLINE>').
+no_signature('<NUMBER>').
+no_signature('<PUNCTUATION>').
+no_signature('<STRING>').
+no_signature('<WHITESPACE>').
+
 %! process_nodes(+Nodes, +SrcInfo:dict, -KytheFacts:list, -Exprs:list, +Meta:dict) is det.
 %% Wrapper for process_nodes//[kyfact,expr,file_meta].
 %% TODO: separate KytheFacts into those that require de-duping and
@@ -1431,14 +1469,17 @@ kyfile(SrcInfo) -->>
     Meta/file_meta,
     Meta_path = Meta.path, SrcInfo_src_path = SrcInfo.src_path,
     { must_once(Meta_path == SrcInfo_src_path) },
-    { Source = json{path: Meta.path} }, % TODO: language:'python' - https://github.com/kythe/kythe/issues/4246
+    { Source = json{corpus: Meta.kythe_corpus, root: Meta.kythe_root, path: Meta.path} },
     %% If the following is changed, also change the validation
     %% in process_module_cached_impl/7.
     kyfact(Source, '/pykythe/version', Meta.version),
     kyfact(Source, '/pykythe/text/sha1', Meta.sha1),
     kyfact(Source, '/kythe/node/kind', 'file'),
     kyfact(Source, '/kythe/text/encoding', Meta.encoding),
-    kyfact_base64(Source, '/kythe/text', Meta.contents_base64),
+    kyfact(Source, '/kythe/language', python),
+    kyfact(Source, '/kythe/text', Meta.contents_base64),  % Special case - see transform_kythe_fact/2
+    term_string(SrcInfo.color_text, ColorTextStr),
+    kyfact(Source, '/pykythe/color', ColorTextStr),
     kyedge_fqn(Source, '/kythe/edge/childof', SrcInfo.src_fqn),
     %% Kythe's "package" is the equivalent of Python's "module".
     %% (There is no equivalent of Python's "package" ... we just use
@@ -1487,7 +1528,7 @@ kyfile(SrcInfo) -->>
 
 %% The following are handled by the container (e.g., ImportFromStmt):
 %%   AsNameNode
-%%   NameRawNode  (from DottedNameNode, ImportFromStmt, etc.)
+%%   NameBareNode  (from DottedNameNode, ImportFromStmt, etc.)
 %%   NameNode
 
 %% All the clauses have cuts become some are complex enough that the
@@ -1561,8 +1602,7 @@ kynode('Class'{bases: Bases, fqn: Fqn, name: NameAstn},
                             '/kythe/subkind'-'class']),
     maplist_kynode(Bases, BaseTypes),
     [ class_type(Fqn, BaseTypes) ]:expr.
-kynode('CompFor'{for_astn: _ForAstn,
-                 for_exprlist: ForExprlist,
+kynode('CompFor'{for_exprlist: ForExprlist,
                  in_testlist: InTestlist,
                  comp_iter: CompIter},
        [todo_compfor(iter:CompIterType,
@@ -1582,7 +1622,7 @@ kynode('DecoratedStmt'{items: Items},
     maplist_kynode(Items, ItemsTypes).
 kynode('DecoratorDottedNameNode'{items: Items},
        [todo_decorator_dottedname(ItemsTypes)]) -->> !,
-    maplist('NameRawNode_astn_and_name', Items, _, ItemsTypes).
+    maplist('NameBareNode_astn_and_name', Items, _, ItemsTypes).
 kynode('DecoratorsNode'{items: Items},
        [todo_decorators(ItemsTypes)]) -->> !,
     maplist_kynode(Items, ItemsTypes).
@@ -1673,12 +1713,17 @@ kynode('ImportFromStmt'{from_dots: FromDots,
     %% correctly in the 2nd pass.
     ImportPartItems = [
         'AsNameNode'{as_name:'NameBindsFqn'{fqn:StarFqn, name:StarAstn},
-                     name:'NameRawNode'{name:StarAstn}}],
+                     name:'NameBareNode'{name:StarAstn}}],
     ImportPart = 'ImportAsNamesNode'{items: ImportPartItems},
     kynode('ImportFromStmt'{from_dots: FromDots, from_name: FromName, import_part: ImportPart}, Type).
 kynode('ImportNameFqn'{dotted_as_names: 'ImportDottedAsNamesFqn'{items: DottedAsNames}},
        [unused_import('ImportNameFqn',DottedAsNamesTypes)]) -->> !,
     maplist_kyfact_expr(kyImportDottedAsNamesFqn, DottedAsNames, DottedAsNamesTypes).
+kynode('IfExpr'{cond_expr: CondExpr, then_expr: ThenExpr, else_expr: ElseExpr},
+       [if_expr(CondType,ThenType,ElseType)]) -->> !,
+    kynode(CondExpr, CondType),
+    kynode(ThenExpr, ThenType),
+    kynode(ElseExpr, ElseType).
 kynode('ListMakerNode'{items: Items, binds: bool('False')},
        [list_make(ItemsTypes)]) -->> !,
     maplist_kynode(Items, ItemsTypes).
@@ -1895,20 +1940,20 @@ kyImportDottedAsNamesFqn('ImportDottedAsNameFqn'{
 %% information for the file, followed by '/..' as needed.
 kyImportFromStmt(FromDots,
                  'DottedNameNode'{items:DottedNameItems},
-                 'AsNameNode'{name:RawNameAstn, % 'NameRawNode'{name:NameAstn},
+                 'AsNameNode'{name:BareNameAstn, % 'NameBareNode'{name:NameAstn},
                               as_name:'NameBindsFqn'{fqn: BindsFqn, name: AsNameAstn}},
                  unused_import('AsNameNode',BindsFqn)) -->>
     %% From "from foo import baz [as zot]" and many variations
-    { append(DottedNameItems, [RawNameAstn], DottedNameItemsComb) -> true ; fail, DottedNameItemsComb = '***' },
+    { append(DottedNameItems, [BareNameAstn], DottedNameItemsComb) -> true ; fail, DottedNameItemsComb = '***' },
     kyImportDottedAsNamesFqn_as(FromDots,
                                 DottedNameItemsComb, BindsFqn, AsNameAstn).
 kyImportFromStmt(FromDots,
                  'DottedNameNode'{items:DottedNameItems},
-                 'AsNameNode'{name:RawNameAstn, % 'NameRawNode'{name:NameAstn},
+                 'AsNameNode'{name:BareNameAstn, % 'NameBareNode'{name:NameAstn},
                               as_name:'NameBindsUnknown'{fqn_scope: FqnScope, name: AsNameAstn}},
                  unused_import('AsNameNode',AsNameAstn)) -->>
     %% From "global zot; from foo import baz as zot" and many variations
-    { append(DottedNameItems, [RawNameAstn], DottedNameItemsComb) -> true ; fail, DottedNameItemsComb = '***' },
+    { append(DottedNameItems, [BareNameAstn], DottedNameItemsComb) -> true ; fail, DottedNameItemsComb = '***' },
     kyImportDottedAsNamesFqn_as_unknown(FromDots,
                                         DottedNameItemsComb, FqnScope, AsNameAstn).
 
@@ -1917,7 +1962,7 @@ kyImportDottedAsNamesFqn_top(DottedNameItems, BindsFqn, BindsNameAstn) -->>
     kyImportDottedAsNamesFqn_from_part(DottedNameItems,
                                        [], % FromDots,
                                        ModulesAndMaybeTokenToImport),
-    { must_once(DottedNameItems = ['NameRawNode'{name:BindsNameAstn}|_]) },
+    { must_once(DottedNameItems = ['NameBareNode'{name:BindsNameAstn}|_]) },
     { must_once(node_astn(BindsNameAstn, _, _, TopName)) },
     kyImport_path_pieces_to_module([], % FromDots
                                    [TopName], ModuleAndMaybeTokenAssignImport, _TopModulePieces),
@@ -1937,10 +1982,10 @@ add_up_dirs([FromDot|FromDots], SrcParts0, SrcParts) :-
 %%! kyImportDottedAsNamesFqn_as(+FromDots, +DottedNameItems:list, +BindsFqn:atom, +BindsNameAstn:astn)//[kyfact,expr,file_meta] is det.
 kyImportDottedAsNamesFqn_as(FromDots, DottedNameItems, BindsFqn, BindsNameAstn) -->>
     kyImportDottedAsNamesFqn_from_part(DottedNameItems, FromDots, ModulesAndMaybeTokenToImport),
-    { node_astn(BindsNameAstn, Start, End, _) },
+    { node_astn(BindsNameAstn, Start, End, Token) },
     { last(ModulesAndMaybeTokenToImport, FMP) },
     { full_module_part(FMP, FMPname) },
-    kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref/imports', FMPname),
+    kyanchor_kyedge_fqn(Start, End, Token, '/kythe/edge/ref/imports', FMPname),
     { AssignImport = assign_import{binds_fqn: BindsFqn,
                                    module_and_maybe_token: FMP,
                                    modules_to_import: ModulesAndMaybeTokenToImport
@@ -1953,10 +1998,10 @@ kyImportDottedAsNamesFqn_as_unknown(FromDots, DottedNameItems, FqnScope, BindsNa
     %% TODO: this is cut&paste from kyImportDottedAsNamesFqn_as//4 - refactor
     %%       the common part
     kyImportDottedAsNamesFqn_from_part(DottedNameItems, FromDots, ModulesAndMaybeTokenToImport),
-    { node_astn(BindsNameAstn, Start, End, _) },
+    { node_astn(BindsNameAstn, Start, End, Token) },
     { last(ModulesAndMaybeTokenToImport, FMP) },
     { full_module_part(FMP, FMPname) },
-    kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref/imports', FMPname),
+    kyanchor_kyedge_fqn(Start, End, Token, '/kythe/edge/ref/imports', FMPname),
     { AssignImport = assign_import_unknown{fqn_scope: FqnScope,
                                            binds_astn: BindsNameAstn,
                                            module_and_maybe_token: FMP,
@@ -1971,14 +2016,14 @@ kyImportDottedAsNamesFqn_from_part(NameItems, FromDots, ModulesAndMaybeTokenToIm
 
 %%! kyImportDottedAsNamesFqn_from_part2(+NameItems:list, +FromDots:list, +SoFar:list, -ModulesAndMaybeTokenToImport:list)//[kyfact,expr,file_meta] is det.
 kyImportDottedAsNamesFqn_from_part2([], _FromDots, _SoFar, []) -->> [ ].
-kyImportDottedAsNamesFqn_from_part2(['NameRawNode'{name:Astn}|NameItems], FromDots, SoFar,
+kyImportDottedAsNamesFqn_from_part2(['NameBareNode'{name:Astn}|NameItems], FromDots, SoFar,
                                    [ModuleAndMaybeToken|MAMTs]) -->>
     { append(SoFar, [Name], SoFar2) -> true ; fail, [Name, SoFar2] = '***' },
     { node_astn(Astn, Start, End, Name) },
     kyImport_path_pieces_to_module(FromDots,
                                    SoFar2, ModuleAndMaybeToken, FullModulePieces),
     { join_fqn(FullModulePieces, FMPname) },
-    kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref/imports', FMPname),
+    kyanchor_kyedge_fqn(Start, End, Name, '/kythe/edge/ref/imports', FMPname),
     kyImportDottedAsNamesFqn_from_part2(NameItems, FromDots, SoFar2, MAMTs).
 
 %! kyImport_path_pieces_to_module(+FromDots:list, +NamePieces:list, -ModuleAndMaybeToken, -FullModulePieces:list)//[kyfact,expr,file_meta] is det.
@@ -1999,12 +2044,12 @@ kyImport_path_dots([FromDot0|FromDots]) -->>
     { node_astn(DotAstn, Start, End, '.') },
     { full_path([FromDot0|FromDots], '', [], Meta.path, FMP, _ModulePieces) },
     { full_module_part(FMP, FMPname) },
-    kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref/imports', FMPname),
+    kyanchor_kyedge_fqn(Start, End, '.', '/kythe/edge/ref/imports', FMPname),
     kyImport_path_dots(FromDots).
 
-%! 'NameRawNode_astn_and_name'(+DottedNameItem, -DottedName) is det.
-%% Process a NameRawNode node into a name
-'NameRawNode_astn_and_name'('NameRawNode'{name: NameAstn}, NameAstn, Name) :-
+%! 'NameBareNode_astn_and_name'(+DottedNameItem, -DottedName) is det.
+%% Process a NameBareNode node into a name
+'NameBareNode_astn_and_name'('NameBareNode'{name: NameAstn}, NameAstn, Name) :-
     node_astn(NameAstn, _, _, Name).
 
 %! kyImportDotNode(+Node, -Astn, -Name:atom) is det.
@@ -2061,9 +2106,9 @@ type_omitted([omitted]).
 node_astn('Astn'{start: Start, end: End, value: Value},
            Start, End, Value).
 
-%! kyanchor_kyedge_fqn(+Start:int, +End:int, +EdgeKind:atom, +Fqn:atom)//[kyfact,file_meta] is det.
-kyanchor_kyedge_fqn(Start, End, EdgeKind, Fqn) -->>
-    kyanchor(Start, End, Source),
+%! kyanchor_kyedge_fqn(+Start:int, +End:int, +Token:atom, +EdgeKind:atom, +Fqn:atom)//[kyfact,file_meta] is det.
+kyanchor_kyedge_fqn(Start, End, Token, EdgeKind, Fqn) -->>
+    kyanchor(Start, End, Token, Source),
     kyedge_fqn(Source, EdgeKind, Fqn).
 
 %! kyanchor_node_kyedge_fqn(+Astn, +EdgeKind:atom, +Fqn:atom, -Token)//[kyfact,file_meta] is det.
@@ -2083,14 +2128,14 @@ kyanchor_node(Astn, Source) -->>
 %! kyanchor_node(+Astn, -Source, -Token)/[kyfact,file_meta] is det.
 kyanchor_node(Astn, Source, Token) -->>
     { node_astn(Astn, Start, End, Token) },
-    kyanchor(Start, End, Source).
+    kyanchor(Start, End, Token, Source).
 
-%! kyanchor(+Start, +End, -Source)//[kyfact,file_meta] is det.
+%! kyanchor(+Start, +End, Token, -Source)//[kyfact,file_meta] is det.
 %% Create the Kythe facts for an anchor. Source gets the source signature.
-kyanchor(Start, End, Source) -->>
-    Meta/file_meta,             % TODO: delete
-    { Len is End - Start },
-    { must_once(sub_string(Meta.contents, Start, Len, _, Token)) },
+kyanchor(Start, End, Token, Source) -->>
+    %% The following is only true for pure ascii input; with utf8,
+    %% the Start is in *bytes*, so the substring test isn't necessarily true
+    %% { must_once(sub_string(Meta.contents_str, Start, Len, _, Token)) },
     { anchor_signature_str(Start, End, Token, Signature) },
     signature_source(Signature, Source),
     %% https://github.com/kythe/kythe/issues/1725
@@ -2135,17 +2180,9 @@ kyfacts(Vname, [FactName-FactValue|FactValues]) -->>
 %% Low-level create a Kythe fact edge -- Source is a partial dict for
 %% generating JSON; corpus and root are filled in from file_meta.
 kyfact(Source, FactName, FactValue) -->>
-    { base64(FactValue, FactBase64) },
-    kyfact_base64(Source, FactName, FactBase64).
-
-%! kyfact_64(+Source:dict, +FactName:atom, +FactBase64:atom)//[kyfact,file_meta] is det.
-%% Low-level create a Kythe fact, inputting the base64 of the fact
-%% value -- Source is a partial dict for generating JSON; corpus and
-%% root are filled in from file_meta.
-kyfact_base64(Source, FactName, FactBase64) -->>
     Meta/file_meta,
     [ json{source: Source.put(corpus, Meta.kythe_corpus).put(root, Meta.kythe_root),
-           fact_name: FactName, fact_value: FactBase64} ]:kyfact.
+           fact_name: FactName, fact_value: FactValue} ]:kyfact.
 
 %! signature_source(+Signature:string, -Source)//[file_meta] is det.
 %% Create a Kythe "source" tuple from a Signature string.
@@ -2172,10 +2209,10 @@ signature_node(Signature, Vname) -->>
 %! kyfact_attr(+FqnAttr:atom, +AttrAstn, +Type) is det.
 %% This can generate duplicate facts because FqnAttr can happen in
 %% multiple places.
-kyfact_attr(FqnAttr, astn(Start,End,_Attr), Type) -->>
+kyfact_attr(FqnAttr, astn(Start,End,Attr), Type) -->>
     term_string(Type, TypeStr),
     signature_node(FqnAttr, FqnAttrSource),
-    kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref', FqnAttr),
+    kyanchor_kyedge_fqn(Start, End, Attr, '/kythe/edge/ref', FqnAttr),
     kyfact(FqnAttrSource, '/pykythe/type', TypeStr).
 
 %%%%%%        %%%%%%%
@@ -2358,7 +2395,7 @@ eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), _BindsLeft,
     %% TODO: should subclasses that don't override this get anything?
     { join_fqn([ClassName, AttrName], BindsFqn) },
     [ BindsFqn-RightEval-_ ]:symrej,
-    kyanchor_kyedge_fqn(Start, End, '/kythe/edge/defines/binding', BindsFqn).
+    kyanchor_kyedge_fqn(Start, End, AttrName, '/kythe/edge/defines/binding', BindsFqn).
 eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), _BindsLeft, function_type(FunctionName,Params, Return)) -->> !,
     %% TODO: use builtins.function's definition, if it exists,
     %%       otherwise allow adding a new attr.
@@ -2366,15 +2403,15 @@ eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), _BindsLeft,
     maplist_kyfact_symrej(eval_union_type, Params, _),
     { join_fqn([FunctionName, AttrName], BindsFqn) },
     [ BindsFqn-RightEval-_ ]:symrej,
-    kyanchor_kyedge_fqn(Start, End, '/kythe/edge/defines/binding', BindsFqn).
+    kyanchor_kyedge_fqn(Start, End, AttrName, '/kythe/edge/defines/binding', BindsFqn).
 eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), _BindsLeft, module_type(module_alone(Module,_Path))) -->> !,
     { join_fqn([Module, AttrName], BindsFqn) },
     [ BindsFqn-RightEval-_ ]:symrej,
-    kyanchor_kyedge_fqn(Start, End, '/kythe/edge/defines/binding', BindsFqn).
+    kyanchor_kyedge_fqn(Start, End, AttrName, '/kythe/edge/defines/binding', BindsFqn).
 eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), _BindsLeft, module_type(module_and_token(Module,_Path,Token))) -->> !,
     { join_fqn([Module, Token, AttrName], BindsFqn) },
     [ BindsFqn-RightEval-_ ]:symrej,
-    kyanchor_kyedge_fqn(Start, End, '/kythe/edge/defines/binding', BindsFqn).
+    kyanchor_kyedge_fqn(Start, End, AttrName, '/kythe/edge/defines/binding', BindsFqn).
 eval_assign_dot_op_binds_single(RightEval, AttrAstn, BindsLeft, import_ref_type(_Name, _Fqn, AtomType)) -->> !,
     eval_assign_dot_op_binds_single(RightEval, AttrAstn, BindsLeft, AtomType).
 eval_assign_dot_op_binds_single(RightEval, AttrAstn, _BindsLeft, _AtomType) -->>
@@ -2386,7 +2423,7 @@ eval_assign_dot_op_binds_single(RightEval, AttrAstn, _BindsLeft, _AtomType) -->>
     log_possible_classes_from_attr('binds', AttrAstn, Classes),
     { Classes \= [] },
     !,
-    kyanchor(Start, End, Source),
+    kyanchor(Start, End, AttrName, Source),
     maplist_kyfact_symrej(eval_assign_dot_op_binds_unknown(Source, AttrName, RightEval), Classes).
 eval_assign_dot_op_binds_single(RightEval, Astn, BindsLeft, BindsLeftEval) -->>
     log_kyfact_msg('WARNING: no rule for ~q', [eval_assign_dot_op_binds_single('RightEval'=RightEval, 'Astn'=Astn, 'BindsLeft'=BindsLeft, 'BindsLeftEval'=BindsLeftEval)]),
@@ -2421,7 +2458,7 @@ eval_assign_dot_op_binds_unknown(_Source, _AttrName, _RightEval, _Class) -->>
     %% See also eval_dot_unknown.
     !.
 eval_assign_dot_op_binds_unknown(Source, AttrName, RightEval, Class) -->>
-    % TODO: delete this catch-all and cuts
+    %% TODO: delete this catch-all and cuts
     { goal_failed(eval_assign_dot_op_binds_unknown(Source, AttrName, RightEval, Class)) }.
 
 %! eval_dot_op_unknown(+Source, +AttrName, +Type)//[kyfact,symrej,file_meta]) is det.
@@ -2518,12 +2555,16 @@ eval_single_type(dot_op(Atom, AttrAstn), EvalType) -->> !,
        %% TODO: special handling of super().__init__ (see test_data/c3_a.py)
        possible_classes_from_attr(AttrName, Classes),
        log_possible_classes_from_attr('ref', AttrAstn, Classes),
-       kyanchor(Start, End, Source),
+       kyanchor(Start, End, AttrName, Source),
        maplist_kyfact_symrej(eval_dot_op_unknown(Source, AttrName), Classes),
        { AtomEval = AtomEval0 } % TODO: - use maplist(Classes)
     ;  { AtomEval = AtomEval0 }
     ),
     maplist_kyfact_symrej_union(eval_atom_dot_single(AttrAstn), AtomEval, EvalType).
+eval_single_type(if_expr(_CondExpr,ThenExpr,ElseExpr), EvalType) -->> !,
+    eval_union_type(ThenExpr, ThenEvalType),
+    eval_union_type(ElseExpr, ElseEvalType),
+    { combine_types([ThenEvalType, ElseEvalType], EvalType) }.
 eval_single_type(function_type(Name,Params,Return), [function_type(Name,ParamsEvals,ReturnEval)]) -->> !,
     maplist_kyfact_symrej(eval_union_type, Params, ParamsEvals),
     eval_union_type(Return, ReturnEval).
@@ -2555,7 +2596,7 @@ eval_single_type(module(Fqn, Path), [module(Fqn,Path)]) -->> !, [ ].
 eval_single_type(omitted, []) -->> !, [ ].
 
 %% TODO: expand all of the following.
-%%   Check http://localhost:8888/#/tmp/pykythe_test/SUBST/home/peter/src/pykythe/pykythe/ast_raw.py?root=test-root&corpus=test-corpus&signature&line=262
+%%   Check http://localhost:8888/#/tmp/pykythe_test/SUBST/home/peter/src/pykythe/pykythe/ast_raw.py?root=ROOT&corpus=CORPUS&signature&line=262
 %% TODO: implement the following:
 eval_single_type(todo_compfor(iter:CompIterType, for:ForExprlistType, in:InTestlistType), []) -->> !,
     eval_union_type(CompIterType, _),
@@ -2679,10 +2720,10 @@ eval_atom_subscr_binds_single(Expr, ExprEval) -->>
     eval_single_type(Expr, ExprEval).
 
 %! subscr_resolve_dot_binds(+AttrAstn, +AtomType, -EvalType) is det.
-subscr_resolve_dot_binds(astn(Start,End,Attr), class_type(ClassName,_Bases), [var_ref(DotEval)]) -->> !,
-    { join_fqn([ClassName, Attr], DotEval) },
+subscr_resolve_dot_binds(astn(Start,End,AttrName), class_type(ClassName,_Bases), [var_ref(DotEval)]) -->> !,
+    { join_fqn([ClassName, AttrName], DotEval) },
     %% This is within a subscr operator, so it's a ref, not binds:
-    kyanchor_kyedge_fqn(Start, End, '/kythe/edge/ref', DotEval).
+    kyanchor_kyedge_fqn(Start, End, AttrName, '/kythe/edge/ref', DotEval).
 subscr_resolve_dot_binds(_Astn, _AtomEval, []) -->> [ ].
 
 %! ensure_class_mro_object(+ObjectFqn, +Mro0, -Mro) is det.
@@ -3039,8 +3080,8 @@ my_portray(Astn) :-
     node_astn(Astn0, Start, End, Value),
     my_portray_unify(Astn0, Astn), !,
     format("'ASTN'(~d:~d, ~q)", [Start, End, Value]).
-my_portray('NameRawNode'{name:Astn}) :-
-    format("'NameRawNode'{name:~p}", [Astn]).
+my_portray('NameBareNode'{name:Astn}) :-
+    format("'NameBareNode'{name:~p}", [Astn]).
 my_portray(module_and_token(Path, Token)) :-
     format("module_and_token(~p, ~p)", [Path, Token]).
 my_portray(str(S)) :- !,
@@ -3086,7 +3127,9 @@ my_portray(Meta) :-
     get_dict(path, Meta, Path),
     get_dict(src_fqn, Meta, SrcFqn),
     !,
-    format('meta{~q, ~q, ~q, ~q, ...}', [KytheCorpus, KytheRoot, Path, SrcFqn]).
+    dict_pairs(Meta, _, MetaPairs),
+    pairs_keys(MetaPairs, MetaKeys),
+    format('meta{~q, ~q, ~q, ~q, ...: ~q}', [KytheCorpus, KytheRoot, Path, SrcFqn, MetaKeys]).
 my_portray('$VAR'('_')) :- !, % work around a bug in print_term
     format('_', []).          % (numbervars(true) should handle this)
 my_portray('$VAR'(N)) :- !,
@@ -3177,7 +3220,7 @@ trace_file(this_will_never_match).
 %% trace_file('/home/peter/src/pykythe/test_data/t6a.py'). % TODO: delete
 %% TODO: For debugging t4.pl node.children -- neeeds to understand _NL = Union[Node, Leaf]; cildren: List[_NL]
 %% trace_file('/home/peter/src/typeshed/stdlib/2and3/lib2to3/pytree.pyi'). % TODO: delete
-%% trace_file('/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t10.py'). % TODO: delete
+%% trace_file('/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/a10.py'). % TODO: delete
 
 log_if_file(Fmt, Args) -->>
     Meta/file_meta,
@@ -3243,13 +3286,14 @@ my_run_tests :-
 
 :- use_module(library(lists), [subtract/3]).
 
-test_meta(meta{kythe_corpus: 'test-corpus',
-               kythe_root: 'test-root',
+test_meta(meta{kythe_corpus: 'CORPUS',
+               kythe_root: 'ROOT',
                path: SrcPath,
                language: python,
                encoding: 'utf-8',
                contents_base64: '',
-               contents: _,
+               contents_str: _,
+               contents_bytes: _,
                sha1: '',
                src_fqn: SrcFqn,
                pythonpaths: PythonPaths,
@@ -3286,15 +3330,42 @@ convset(Pred, L1, S2) :-
     convlist(Pred, L1, L2),
     list_to_set(L2, S2).
 
+round_trip_base64_utf8(Original) :-
+    base64_utf8(Original, B64),
+    base64_utf8(RoundTrip, B64),
+    assertion(Original == RoundTrip).
+
+test(base64_misc) :-
+    Original = '├',
+    %% using Python:
+    %% >>> '├'.encode('utf8')
+    %% '\xe2\x94\x9c'
+    %% >>> [c for c in '├'.encode('utf8')]
+    %% [226, 148, 156]
+    atom_codes(Original, OriginalCodes),
+    OriginalCodes = [9500],
+    phrase(utf8_codes(OriginalCodes), EncodedUtf8codes),
+    assertion(EncodedUtf8codes == [226, 148, 156]),
+    atom_codes(EncodedUtf8, EncodedUtf8codes),
+    assertion(EncodedUtf8 == '\u00e2\u0094\u009c').
+
+test(base64_utf8) :-
+    forall(member(Original,
+                  ['ab', 'AB',
+                   '├',
+                   '網目錦蛇 = 1  # アミメニシキヘビ 《網目錦蛇》 【あみめにしきへび】 (n) (uk) reticulated python (Python reticulatus)']),
+           round_trip_base64_utf8(Original)).
+
 test(kyImportDottedAsNamesFqn_top) :-
     %% This test is not exhaustive -- it's mainly for developing the code.
     %% Additional tests are done using the Kythe verifier.
     %% Note that this imports a variable (os.path.sep) whereas comb_as test imports
     %% a file (os.path). This shouldn't be any different, but it exercises things a bit more.
     test_meta(Meta),
-    Meta.contents = 'import os.path.sep',
+    Meta.contents_str = 'import os.path.sep',
+    Meta.contents_bytes = Meta.contents_str,  % ascii "decoding"
     %% If you change this setup, also change test(kyImportDottedAsNamesFqn1). DO NOT SUBMIT
-    maplist(find_anchor(Meta.contents),
+    maplist(find_anchor(Meta.contents_str),
             [0-os, 0-path, 0-sep],
             [OsAstn, PathAstn, SepAstn]),
     maplist(path_module(Meta),
@@ -3317,7 +3388,7 @@ test(kyImportDottedAsNamesFqn_top) :-
     assertion(atomic_list_concat([TypeshedFqn, '.stdlib.3.os'], ModuleModule_os)),
 
     _FromDots = [],
-    DottedNameItems = ['NameRawNode'{name:OsAstn}, 'NameRawNode'{name:PathAstn}, 'NameRawNode'{name:SepAstn}],
+    DottedNameItems = ['NameBareNode'{name:OsAstn}, 'NameBareNode'{name:PathAstn}, 'NameBareNode'{name:SepAstn}],
     join_fqn([Meta.src_fqn, 'os'], BindsFqn),
     BindsNameAstn = OsAstn,
     %% phrase(kyImportDottedAsNamesFqn_top(...)):
@@ -3360,8 +3431,9 @@ test(kyImportDottedAsNamesFqn_as) :-
     %% a variable within a file (os.path.sep). This shouldn't be any different,
     %% but it exercises things a bit more.
     test_meta(Meta),
-    Meta.contents = 'import os.path as os_path',
-    maplist(find_anchor(Meta.contents),
+    Meta.contents_str = 'import os.path as os_path',
+    Meta.contents_bytes = Meta.contents_str,  % ascii "decoding"
+    maplist(find_anchor(Meta.contents_str),
             [0-os, 0-path, 0-os_path],
             [OsAstn, PathAstn, OsPathAstn]),
     maplist(path_module(Meta),
@@ -3379,7 +3451,7 @@ test(kyImportDottedAsNamesFqn_as) :-
     assertion(has_suffix(ModuleModule_os, '.stdlib.3.os')),
 
     FromDots = [],
-    DottedNameItems = ['NameRawNode'{name:OsAstn}, 'NameRawNode'{name:PathAstn}],
+    DottedNameItems = ['NameBareNode'{name:OsAstn}, 'NameBareNode'{name:PathAstn}],
     join_fqn([Meta.src_fqn, 'os_path'], BindsFqn),
     BindsNameAstn = OsPathAstn,
     %% phrase(kyImportDottedAsNamesFqn_top(...)):

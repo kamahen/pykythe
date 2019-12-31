@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+  <head lang="en">
+    <meta Access-Control-ALlow-Origin
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <link rel="shortcut icon" type="image/png" href="favicon.png"/>  <!-- relative to 'static' dir -->
+    <link href="https://fonts.googleapis.com/css?family=Roboto Mono" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css?family=Inconsolata" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css?family=Source Code Pro" rel="stylesheet">
+    <link rel="stylesheet" href="t10.css"/>
+    <! -- TODO: remove jquery (only used for debugging) -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+    <script src="t10.js"></script>
+
+    <title>Pykythe Browser</title>
+
+    <!-- The convention is that id 'foo' gets a different ID for each instance,
+         and all the instances have the same CLASS 'sel-foo'. -->
+    <body onload="set_src_txt();">
+      <div class="container">
+        <div class="file_nav" id="file_nav">
+          File navigation goes here.
+        </div>
+        <div class="src">
+          <div class="src_row" id="src">Contents is set programmatically.
+          </div>
+        </div>
+        <div class="xref">
+          <table class="src_table">
+            <tr>
+              <td colspan="3" class="xref_head">Definition (2)
+              </td>
+            </tr>
+            <tr>
+              <td colspan="3" class="xref_file">CORPUS/ROOT/tmp/pykythe_test/SUBST/BUILTINS/builtins.pyi
+              </td>
+            </tr>
+            <tr>
+              <td class="edge_type">defines/binding
+              </td>
+              <td class="src_lineno">5
+              </td>
+              <td class="src_line">   class str(Sequence[str], _str_base):</td>
+            </tr>
+            <tr>
+              <td class="edge_type">defines/binding
+              </td>
+              <td class="src_lineno">115</td>
+              <td class="src_line">bargle bargle bargle</td>
+            </tr>
+            <tr>
+              <td colspan="3" class="xref_head">References (153)
+              </td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </body>
+  </head>
+</html>
+

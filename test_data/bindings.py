@@ -5,8 +5,8 @@
 # TODO: These only test Python 3; need similar tests for Python2
 # (e.g., list comprehensions "leak" in PYthon2)
 
-#- { Pkg=vname("${ROOT_FQN}.test_data.bindings", "test-corpus", "test-root", "", python).node/kind package }
-#- { File=vname("", "test-corpus", "test-root", "${ROOT_DIR}/test_data/bindings.py", "").node/kind file }
+#- { Pkg=vname("${ROOT_FQN}.test_data.bindings", "CORPUS", "ROOT", "", python).node/kind package }
+#- { File=vname("", "CORPUS", "ROOT", "${ROOT_DIR}/test_data/bindings.py", "").node/kind file }
 #- { File childof Pkg }
 #- { File.text _ }  // The contents of this file
 #- { File.text/encoding "utf-8" }

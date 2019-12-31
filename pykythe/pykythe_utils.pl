@@ -7,7 +7,7 @@
                           absolute_dir/2,
                           absolute_file_name_rel/2,
                           absolute_file_name_rel/3,
-                          base64_term/2,
+                          base64_utf8/2,
                           convdict/3,
                           convdict_pairs/3,
                           dict_values/2,
@@ -15,7 +15,8 @@
                           dump_term/2,
                           dump_term/3,
                           ensure_dict_fact/3,
-                          ensure_dict_fact_base64/3,
+                          ensure_dict_fact_base64_ascii/3,
+                          ensure_dict_fact_base64_utf8/3,
                           get_dict_default/4,
                           hash_hex/2,
                           has_prefix/2,
@@ -59,7 +60,8 @@
 
 :- style_check(-var_branches).  % For library(http/json)
 :- use_module(library(apply), [exclude/3, include/3, maplist/2, maplist/3, maplist/4, foldl/4, convlist/3]).
-:- use_module(library(base64), [base64/2]).
+:- use_module(library(base64), [base64/2 as base64_ascii]).
+:- use_module(library(utf8), [utf8_codes//1]).
 :- use_module(library(filesex), [make_directory_path/1, directory_file_path/3]).
 :- use_module(library(http/json), [json_read_dict/3, json_write_dict/3]).
 :- use_module(library(lists), [append/2, append/3, list_to_set/2, member/2, reverse/2, select/3]).
@@ -83,7 +85,6 @@
 
 :- maplist(rdet, [
                   %% base64_string/2, % handled by must_once
-                  base64_term/2,
                   %% convdict/3, % rdet wrap interferes with meta_predicate declaration
                   %% do_if/2,    % rdet wrap interferes with meta_predicate declaration
                   %% log_if/2,   % rdet wrap interferes with meta_predicate declaration
@@ -126,18 +127,6 @@ absolute_dir(Path0, AbsPath) :-
     remove_suffix_star(Path0, '/', Path),
     absolute_file_name_rel(Path, AbsPath0, [access(read), file_type(directory), file_errors(fail)]),
     atomic_list_concat([AbsPath0, '/'], AbsPath).
-
-%! base64_term(+Base64:string, -Term) is det.
-%! base64_term(-Base64:string, +Term) is det.
-%% Unlike base64/2, Base64 is always a string - compare base64(Z, "Zm9v"), Z = foo.
-base64_term(Base64, Term) :-
-    (  var(Base64)
-    -> term_to_atom(Term, Atom),
-       base64(Atom, Base64String),
-       atom_string(Base64String, Base64)
-    ;  base64(Atom, Base64),
-       term_to_atom(Term, Atom)
-    ).
 
 convdict(Pred, Dict0, Dict) :-
     dict_pairs(Dict0, Tag, Pairs0),
@@ -198,12 +187,21 @@ ensure_dict_fact(Dict, Attr, Value) :-
                   'Invalid JSON, expecting ~q=~q in ~q',
                   [Attr, Value, Dict]).
 
-%! ensure_dict_fact_base64(+Dict, +Attr, ?Value) is semidet.
-%% Die with an error message if base64(Dict.Attr) != Value
+%! ensure_dict_fact_base64_ascii(+Dict, +Attr, ?Value) is semidet.
+%% Die with an error message if base64_ascii(Dict.Attr) != Value
 %% (Can also be used to get Dict.Attr into Value).
-ensure_dict_fact_base64(Dict, Attr, Value) :-
+ensure_dict_fact_base64_ascii(Dict, Attr, Value) :-
     must_once(get_dict(Attr, Dict, Value64)),
-    must_once_msg(base64(Value, Value64),
+    must_once_msg(base64_ascii(Value, Value64),
+                  'Invalid JSON, expecting base64 ~q=~q in ~q',
+                  [Attr, Value, Dict]).
+
+%! ensure_dict_fact_base64_utf8(+Dict, +Attr, ?Value) is semidet.
+%% Die with an error message if base64_utf8(Dict.Attr) != Value
+%% (Can also be used to get Dict.Attr into Value).
+ensure_dict_fact_base64_utf8(Dict, Attr, Value) :-
+    must_once(get_dict(Attr, Dict, Value64)),
+    must_once_msg(base64_utf8(Value, Value64),
                   'Invalid JSON, expecting base64 ~q=~q in ~q',
                   [Attr, Value, Dict]).
 
@@ -280,7 +278,7 @@ my_json_read_dict(Stream, Dict) :-
     %%       and remove autoload below.
     current_prolog_flag(autoload, AutoloadFlag),
     set_prolog_flag(autoload, true), % TODO: Otherwise gets error: json:term_to_dict/3 - undefined select/3
-    json_read_dict(Stream, Dict, [value_string_as(atom), end_of_file(end_of_file), default_tag(json)]),
+    json_read_dict(Stream, Dict, [value_string_as(atom), end_of_file(@(end)), default_tag(json)]),
     set_prolog_flag(autoload, AutoloadFlag).
 
 %! opts(Opts:list, Items:list) is det.
@@ -427,7 +425,7 @@ write_atomic_stream(WritePred, Path) :-
     directory_file_path(PathDir, _, Path),
     make_directory_path(PathDir),
     tmp_file_stream(TmpPath, Stream, [encoding(utf8)]),
-    %% TODO: instead of setting up at_halt, use setup_call_cleanup/3
+    %% TODO: instead of at_halt/1, use setup_call_cleanup/3
     at_halt(pykythe_utils:safe_delete_file(TmpPath)), % in case WritePred crashes or fails
     (  call(WritePred, Stream)
     -> close(Stream),
@@ -475,3 +473,31 @@ has_suffix(Atom, Suffix) :-
 
 has_prefix(Atom, Prefix) :-
     sub_atom(Atom, 0, _, _, Prefix).
+
+%% Tests for atom_utf8_bytes are in pykythe.pl
+
+%! base64_utf8(+Atom, -BytesBase64) is det.
+%! base64_utf8(+Atom, -BytesBase64) is det.
+%% in Python: BytesBase64 = base64.b64encode(Atom.encode('utf8'))
+%%            Atom = base64.b64decode(BytesBase64).decode('utf8')
+base64_utf8(Atom, BytesBase64) :-
+    %% TODO: use the DCG forms of library(base64), to
+    %%       avoid extra atom_codes/2 calls
+    (  var(BytesBase64)
+    -> atom_to_utf8_to_b64(Atom, BytesBase64)
+    ;  b64_to_utf8_to_atom(BytesBase64, Atom)
+    ).
+
+%! atom_to_utf8_to_b64(+Atom, -BytesBase64) is det.
+atom_to_utf8_to_b64(Atom, BytesBase64) :-
+    atom_codes(Atom, Codes),
+    phrase(utf8_codes(Codes), Utf8codes),
+    atom_codes(Utf8, Utf8codes),
+    base64_ascii(Utf8, BytesBase64).
+
+%! b64_to_utf8_to_atom(+BytesBase64, -Atom) is det.
+b64_to_utf8_to_atom(BytesBase64, Atom) :-
+    base64_ascii(Utf8, BytesBase64),
+    atom_codes(Utf8, Utf8codes),
+    phrase(utf8_codes(Codes), Utf8codes),
+    atom_codes(Atom, Codes).

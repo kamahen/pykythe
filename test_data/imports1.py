@@ -14,8 +14,8 @@ there are other top-level directories, such as typeshed).
 """
 
 #- // This code assumes that it is in $ROOT/pykythe/test_data/imports1.py:
-#- { Pkg=vname("${ROOT_FQN}.test_data.imports1", "test-corpus", "test-root", "", python).node/kind package }
-#- { File=vname("", "test-corpus", "test-root", "${ROOT_DIR}/test_data/imports1.py", "").node/kind file }
+#- { Pkg=vname("${ROOT_FQN}.test_data.imports1", "CORPUS", "ROOT", "", python).node/kind package }
+#- { File=vname("", "CORPUS", "ROOT", "${ROOT_DIR}/test_data/imports1.py", "").node/kind file }
 #- { File childof Pkg }
 
 print("Entering imports1.py: " + __file__)

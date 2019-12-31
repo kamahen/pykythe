@@ -1,0 +1,330 @@
+/* See also: http://color-themes.com/?view=index */
+/* Validation: https://jigsaw.w3.org/css-validator/validator */
+/*             https://codebeautify.org/cssvalidate */
+
+body {
+    /* Colors from https://ethanschoonover.com/solarized/ */
+    --base03:    #002b36;
+    --base02:    #073642;
+    --base01:    #586e75;
+    --base00:    #657b83;
+    --base0:     #839496;
+    --base1:     #93a1a1;
+    --base2:     #eee8d5;
+    --base3:     #fdf6e3;
+    --yellow:    #b58900;
+    --orange:    #cb4b16;
+    --red:       #dc322f;
+    --magenta:   #d33682;
+    --violet:    #6c71c4;
+    --blue:      #268bd2;
+    --cyan:      #2aa198;
+    --green:     #859900;
+
+    background-color: var(--base3);
+}
+
+.src_hover {
+    background-color: lightpink;
+    cursor: pointer;
+}
+
+.container {
+    /* height: 99vh;
+       width: 99vm; */
+    background: ivory;
+    border: 0 solid black;
+}
+
+.file_nav {
+    color: red;
+    height: 10%;
+    overflow: auto; /* Shouldn't need this */
+    position: absolute;
+    top: 0;
+    width: 99%;
+    font-family: "Source Code Pro";
+    font-size: 9pt;
+    white-space: pre;
+}
+
+.file_nav_hover {
+    background-color: darkgrey;
+    cursor: pointer;
+}
+
+.src {
+    border-bottom: 1px solid black;
+    border-left: 0;
+    border-right: 0;
+    border-style: groove;
+    border-top: 1px solid black;
+    height: 75%;
+    overflow: auto;
+    position: absolute;
+    top: 10%;
+    width: 99%;
+}
+
+.xref {
+    height: 15%;
+    overflow: auto;
+    padding-top: 5pt;
+    position: absolute;
+    top: 85%;
+    width: 99%;
+}
+
+.src_row {
+    border-collapse: collapse;
+    border: 0 solid black;
+    overflow: auto;
+    width: 99%;
+}
+
+.src_table {
+    /* Safe fonts: "Courier New", Courier, "Lucida Console", Monaco, monospace */
+    /* font-family: "DejaVu Sans Mono", "Monaco", "Lucida Console", "monospace"; */
+    /* font-family: "DejaVu Sans Mono"; */
+    /* font-family: "Inconsolata"; */
+    /* font-family: "Roboto Mono"; */
+    /* https://fonts.google.com/?category=Monospace */
+    background-color: #fbfbfb;
+    border-collapse: collapse;
+    border: 0 solid black; 
+    font-family: "Source Code Pro";
+    font-size: 9pt;
+    overflow: auto;
+    width: 100%;
+}
+
+.src_lineno {
+    background: lightgrey;
+    border-right: 0 solid black;
+    text-align: right;
+    padding-right: 5px;
+    white-space: nowrap;
+    width: 1px; /* fit as tight as possible */
+}
+
+.src_line {
+    padding-left: 5px;
+    border-left: 0px solid black;
+    white-space: pre;
+}
+
+.edge_type {
+    padding-right: 5px;
+    white-space: nowrap;
+    width: 1px; /* fit as tight as possible */
+}
+
+.xref_head {
+    background: darkgrey;
+    color: darkblue;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.xref_file {
+    font-style: italic;
+}
+
+/* Colors: https://www.w3schools.com/colors/colors_names.asp */
+
+/* Corresponds to t10.js token_color */
+
+.python_arg_keyword         { color: darkblue; }
+.python_attr_binding        { color: green; font-weight: bold; text-decoration: underline; }
+.python_attr_ref            { color: green; }
+.python_bare                { color: darkblue; }
+.python_comment             { color: darkred; font-style: italic; }
+.python_keyword             { color: brown; font-weight: bold; }
+.python_newline             { } /* for completeness; not used */
+.python_number              { color: black; }
+.python_punctuation         { color: black; font-weight: bold; }
+.python_string              { color: green; font-style: italic; }
+.python_var_binding         { color: blue; font-weight: bold; text-decoration: underline; }
+.python_var_binding_global  { color: darkblue; font-weight: bold; } /* TODO: maybe aqua? */
+.python_var_ref             { color: blue; }
+.python_whitespace          { }  /* for completeness; not used */
+
+/*
+Unit    Description
+cm      centimeters
+mm      millimeters
+in      inches (1in = 96px = 2.54cm)
+px *    pixels (1px = 1/96th of 1in)
+pt      points (1pt = 1/72 of 1in)
+pc      picas (1pc = 12 pt)
+
+em      Relative to the font-size of the element
+ex      Relative to the x-height of the current font (rarely used)
+ch      Relative to width of the "0" (zero)
+rem     Relative to font-size of the root element
+vw      Relative to 1% of the width of the viewport*
+vh      Relative to 1% of the height of the viewport*
+vmin    Relative to 1% of viewport's* smaller dimension
+vmax    Relative to 1% of viewport's* larger dimension
+%       Relative to the parent element
+
+ * Pixels (px) are relative to the viewing device. For low-dpi
+   devices, 1px is one device pixel (dot) of the display. For printers
+   and high resolution screens 1px implies multiple device pixels.
+
+ * Viewport = the browser window size. 50cm wide viewport: 1vw = 0.5cm.
+
+ Tip: The em and rem units are practical in creating perfectly
+      scalable layout!
+*/
+
+.colors_supported_by_all_browsers {
+    color: aliceblue            ; color: #F0F8FF;
+    color: antiquewhite         ; color: #FAEBD7;
+    color: aqua                 ; color: #00FFFF;
+    color: aquamarine           ; color: #7FFFD4;
+    color: azure                ; color: #F0FFFF;
+    color: beige                ; color: #F5F5DC;
+    color: bisque               ; color: #FFE4C4;
+    color: black                ; color: #000000;
+    color: blanchedalmond       ; color: #FFEBCD;
+    color: blue                 ; color: #0000FF;
+    color: blueviolet           ; color: #8A2BE2;
+    color: brown                ; color: #A52A2A;
+    color: burlywood            ; color: #DEB887;
+    color: cadetblue            ; color: #5F9EA0;
+    color: chartreuse           ; color: #7FFF00;
+    color: chocolate            ; color: #D2691E;
+    color: coral                ; color: #FF7F50;
+    color: cornflowerblue       ; color: #6495ED;
+    color: cornsilk             ; color: #FFF8DC;
+    color: crimson              ; color: #DC143C;
+    color: cyan                 ; color: #00FFFF;
+    color: darkblue             ; color: #00008B;
+    color: darkcyan             ; color: #008B8B;
+    color: darkgoldenrod        ; color: #B8860B;
+    color: darkgray             ; color: #A9A9A9;
+    color: darkgrey             ; color: #A9A9A9;
+    color: darkgreen            ; color: #006400;
+    color: darkkhaki            ; color: #BDB76B;
+    color: darkmagenta          ; color: #8B008B;
+    color: darkolivegreen       ; color: #556B2F;
+    color: darkorange           ; color: #FF8C00;
+    color: darkorchid           ; color: #9932CC;
+    color: darkred              ; color: #8B0000;
+    color: darksalmon           ; color: #E9967A;
+    color: darkseagreen         ; color: #8FBC8F;
+    color: darkslateblue        ; color: #483D8B;
+    color: darkslategray        ; color: #2F4F4F;
+    color: darkslategrey        ; color: #2F4F4F;
+    color: darkturquoise        ; color: #00CED1;
+    color: darkviolet           ; color: #9400D3;
+    color: deeppink             ; color: #FF1493;
+    color: deepskyblue          ; color: #00BFFF;
+    color: dimgray              ; color: #696969;
+    color: dimgrey              ; color: #696969;
+    color: dodgerblue           ; color: #1E90FF;
+    color: firebrick            ; color: #B22222;
+    color: floralwhite          ; color: #FFFAF0;
+    color: forestgreen          ; color: #228B22;
+    color: fuchsia              ; color: #FF00FF;
+    color: gainsboro            ; color: #DCDCDC;
+    color: ghostwhite           ; color: #F8F8FF;
+    color: gold                 ; color: #FFD700;
+    color: goldenrod            ; color: #DAA520;
+    color: gray                 ; color: #808080;
+    color: grey                 ; color: #808080;
+    color: green                ; color: #008000;
+    color: greenyellow          ; color: #ADFF2F;
+    color: honeydew             ; color: #F0FFF0;
+    color: hotpink              ; color: #FF69B4;
+    color: indianred            ; color: #CD5C5C;
+    color: indigo               ; color: #4B0082;
+    color: ivory                ; color: #FFFFF0;
+    color: khaki                ; color: #F0E68C;
+    color: lavender             ; color: #E6E6FA;
+    color: lavenderblush        ; color: #FFF0F5;
+    color: lawngreen            ; color: #7CFC00;
+    color: lemonchiffon         ; color: #FFFACD;
+    color: lightblue            ; color: #ADD8E6;
+    color: lightcoral           ; color: #F08080;
+    color: lightcyan            ; color: #E0FFFF;
+    color: lightgoldenrodyellow ; color: #FAFAD2;
+    color: lightgray            ; color: #D3D3D3;
+    color: lightgrey            ; color: #D3D3D3;
+    color: lightgreen           ; color: #90EE90;
+    color: lightpink            ; color: #FFB6C1;
+    color: lightsalmon          ; color: #FFA07A;
+    color: lightseagreen        ; color: #20B2AA;
+    color: lightskyblue         ; color: #87CEFA;
+    color: lightslategray       ; color: #778899;
+    color: lightslategrey       ; color: #778899;
+    color: lightsteelblue       ; color: #B0C4DE;
+    color: lightyellow          ; color: #FFFFE0;
+    color: lime                 ; color: #00FF00;
+    color: limegreen            ; color: #32CD32;
+    color: linen                ; color: #FAF0E6;
+    color: magenta              ; color: #FF00FF;
+    color: maroon               ; color: #800000;
+    color: mediumaquamarine     ; color: #66CDAA;
+    color: mediumblue           ; color: #0000CD;
+    color: mediumorchid         ; color: #BA55D3;
+    color: mediumpurple         ; color: #9370DB;
+    color: mediumseagreen       ; color: #3CB371;
+    color: mediumslateblue      ; color: #7B68EE;
+    color: mediumspringgreen    ; color: #00FA9A;
+    color: mediumturquoise      ; color: #48D1CC;
+    color: mediumvioletred      ; color: #C71585;
+    color: midnightblue         ; color: #191970;
+    color: mintcream            ; color: #F5FFFA;
+    color: mistyrose            ; color: #FFE4E1;
+    color: moccasin             ; color: #FFE4B5;
+    color: navajowhite          ; color: #FFDEAD;
+    color: navy                 ; color: #000080;
+    color: oldlace              ; color: #FDF5E6;
+    color: olive                ; color: #808000;
+    color: olivedrab            ; color: #6B8E23;
+    color: orange               ; color: #FFA500;
+    color: orangered            ; color: #FF4500;
+    color: orchid               ; color: #DA70D6;
+    color: palegoldenrod        ; color: #EEE8AA;
+    color: palegreen            ; color: #98FB98;
+    color: paleturquoise        ; color: #AFEEEE;
+    color: palevioletred        ; color: #DB7093;
+    color: papayawhip           ; color: #FFEFD5;
+    color: peachpuff            ; color: #FFDAB9;
+    color: peru                 ; color: #CD853F;
+    color: pink                 ; color: #FFC0CB;
+    color: plum                 ; color: #DDA0DD;
+    color: powderblue           ; color: #B0E0E6;
+    color: purple               ; color: #800080;
+    color: rebeccapurple        ; color: #663399;
+    color: red                  ; color: #FF0000;
+    color: rosybrown            ; color: #BC8F8F;
+    color: royalblue            ; color: #4169E1;
+    color: saddlebrown          ; color: #8B4513;
+    color: salmon               ; color: #FA8072;
+    color: sandybrown           ; color: #F4A460;
+    color: seagreen             ; color: #2E8B57;
+    color: seashell             ; color: #FFF5EE;
+    color: sienna               ; color: #A0522D;
+    color: silver               ; color: #C0C0C0;
+    color: skyblue              ; color: #87CEEB;
+    color: slateblue            ; color: #6A5ACD;
+    color: slategray            ; color: #708090;
+    color: slategrey            ; color: #708090;
+    color: snow                 ; color: #FFFAFA;
+    color: springgreen          ; color: #00FF7F;
+    color: steelblue            ; color: #4682B4;
+    color: tan                  ; color: #D2B48C;
+    color: teal                 ; color: #008080;
+    color: thistle              ; color: #D8BFD8;
+    color: tomato               ; color: #FF6347;
+    color: turquoise            ; color: #40E0D0;
+    color: violet               ; color: #EE82EE;
+    color: wheat                ; color: #F5DEB3;
+    color: white                ; color: #FFFFFF;
+    color: whitesmoke           ; color: #F5F5F5;
+    color: yellow               ; color: #FFFF00;
+    color: yellowgreen          ; color: #9ACD32;
+}
