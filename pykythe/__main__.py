@@ -25,9 +25,9 @@ RawBaseType = Union[ast_raw.Node, ast_raw.Leaf]
 
 def main() -> int:
     """Main (uses sys.argv)."""
-    src_file: Optional[ast.File] = None
-    parse_error: Optional['CompilationError'] = None
-    parse_tree: Optional[RawBaseType] = None
+    src_file: Optional[ast.File]
+    parse_error: Optional['CompilationError']
+    parse_tree: Optional[RawBaseType]
     with_fqns: Union['CompilationError', ast_cooked.Base]
     # TODO: add to ast.File: args.root, args.corpus (even though they're in Meta)
 
@@ -110,8 +110,9 @@ def _get_args() -> argparse.Namespace:
 def _make_file(
         args: argparse.Namespace) -> Tuple[Optional[ast.File], Optional['CompilationError']]:
     parse_error: Optional['CompilationError']
+    src_file: Optional[ast.File] = None
     try:
-        src_file: Optional[ast.File] = ast.make_file(path=args.srcpath)
+        src_file = ast.make_file(path=args.srcpath)
         parse_error = None
     except SyntaxError as exc:
         # TODO: This seems to sometimes be raised from an encoding error with
@@ -136,7 +137,8 @@ def _make_file(
 
 def _parse_file(src_file: ast.File,
                 args: argparse.Namespace) -> Tuple[RawBaseType, Optional['CompilationError']]:
-    parse_error: Optional['CompilationError']
+    parse_error: Optional['CompilationError'] = None
+    parse_tree: Optional[RawBaseType] = None
     try:
         parse_tree = ast_raw.parse(src_file, args.python_version)
         parse_error = None
