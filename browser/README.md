@@ -6,29 +6,17 @@ encoding of Kythe facts.
 It doesn't use any of Javascript's fancy frameworks, and currently works
 with statically-generated files in /tmp/pykythe_test/browser.
 
-See ../Makefile rule `make-js`.
-
 ## Testing
 
-This code currently only works with "static" files, and dynamically loading
-them gets messed up by CORS (Cross-Origin Resource Sharing).
-
-The easiest way to deal with this is:
-* start Firefox (not Chrome)
-* `about:config`
-* navigate to `security.fileuri.strict_origin_policy`
-* set to `false`
-
-Don't forget to set this back to `true` when you're done testing.
-
-It's possible that this works (but it didn't for me):
 ```
-mkdir /tmp/chrome-cors
-google-chrome --disable-web-security --allow-file-access-from-files --user-data-dir=/tmp/chrome-cors
+    make -C .. test    # Creates /tmp/pykythe_test/KYTHE files
+    make -C ..make-js  # Creates /tmp/pykythe_test/browser files
+    make -C SRC_BROWSE_PORT=9999 run-src-browser
 ```
 
-"Soon", there'll be a server version of the browser, which will avoid the problem.
-But one thing at a time.
+This starts a server on port 9999. You can see it at
+`http://localhost:9999/static/src_browser.html`
+
 
 ## Miscelaneous
 

@@ -27,12 +27,27 @@ builtins_symtab_primitive('str',      [class_type('${BUILTINS_FQN}.builtins.str'
 builtins_symtab_primitive('type',     [class_type('${BUILTINS_FQN}.builtins.type',     [])]).
 
 builtins_pairs(Pairs) :-
-    bagof(Name-Type, builtins_symtab_primitive(Name, Type), Pairs).
+    setof(Name-Type, builtins_symtab_primitive(Name, Type), Pairs).
 
-builtins_symtab_modules(symtab{}).
+builtins_symtab_modules(Symtab) :-
+    symtab_empty(Symtab).
 
 builtins_symtab(Symtab) :-
     builtins_pairs(Pairs),
-    dict_pairs(Symtab, symtab, Pairs).
+    ord_list_to_symtab(Pairs, Symtab),
+    symtab_pairs(Symtab, Pairs).
+
+
+% %% DO NOT SUBMIT -- these should be from module(pykythe_symtab) but
+% %%                  that requires changing the bootstrap process.
+
+% symtab_empty(Symtab) :-
+%     Symtab = symtab{}.
+
+% ord_list_to_symtab(Pairs, Symtab) :-
+%     dict_pairs(Symtab, symtab, Pairs).
+
+% symtab_pairs(Symtab, Pairs) :-
+%     dict_pairs(Symtab, symtab,  Pairs).
 
 

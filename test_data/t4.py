@@ -49,7 +49,7 @@ print(token.ENDMARKER)
 #- { @Base ref vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pytree.Base", _, _, "", python) }
 node: pytree.Base
 
-#- { @parent ref vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pytree.Base.parent", _, _, "", python) }
+#- { @parent ref @parent ref vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pytree.Base.parent", _, _, "", python) }
 #- { @type ref vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pytree.Base.type", _, _, "", python) }
 #- { @type ref vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pytree.Base.type", _, _, "", python) }
 #- { @real ref vname("${BUILTINS_FQN}.builtins.int.real", _, _, "", python) }

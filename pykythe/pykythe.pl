@@ -201,7 +201,9 @@
 :- use_module(library(optparse), [opt_arguments/3]).
 :- use_module(library(ordsets), [list_to_ord_set/2, ord_empty/1, ord_union/2, ord_union/3, ord_add_element/3]).
 :- use_module(library(pairs), [pairs_keys/2, pairs_values/2, pairs_keys_values/3]).
+:- style_check(-var_branches).
 :- use_module(library(pcre), [re_replace/4]).
+:- style_check(+var_branches).
 :- use_module(library(prolog_stack)).  % For catch_with_backtrace
 :- use_module(library(readutil), [read_file_to_string/3]).
 :- use_module(library(yall)).
@@ -209,6 +211,9 @@
 :- use_module(must_once, [must_once/1, must_once_msg/2, must_once_msg/3, fail/1,
                           must_once/3 as must_once_symrej]).
 :- use_module(pykythe_utils).
+:- use_module(pykythe_symtab).
+
+%% TODO: use_module(library(fastrw), [fast_read/2, fast_write/2, fast_term_serialized/2]).
 
 :- meta_predicate
        maplist_kyfact(4, +, +, -, +),
@@ -252,11 +257,8 @@
 % %% Other imported predicates:
 % :- maplist(rdet, [aggregate_all/3,
 %                   base64_ascii/2,
-%                   dict_values/2,
 %                   directory_file_path/3,
 %                   foreach/2,
-%                   json_read_dict/2,
-%                   json_write_dict/3,
 %                   list_to_ord_set/2,
 %                   list_to_set/2,
 %                   opt_arguments/3
@@ -344,9 +346,9 @@
                   %% maplist_kyfact_symrej_union/8, % Need TRO
                   %% maplist_kynode/7, % Need TRO
                   %% maybe_open_read/2,
-                  %% maybe_process_module_cached/6,
-                  %% maybe_process_module_cached_batch/5,
-                  %% maybe_process_module_cached_impl/7,
+                  %% maybe_process_module_cached/5,
+                  %% maybe_process_module_cached_batch/3,
+                  %% maybe_process_module_cached_impl/6,
                   merge_cache_into_symtab/3,
                   modules_in_exprs/2,
                   modules_in_symtab/2,
@@ -355,12 +357,11 @@
                   %% node_astn/4,
                   normalize_type/2,
                   object_fqn/1,
-                  output_kythe/8,
+                  output_kythe/7,
                   parse_and_get_meta/6,
                   %% process_module_cached_or_from_src/6,  % wrapped in must_once
-                  process_module_cached_or_from_src_setup/4,
-                  %% process_module_from_src/6,
-                  %% process_module_from_src_impl/6,
+                  %% process_module_from_src/5,  % DO NOT SUBMIT - is this det? (I think it is)
+                  %% process_module_from_src_impl/5,  % DO NOT SUBMIT - ditto
                   process_src/2,
                   possible_classes_from_attr/5,
                   process_nodes/5,
@@ -368,11 +369,10 @@
                   %% pykythe_main/0,
                   pykythe_main2/0,
                   pykythe_opts/2,
-                  %% maybe_read_cache/5,
+                  %% maybe_read_cache/4,
                   read_nodes/4,
                   remove_class_cycles/3,
                   remove_class_cycles_one/4,
-                  reorder_kythefacts_from_nodes/3,
                   resolve_mro_dot/9,
                   resolve_unknown_fqn/7,
                   run_parse_cmd/4,
@@ -385,14 +385,12 @@
                   %% subscr_resolve_dot_binds/7, % TODO: failed to analyse
                   symrej_accum/3,
                   symrej_accum_found/7,
-                  symtab_as_kyfact/3,
                   symtab_pykythe_types/4,
                   transform_kythe_fact/2,
                   transform_kythe_vname/2,
                   transform_kythe_path/2,
                   wrap_import_ref/4
                   %% symtab_lookup/4,
-                  %% path_batch_suffix/3,
                   %% write_batch_symtab/2, % Is det, but expansion confuses write_atomic_stream/2.
                   %% write_to_protobuf/4,  % Is det, but expansion confuses write_atomic_file/2.
                   %% write_kythe_facts/3  % TODO: failed to analyse
@@ -566,7 +564,7 @@ edcg:pred_info(exprs, 1,                               [expr]).
 %%
 %% When processing from a cache file (batch), almost all the time
 %% is taken by:
-%%     update_new_dict
+%%     update_symtab
 %%       put_dict/4         27%
 %%       garbage collection 67%
 
@@ -622,7 +620,7 @@ object_fqn(ObjectFqn) :-
 pykythe_main :-
     log_if(true, 'Start'),      % TODO: delete
     %% TODO: change ast_raw._EXPR_NODES to reduce the number of expr nodes
-    %% The stack limit depends on some cuts that are marked '% for memory usage'
+    %% The stack limit depends on some cuts that are marked '% "cut" for memory usage'
     %%     (especially the ones marked '*** THIS ONE IS IMPORTANT ***').
     set_prolog_flag(stack_limit, 1_610_612_736), % TODO: 1.5GB - default of 1GB might suffice
 
@@ -653,10 +651,9 @@ pykythe_main2 :-
     set_prolog_flag(color_term, false), % TODO: delete (move to ~/.swiplrc)
 
     pykythe_opts(SrcPaths, Opts),
-    opt(Opts, builtins_symtab(BuiltinsSymtabFile)),
     %% BuiltinsSymtabFile is created by gen_builtins_symtab.pl
-    unload_file(BuiltinsSymtabFile), % TODO: should be a module and list the predicates
-    load_files([BuiltinsSymtabFile], [silent(true), % TODO: should be a module
+    unload_file(Opts.builtins_symtab), % TODO: should be a module and list the predicates
+    load_files([Opts.builtins_symtab], [silent(true), % TODO: should be a module
                                       imports([builtins_pairs/1,
                                                builtins_symtab/1,
                                                builtins_symtab_modules/1,
@@ -674,48 +671,62 @@ process_src(Opts, SrcPath) :-
     must_once(
         process_module_cached_or_from_src(Opts, from_src_ok, SrcPath, SrcFqn, Symtab0, _Symtab)).
 
+%! path_with_suffix(+Opts:dict, +SrcPath:atom, +Suffix:atom, -Path:atom) is det.
+%% Create Path from SrcPath's base and Opts.Suffix.
+path_with_suffix(Opts, SrcPath, Suffix, Path) :-
+    src_base(SrcPath, SrcPathBase),
+    atomic_list_concat([Opts.kytheout, SrcPathBase, Opts.Suffix], Path).
+
 %! interrupt(+Signal)
 %% An interrupt handler, installed by on_signal/3.
 interrupt(_Signal) :-
     halt(1).
 
-%! pykythe_opts(-SrcPaths:list(atom), -Opts:list(pair)) is det.
+%! pykythe_opts(-SrcPaths:list(atom), -Opts:dict) is det.
 %% Process the command line, getting the source file and options.
+%% Adds "fake" options that contain the full file paths generated
+%% from the suffixes.
 pykythe_opts(SrcPaths, Opts) :-
     current_prolog_flag(version, PrologVersion),
     must_once_msg(PrologVersion >= 80119, 'SWI-Prolog version is too old'),  % Sync this with README.md
     OptsSpec =
-       [[opt(parsecmd), type(atom), default('parsecmd-must-be-specified'), longflags([parsecmd]),
-         help('Command for running parser than generates fqn.kythe.json file')],
+       [[opt(builtins_symtab), type(atom), default(''), longflags(['builtins_symtab']),
+         help('File containing a builtins_symtab/1 fact')],
         [opt(entriescmd), type(atom), default('entriescmd-must-be-specified'), longflags([entriescmd]),
          help('Command for running conversion of .kythe.json to .kythe.entries')],
         [opt(kythe_corpus), type(atom), default(''), longflags(['kythe_corpus']),
          help('Value of "corpus" in Kythe facts')],
         [opt(kythe_root), type(atom), default(''), longflags(['kythe_root']),
          help('Value of "root" in Kythe facts')],
-        [opt(pythonpath), type(atom), default(''), longflags(['pythonpath']),
-         help('Similar to $PYTHONPATH for resolving imports (":"-separated paths)')],
         [opt(kytheout), type(atom), default(''), longflags(['kytheout']),
          help('Directory for output of imported files (including "main" file)')],
-        [opt(kytheout_suffix), type(atom), default('.kythe.json'), longflags(['kythout_suffix']),
-         help('Suffix (extension) for output files - should have leading ".".')],
-        [opt(entries_suffix), type(atom), default('.kythe.entries'), longflags(['entries_suffix']),
-         help('Suffix (extension for Kythe protouf output files - should have leading "."')],
+        [opt(parsecmd), type(atom), default('parsecmd-must-be-specified'), longflags([parsecmd]),
+         help('Command for running parser than generates fqn.kythe.json file')],
+        [opt(python_version), type(integer), default(3), longflags(python_version),
+         help('Python major version')],
+        [opt(pythonpath), type(atom), default(''), longflags(['pythonpath']),
+                                % TODO: python_version should be a triple: see ast_raw.FAKE_SYS
+         help('Similar to $PYTHONPATH for resolving imports (":"-separated paths)')],
         [opt(version), type(atom), default(''), longflags(['version']),
          help('Pykythe version, used to validate cache entries')],
-        [opt(builtins_symtab), type(atom), default(''), longflags(['builtins_symtab']),
-         help('File containing a builtins_symtab/1 fact')],
-        [opt(batch_suffix), type(atom), default(''), longflags(['batch_suffix']),
+
+        [opt(pykythebatch_suffix), type(atom), default(''), longflags(['pykythebatch_suffix']),
          help(['Suffix (extension) for creating cache batch files (see README).',
-               '- this is concatenated to the --kytheout_suffix value.',
                'If omitted or "", batch cache isn\'t used.'])],
-        [opt(python_version), type(integer), default(3), longflags(python_version),
-         help('Python major version')]], % TODO: should be a triple: see ast_raw.FAKE_SYS
-    opt_arguments(OptsSpec, Opts0, PositionalArgs),
-    %% TODO: allow multiple positional args (here and in __main__.py)
+        [opt(kytheentries_suffix), type(atom), default('.kythe.entries'), longflags(['kytheentries_suffix']),
+         help('Suffix (extension for Kythe protouf output files - should have leading "."')],
+        [opt(kythejson_suffix), type(atom), default('.kythe.json'), longflags(['kythout_suffix']),
+         help('Suffix (extension) for output files - should have leading ".".')],
+        [opt(pykythesymtab_suffix), type(atom), default('.pykythe.symtab'), longflags(['pykythesymtab_suffix']),
+         help('Suffix (extension) for cache symtab files - should have leading ".".')]
+       ],
+    opt_arguments(OptsSpec, OptsList, PositionalArgs),
+    opts_dict(OptsList, Opts0),
+    split_atom(Opts0.pythonpath, ':', '', PythonpathList0),
+    convlist(maybe_absolute_dir, PythonpathList0, PythonpathList),
+    put_dict(pythonpath, Opts0, PythonpathList, Opts),
     must_once_msg(PositionalArgs = [_|_], 'Missing positional arg (file to process)'),
-    maplist(absolute_file_name_rel, PositionalArgs, SrcPaths),
-    must_once(split_path_string_and_canonicalize(pythonpath, Opts0, Opts)).
+    maplist(absolute_file_name_rel, PositionalArgs, SrcPaths).
 
 %! process_module_cached_or_from_src(+Opts:list, +FromSrcOk:{from_src_ok,cached_only}, +SrcPath:atom, +SrcFqn:atom, +Symtab0, -Symtab) is semidet.
 %%
@@ -748,20 +759,20 @@ pykythe_opts(SrcPaths, Opts) :-
 %% imports, so a module's entry in the symtab is used to prevent an
 %% infinite recursion.
 process_module_cached_or_from_src(Opts, FromSrcOk, SrcPath, SrcFqn, Symtab0, Symtab) :-
-    process_module_cached_or_from_src_setup(Opts, SrcPath, SrcPathAbs, KytheJsonPath),
-    (  get_dict(SrcFqn, Symtab0, _ModuleValue)
+    (  symtab_lookup(SrcFqn, Symtab0, _ModuleValue)
     -> %% Module in symtab (possibly recursive import): skip it.
        Symtab = Symtab0,
-       log_if(true, 'Skipping (already processed/processing) ~q: ~q', [SrcPath, SrcFqn])
-    ;  maybe_process_module_cached(Opts, FromSrcOk, KytheJsonPath, SrcPathAbs, Symtab0, Symtab)
+       %% TODO: use general debug flag for following:
+       log_if(trace_file(SrcPath), 'Skipping (already processed/processing) ~q: ~q', [SrcPath, SrcFqn])
+    ;  maybe_process_module_cached(Opts, FromSrcOk, SrcPath, Symtab0, Symtab)
     -> true
-    ;  process_module_from_src(Opts, FromSrcOk, KytheJsonPath, SrcFqn, Symtab0, Symtab)
+    ;  process_module_from_src(Opts, FromSrcOk, SrcFqn, Symtab0, Symtab)
     ).
 
 %! modules_in_symtab(+Symtab, -Modules:list) is det.
 %% Create a set of all modules that appear as the type for symtab entries.
 modules_in_symtab(Symtab, Modules) :-
-    dict_values(Symtab, SymtabValues),
+    symtab_values(Symtab, SymtabValues),
     append(SymtabValues, AllTypes),
     include(is_module, AllTypes, Modules0),
     list_to_union_type(Modules0, Modules).
@@ -784,73 +795,70 @@ is_assign_import(Term, module_type(Module)) :-
     is_dict(Term, assign_import),  % Term = assign_import{...}
     Term.module_and_maybe_token = Module.
 
-%! maybe_process_module_cached(+Opts:list, +FromSrcOk:{from_src_ok,cached_only}, +KytheJsonPath:atom, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
+%! maybe_process_module_cached(+Opts:list, +FromSrcOk:{from_src_ok,cached_only}, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
 %% If possible use the cache file to have the same effect as running
-%% process_module_from_src/6.
+%% process_module_from_src/5.
 %% The logic is:
-%%   conditionally open KytheJsonPath (which should be an absolute file name)
+%%   conditionally open Opts.kythejson_PATH (which should be an absolute file name)
 %%   if it succeeeds, run process_module_cached_impl/7
 %%     this can fail if the cached file isn't valid (e.g., older than the source)
 %%   [ensure that any open file is closed]
-maybe_process_module_cached(Opts, FromSrcOk, KytheJsonPath, SrcPath, Symtab0, Symtab) :-
+maybe_process_module_cached(Opts, FromSrcOk, SrcPath, Symtab0, Symtab) :-
+    path_with_suffix(Opts, SrcPath, pykythesymtab_suffix, PykythesymtabPath),
     setup_call_cleanup(
-        maybe_open_read(KytheJsonPath, KytheInputStream),
-        maybe_process_module_cached_impl(Opts, FromSrcOk, KytheInputStream, KytheJsonPath, SrcPath, Symtab0, Symtab),
-        close(KytheInputStream)),
-    log_if(false, 'Reused ~q for ~q', [KytheJsonPath, SrcPath]), % msg is output by process_module_cached_impl
+        maybe_open_read(PykythesymtabPath, PykytheSymtabInputStream),
+        maybe_process_module_cached_impl(Opts, FromSrcOk, PykytheSymtabInputStream, SrcPath, Symtab0, Symtab),
+        close(PykytheSymtabInputStream)),
+    log_if(false, 'Reused ~q for ~q', [PykythesymtabPath, SrcPath]), % msg is output by process_module_cached_impl
     !. % TODO: delete (when the fail catch-all clause is removed).
-maybe_process_module_cached(_Opts, _FromSrcOk, _KytheInputStream, KytheJsonPath, SrcPath, _Symtab0, _Symtab)  :-
+maybe_process_module_cached(Opts, _FromSrcOk, SrcPath, _Symtab0, _Symtab)  :-
     %% TODO: need a better reason for failure ... the tests in
     %%       process_module_cached_impl/7 should give a
     %%       message about which one failed (for now, we have
     %%       must_once/2 and simple tests).
     %% (Currently, some of the failures output a message; perhaps we can
     %% remove the following when all failures output a message?)
-    log_if(access_file(KytheJsonPath, read),
-           'Could not use reuse ~q for ~q', [KytheJsonPath, SrcPath]),
+    path_with_suffix(Opts, SrcPath, pykythesymtab_suffix, PykytheSymtabPath),
+    %% DO NOT SUBMIT -- if all paths to here output an error message, then
+    %%                  remove this (or remove the "different version" message).
+    log_if(access_file(PykytheSymtabPath, read),
+           'Could not use reuse ~q for ~q', [PykytheSymtabPath, SrcPath]),
     fail.
 
-%! process_module_cached_or_from_src_setup(+Opts, +SrcPath, -SrcPathAbs, -KytheJsonPath) is det.
-%% Make sure that the output directory exists,
-%% SrcPathAbs = absolute_file_name_rel(SrcPath),
-%% KytheJsonPath gets a path name in the output directory.
-process_module_cached_or_from_src_setup(Opts, SrcPath, SrcPathAbs, KytheJsonPath) :-
-    opts(Opts, [kytheout(KytheOutDir), kytheout_suffix(KytheOutSuffix)]),
-    absolute_file_name_rel(SrcPath, SrcPathAbs), % just in case
-    src_base(SrcPathAbs, SrcPathBase),
-    atomic_list_concat([KytheOutDir, SrcPathBase, KytheOutSuffix], KytheJsonPath).
-
-%! maybe_process_module_cached_impl(+Opts:list, +FromSrcOk:{from_src_ok,cached_only}, +KytheInputStream, +KytheJsonPath:atom, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
-maybe_process_module_cached_impl(Opts, FromSrcOk, KytheInputStream, KytheJsonPath, SrcPath, Symtab0, Symtab)  :-
-    opt(Opts, version(Version)),
-    (  maybe_process_module_cached_batch(Opts, KytheJsonPath, SrcPath, SymtabFromCache, KytheBatchPath)
+%! maybe_process_module_cached_impl(+Opts:list, +FromSrcOk:{from_src_ok,cached_only}, +PykytheSymtabInputStream, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
+%% See README.md's section on caching for an explanation.
+maybe_process_module_cached_impl(Opts, FromSrcOk, PykytheSymtabInputStream, SrcPath, Symtab0, Symtab)  :-
+    (  maybe_process_module_cached_batch(Opts, SrcPath, SymtabFromCache)
     -> merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab),
-       log_if(true, 'Reused/batch(~w) ~q for ~q', [FromSrcOk, KytheBatchPath, SrcPath])
+       path_with_suffix(Opts, SrcPath, pykythebatch_suffix, PykytheBatchPath),
+       log_if(true, 'Reused/batch(~w) ~q for ~q', [FromSrcOk, PykytheBatchPath, SrcPath])
     ;  %% The following validation depends on what kyfile//1 generates.
-       maybe_read_cache(KytheInputStream, KytheJsonPath, SrcPath, Version, SymtabFromCache),
+       maybe_read_cache(Opts, PykytheSymtabInputStream, SrcPath, SymtabFromCache),
        %% TODO: modules_in_symtab not needed because foldl_process_module_cached_or_from_src/5
        %%       skips non-modules.
        modules_in_symtab(SymtabFromCache, ModulesInSymtab),
        %% recursively process modules, failing if any is "from_src"
        %% (not cached). This will cause failure of
        %% maybe_process_module_cached_impl/7, which will result in calling
-       %% maybe_process_module_from_src/6 for this module.  Any imported
+       %% process_module_from_src/5 for this module.  Any imported
        %% modules that were processed will get re-processed (but use
        %% the cached result).
        merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab1),
        foldl_process_module_cached_or_from_src(Opts, cached_only, ModulesInSymtab, Symtab1, Symtab),
+       path_with_suffix(Opts, SrcPath, kythejson_suffix, KytheJsonPath),
        log_if(true, 'Reused/cache(~w) ~q for ~q', [FromSrcOk, KytheJsonPath, SrcPath])
     ).
 
-%! maybe_process_module_cached_batch(+Opts:list, +KytheJsonPath:atom, +SrcPath:atom, -Symtab:dict, -KytheBatchPath:atom) is semidet.
-maybe_process_module_cached_batch(Opts, KytheJsonPath, SrcPath, Symtab, KytheBatchPath) :-
-    opt(Opts, version(Version)),
-    path_batch_suffix(KytheJsonPath, Opts, KytheBatchPath),
-    maybe_open_read(KytheBatchPath, KytheStreamBatch),
-    read_term(KytheStreamBatch, BatchVersion, []),
-    (  BatchVersion == Version
+%! maybe_process_module_cached_batch(+Opts:list, +SrcPath:atom, -Symtab:dict) is semidet.
+maybe_process_module_cached_batch(Opts, SrcPath, Symtab) :-
+    Opts.pykythebatch_suffix \= '',
+    path_with_suffix(Opts, SrcPath, pykythebatch_suffix, PykytheBatchPath),
+    maybe_open_read(PykytheBatchPath, KytheStreamBatch),
+    read_term(KytheStreamBatch, BatchVersion, []),  % DO NOT SUBMIT -fast_serialize
+    (  BatchVersion == Opts.version
     -> read_term(KytheStreamBatch, Symtab, [])
-    ;  log_if(true,
+    ;  path_with_suffix(Opts, SrcPath, kythejson_suffix, KytheJsonPath),
+       log_if(true,
               'Cannot reuse batch cache (different version) ~q for ~q', [KytheJsonPath, SrcPath]),
        fail
     ).
@@ -868,67 +876,66 @@ foldl_process_module_cached_or_from_src(Opts, FromSrcOk, [M|Modules], Symtab0, S
        process_module_cached_or_from_src(Opts, FromSrcOk, SrcPath, SrcFqn, Symtab0, Symtab1)
     ;  Symtab1 = Symtab0
     ),
-    !,                          % for memory usage
+    !,                          % "cut" for memory usage
     foldl_process_module_cached_or_from_src(Opts, FromSrcOk, Modules, Symtab1, Symtab).
 
-%- maybe_read_cache(+KytheInputStream, +KytheJsonPath, +SrcPath, +Version, -SymtabFromCache) is semidet.
+%- maybe_read_cache(+Opts:dict, +PykytheSymtabInputStream, +SrcPath, -SymtabFromCache) is semidet.
 %% Reads just enough to validate.
-maybe_read_cache(KytheInputStream, KytheJsonPath, SrcPath, Version, SymtabFromCache) :-
-    json_read_dict_validate(KytheInputStream, '/pykythe/version', JsonVersion),
-    %% ignore Signature for /pykythe/version
-    ensure_dict_fact_base64_ascii(JsonVersion, fact_value, CacheVersion),
+maybe_read_cache(Opts, PykytheSymtabInputStream, SrcPath, SymtabFromCache) :-
+    %% See write_batch/2 for how these were output.
+    path_with_suffix(Opts, SrcPath, pykythesymtab_suffix, PykytheSymtabPath),
+    read_term(PykytheSymtabInputStream, CacheVersion, []),
     %% short-circuit other tests if version mismatch
-    (  CacheVersion == Version
+    (  CacheVersion == Opts.version
     -> true
     ;  log_if(true,
-              'Cannot reuse cache (different version) ~q for ~q', [KytheJsonPath, SrcPath]),
+              'Cannot reuse cache (different version) ~q for ~q', [PykytheSymtabPath, SrcPath]),
        fail
     ),
-    json_read_dict_validate(KytheInputStream, '/pykythe/text/sha1', JsonSha1),
-    ensure_dict_fact_base64_ascii(JsonSha1, fact_value, JsonSha1Hex),
+    read_term(PykytheSymtabInputStream, Sha1Hex, []),
     read_file_to_string(SrcPath, SrcText, [file_errors(fail)]),
     hash_hex(SrcText, SrcSha1Hex),
-    (  SrcSha1Hex == JsonSha1Hex
+    (  SrcSha1Hex == Sha1Hex  %% succeed if SHA1 is expected value.
     -> true
     ;  log_if(true,
-              'Cannot reuse cache (different source ~q - ~q) ~q for ~q', [JsonSha1Hex, SrcSha1Hex, KytheJsonPath, SrcPath]),
+              'Cannot reuse cache (different source ~q - ~q) ~q for ~q', [Sha1Hex, SrcSha1Hex, PykytheSymtabPath, SrcPath]),
        fail
     ),
-    json_read_dict_validate(KytheInputStream, '/kythe/node/kind', JsonPath),
-    ensure_dict_fact_base64_ascii(JsonPath, fact_value, 'file'),
-    json_read_dict_validate(KytheInputStream, '/kythe/text/encoding', _JsonEncoding),
-    json_read_dict_validate(KytheInputStream, '/pykythe/symtab', JsonSymtab),
-    ensure_dict_fact(JsonSymtab, fact_value, SymtabFromCacheStr),
-    %% base64_term(SymtabFromCacheBase64, SymtabFromCache). - Too slow.
-    %% DO NOT SUBMIT - fast_term_serialized(?Term, ?String)
-    term_string(SymtabFromCache, SymtabFromCacheStr).
+    %% TODO - DO NOT SUBMIT
+    %% The JSON read is slow (1.6 sec) and probably the write is
+    %% also slow. Better to put the symtab in a separate file and
+    %% use fast_read/2, fast_write/2.
+    %% term_string->term: 155ms (27K entries in 7.2MB)
+    %% term_string->str:  105ms
+    %% fast_term->term:    25ms
+    %% fast_term->str:     12ms
+    read_term(PykytheSymtabInputStream, SymtabFromCache, []).
 
 %! merge_cache_into_symtab(+SymtabFromCache, +Symtab0,- Symtab) is det.
-%% Can fail if the cached text is different from the current file contents.
-%% If a value is already in the cache, it is preserved.
 merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab) :-
-    dict_pairs(SymtabFromCache, symtab, SymtabFromCachePairs),
-    update_new_dict(SymtabFromCachePairs, Symtab0, Symtab).
+    update_symtab(SymtabFromCache, Symtab0, Symtab).
 
-%! process_module_from_src(+Opts:list, +FromSrcOk, +KytheJsonPath:atom, +SrcFqn:atom, +Symtab0, -Symtab) is semidet.
+%% DO NOT SUBMIT - s/semidet/det/?
+%! process_module_from_src(+Opts:list, +FromSrcOk, +SrcFqn:atom, +Symtab0, -Symtab) is semidet.
 %% Read in a single file (JSON output from running --parsecmd, which
 %% encodes the AST nodes with FQNs), output Kythe JSON to current
 %% output stream. SrcPath must be in absolute form (leading '/').
 %% Fails if FromSrcOk isn't from_src_ok, otherwise succeeds.
-process_module_from_src(Opts, from_src_ok, KytheJsonPath, SrcFqn, Symtab0, Symtab) :-
+process_module_from_src(Opts, from_src_ok, SrcFqn, Symtab0, Symtab) :-
     (  module_fqn_path(SrcFqn, SrcPath) % fails if file doesn't exist
-    -> process_module_from_src_impl(Opts, KytheJsonPath, SrcPath, SrcFqn, Symtab0, Symtab)
+    -> process_module_from_src_impl(Opts, SrcPath, SrcFqn, Symtab0, Symtab)
     ;  Symtab = Symtab0,
        log_if(true,
-              'Invalid/nonexistant module (~q) for ~q', [KytheJsonPath, SrcFqn])
+              'Invalid/nonexistant module ~q', [SrcFqn])
        %% TODO: output a dummy item, so that we don't unnecessarily
        %%       reprocess (when looking for cache) things that depend
        %%       on this module
     ).
 
-%! process_module_from_src_impl(+Opts:list, +KytheJsonPath:atom, +SrcPath:atom, +SrcFqn:atom, +Symtab0, -Symtab) is det.
-process_module_from_src_impl(Opts, KytheJsonPath, SrcPath, SrcFqn, Symtab0, Symtab) :-
+%! process_module_from_src_impl(+Opts:list, +SrcPath:atom, +SrcFqn:atom, +Symtab0, -Symtab) is det.
+process_module_from_src_impl(Opts, SrcPath, SrcFqn, Symtab0, Symtab) :-
     stats(Stats0),
+    path_with_suffix(Opts, SrcPath, kythejson_suffix, KytheJsonPath),
     log_if(true,
            'Processing from source ~q (output: ~q) for ~q ~w', [SrcPath, KytheJsonPath, SrcFqn, Stats0]),
     parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes, ColorText),
@@ -955,47 +962,45 @@ process_module_from_src_impl(Opts, KytheJsonPath, SrcPath, SrcFqn, Symtab0, Symt
     stats(Stats2),
     log_if(true, 'Pass 2: process exprs for ~q ~w', [Meta.path, Stats2]),
     assign_exprs(Opts, Exprs, Meta, Symtab1WithImports, Symtab, KytheFactsFromExprs0),
-    !,                          % for memory usage
+    !,                          % "cut" for memory usage
     log_kythe_fact_msgs(KytheFactsFromExprs0, KytheFactsFromExprs1),
     include(nonredundant_pytype_fact(Symtab), KytheFactsFromExprs1, KytheFactsFromExprs),
-    !,                          % for memory usage  *** THIS ONE IS IMPORTANT ***
+    !,                          % "cut" for memory usage  *** THIS ONE IS IMPORTANT ***
     stats(Stats3a),
     log_if(true, 'Pass 3a: output for ~q ~w', [Meta.path, Stats3a]),
-    output_kythe(Opts, Meta, SrcPath, SrcFqn, KytheJsonPath, Symtab, KytheFactsFromExprs, KytheFactsFromNodes),
+    output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFactsFromNodes),
     stats(Stats3b),
     log_if(true, 'Pass 3b: output for ~q ~w', [Meta.path, Stats3b]),
     !.
-process_module_from_src_impl(Opts, KytheJsonPath, SrcPath, SrcFqn, _Symtab0, _Symtab) :-
+process_module_from_src_impl(Opts, SrcPath, SrcFqn, _Symtab0, _Symtab) :-
     %% TODO: delete this catch-all clause
-    goal_failed(process_module_from_src_impl(Opts, KytheJsonPath, SrcPath, SrcFqn)).
+    goal_failed(process_module_from_src_impl(Opts, SrcPath, SrcFqn)).
 
-%! output_kythe(+Opts:list, +Meta:dict, +SrcPath:atom, +SrcFqn:atom, +KytheJsonPath:atom, +Symtab, +KytheFactsFromExprs:list, +KytheFactsFromNodes:list) :-
-output_kythe(Opts, Meta, SrcPath, SrcFqn, KytheJsonPath, Symtab, KytheFactsFromExprs, KytheFactsFromNodes) :-
-    opts(Opts, [version(Version),
-                kytheout_suffix(KytheOutSuffix), entries_suffix(EntriesSuffix),
-                entriescmd(EntriesCmd)]),
+%! output_kythe(+Opts:list, +Meta:dict, +SrcPath:atom, +SrcFqn:atom, +Symtab, +KytheFactsFromExprs:list, +KytheFactsFromNodes:list) :-
+output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFactsFromNodes) :-
     validate_symtab(Symtab),
-    symtab_as_kyfact(Symtab, Meta, SymtabKytheFact),
     %% Output /pykythe/type facts, for debugging.
     symtab_pykythe_types(Symtab, SymtabPykytheTypes, [], Meta), % phrase(symtab_pykythe_types(Symtab), SymtabPYkytheTypes, Meta)
-    reorder_kythefacts_from_nodes(KytheFactsFromNodes, SymtabKytheFact, KytheFactsFromNodesReordered),
-    append([KytheFactsFromNodesReordered, KytheFactsFromExprs, SymtabPykytheTypes], KytheFactsUncleaned),
+    append([KytheFactsFromNodes, KytheFactsFromExprs, SymtabPykytheTypes], KytheFactsUncleaned),
     clean_kythe_facts(KytheFactsUncleaned, KytheFactsCleaned),
-    !,                          % for memory usage
+    !,                          % "cut" for memory usage
     %% TODO: don't preserve order (for debugging) - use sort/2 to dedup:
     list_to_set(KytheFactsCleaned, KytheFacts),
     log_if(true, 'Writing Kythe facts for ~q', [Meta.path]),
+    path_with_suffix(Opts, SrcPath, kythejson_suffix, KytheJsonPath),
     write_atomic_stream(write_kythe_facts(KytheFacts), KytheJsonPath),
-    (  path_batch_suffix(KytheJsonPath, Opts, KytheBatchPath)
-    -> write_atomic_stream(write_batch_symtab(Symtab, Version), KytheBatchPath)
-    ;  true
+    (  Opts.pykythebatch_suffix = ''
+    -> log_if(true, 'Not writing to kythebatch: ~w', KytheJsonPath)
+    ;  path_with_suffix(Opts, SrcPath, pykythebatch_suffix, PykytheBatchPath),
+       path_with_suffix(Opts, SrcPath, pykythesymtab_suffix, PykytheSymtabPath),
+       write_atomic_stream(write_batch_symtab(Symtab, Opts.version), PykytheBatchPath),
+       write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheSymtabPath)
     ),
     log_if(true, 'Converting to Kythe protobuf'),
-    remove_suffix(KytheJsonPath, KytheOutSuffix, KytheJsonPathNoSuffix),
-    atomic_list_concat([KytheJsonPathNoSuffix, EntriesSuffix], KytheEntriesPath),
-    write_atomic_file(write_to_protobuf(EntriesCmd, SrcPath, KytheJsonPath), KytheEntriesPath),
+    path_with_suffix(Opts, SrcPath, kytheentries_suffix, KytheEntriesPath),
+    write_atomic_file(write_to_protobuf(Opts.entriescmd, SrcPath, KytheJsonPath), KytheEntriesPath),
     log_if(true, 'Finished output ~q (~q) to ~q (~q)', [SrcPath, SrcFqn, KytheEntriesPath, KytheJsonPath]),
-    !.                          % for memory usage
+    !.                          % "cut" for memory usage
 
 %! transform_kythe_fact(+Fact0, -Fact1) is det.
 
@@ -1009,8 +1014,8 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, KytheJsonPath, Symtab, KytheFactsFromE
 %%       cases for symtab and text
 transform_kythe_fact(json{source:Source0, fact_name:FactName, fact_value:FactValue},
                      json{source:Source1, fact_name:FactName, fact_value:FactValueBase64}) :- !,
-    %% Symtab is never transformed to base64; it's filtered out when creating protobufs
-    (  ( FactName == '/kythe/text'; FactName == '/pykythe/symtab' )
+    %% text is alread in base64 (from Meta.contents_base64)
+    (  FactName == '/kythe/text'
     -> FactValueBase64 = FactValue
     ;  base64_utf8(FactValue, FactValueBase64)
     ),
@@ -1046,18 +1051,17 @@ transform_kythe_path(AbsPath, RelPath) :-
 
 %! parse_and_get_meta(+Opts:list, +SrcPath:atom, +SrcFqn:atom, -Meta:dict, -Nodes, -ColorText) is det.
 parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes, ColorText) :-
-    opts(Opts, [pythonpath(Pythonpaths), version(Version)]),
     builtins_version(BuiltinsVersion),
-    must_once_msg(BuiltinsVersion == Version,
-                  'builtins_version(~q) should be ~q', [BuiltinsVersion, Version]),
+    must_once_msg(BuiltinsVersion == Opts.version,
+                  'builtins_version(~q) should be ~q', [BuiltinsVersion, Opts.version]),
     run_parse_cmd(Opts, SrcPath, SrcFqn, ParsedPath),
     log_if(true, 'Python parser: finished ~q', [ParsedPath]),
     read_nodes(ParsedPath, Nodes, Meta, ColorText),
     log_if(true, 'Processed AST nodes from Python parser'),
     %% Fill in dict items that were left uninstantiated in simplify_meta/2 (read_nodes/3):
-    Meta.pythonpaths = Pythonpaths,
+    Meta.pythonpath = Opts.pythonpath,
     Meta.opts = Opts,
-    Meta.version = Version,
+    Meta.version = Opts.version,
     must_once(SrcPath == Meta.path),
     Meta.src_fqn = SrcFqn.
 
@@ -1065,7 +1069,7 @@ parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes, ColorText) :-
 extend_symtab_with_builtins(Symtab0, Meta, Symtab) :-
     builtins_pairs(BuiltinsPairs),
     builtins_symtab_extend(BuiltinsPairs, Meta.src_fqn, Symtab0, Symtab0a),
-    put_dict(Meta.src_fqn, Symtab0a, [module_type(module_alone(Meta.src_fqn,Meta.path))], Symtab).
+    symtab_insert(Meta.src_fqn, Symtab0a, [module_type(module_alone(Meta.src_fqn,Meta.path))], Symtab).
 
 %! log_kythe_fact_msgs(-KytheFacts:list, +KytheFactsOut:list) is det.
 %% Process the KytheFacts list, outputting every msg{txt:Msg} to the log;
@@ -1084,7 +1088,7 @@ log_kythe_fact_msgs([Fact|KytheFacts], [Fact|KytheFactsOut]) :-
 nonredundant_pytype_fact(Symtab, Fact) :-
     Fact.fact_name == '/pykythe/type',
     !,
-    (  get_dict(Fact.source.signature, Symtab, SymtabType)
+    (  symtab_lookup(Fact.source.signature, Symtab, SymtabType)
     -> term_string(FactType, Fact.fact_value),
        log_if((SymtabType \= FactType, FactType \= []),
               'WARNING: ~q: Inconsistent symtab=~q, expr(ignored)=~q',
@@ -1100,7 +1104,7 @@ builtins_symtab_extend([], _SrcFqn, Symtab, Symtab).
 builtins_symtab_extend([Name-Type|FqnTypes], SrcFqn, Symtab0, Symtab) :-
     join_fqn([SrcFqn, Name], NameExt),
     maplist(wrap_import_ref(Name,NameExt), Type, WrappedType),
-    put_dict(NameExt, Symtab0, WrappedType, Symtab1),
+    symtab_insert(NameExt, Symtab0, WrappedType, Symtab1),
     builtins_symtab_extend(FqnTypes, SrcFqn, Symtab1, Symtab).
 
 %! wrap_import_ref(+Name:atom, +Fqn:atom, +Type, -WrappedType) is det.
@@ -1116,8 +1120,8 @@ single_type_fqn(function_type(Fqn,_,_), Fqn).
 single_type_fqn(import_ref_type(_,_,Type), Fqn) :- single_type_fqn(Type, Fqn).
 
 %! valid_symtab(+Symtab) is det.
-validate_symtab(Symtab) :-
-    must_once(dict_pairs(Symtab, symtab, SymtabPairs)),
+validate_symtab(Symtab) :- %% TODO: remove this
+    must_once(symtab_pairs(Symtab, SymtabPairs)),
     maplist(validate_symtab_pair, SymtabPairs).
 
 %! validate_symtab_pair(+FqnType:pair) is det.
@@ -1125,28 +1129,13 @@ validate_symtab_pair(Fqn-Type) :-
     must_be(atom, Fqn),
     must_be(list, Type).
 
-%! path_batch_suffix(+Path:atom, +Opts:list, -PathWithSuffix:atom) is semidet.
-%% Generate a path with the batch suffix, if the batch_suffix option
-%% is specified (non-empty); fails if batch_suffix isn't specified.
-path_batch_suffix(Path, Opts, PathWithSuffix) :-
-    opt(Opts, batch_suffix(BatchSuffix)),
-    BatchSuffix \= '',
-    atomic_list_concat([Path, BatchSuffix], PathWithSuffix).
-
-%! reorder_kythefacts_from_nodes(+KytheFactsFromNodes, +SymtabKytheFact, -KytheFactsFromNodesReordered) is det.
-%% Put the facts into the order that is expected when reading them in
-%% (this is for efficiency; no need to read unneeded stuff).
-reorder_kythefacts_from_nodes(KytheFactsFromNodes, SymtabKytheFact, KytheFactsFromNodesReordered) :-
-    KytheFactsFromNodes = [VersionKytheFact, KindFile, Encoding, Text|Rest],
-    KytheFactsFromNodesReordered = [VersionKytheFact, KindFile, Encoding, Text, SymtabKytheFact|Rest].
-
 %! clean_kythe_facts(-KytheFacts0:list, +KytheFacts:list) is det.
 %% Clean the Kythe facts so that they're acceptable to Kythe verifier
 %% and other downstream processing (e.g., remove inconsistent "kind" info).
 %% TODO: See https://github.com/kythe/kythe/issues/2381
 clean_kythe_facts(KytheFacts0, KytheFacts) :-
     kythe_kinds(KytheFacts0, kinds{}, KytheFacts2, Kinds),
-    dict_pairs(Kinds, _, KindsPairs),
+    dict_pairs(Kinds, kinds, KindsPairs),
     maplist(clean_kind, KindsPairs, Kinds2),
     %% Kinds2 must come *after* KytheFacts - maybe_read_cache/5.
     append(KytheFacts2, Kinds2, KytheFacts).
@@ -1202,28 +1191,33 @@ kind_precedence(variable, -80).
 kind_precedence(record, -50).
 kind_precedence(function, -49).
 
-%! write_kythe_facts(+KytheFacts, +KytheStream) is det.
-write_kythe_facts(KytheFacts, KytheStream) :-
-    %% write(KytheStream, "%% === Kythe ==="), nl(KytheStream),
-    maplist(transform_and_write_kythe_fact(KytheStream), KytheFacts).
+%! write_kythe_facts(+KytheFacts, +KytheOutStream) is det.
+write_kythe_facts(KytheFacts, KytheOutStream) :-
+    %% write(KytheOutStream, "%% === Kythe ==="), nl(KytheOutStream),
+    maplist(transform_and_write_kythe_fact(KytheOutStream), KytheFacts).
 
-transform_and_write_kythe_fact(KytheStream, KytheFact) :-
+transform_and_write_kythe_fact(KytheOutStream, KytheFact) :-
     transform_kythe_fact(KytheFact, KytheFact2),
-    json_write_dict_nl(KytheStream, KytheFact2).
+    json_write_dict_nl(KytheOutStream, KytheFact2).
 
-%! write_batch_symtab(+Symtab, +Version, +KytheStream) is det.
-write_batch_symtab(Symtab, Version, KytheStream) :-
-    format(KytheStream, '~k.~n~k.~n', [Version, Symtab]).
+%! write_batch_symtab(+Symtab, +Version, +PykytheBatchOutStream) is det.
+%% If you change this code, also change gen_builtins_symtab.pl
+write_batch_symtab(Symtab, Version, PykytheBatchOutStream) :-
+    % DO NOT SUBMIT - fast-serialize
+    format(PykytheBatchOutStream, '~k.~n~k.~n', [Version, Symtab]).
+
+%! write_symtab(+Symtab, +Version, +Sha1, +PykytheBatchOutStream) is det.
+write_symtab(Symtab, Version, Sha1, PykytheBatchOutStream) :-
+    % DO NOT SUBMIT - fast-serialize
+    format(PykytheBatchOutStream, '~k.~n~k.~n~k.~n', [Version, Sha1, Symtab]).
 
 %! write_to_protobuf(+EntriesCmd, +SrcPath, +KytheJsonPath, +KytheEntriesPath) is det.
 write_to_protobuf(EntriesCmd, SrcPath, KytheJsonPath, KytheEntriesPath) :-
     atomic_list_concat(
         [% "set -o pipefail; ",  %% TODO: use bash
-         "egrep -v '^{\"fact_name\":\"/pykythe/symtab\"' <",
-         KytheJsonPath,
-         " | ",
          EntriesCmd,
          " --read_format=json",
+         " <", KytheJsonPath,
          " >", KytheEntriesPath],
          Cmd),
     do_if(trace_file(SrcPath), dump_term('CMD-cvt', Cmd)),
@@ -1237,21 +1231,18 @@ write_to_protobuf(EntriesCmd, SrcPath, KytheJsonPath, KytheEntriesPath) :-
 %% and is a bit more difficult to debug.
 run_parse_cmd(Opts, SrcPath, SrcFqn, OutPath) :-
     must_once_msg(ground(Opts), 'Invalid command line options'),
-    opts(Opts, [python_version(PythonVersion), parsecmd(ParseCmd),
-                kytheout(KytheOut),
-                kythe_corpus(KytheCorpus), kythe_root(KytheRoot)]),
-    must_once_msg(memberchk(PythonVersion, [2, 3]), 'Invalid Python version: ~q', [PythonVersion]),
+    must_once_msg(memberchk(Opts.python_version, [2, 3]), 'Invalid Python version: ~q', [Opts.python_version]),
     current_prolog_flag(tmp_dir, SaveTmpDir),
-    set_prolog_flag(tmp_dir, KytheOut), % TODO: mkdir separate subdir for these
+    set_prolog_flag(tmp_dir, Opts.kytheout), % TODO: mkdir separate subdir for these
     tmp_file_stream(OutPath, OutPathStream, [encoding(binary), extension('fqn-ast.pl')]),
     set_prolog_flag(tmp_dir, SaveTmpDir),
     do_if(trace_file(SrcPath), link_src_file(SrcPath, OutPath)), % TODO: delete
     close(OutPathStream),
     atomic_list_concat(
-        [ParseCmd,
-         " --kythe_corpus='", KytheCorpus, "'",
-         " --kythe_root='", KytheRoot, "'",
-         " --python_version='", PythonVersion, "'",
+        [Opts.parsecmd,
+         " --kythe_corpus='", Opts.kythe_corpus, "'",
+         " --kythe_root='", Opts.kythe_root, "'",
+         " --python_version='", Opts.python_version, "'",
          " --srcpath='", SrcPath, "'",
          " --module='", SrcFqn, "'",
          " --out_fqn_ast='", OutPath, "'"],
@@ -1293,26 +1284,12 @@ version_as_kyfact(Version, Meta,
                        fact_name: '/pykythe/version',
                        fact_value: Version}).
 
-%! symtab_as_kyfact(+Symtab, +Meta, -KytheFactAsJsonDict) is det.
-%% Convert the symtab into a Kythe fact.
-%% The entire symtab is output, including all imported symbols.
-%% Note that the vaue is an unencoded string, for performance (reading
-%% and writing) - see transform_kythe_fact/2
-symtab_as_kyfact(Symtab, Meta,
-                 json{source: Source,
-                      fact_name: '/pykythe/symtab',
-                      fact_value: SymtabStr}) :-
-    term_string(Symtab, SymtabStr),
-    %% TODO: see also kyfile//1 Source which has only `path` (not `language`):
-    Source = json{corpus:Meta.kythe_corpus, root:Meta.kythe_root,
-                  path: Meta.path, language: Meta.language}.
-
 %! symtab_pykythe_types(+Symtab)//[kyfact,file_meta] is det.
 %% Generate /pykythe/type facts from the symtab (for debugging).
 symtab_pykythe_types(Symtab) -->>
     Meta/file_meta,
     { append_fqn_dot(Meta.src_fqn, SrcFqnDot) },
-    { dict_pairs(Symtab, symtab, SymtabPairs) },
+    { symtab_pairs(Symtab, SymtabPairs) },
     maplist_kyfact(add_kyfact_types(SrcFqnDot), SymtabPairs).
 
 %! add_kyfact_types(+Prefix, +Fqn-Type:pair)//[kyfact,file_meta] is det.
@@ -1331,7 +1308,7 @@ add_kyfact_types(Prefix, Fqn-Type) -->>
 %! read_nodes(+FqnExprPath:atom, -Nodes, -Meta:dict) is det.
 %% Read the JSON node tree (with FQNs) into Nodes and file meta-data into Meta.
 read_nodes(FqnExprPath, Nodes, Meta, ColorText) :-
-    open(FqnExprPath, read, FqnExprStream),
+    open(FqnExprPath, read, FqnExprStream, [type(binary)]),
     read_term(FqnExprStream, MetaDict, []),
     read_term(FqnExprStream, NodesDict, []),
     read_term(FqnExprStream, ColorTextDict, []),
@@ -1363,7 +1340,7 @@ simplify_meta(MetaDictJson, Meta) :-
     %% For debugging, might want to use contents_base64:"LS0t",
     %%     derived from:
     %%     base64_ascii('---', 'LS0t').
-    %% Note that keys 'src_fqn', 'pythonpaths', 'opts', 'version' get added later
+    %% Note that keys 'src_fqn', 'pythonpath', 'opts', 'version' get added later
     Meta = meta{kythe_corpus: KytheCorpus,
                 kythe_root: KytheRoot,
                 path: CanonicalPath,
@@ -1374,7 +1351,7 @@ simplify_meta(MetaDictJson, Meta) :-
                 contents_bytes: ContentsBytes,
                 sha1: Sha1,
                 src_fqn: _,
-                pythonpaths: _,
+                pythonpath: _,
                 opts: _,
                 version: _}.
 
@@ -2032,7 +2009,7 @@ kyImportDottedAsNamesFqn_from_part2(['NameBareNode'{name:Astn}|NameItems], FromD
 kyImport_path_pieces_to_module(FromDots, NamePieces, ModuleAndMaybeToken, FullModulePieces) -->>
     Meta/file_meta,
     { join_path(NamePieces, FullPath) },
-    { full_path(FromDots, FullPath, Meta.pythonpaths, Meta.path, ModuleAndMaybeToken, FullModulePieces) },
+    { full_path(FromDots, FullPath, Meta.pythonpath, Meta.path, ModuleAndMaybeToken, FullModulePieces) },
     kyImport_path_dots(FromDots).
 
 %! kyImport_path_dots(+FromDots)//[kyfact,expr,file_meta] is det.
@@ -2063,7 +2040,7 @@ kyImportDotNode_to_astn('ImportDotNode'{dot:DotAstn}, astn(Start, End, Dot), Dot
 maplist_kynode([], []) -->> [ ].
 maplist_kynode([Node|Nodes], [NodeType|NodesTypes]) -->>
     kynode(Node, NodeType),
-    !,                          % for memory usage
+    !,                          % "cut" for memory usage
     maplist_kynode(Nodes, NodesTypes).
 
 %! assign_normalized(+Left, +Right)//[kyfact,expr,file_meta] is det.
@@ -2280,7 +2257,7 @@ maplist_eval_assign_expr([]) -->> [ ].
 maplist_eval_assign_expr([Assign|Assigns]) -->>
     do_if_file(dump_term('(EVAL_ASSIGN_EXPR)', Assign)),
     eval_assign_expr(Assign),
-    !,                   % for memory usage *** THIS ONE IS IMPORTANT ***
+    !,                   % "cut" for memory usage *** THIS ONE IS IMPORTANT ***
     %% symtab_if_file('SYMTAB'),   % TODO: delete
     maplist_eval_assign_expr(Assigns).
 
@@ -2849,9 +2826,9 @@ remove_class_cycles_one([Type|Types], TypesOut, Seen, SeenOut) :-
 %! add_rej_to_symtab(+FqnRejType:pair, +Symtab0, -Symtab) is det.
 %% For Fqn-RejType pairs in FqnRejTypes, add to symtab.
 add_rej_to_symtab(Fqn-RejType, Symtab0, Symtab) :-
-    get_dict(Fqn, Symtab0, FqnType),
+    symtab_lookup(Fqn, Symtab0, FqnType),
     type_union(FqnType, RejType, UnionType),
-    put_dict(Fqn, Symtab0, UnionType, Symtab).
+    symtab_insert(Fqn, Symtab0, UnionType, Symtab).
 
 %! symrej_accum(+FqnType:triple, +Symtab0Rej0Mod0, +SymtabRejMod) is det.
 %% The accumulator for 'symrej'.
@@ -2874,7 +2851,7 @@ add_rej_to_symtab(Fqn-RejType, Symtab0, Symtab) :-
 %%       to create a merge_ord_list_to_rbtree for making the update
 %%       faster.)
 symrej_accum(Fqn-Type-TypeSymtab, sym_rej(Symtab0,Rej0), sym_rej(Symtab,Rej)) :-
-    (  get_dict(Fqn, Symtab0, TypeSymtab)
+    (  symtab_lookup(Fqn, Symtab0, TypeSymtab)
     -> symrej_accum_found(Fqn, Type, TypeSymtab, Symtab0, Symtab, Rej0, Rej)
     ;  %% ensure Type is instantiated (defaults to []), if this is a lookup
        %% see comment in eval_single_type//1
@@ -2883,7 +2860,7 @@ symrej_accum(Fqn-Type-TypeSymtab, sym_rej(Symtab0,Rej0), sym_rej(Symtab,Rej)) :-
        ;  Rej = [Fqn-Type|Rej0] % new information is a "rej"  DO NOT SUBMIT - add explanation for module_type
        ),
        TypeSymtab = Type,
-       put_dict(Fqn, Symtab0, Type, Symtab)
+       symtab_insert(Fqn, Symtab0, Type, Symtab)
     ).
 
 %! symtab_lookup(+Fqn, ?Type)//[symrej] is semidet.
@@ -2895,10 +2872,10 @@ symrej_accum(Fqn-Type-TypeSymtab, sym_rej(Symtab0,Rej0), sym_rej(Symtab,Rej)) :-
 symtab_lookup(Fqn, Type) -->>
     SymRej/symrej/SymRej,
     { SymRej = sym_rej(Symtab,_) },
-    get_dict(Fqn, Symtab, Type).
+    symtab_lookup(Fqn, Symtab, Type).
 
 symtab_lookup_raw(sym_rej(Symtab,_), Fqn, Type) :-
-    get_dict(Fqn, Symtab, Type).
+    symtab_lookup(Fqn, Symtab, Type).
 
 %! symrej_accum_found(+Fqn, +Type, +TypeSymtab, +Symtab0, -Symtab, +Rej0, -Rej).
 %% Helper for symrej_accum/3 for when Fqn is in Symtab with value
@@ -2913,7 +2890,7 @@ symrej_accum_found(Fqn, Type, TypeSymtab, Symtab0, Symtab, Rej0, Rej) :-
        (  TypeComb = TypeSymtab
        -> Symtab = Symtab0,
           Rej = Rej0
-       ;  put_dict(Fqn, Symtab0, TypeComb, Symtab),
+       ;  symtab_insert(Fqn, Symtab0, TypeComb, Symtab),
           Rej = [Fqn-Type|Rej0]
        )
     ).
@@ -3142,6 +3119,7 @@ my_portray(Assoc) :-
     max_assoc(Assoc, MaxKey, MaxValue),
     format('<assoc:~d, ~p: ~p ... ~p: ~p>', [Length, MinKey, MinValue, MaxKey, MaxValue]).
 my_portray(Symtab) :-
+    %% DO NOT SUBMIT - replace this with something that uses pykythe_symtab predicates.
     is_dict(Symtab, Tag),
     Tag == symtab,          % ==/2 in case dict has uninstantiated tag
     !,
@@ -3172,7 +3150,7 @@ my_portray_unify(Generic, Term) :-
 maplist_kyfact(_Pred, []) -->> [ ].
 maplist_kyfact(Pred, [X|Xs]) -->>
     call(Pred, X):[kyfact,file_meta],
-    !,                          % for memory usage
+    !,                          % "cut" for memory usage
     maplist_kyfact(Pred, Xs).
 
 %! maplist_kyfact(:Pred, +L0:list, -L:list)//[kyfact,file_meta] is det.
@@ -3180,7 +3158,7 @@ maplist_kyfact(Pred, [X|Xs]) -->>
 maplist_kyfact(_Pred, [], []) -->> [ ].
 maplist_kyfact(Pred, [X|Xs], [Y|Ys]) -->>
     call(Pred, X, Y):[kyfact,file_meta],
-    !,                          % for memory usage
+    !,                          % "cut" for memory usage
     maplist_kyfact(Pred, Xs, Ys).
 
 %! maplist_kyfact_symrej(:Pred, +L:list)//[kyfact,symrej,file_meta] is det.
@@ -3188,7 +3166,7 @@ maplist_kyfact(Pred, [X|Xs], [Y|Ys]) -->>
 maplist_kyfact_symrej(_Pred, []) -->> [ ].
 maplist_kyfact_symrej(Pred, [X|Xs]) -->>
     call(Pred, X):[kyfact,symrej,file_meta],
-    !,                          % for memory usage
+    !,                          % "cut" for memory usage
     maplist_kyfact_symrej(Pred, Xs).
 
 %! maplist_kyfact_symrej(:Pred, +L0:list, -L:list)//[kyfact,symrej,file_meta] is det.
@@ -3196,7 +3174,7 @@ maplist_kyfact_symrej(Pred, [X|Xs]) -->>
 maplist_kyfact_symrej(_Pred, [], []) -->> [ ].
 maplist_kyfact_symrej(Pred, [X|Xs], [Y|Ys]) -->>
     call(Pred, X, Y):[kyfact,symrej,file_meta],
-    !,                          % for memory usage
+    !,                          % "cut" for memory usage
     maplist_kyfact_symrej(Pred, Xs, Ys).
 
 %! maplist_kyfact_expr(:Pred, +L0:list)//[kyfact,expr,file_meta] is det.
@@ -3204,7 +3182,7 @@ maplist_kyfact_symrej(Pred, [X|Xs], [Y|Ys]) -->>
 maplist_kyfact_expr(_Pred, []) -->> [ ].
 maplist_kyfact_expr(Pred, [X|Xs]) -->>
     call(Pred, X):[kyfact,expr,file_meta],
-    !,                          % for memory usage
+    !,                          % "cut" for memory usage
     maplist_kyfact_expr(Pred, Xs).
 
 %! maplist_kyfact_expr(:Pred, +L0:list, -L:list)//[kyfact,expr,file_meta] is det.
@@ -3212,7 +3190,7 @@ maplist_kyfact_expr(Pred, [X|Xs]) -->>
 maplist_kyfact_expr(_Pred, [], []) -->> [ ].
 maplist_kyfact_expr(Pred, [X|Xs], [Y|Ys]) -->>
     call(Pred, X, Y):[kyfact,expr,file_meta], !,
-    !,                          % for memory usage
+    !,                          % "cut" for memory usage
     maplist_kyfact_expr(Pred, Xs, Ys).
 
 trace_file(this_will_never_match).
@@ -3235,7 +3213,7 @@ do_if_file(Goal) -->>
     { do_if(trace_file(Meta.path), Goal) }.
 
 %! Dump the symtab if trace_file/1 matches Meta.path. (for debugging)
-symtab_if_file(Msg) -->>
+symtab_if_file(Msg) -->>    %% DO NOT SUBMIT - replace this with something that uses pykythe_symtab predicates.
     Meta/file_meta,
     SymRej/symrej/SymRej,
     (  { trace_file(Meta.path) }
@@ -3296,12 +3274,12 @@ test_meta(meta{kythe_corpus: 'CORPUS',
                contents_bytes: _,
                sha1: '',
                src_fqn: SrcFqn,
-               pythonpaths: PythonPaths,
+               pythonpath: Pythonpath,
                opts: Opts,
                version: ''}) :-
     pykythe_test:opts(Opts),
     pykythe_test:src_paths([SrcPath]),
-    pykythe:opts(Opts, [pythonpath(PythonPaths)]),
+    Pythonpath = Opts.pythonpath,
     module_path:path_to_module_fqn_or_unknown(SrcPath, SrcFqn).
 
 kyfact_edge(EdgeKind, Tag, Json, Out) :-
@@ -3319,11 +3297,11 @@ find_anchor_match(Line, Match, 'Astn'{start:Start, end:End, value:Match}) :-
     End is Start + Len.
 
 path_module(Meta, Path, Module) :-
-    module_path:full_path_prefixed(Path, Meta.pythonpaths, Module).
+    module_path:full_path_prefixed(Path, Meta.pythonpath, Module).
 
-dict_subtract(Dict1, Dict2, DiffPairs) :-
-    dict_pairs(Dict1, _, Pairs1),
-    dict_pairs(Dict2, _, Pairs2),
+symtab_subtract(Symtab1, Symtab2, DiffPairs) :-
+    symtab_pairs(Symtab1, Pairs1),
+    symtab_pairs(Symtab2, Pairs2),
     subtract(Pairs1, Pairs2, DiffPairs).
 
 convset(Pred, L1, S2) :-
@@ -3401,13 +3379,13 @@ test(kyImportDottedAsNamesFqn_top) :-
     assertion(KyFactsImports == [imports{source:OsSig,   target:ModuleModule_os},
                                  imports{source:PathSig, target:ModuleModule_os_path},
                                  imports{source:SepSig,  target:ModuleModule_os_path_sep}]),
-    dict_create(Symtab0, symtab,
-                [ModuleModule_os: [module_type(Module_os)],
-                 ModuleModule_os_path: [module_type(Module_os_path)],
-                 ModuleModule_os_path_sep: [module_type(Module_os_path_sep)]]),
+    list_to_symtab([ModuleModule_os-[module_type(Module_os)],
+                    ModuleModule_os_path-[module_type(Module_os_path)],
+                    ModuleModule_os_path_sep-[module_type(Module_os_path_sep)]],
+                   Symtab0),
     assign_exprs_count_impl(Exprs, Meta, Symtab0, SymtabWithRej, Rej, KytheFacts),
 
-    dict_subtract(SymtabWithRej, Symtab0, SymtabAddedPairs),
+    symtab_subtract(SymtabWithRej, Symtab0, SymtabAddedPairs),
     assertion(Rej == SymtabAddedPairs),
     must_once(SymtabAddedPairs = [OsVar - [ module_type(Module_os) ]]),
     %% The following ("dummy_dir.dummy") depends on the source file
@@ -3464,12 +3442,12 @@ test(kyImportDottedAsNamesFqn_as) :-
     assertion(KyFactsImports == [imports{source:OsSig,     target:ModuleModule_os},
                                  imports{source:PathSig,   target:ModuleModule_os_path},
                                  imports{source:OsPathSig, target:ModuleModule_os_path}]),
-    dict_create(Symtab0, symtab,
-                [ModuleModule_os: [module_type(Module_os)],
-                 ModuleModule_os_path: [module_type(Module_os_path)]]),
+    list_to_symtab([ModuleModule_os-[module_type(Module_os)],
+                    ModuleModule_os_path-[module_type(Module_os_path)]],
+                   Symtab0),
     assign_exprs_count_impl(Exprs, Meta, Symtab0, SymtabWithRej, Rej, KytheFacts),
 
-    dict_subtract(SymtabWithRej, Symtab0, SymtabAddedPairs),
+    symtab_subtract(SymtabWithRej, Symtab0, SymtabAddedPairs),
     assertion(Rej == SymtabAddedPairs),
     must_once(SymtabAddedPairs = [OsPathVar - [ module_type(Module_os_path) ]]),
     %% The following ("dummy_dir.dummy_file.os_path") depends on the

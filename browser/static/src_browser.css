@@ -91,7 +91,7 @@ body {
     /* https://fonts.google.com/?category=Monospace */
     background-color: #fbfbfb;
     border-collapse: collapse;
-    border: 0 solid black; 
+    border: 0 solid black;
     font-family: "Source Code Pro";
     font-size: 9pt;
     overflow: auto;
@@ -103,13 +103,14 @@ body {
     border-right: 0 solid black;
     text-align: right;
     padding-right: 5px;
+    vertical-align: top;
     white-space: nowrap;
     width: 1px; /* fit as tight as possible */
 }
 
 .src_line {
-    padding-left: 5px;
     border-left: 0px solid black;
+    padding-left: 5px;
     white-space: pre;
 }
 
@@ -132,7 +133,7 @@ body {
 
 /* Colors: https://www.w3schools.com/colors/colors_names.asp */
 
-/* Corresponds to t10.js token_color */
+/* Corresponds to src_browser.js token_color */
 
 .python_arg_keyword         { color: darkblue; }
 .python_attr_binding        { color: green; font-weight: bold; text-decoration: underline; }

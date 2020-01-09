@@ -32,6 +32,7 @@
 :- use_module(module_path).
 :- use_module(must_once).
 :- use_module(pykythe_utils).
+:- use_module(pykythe_symtab).
 
 :- load_files([bootstrap_builtins_symtab], [silent(true), % TODO: should be a module
                                             imports([builtins_symtab_primitive/2])]).
@@ -55,19 +56,22 @@ gen_builtins_symtab_main :-
          [opt(pythonpath), type(atom), default(''), longflags(['pythonpath']),
           help('Similar to $PYTHONPATH for resolving imports (":"-separated paths)')]],
     opt_arguments(OptsSpec, Opts0, PositionalArgs),
-    must_once(split_path_string_and_canonicalize(pythonpath, Opts0, Opts)),
-    must_once_msg(PositionalArgs = [KytheInputPath, SymtabOutputPath],
+    split_atom(Opts0.pythonpath, ':', '', PythonpathList0),
+    convlist(maybe_absolute_dir, PythonpathList0, PythonpathList),
+    put_dict(pythonpath, Opts0, PythonpathList, Opts),
+    must_once_msg(PositionalArgs = [PykytheSymtabInputPath, KytheJsonInputPath, SymtabOutputPath],
                   'Missing/extra positional args'),
-    open(KytheInputPath, read, KytheInputStream),
+    open(PykytheSymtabInputPath, read, PykytheSymtabInputStream, [type(binary)]),
+    open(KytheJsonInputPath, read, KytheJsonInputStream, [type(binary)]),
 
-    read_symtab_from_cache(KytheInputStream, Symtab0),
-    log_if(true, '~q', [done-read_symtab_from_cache(KytheInputPath)]),
+    read_symtab_from_cache(PykytheSymtabInputStream, Symtab0),
+    log_if(true, '~q', [done-read_symtab_from_cache(PykytheSymtabInputPath)]),
 
-    read_package_from_cache(KytheInputStream, Package),
-    log_if(true, '~q', [done-read_package_from_cache(KytheInputPath,Package)]),
+    read_package_from_cache(KytheJsonInputStream, Package),
+    log_if(true, '~q', [done-read_package_from_cache(PykytheSymtabInputPath,Package)]),
 
     atom_concat(Package, '.', PackageDot),
-    convdict_pairs(strip_sym(PackageDot), Symtab0, BuiltinsPairs0),
+    conv_symtab_pairs(strip_sym(PackageDot), Symtab0, BuiltinsPairs0),
 
     %% object is special: it needs the 'object' type whereas for all
     %% other classes, 'object' is implied.
@@ -75,16 +79,16 @@ gen_builtins_symtab_main :-
     ObjectType = [class_type(ObjectFqn, [])],
     maplist(clean_symtab_pair(ObjectType), BuiltinsPairs0, BuiltinsPairs1),
     replace_key_value(BuiltinsPairs1, 'object', ObjectType, BuiltinsPairs),
-    convdict(clean_symtab_pair(ObjectType), Symtab0, Symtab1),
-    put_dict('object', Symtab1, ObjectType, Symtab),
+    conv_symtab(clean_symtab_pair(ObjectType), Symtab0, Symtab1),
+    symtab_insert('object', Symtab1, ObjectType, Symtab),
     memberchk('object'-ObjectType, BuiltinsPairs),
     log_if(true, 'ObjectType: ~q', [ObjectType]),
-    must_once(ObjectType == Symtab.'object'),
-    dict_pairs(BuiltinsDict, symtab, BuiltinsPairs),
-    convdict(is_module, Symtab, SymtabModules),
+    must_once(symtab_lookup('object', Symtab, ObjectType)),
+    list_to_symtab(BuiltinsPairs, BuiltinsSymtab),
+    conv_symtab(is_module, Symtab, SymtabModules),
     log_if(true, 'Package: ~q', [Package]),
     write_atomic_stream(gen_builtins_symtab:write_symtab_fact(
-                            Opts, Symtab, BuiltinsDict, BuiltinsPairs, SymtabModules),
+                            Opts, Symtab, BuiltinsSymtab, BuiltinsPairs, SymtabModules),
                         SymtabOutputPath),
     log_if(true, 'Finished gen_builtins_symtab'),
     halt.
@@ -110,14 +114,12 @@ strip_sym(PackageDot, Sym-Type, SymStripped-Type) :-
 is_module(Sym-Type, Sym-Type) :-
     memberchk(module_type(_), Type).
 
-write_symtab_fact(Opts, Symtab, BuiltinsDict, BuiltinsPairs, SymtabModules, Stream) :-
-    memberchk(version(Version), Opts),
-    format(Stream, '~k.~n', [builtins_version(Version)]),
+write_symtab_fact(Opts, Symtab, BuiltinsSymtab, BuiltinsPairs, SymtabModules, Stream) :-
+    format(Stream, '~k.~n', [builtins_version(Opts.version)]),
     format(Stream, '~k.~n', [builtins_symtab(Symtab)]),
     format(Stream, '~k.~n', [builtins_pairs(BuiltinsPairs)]),
     format(Stream, '~k.~n', [builtins_symtab_modules(SymtabModules)]),
-    memberchk(pythonpath(PythonPaths), Opts),
-    must_once(full_path([], 'typing', PythonPaths, '', TypingModule0, _)),
+    must_once(full_path([], 'typing', Opts.pythonpath, '', TypingModule0, _)),
     must_once(module_part(TypingModule0, TypingModule)),
     must_once(\+ token_part(TypingModule0, _)),
     log_if(false, 'TYPING module: ~q (from ~q)', [TypingModule, TypingModule0]), % TODO: delete
@@ -125,27 +127,23 @@ write_symtab_fact(Opts, Symtab, BuiltinsDict, BuiltinsPairs, SymtabModules, Stre
     %% TODO: delete the following, which are for eventually adding
     %%       support for mypy-style type declarations
     atomic_list_concat([TypingModule, 'Dict'], '.', TypingDict),
-    log_if(false, 'TYPING-Dict: ~q', [Symtab.TypingDict]), % TODO: delete
+    symtab_lookup(TypingDict, Symtab, TypingDictType),
+    log_if(true, 'TYPING-Dict: ~q', [TypingDictType]), % TODO: delete
     do_if(false,
           forall(member(K-V, BuiltinsPairs), % TODO: delete
                  format('BUILTIN ~q: ~q~n', [K, V]))),
     %% TODO: 'None', 'NoneType', bool, bytes, function
     forall((builtins_symtab_primitive(Primitive, _Type),
-            get_dict(Primitive, BuiltinsDict, Builtin)),
+            symtab_lookup(Primitive, BuiltinsSymtab, Builtin)),
            format(Stream, '~k.~n', [builtins_symtab_primitive(Primitive, Builtin)])).
 
 %% The following is a cut-down version of pykythe:read_cache_and_validate.
 %% TODO: separate read_cache_and_validate
-read_symtab_from_cache(KytheInputStream, SymtabFromCache) :-
-    json_read_dict_validate(KytheInputStream, '/pykythe/version', _JsonVersion),
-    json_read_dict_validate(KytheInputStream, '/pykythe/text/sha1', _JsonSha1),
-    json_read_dict_validate(KytheInputStream, '/kythe/node/kind', JsonPath),
-    ensure_dict_fact_base64_ascii(JsonPath, fact_value, 'file'),
-        json_read_dict_validate(KytheInputStream, '/kythe/text/encoding', _JsonEncoding),
-    json_read_dict_validate(KytheInputStream, '/pykythe/symtab', JsonSymtab),
-    ensure_dict_fact(JsonSymtab, fact_value, SymtabFromCacheStr),
-    %% base64_term(SymtabFromCacheBase64, SymtabFromCache). - Too slow.
-    term_string(SymtabFromCache, SymtabFromCacheStr).
+read_symtab_from_cache(PykytheSymtabInputStream, SymtabFromCache) :-
+    read_term(PykytheSymtabInputStream, _Version, []),
+    read_term(PykytheSymtabInputStream, _Sha1, []),
+    read_term(PykytheSymtabInputStream, SymtabFromCache, []),
+    must_once(is_symtab(SymtabFromCache)).
 
 read_package_from_cache(KytheInputStream, Package) :-
     my_json_read_dict(KytheInputStream, JsonDict),
@@ -279,4 +277,3 @@ extra('sys').
 extra('unichr').
 extra('unicode').
 extra('xrange').
-

@@ -1,11 +1,12 @@
 // For the various cursors, see https://www.w3schools.com/cssref/playit.asp?filename=playcss_cursor
+'use strict';
 
 // global 'g_anchor_edges' gets {signature:str, edge:str, target:{corpus,root,path,language,signature} items
-// (see t10_data.lines[line_key].edges)
+// (see color_data.lines[line_key].edges)
 var g_anchor_edges = [];
 
-var t10_data;  // set by dynamic load
-var t10_file_names;  // set by dynamic load
+var color_data = {};  // set by dynamic load
+var corpus_root_path_filename = null;  // set by dynamic load
 
 function anchor_target_edges(anchor_signature) {
     return g_anchor_edges
@@ -22,7 +23,7 @@ function target_anchor_edges(target) {
                 edge.target.language == target.language);
 }
 
-const token_css_color_class = {  // See t10.css
+const token_css_color_class = {  // See src_browser.css
     '<ARG_KEYWORD>':        'python_arg_keyword',
     '<ATTR_BINDING>':       'python_attr_binding',
     '<ATTR_REF>':           'python_attr_ref',
@@ -59,46 +60,60 @@ const is_token_name = {
 function set_src_txt() {
     // Note: this import requires CORS turned off (see README)
     // The "./" is not optional
-    // t10_data.js is assumed to set t10_data
-    import('./files/FILES.js').then(() => set_files_txt());
-    import('./t10_data.js').then(() => set_src_txt_impl());
+    // color_data.js is assumed to set color_data
+    import('./files/FILES.js')
+        .then(() => set_files_nav_txt())
+        .then(() => load_new_file('CORPUS', 'ROOT', 'tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t10.py'));
 }
 
-function set_files_txt() {
+function load_new_file(corpus, root, path) {
+    // Called from file browser onclick.
+    console.log('Import ' + corpus + ':' + root + ':' + path);
+    const src_browser_file = find_file(corpus, root, path);
+    if (!src_browser_file) {
+        alert("Can't load " + path);
+    } else {
+        import('./files/' + src_browser_file).then(() => set_src_txt_impl(src_browser_file));
+    }
+}
+
+function set_files_nav_txt() {
     var table = document.createElement('table');
     table.setAttribute('class', 'file_nav');
     var div = document.createElement('div');
-    div_str = '';
-    for (fn of t10_file_names) {
+    console.log('FILES: ' + corpus_root_path_filename.length + ' files');
+    for (const fn of corpus_root_path_filename) {
         // fn.path.split('/');
         var td1 = table.insertRow().insertCell();
         var txt_span = document.createElement('span');
-        txt_span.onclick = function() { load_new_file('files/' + fn.filename); };
+        txt_span.onclick = function(xfn) {
+            return function() { load_new_file(xfn.corpus, xfn.root, xfn.path); }; }(fn);
         txt_span.onmouseover = function(e) { e.currentTarget.classList.add('file_nav_hover'); }
         txt_span.onmouseleave = function(e) { e.currentTarget.classList.remove('file_nav_hover'); }
         txt_span.innerHTML = sanitize(fn.corpus) + ':' + sanitize(fn.root) + ':' + sanitize(fn.path);
         td1.appendChild(txt_span);
     }
-    files_elem = document.getElementById('file_nav');
-    for (ch of files_elem.childNodes) {
-        files_elem.removeChild(ch);
+    replace_child_with('file_nav', table);
+}
+
+function find_file(corpus, root, path) {
+    for (const fn of corpus_root_path_filename) {
+        if (fn.corpus == corpus &&
+            fn.root == root &&
+            fn.path == path) {
+            return fn.filename;
+        }
     }
-    files_elem.appendChild(table)
+    return null;
 }
 
-function load_new_file(filename) {
-    alert(filename);
-}
-
-function set_src_txt_impl() {
+function set_src_txt_impl(filename) {
     var table = document.createElement('table');
+    var c_d = color_data[filename];
+    console.log('SET_SRC_TXT ' + filename + ' ... ' + c_d.path);
     table.setAttribute('class', 'src_table');
-    if (t10_data.length != 1) {
-        alert('Bad t10_data, length=' + t10_data.length);
-        return;
-    }
-    for (const line_key of t10_data[0].line_keys) {
-        const line_parts = t10_data[0].lines[line_key];
+    for (const line_key of c_d.line_keys) {
+        const line_parts = c_d.lines[line_key];
         var row = table.insertRow();
         var td1 = row.insertCell();
         td1.setAttribute('class', 'src_lineno');
@@ -114,11 +129,8 @@ function set_src_txt_impl() {
         }
         td2.appendChild(txt_span);
     }
-    src_elem = document.getElementById('src');
-    for (ch of src_elem.childNodes) {
-        src_elem.removeChild(ch);
-    }
-    src_elem.appendChild(table);
+    replace_child_with('src', table);
+    console.log('SET_SRC_TXT / ' + c_d.path);
 }
 
 function do_for_signature(target, class_action, class_id) {
@@ -166,15 +178,27 @@ function src_line_txt(parts, txt_span) {
 }
 
 function sanitize(raw_str) {
-    // No need for .replace(/ /g, '&nbsp;') by using CSS white-space:pre
-    return raw_str
+    // There shouldn't be a need for .replace(/ /g, '&nbsp;') if CSS
+    // has white-space:pre ... but by experiment, it's needed.
+    return (raw_str)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
-        .replace(/'/g, '&apos;');
-    }
+        .replace(/'/g, '&apos;')
+        .replace(/ /g, '&nbsp;');
+}
 
 function jq(id) {
+    // DO NOT SUBMIT - unused?
     return '.' + id.replace( /(:|\.|\[|\]|,|=|@|<|>)/g, "\\$1" );
+}
+
+function replace_child_with(id, new_child) {
+    var elem = document.getElementById(id);
+    // elem.replaceChild(new_child, elem.firstChild);
+    while (elem.firstChild) {
+        elem.firstChild.remove();
+    }
+    elem.appendChild(new_child);
 }

@@ -39,6 +39,7 @@ class PlainOldDataExtended(PlainOldData):
 
     def as_prolog_str(self) -> str:
         """Recursively turn a node into a Prolog term."""
+        # TODO: refactor the common code with PlainOldData.as_prolog_str
         slot_strs = []
         for slot in self.__slots__:
             value = getattr(self, slot)
@@ -51,7 +52,7 @@ class PlainOldDataExtended(PlainOldData):
 def _prolog_atom(value: str) -> str:
     """Wrap a string so that it's a valid Prolog atom."""
     # Prolog uses a slightly different convention for "\x..."
-    # in strings thatn Python, so the best way of doing this is
+    # in strings than Python, so the best way of doing this is
     # to use the "\u...." notation.
     # TODO: This seems to slow things down quite a bit ... is there
     #       a faster way of doing it?

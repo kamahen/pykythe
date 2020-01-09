@@ -8,9 +8,6 @@
                           absolute_file_name_rel/2,
                           absolute_file_name_rel/3,
                           base64_utf8/2,
-                          convdict/3,
-                          convdict_pairs/3,
-                          dict_values/2,
                           do_if/2,
                           dump_term/2,
                           dump_term/3,
@@ -18,35 +15,32 @@
                           ensure_dict_fact_base64_ascii/3,
                           ensure_dict_fact_base64_utf8/3,
                           get_dict_default/4,
-                          hash_hex/2,
                           has_prefix/2,
                           has_suffix/2,
+                          hash_hex/2,
                           json_read_dict_validate/3,
                           json_write_dict_nl/2,
                           log_if/2,
                           log_if/3,
+                          maybe_absolute_dir/2,
                           maybe_open_read/2,
                           my_json_read_dict/2,
-                          opt/2,
-                          opts/2,
+                          opts_dict/2,
+                          opts_dict/3,
                           print_term_cleaned/3,
-                          remove_suffix_star/3,
                           remove_prefix/3,
                           remove_suffix/3,
                           remove_suffix_star/3,
+                          remove_suffix_star/3,
                           safe_delete_file/1,
                           split_atom/4,
-                          split_path_string_and_canonicalize/3,
                           term_to_canonical_atom/2,
                           %% update_dict/3,
-                          update_new_dict/3,
                           write_atomic_file/2,
                           write_atomic_stream/2
                          ]).
 
 :- meta_predicate
-       convdict(2, +, -),
-       convdict_pairs(2, +, -),
        do_if(0, 0),
        log_if(0, +),
        log_if(0, +, +),
@@ -58,15 +52,18 @@
 :- style_check(+no_effect).
 :- style_check(+discontiguous).
 
-:- style_check(-var_branches).  % For library(http/json)
-:- use_module(library(apply), [exclude/3, include/3, maplist/2, maplist/3, maplist/4, foldl/4, convlist/3]).
+:- use_module(library(apply), [exclude/3, include/3, maplist/2, maplist/3, maplist/4, foldl/4]).
+:- use_module(library(error)).
 :- use_module(library(base64), [base64/2 as base64_ascii]).
 :- use_module(library(utf8), [utf8_codes//1]).
 :- use_module(library(filesex), [make_directory_path/1, directory_file_path/3]).
+:- style_check(-var_branches).
 :- use_module(library(http/json), [json_read_dict/3, json_write_dict/3]).
-:- use_module(library(lists), [append/2, append/3, list_to_set/2, member/2, reverse/2, select/3]).
-:- use_module(library(pairs), [pairs_values/2]).
+:- style_check(+var_branches).
+:- use_module(library(lists), [append/2, append/3, list_to_set/2, member/2, reverse/2, select/3, selectchk/3]).
+:- style_check(-var_branches).
 :- use_module(library(pcre), [re_replace/4]).
+:- style_check(+var_branches).
 :- use_module(library(pprint), [print_term/2]).
 :- use_module(library(rbtrees), [ord_list_to_rbtree/2, rb_insert/4, rb_visit/2] ).
 :- use_module(library(rdet), [rdet/1]).
@@ -85,18 +82,14 @@
 
 :- maplist(rdet, [
                   %% base64_string/2, % handled by must_once
-                  %% convdict/3, % rdet wrap interferes with meta_predicate declaration
                   %% do_if/2,    % rdet wrap interferes with meta_predicate declaration
                   %% log_if/2,   % rdet wrap interferes with meta_predicate declaration
                   %% log_if/3,   % rdet wrap interferes with meta_predicate declaration
                   hash_hex/2,
                   json_read_dict_validate/3,
-                  opt/2,
-                  opts/2,
                   print_term_cleaned/3,
                   remove_suffix_star/3,
                   split_atom/4,
-                  split_path_string_and_canonicalize/3,
                   term_to_canonical_atom/2
                   %% write_atomic_stream/2, % rdet wrap interferes with meta_predicate declaration
                   %% write_atomic_file/2    % rdet wrap interferes with meta_predicate declaration
@@ -127,23 +120,6 @@ absolute_dir(Path0, AbsPath) :-
     remove_suffix_star(Path0, '/', Path),
     absolute_file_name_rel(Path, AbsPath0, [access(read), file_type(directory), file_errors(fail)]),
     atomic_list_concat([AbsPath0, '/'], AbsPath).
-
-convdict(Pred, Dict0, Dict) :-
-    dict_pairs(Dict0, Tag, Pairs0),
-    convlist(Pred, Pairs0, Pairs),
-    dict_pairs(Dict, Tag, Pairs).
-
-convdict_pairs(Pred, Dict0, Pairs) :-
-    dict_pairs(Dict0, _Tag, Pairs0),
-    convlist(Pred, Pairs0, Pairs).
-
-%! dict_values(+Dict, -Values) is det.
-%%    True when Values is an ordered set of the values appearing in Dict.
-%% TODO: this should be in library(dicts).
-%% TODO: this isn't used?
-dict_values(Dict, Values) :-
-    dict_pairs(Dict, _Tag, Pairs),
-    pairs_values(Pairs, Values).
 
 %! do_if(:Cond, :Pred) is det.
 %% A handy meta-predicate for turning debug stuff on/off, according to Cond
@@ -227,7 +203,8 @@ hash_hex(Text, Hex) :-
 
 %! json_read_dict_validate(+KytheInputStream, +FactName, -Dict) is det.
 %% Read a JSON "term" from KytheInputStream, verify that fact_name
-%% is FactName and unify the entire term with Dict)
+%% is FactName and unify the entire term with Dict) - throws an error
+%% if validation fails.
 json_read_dict_validate(KytheInputStream, FactName, Dict) :-
     my_json_read_dict(KytheInputStream, Dict),
     ensure_dict_fact(Dict, fact_name, FactName).
@@ -238,7 +215,7 @@ json_write_dict_nl(KytheStream, JsonAsDict) :-
     %% The tags are ignored unless option tag(type) is specified
     %% (which it isn't). All dicts should have the tag 'json', for
     %% simplicity.
-    json_write_dict(KytheStream, JsonAsDict, [width(0)]),
+    json_write_dict(KytheStream, JsonAsDict, [width(0),true(#(true)),false(#(false)),null(#(null))]),
     nl(KytheStream).
 
 log_if(Cond, Fmt) :- log_if(Cond, Fmt, []).
@@ -263,31 +240,36 @@ maybe_open_read(Path, InputStream) :-
     ).
 
 maybe_open_read_impl(Path, InputStream) :-
-    catch(open(Path, read, InputStream),
+    catch(open(Path, read, InputStream, [type(binary)]),
           error(existence_error(source_sink, Path), _),
           fail).
 
 %! my_json_read_dict(+Stream, -Dict) is det.
-%% Wrapper on library(http/json, [json_read_dict/2]) that works
-%% if autoload is turned off.
-%% Also sets the dict tags to 'json' (json_read_dict/2 leaves the tag
-%% as an uninstantiated variable).
-%% And gets strings as atoms.
+%% Wrapper on library(http/json, [json_read_dict/2]) that sets the
+%% dict tags to 'json' (json_read_dict/2 leaves the tag as an
+%% uninstantiated variable).  And gets strings as atoms. And
+%% handles true/false.
 my_json_read_dict(Stream, Dict) :-
-    %% TODO: fix library(http/json): it should have :- use_module(library(lists)).
-    %%       and remove autoload below.
-    current_prolog_flag(autoload, AutoloadFlag),
-    set_prolog_flag(autoload, true), % TODO: Otherwise gets error: json:term_to_dict/3 - undefined select/3
-    json_read_dict(Stream, Dict, [value_string_as(atom), end_of_file(@(end)), default_tag(json)]),
-    set_prolog_flag(autoload, AutoloadFlag).
+    json_read_dict(Stream, Dict, [value_string_as(atom), end_of_file(@(end)), default_tag(json),
+                                  true(#(true)),false(#(false)),null(#(null))]).
 
-%! opts(Opts:list, Items:list) is det.
-opts(Opts, Items) :- maplist(opt(Opts), Items).
+opts_dict(Opts, OptsDict) :- opts_dict(Opts, opts, OptsDict).
 
-%! opt(+Opts:list, Item) is det.
-%% Allows maplist(opt(Opts), [option1(X), option2(Y)]) instead of
-%%     maplist({Opts}/[X]>>memberchk(X, Opts), [option1(X), option2(Y)]).
-opt(Opts, Item) :- memberchk(Item, Opts).
+%! opts_dict(+Opts:list, ?DictTag:atom, -OptsDict:dict) is det.
+%! opts_dict(-Opts:list, ?DictTag:atom, +OptsDict:dict) is det.
+opts_dict(Opts, DictTag, OptsDict) :-
+    (  var(Opts)
+    -> dict_pairs(OptsDict, DictTag, OptsPairs),
+       maplist(dict_pair_to_opt, OptsPairs, Opts)
+    ;  var(OptsDict)
+    -> maplist(opt_to_dict_pair, Opts, OptsPairs),
+       dict_pairs(OptsDict, DictTag, OptsPairs)
+    ;  instantiation_error(opts_dict(Opts, OptsDict))
+    ).
+
+dict_pair_to_opt(K-V, KV) :- KV =.. [K, V].
+
+opt_to_dict_pair(KV, K-V) :- KV =.. [K, V].
 
 %! print_term_cleaned(+Term, +Options, -TermStr) is det.
 %% print_term, cleaned up
@@ -321,18 +303,6 @@ split_atom(Atom, SepChars, PadChars, SubAtoms) :-
     split_string(Atom, SepChars, PadChars, SubStrings),
     maplist([S,A]>>atom_string(A,S), SubStrings, SubAtoms).
 
-%! split_path_string_and_canonicalize(+OptName:atom, +Opts0:list, -Opts:list) is det.
-%%  Find the option given by OptName in Opts0, split the value into
-%%  components in a list, add back into Opts (can be in a different
-%%  position in the list).  The resulting list of dirs are all in
-%%  canonical form, using absolute_dir/2.
-split_path_string_and_canonicalize(OptName, Opts0, [NewOpt|Opts1]) :-
-    Opt =.. [OptName, PathStr],
-    select(Opt, Opts0, Opts1),
-    split_atom(PathStr, ':', '', PathList0),
-    convlist(maybe_absolute_dir, PathList0, PathList),
-    NewOpt =.. [OptName, PathList].
-
 maybe_absolute_dir(Path0, AbsPath) :-
     (  absolute_dir(Path0, AbsPath)
     -> true
@@ -344,54 +314,6 @@ maybe_absolute_dir(Path0, AbsPath) :-
 %% an atom in canonical form (no operators).
 term_to_canonical_atom(Term, Atom) :-
     format(atom(Atom), '~k', [Term]).
-
-%% (NOT CURRENTLY USED)
-%% %! update_dict(+KVs:list(pair), -Dict0:dict, +Dict:dict) is det.
-%% %% Add/update all key-value pairs in KVs into the dict.
-%% %% The keys are processed in order; the last one takes effect.
-%% %% Note that dict_pairs(Dict, Tag, KVs) doesn't allow duplicate keys.
-%% update_dict([], Dict, Dict).
-%% update_dict([K-V|KVs], Dict0, Dict) :-
-%%     (  get_dict(K, Dict0, V)  % prevent creating so much garbage
-%%     -> Dict1 = Dict0
-%%     ;  put_dict(K, Dict0, V, Dict1)
-%%     ),
-%%     update_dict(KVs, Dict1, Dict).
-
-%! update_new_dict(+KVs:list(pair), -Dict0:dict, +Dict:dict) is det.
-%% Add all key-value pairs in KVs into the dict, skipping any that
-%% are already in the dict.
-%% The keys are processed in order, so if a key is added, any subsequent
-%% values of that key are ignored.
-%% Note that dict_pairs(Dict, Tag, KVs) doesn't allow duplicate keys.
-
-%% This is the straightforward implementation, but it creates
-%% a lot of garbage and is slow.
-
-%% update_new_dict([], Dict, Dict).
-%% update_new_dict([K-V|KVs], Dict0, Dict) :-
-%%     (  get_dict(K, Dict0, _)
-%%     -> Dict1 = Dict0
-%%     ;  put_dict(K, Dict0, V, Dict1)
-%%     ),
-%%     update_new_dict(KVs, Dict1, Dict).
-
-%% The following is several times faster than the above.  (For 11,000
-%% items, make_rb is about 20x faster than the equivalent loop for a
-%% dict, but there's still significant cost converting to/from rbtree).
-%% TODO: It would be better to just leave everything as a RB-tree.
-
-update_new_dict(KVs, Dict0, Dict) :-
-    dict_pairs(Dict0, Tag, KVs0),
-    ord_list_to_rbtree(KVs0, Rb0),
-    make_rb(KVs, Rb0, Rb1),
-    rb_visit(Rb1, KVs1),
-    dict_pairs(Dict, Tag, KVs1).
-
-make_rb([], Rb, Rb).
-make_rb([K-V|KVs], Rb0, Rb) :-
-    rb_insert(Rb0, K, V, Rb1),
-    make_rb(KVs, Rb1, Rb).
 
 %! write_atomic_stream(:WritePred, +Path:atom) is semidet.
 %% Write to a file "atomically" -- that is, if another process is
@@ -424,7 +346,7 @@ write_atomic_stream(WritePred, Path) :-
     %% we roll our own.
     directory_file_path(PathDir, _, Path),
     make_directory_path(PathDir),
-    tmp_file_stream(TmpPath, Stream, [encoding(utf8)]),
+    tmp_file_stream(TmpPath, Stream, [encoding(utf8)]), % implies open [type(binary)]
     %% TODO: instead of at_halt/1, use setup_call_cleanup/3
     at_halt(pykythe_utils:safe_delete_file(TmpPath)), % in case WritePred crashes or fails
     (  call(WritePred, Stream)
@@ -445,7 +367,7 @@ write_atomic_stream(WritePred, Path) :-
 write_atomic_file(WritePred, Path) :-
     directory_file_path(PathDir, _, Path),
     make_directory_path(PathDir),
-    tmp_file_stream(TmpPath, Stream, [encoding(utf8)]),
+    tmp_file_stream(TmpPath, Stream, [encoding(utf8)]), % implies open [type(binary)]
     %% TODO: instead of setting up at_halt, use setup_call_cleanup/3
     at_halt(pykythe_utils:safe_delete_file(TmpPath)), % in case WritePred crashes or fails
     close(Stream),

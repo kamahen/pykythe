@@ -37,7 +37,9 @@
 :- use_module(library(apply), [maplist/3]).
 :- use_module(library(filesex), [directory_file_path/3]).
 :- use_module(library(lists), [append/3, member/2]).
+:- style_check(-var_branches).
 :- use_module(library(pcre), [re_matchsub/4, re_replace/4]).
+:- style_check(+var_branches).
 :- use_module(library(rdet), [rdet/1]).
 :- use_module(must_once, [must_once/1, must_once_msg/2, must_once_msg/3, fail/1]).
 :- use_module(pykythe_utils).

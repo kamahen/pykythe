@@ -184,9 +184,9 @@ A source file is processed in the following steps:
 
 * Each "import" is recursively processed (if there is a circular import,
   this is detected and the recursive import is skipped).
-  * This includes outputting the `.kythe.json` and `.kythe.entries`
-    files.  (The `.kythe.json` file can be reused as a "cache" to
-    avoid reprocessing the source file.)
+  * This includes outputting the `.kythe.json`, `.kythe.entries`, and
+    `.pykythe.symtab` files.  (The `.pykythe.symtab` file can be
+    reused as a "cache" to avoid reprocessing the source file.)
 
 * The expressions are symbolically evaluated to fill in the
   symtab. This is, in effect, simple type inferencing or abstract
@@ -206,9 +206,9 @@ A source file is processed in the following steps:
     operator) can be resolved to the appropriate class
     attribute/method or module variable/function.
 
-* The symtab and Kythe facts are output to a `.kythe.json` file and
-  `.kythe.entries` file.  The test cases can be checked with
-  `kythe/cxx/verifier/verifier`.
+* The symtab and Kythe facts are output to `pykythe.symtab`,
+  `.kythe.json` file, and `.kythe.entries` files.  The test cases can
+  be checked with `kythe/cxx/verifier/verifier`.
 
 
 ### <a name="symtab">Symtab</a>
@@ -266,9 +266,12 @@ we avoid having a stack of symtabs.
 ### Imports, cache, and batches
 
 When a source file is processed, all the imports must be processed
-first. Unlike C++ (for example), information about dependencies isn't
-available from the build system, although
-[importlab](https://github.com/google/importlab) could be
+first. Pykythe doesn't depend on information about dependencies from a
+build system (which typically aren't available for Python, in
+comparison toC++ or similar, which have dependency information in a
+build system or compiler (e.g.,
+[gcc-M](https://www.gnu.org/software/make/manual/html_node/Automatic-Prerequisites.html)),
+although [importlab](https://github.com/google/importlab) could be
 used. Additionally, there can be circular imports, which prevent a
 strict ordering of dependencies. (Python doesn't directly allow
 circular imports; but they can be simulated by putting `import`
@@ -280,13 +283,13 @@ Circular imports are handled by keeping track of all imports that are
 "in process" and skipping them when they are encountered a second time
 (more details on this are in the [Symtab](#symtab) section).
 
-When processing a codebase, we can easily get <i>O(N<sup>3</sup>)</i>
-behavior by reprocessing the imports (where <i>N</i> is the number of
+When processing a codebase, reprocessing the imports cann easily get
+<i>O(N<sup>3</sup>)</i> behavior (where <i>N</i> is the number of
 lines of code), so a cache is used to avoid this. For each `.py` or
-`.pyi` file, a corresponding `.kythe.json` file (and `.kythe.entries`) is
-created, containing all the Kythe facts plus the pykythe symtab and a
-hash of the source file. When an `import` is encountered, the cache
-file is used if possible:
+`.pyi` file, a corresponding `.kythe.json` file (and `.kythe.entries`)
+is created, containing all the Kythe facts; the the pykythe symtab and
+a hash of the source file go into a `.pykythe.symtab` file. When an
+`import` is encountered, the cache file is used if possible:
 
 * The cache file must have been created using the same source file.
 
@@ -295,8 +298,8 @@ file is used if possible:
 If any of the imported cache files is not useable, all source files
 that depend on it must be reprocssed to generate new cache files (that
 is, if `a.py` imports `b.py`, `b.py` imports `c.py`, and `c.py`
-imports `d.py`; and `d.kythe.json` is useable but `c.kythe.json` is
-not (because `c.py` has changed since `c.kythe.json` was created),
+imports `d.py`; and `d.pykythe.symtab` is useable but `c.pykythe.symtab` is
+not (because `c.py` has changed since `c.pykythe.symtab` was created),
 then `c.py`, `b.py`, and `a.py` must be reprocessed (`d.py` can be
 reused as-is).
 
@@ -310,12 +313,16 @@ being valid. We also want to allow processing in parallel. To handle
 this, each processing run is given a unique ID (e.g., a nano-second
 time stamp plus a random number)
 
-To sum up, pykythe uses the `.kythe.json` files both as output to
-Kythe and as caches. In addition, to avoid recursively checking cache
-files, it uses `.pykythe-batch-$BATCH_ID` files (using the
-`--batch_suffix` command-line option). Multiple pykythe processes can
-run at the same time; all output is "atomic", as long as it's all on
-the same file system.
+To sum up, pykythe uses the `.pykythe.symtab` files as caches.  To
+void recursively checking cache files, it uses
+`.pykythe-batch-$BATCH_ID` files (using the `--batch_suffix`
+command-line option).
+
+Multiple pykythe processes can run at the same time; all output is
+"atomic", as long as it's all on the same file system. (That is, if
+the same file is being processed by two processes at the same time,
+their outputs won't interfere with each other, because they should
+both have the same content and they are written atomically.)
 
 (A detail: to allow for read-only source trees, the cache files are in
 a separate directory, as specified by `--kytheout`. This could in
@@ -325,25 +332,37 @@ file to an output file, e.g.
 ... this probably should allow multiple patterns, to accomodate files
 in multiple repositories.)
 
+To give an idea of performance improvements, when processing the 7071
+files in the Python library (this is total CPU time; wall time was roughly
+1/3 on a 4 CPU machine (with SSD, so the affects of cache are less
+than with HDD) running up to 8 pykythe processes in parallel):
+
+* Initial run: 69 minutes (using "batch" caching for newly created
+  files -- without this caching, performance would have been much worse).
+
+* With regular caching and without batch files from the first run: 33
+  minutes.
+
+* With batch files from the first run: 5 minutes.
+
+
 ### Base64
 
 For the JSON version of Kythe facts, base64 encoding is used, to
-handle the off-chance of some data being pure binary and not
-UTF8. Unfortunately, Prolog's base64 support isn't super fast, nor is
-its UTF8 encoding/decoding (the latter is needed because base64 works
-on ASCII only, so encoding/decoding from Unicode is needed).
+handle the some data being pure binary and not UTF8 (e.g., if the
+`/kythe/text` fact is in Latin-1 encoding, which is not legal
+UTF-8). Unfortunately, Prolog's base64 support isn't super fast, nor
+is its UTF-8 encoding/decoding (the latter is needed because base64
+works on ASCII only, so encoding/decoding from Unicode is needed).
 
-For performance reasons, the Kythe facts are all kept as regular
+For performance reasons, the Kythe facts are all crated as regular
 strings (or atoms), and converted to base64 only on output. This is
 because each pass over the AST creates Kythe facts, and there's a
-significant saving by only doing it once. (Some micro-optimizations
-are possible by distinguishing between strings that can only be ASCII
-and those that can be any Unicode; these probably aren't worth doing
-and things are simpler by just assuming UTF8 everywhere).
-
-In addition, the symtab isn't base64-encoded -- when converting to
-Kythe serving tables, the symtab needs to be removed (e.g., by
-`egrep -v '^{"fact_name":"/pykythe/symtab"'`).
+significant saving by only doing the base64 translation once. (Some
+micro-optimizations are possible by distinguishing between strings
+that can only be ASCII and those that can be any Unicode; these
+probably aren't worth doing and things are simpler by just assuming
+UTF8 everywhere).
 
 ## Known issues
 
@@ -358,18 +377,27 @@ Kythe serving tables, the symtab needs to be removed (e.g., by
 * Only works with UTF-8 files (actually, only ASCII), with Unix
   newline conventions.
 
+  * 8859-1 (Latin1) may cause bogus error messages.
+
+* Performance: don't put symtab into JSON (`/pykythe/symtab`), but
+  instead write directly to a separate file (search for comments in
+  `pykythe.pl` about using `fast_read/2` etc).
+
 * Only tested with Python 3 source (probably works with Python 2, with
   a bit of fiddling for things like `print` statements and (when
   implemented) some details of name scope, such as for list
   comprehensions).
 
+  * Doesn't yet handle Python 3.8 "walrus" operator.
+
 * Requires Python 3.7
    * On Ubuntu: `sudo apt-get install python3.7`
-   * You also might have to do something like this: ` cd /usr/lib/python3/dist-packages &&
+   * You also might have to do something like this: `cd /usr/lib/python3/dist-packages &&
 sudo ln -s apt_pkg.cpython-36m-x86_64-linux-gnu.so apt_pkg.cpython-37m-x86_64-linux-gnu.so`
 
 * Requires Python 3.7 `2to3`
-   * (See above with "Install `lib2to3` for Python")
+   * (See above with "Install `lib2to3` for Python", although that
+     might not be needed any more.)
 
 * Requires `mypy_extensions`:
    * `python3.7 -m pip install mypy_extensions`

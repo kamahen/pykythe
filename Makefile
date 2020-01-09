@@ -64,6 +64,7 @@ KYTHE_GENFILES:=$(KYTHE)/bazel-genfiles
 
 BROWSE_PORT_PYKYTHE:=8080  # underhood assumes port 8080: underhood/treetide/underhood/ui/webpack.config.js
 BROWSE_PORT_PYTYPE:=8089
+SRC_BROWSER_PORT:=9999
 # (VERIFIER_EXE is defined below, using the version built from source)
 # VERIFIER_EXE:=/opt/kythe/tools/verifier
 # DO NOT SUBMIT -- make this more generic:
@@ -139,9 +140,9 @@ KYTHE_CORPUS_ROOT_OPT:=--kythe_corpus='CORPUS' --kythe_root='ROOT'
 VERSION_OPT:=--version='$(VERSION)'
 PYKYTHEOUT_OPT:=--kytheout='$(KYTHEOUTDIR)'
 ifeq ($(BATCH_ID),)
-    BATCH_OPT:=--batch_suffix=
+    BATCH_OPT:=--pykythebatch_suffix=
 else
-    BATCH_OPT:=--batch_suffix='-batch-$(BATCH_ID)'
+    BATCH_OPT:=--pykythebatch_suffix='.pykythe.batch-$(BATCH_ID)'
 endif
 # TODO: parameterize following for python3.6, etc.:
 PYTHONPATH_OPT:=--pythonpath='$(PYTHONPATH_DOT):$(PYTHONPATH_BUILTINS):$(TYPESHED_REAL)/stdlib/3.7:$(TYPESHED_REAL)/stdlib/3:$(TYPESHED_REAL)/stdlib/2and3:/usr/lib/python3.7'
@@ -157,6 +158,8 @@ TIME:=time
 
 .PHONY: show-vars
 show-vars:
+	@echo "BATCH_ID                        $(BATCH_ID)"
+	@echo "VERSION                         $(VERSION)"
 	@echo "TESTOUTDIR                      $(TESTOUTDIR)"
 	@echo "PWD_REAL                        $(PWD_REAL)"
 	@echo "TYPESHED_REAL                   $(TYPESHED_REAL)"
@@ -263,6 +266,7 @@ $(KYTHEOUTDIR)%.kythe.entries: \
 # $(PYKYTHE_SRCS) is a dependency because it's used to compute $(VERSION)
 
 $(BUILTINS_SYMTAB_FILE) \
+$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.pykythe.symtab \
 $(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.json \
 $(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.entries: \
 		$(SUBSTDIR_PWD_REAL)/pykythe/bootstrap_builtins.py \
@@ -289,6 +293,7 @@ $(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.entries: \
 	@# use "$(KYTHEOUTDIR)$(PYTHONPATH_BUILTINS)/builtins.kythe.json":
 	$(SWIPL_EXE) pykythe/gen_builtins_symtab.pl \
 	    -- $(VERSION_OPT) $(PYTHONPATH_OPT) \
+	    $(KYTHEOUTDIR)$(PYTHONPATH_BUILTINS)/builtins.pykythe.symtab \
 	    $(KYTHEOUTDIR)$(PYTHONPATH_BUILTINS)/builtins.kythe.json \
 	    "$(BUILTINS_SYMTAB_FILE)"
 	@# For debugging:
@@ -302,11 +307,6 @@ json-decoded-all:
 	for i in $$(find $(KYTHEOUTDIR) -type f -name '*.kythe.json'); do \
 	    $(PYTHON3_EXE) scripts/decode_json.py <$$i >$$i-decoded; \
 	done
-
-# %.kythe.entries: %.kythe.json %.kythe.json-decoded
-# 	@# We leave /pykythe/symtab unencoded, so need to strip it:
-# 	egrep -v '^{"fact_name":"/pykythe/symtab"' <"$<" | \
-# 	    $(ENTRYSTREAM_EXE) --read_format=json >"$@"
 
 $(KYTHEOUTDIR)/%.kythe.verifier: $(KYTHEOUTDIR)/%.kythe.entries
 	@# TODO: --ignore_dups
@@ -399,10 +399,11 @@ test_python_lib: # Also does some other source files I have lying around
 	@# TODO: /usr has more *.py files than /usr/lib/python3.7 but takes 3x longer
 	@# TODO: use annotate-output (from package devscripts) to add the timestamps
 	@#       and remove the timestamps from pykytype's logging.
+	@# Note: ./typeshed not here because it's in mypy and pytype
 	@# TODO: paralall -L80 means it processes in clumps of 80 --
 	@#       parameterize this on NPROC?
 	set -o pipefail; \
-	find /usr/lib/python3.7 ../mypy ../pytype ../yapf ../importlab ../kythe ./typeshed . \
+	find /usr/lib/python3.7 ../mypy ../pytype ../yapf ../importlab ../kythe . \
 	  -name '*.py' -o -name '*.pyi' | sort | \
 	  parallel -v --will-cite --keep-order --group -L80 -j$(NPROC) \
 	  --joblog=$(TESTOUTDIR)/joblog-$$(date +%Y-%m-%d-%H-%M) \
@@ -531,7 +532,6 @@ make-tables: # add-index-pykythe
 	@# cat $(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(abspath pykythe))/*.kythe.json
 	set -o pipefail; \
 	    cat $$(find $(KYTHEOUTDIR) -name '*.kythe.json') /dev/null | \
-	    egrep -v '^{"fact_name":"/pykythe/symtab"' | \
 	    time $(ENTRYSTREAM_EXE) --read_format=json | \
 	    time $(WRITE_ENTRIES_EXE) -graphstore $(TESTOUTDIR)/graphstore
 	time $(WRITE_TABLES_EXE) -graphstore=$(TESTOUTDIR)/graphstore -out=$(TESTOUTDIR)/tables
@@ -541,15 +541,25 @@ make-tables: # add-index-pykythe
 	@ # $(KYTHE_EXE) -api http://localhost:$(BROWSE_PORT_PYKYTHE) xrefs -definitions all -node_definitions -page_size 999999 -references all 'kythe://CORPUS?lang=python?root=ROOT#.tmp.pykythe_test.SUBST.home.peter.src.pykythe.pykythe.pod.PlainOldData'
 	@ # https://kythe.io/docs/kythes-command-line-tool.html
 
+.PHONY: make-js
 make-js:
 	$(RM) -r $(TESTOUTDIR)/browser
 	mkdir -p $(TESTOUTDIR)/browser/files
 	set -o pipefail; \
 	    cat $$(find $(KYTHEOUTDIR) -name '*.kythe.json' | grep /pykythe/test_data) /dev/null | \
-	    egrep -v '^{"fact_name":"/pykythe/symtab"' | \
 	    time $(SWIPL_EXE) -g get_and_print_color_text -t halt scripts/extract_color.pl -- \
 		--filesdir=$(TESTOUTDIR)/browser/files
-	ln browser/static/* $(TESTOUTDIR)/browser/
+	@# ln browser/static/* $(TESTOUTDIR)/browser/
+	@# ln browser/static/no_browse.html $(TESTOUTDIR)/browser/index.html
+
+.PHONY: run_src_browser run-src-browser
+# To prepare this: make-js
+# http://localhost:$(SRC_BROWSER_PORT)/static/src_browser.html
+run_src_browser run-src-browser:
+	$(SWIPL_EXE) --no-tty browser/src_browser.pl -- \
+		--port=$(SRC_BROWSER_PORT) \
+		--filesdir=$(TESTOUTDIR)/browser/files \
+		--staticdir=$(realpath ./browser/static)
 
 # TODO: pre-req:  prep_server
 .PHONY: run_server run-server
