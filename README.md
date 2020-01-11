@@ -62,8 +62,9 @@ out (on Linux):
 * Install `python3.7`
 
   This needs the *latest* version of Python 3.7. On Ubuntu, you might
-  need to first run `sudo add-apt-repository ppa:deadsnakes/ppa`,
-  then `sudo apt install python3.7`.
+  need to first run `sudo add-apt-repository ppa:deadsnakes/ppa`, then
+  `sudo apt install python3.7`. More choices are given in
+  [this tutorial](https://linuxize.com/post/how-to-install-python-3-7-on-ubuntu-18-04/).
 
   If you get an error in `DISPATCH[node.type]`, then it probably means
   that there's a conflict with Ubuntu package `python3-lib2to3`. The

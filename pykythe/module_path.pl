@@ -159,6 +159,7 @@ path_to_module_fqn_or_unknown(Path, ModuleFqn) :-
 %! path_to_module_fqn(+Path:atom, -ModuleFqn:atom) is semidet.
 %% Get the FQN for the Python module corresponding to Path or fail.
 %%  TODO: harmonize with module_fqn_path/2
+%%  TODO: use directory_file_path/3 instead of concat, to allow removing trailing '/'.
 path_to_module_fqn(Path, ModuleFqn) :-
     (  canonical_path(Path, CanonicalPath),
        py_ext(CanonicalPath0, CanonicalPath)
@@ -184,6 +185,7 @@ canonical_path(Path, CanonicalPath) :-
 
 %! full_path_prefixed(+DeprefixedPath, +Pythonpaths:list, -ModuleAndMaybeToken) is det.
 %% ModuleAndMaybeToken is either module_alone or module_and_token functor.
+%%  TODO: use directory_file_path/3 instead of concat, to allow removing trailing '/'.
 full_path_prefixed(DeprefixedPath, Pythonpaths, ModuleAndMaybeToken) :-
     (  member(Prefix, Pythonpaths),
        atom_concat(Prefix, DeprefixedPath, Path0),
@@ -233,6 +235,7 @@ path_expand(Path0, ModuleFqn, ModuleAndMaybeToken) :-
 %! remove_last_component(+Path, -AllButLast, -Last) is semidet.
 %% e.g.: Path='foo/bar/zot', AllButLast='foo/bar', Last=zot
 %% Fails if no '/' in Path.
+%%  TODO: use directory_file_path/3 instead?
 remove_last_component(Path, AllButLast, Last) :-
     split_path(Path, Split),
     Split = [_,_|_],            % at least two components
@@ -351,6 +354,8 @@ path_part_to_python_module_or_unknown(ModuleAndMaybeToken, ModuleFqn) :-
 split_fqn(Fqn, FqnParts) :-
     split_atom(Fqn, '.', '', FqnParts).
 
+%% TODO: there should be something like Python's path-join
+%%       in library(filesex).
 split_path(Path, PathParts) :-
     split_atom(Path, '/', '', PathParts).
 

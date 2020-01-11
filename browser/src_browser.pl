@@ -13,8 +13,8 @@
                                           http_read_json_dict/2,
                                           http_read_json_dict/3,
                                           reply_json_dict/1,
-                                          reply_json_dict/2 % TODO: Options=[status(201)]
-                                          % http_redirect/3 % TODO: commented out below
+                                          reply_json_dict/2, % TODO: Options=[status(201)]
+                                          http_redirect/3 % TODO: commented out below
                                           ]).
 :- use_module(library(http/http_files), [http_reply_from_files/3]).
 :- use_module(library(http/http_path)).
@@ -31,7 +31,7 @@
 :- debug(http(hook)).           % TODO: remove
 :- debug(http_session).         % TODO: remove
 :- debug(http(error)).          % TODO: remove
-:- debug(http(header)).         % TODO: remove
+%% :- debug(http(header)).         % TODO: remove
 :- debug(http(send_request)).   % TODO: remove
 :- debug(websocket).            % TODO: remove
 :- debug(websocket(open)).      % TODO: remove
@@ -39,7 +39,7 @@
 
 :- debug.                       % TODO: remove
 
-:- initialization main.
+%% :- initialization main.  % TODO: restore this.
 
 :- multifile http:location/3.
 :- multifile user:file_search_path/2.
@@ -87,17 +87,14 @@ browser_opts(Opts) :-
     must_once_msg(PositionalArgs = [], 'Unknown positional arg(s)').
 
 
-%% localhost:9999/ ... redirects to /home
+%% localhost:9999/ ... redirects to /static/src_browser.htmle
 %%      - for debugging, 'moved' can be cleared by chrome://settings/clearBrowserData
 %%        (Cached images and files)
-%% :- http_handler(root(.),
-%%                 http_redirect(
-%%                     moved, % or moved_temporary
-%%                     location_by_id(home_page)), % a term, not http_dispatch:location_by_id/5
-%%                 []).
-
-:- http_handler(root(.),        % localhost:9999/
-                home_page, []).
+:- http_handler(root(.),
+                http_redirect(
+                    moved_temporary, % or moved - but that makes debugging a bit more difficult
+                    static('src_browser.html')),
+                []).
 
 % Serve localhost:9999/static/ from 'static' directory (See also facts for http:location/3)
 :- http_handler(static(.),
@@ -128,14 +125,6 @@ my_http_reply_from_files(Dir, Opts, Request0) :-
        http_reply_from_files(files(.), Opts, [path_info(FileAtom)|Request0a])
     ;  http_reply_from_files(Dir, Opts, Request0)
     ).
-
-home_page(Request0) :-
-    opts_dict(Request0, request, Request),
-    debug(log, 'Request(home_page):~n~q', [Request]),
-    reply_html_page(
-        title('Demo server'),
-        [ h1('Hello world!')
-        ]).
 
 json(Request) :-
     print_term_cleaned(Request, [], RequestPretty),

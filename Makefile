@@ -109,7 +109,8 @@ VERSION:=$(shell ($(SWIPL_EXE) --version; $(PYTHON3_EXE) --version; head -999999
 BATCH_ID:=$(shell date --utc --iso-8601=ns | sed -e 's/\+00:00//' -e 's/,/./')
 
 PYKYTHE_EXE=$(TESTOUTDIR)/pykythe.qlf
-TEST_GRAMMAR_DIR:=test_data
+TEST_DATA_DIR:=test_data
+#  TEST_GRAMMAR_FILE:=py3_test_grammar.py  # TODO: check all places this is used
 TESTGITHUB:=$(HOME)/tmp/test-github
 PARSECMD_OPT:=--parsecmd="$(PYTHON3_EXE) -m pykythe"
 # ENTRIESCMD_OPT:=--entriescmd=$(realpath ../kythe/bazel-bin/kythe/go/platform/tools/entrystream/entrystream)
@@ -128,9 +129,9 @@ SUBSTDIR_PWD_REAL:=$(SUBSTDIR)$(PWD_REAL)
 KYTHEOUTDIR_PWD_REAL:=$(KYTHEOUTDIR)$(PWD_REAL)
 PYTHONPATH_DOT:=$(shell realpath --no-symlinks .. | sed 's!^/!$(SUBSTDIR)/!')
 PYTHONPATH_BUILTINS:=$(SUBSTDIR)/BUILTINS
-TESTOUT_SRCS:=$(shell $(FIND_EXE) $(TEST_GRAMMAR_DIR) -name '*.py'  | sort | \
+TESTOUT_SRCS:=$(shell $(FIND_EXE) $(TEST_DATA_DIR) -name '*.py'  | sort | \
     sed -e 's!^!$(SUBSTDIR_PWD_REAL)/!')
-TESTOUT_TARGETS:=$(shell $(FIND_EXE) $(TEST_GRAMMAR_DIR) -name '*.py' | sort | \
+TESTOUT_TARGETS:=$(shell $(FIND_EXE) $(TEST_DATA_DIR) -name '*.py' | sort | \
     sed -e 's!^!$(KYTHEOUTDIR)$(SUBSTDIR_PWD_REAL)/!' -e 's!\.py$$!.kythe.verifier!')
 TESTOUT_TYPESHED:=$(KYTHEOUTDIR)$(TYPESHED_REAL)
 # Note: kythe_corpus would normally be '' or '/'; it is set to
@@ -144,7 +145,7 @@ ifeq ($(BATCH_ID),)
 else
     BATCH_OPT:=--pykythebatch_suffix='.pykythe.batch-$(BATCH_ID)'
 endif
-# TODO: parameterize following for python3.6, etc.:
+# TODO: parameterize following for python3.7, etc.:
 PYTHONPATH_OPT:=--pythonpath='$(PYTHONPATH_DOT):$(PYTHONPATH_BUILTINS):$(TYPESHED_REAL)/stdlib/3.7:$(TYPESHED_REAL)/stdlib/3:$(TYPESHED_REAL)/stdlib/2and3:/usr/lib/python3.7'
 PYTHONPATH_OPT_NO_SUBST:=--pythonpath='$(PYTHONPATH_DOT):$(TYPESHED_REAL)/stdlib/3.7:$(TYPESHED_REAL)/stdlib/3:$(TYPESHED_REAL)/stdlib/2and3:/usr/lib/python3.7'
 PYKYTHE_OPTS0=$(VERSION_OPT) $(BATCH_OPT) \
@@ -185,7 +186,7 @@ $(SUBSTDIR_PWD_REAL)/%: % scripts/fix_for_verifier.py
 	@#       *.py files all processed, but for some reason
 	@#       some __init__.py files aren't (or maybe only pykythe/__init__.py)
 	@# for i in $$(find $(SUBSTDIR_PWD_REAL) -type d); do touch "$$i/__init__.py"; done
-	@$(PYTHON3_EXE) scripts/fix_for_verifier.py "${VERSION}" "$(TEST_GRAMMAR_DIR)" "$(SUBSTDIR)$(abspath $(TEST_GRAMMAR_DIR))" "$(TYPESHED_REAL)" "$(PYTHONPATH_BUILTINS)" \
+	@$(PYTHON3_EXE) scripts/fix_for_verifier.py "${VERSION}" "$(TEST_DATA_DIR)" "$(SUBSTDIR)$(abspath $(TEST_DATA_DIR))" "$(TYPESHED_REAL)" "$(PYTHONPATH_BUILTINS)" \
 		"$(abspath $<)" "$@"
 
 ########
@@ -304,9 +305,10 @@ $(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.entries: \
 
 .PHONY: json-decoded-all
 json-decoded-all:
-	for i in $$(find $(KYTHEOUTDIR) -type f -name '*.kythe.json'); do \
-	    $(PYTHON3_EXE) scripts/decode_json.py <$$i >$$i-decoded; \
-	done
+	set -o pipefail; \
+	find $(KYTHEOUTDIR) -type f -name '*.kythe.json' | sort | \
+	  time parallel --will-cite -L1 -j$(NPROC) \
+	  '$(PYTHON3_EXE) scripts/decode_json.py <{} >{}-decoded'
 
 $(KYTHEOUTDIR)/%.kythe.verifier: $(KYTHEOUTDIR)/%.kythe.entries
 	@# TODO: --ignore_dups
@@ -320,7 +322,7 @@ $(KYTHEOUTDIR)/%.kythe.verifier: $(KYTHEOUTDIR)/%.kythe.entries
 
 .PHONY: verify-%
 # TODO: make the following work:
-verify-%: $(KYTHEOUTDIR_PWD_REAL)/$(TEST_GRAMMAR_DIR)/%.kythe.verifier
+verify-%: $(KYTHEOUTDIR_PWD_REAL)/$(TEST_DATA_DIR)/%.kythe.verifier
 
 .PHONY: etags
 etags: pykythe/TAGS
@@ -338,7 +340,7 @@ pykythe/TAGS-py: pykythe/*.py
 test: all_tests
 
 .PHONY: all_tests
-all_tests: etags unit_tests pykythe_test test_imports1 test_grammar test_pykythe_pykythe # json-decoded-all  # pykythe_http_server
+all_tests: etags unit_tests pykythe_test test_imports1 test_data_tests # json-decoded-all  # pykythe_http_server
 
 .PHONY: unit_tests
 unit_tests: tests/test_pykythe.py \
@@ -358,28 +360,11 @@ test_imports1:  # run imports code, to ensure that it behaves as expected
 test_c3_a:  # run c3_a, to ensure it behaves as expected
 	$(PYTHON3_EXE) -B test_data/c3_a.py
 
-.PHONY: test_grammar
-test_grammar: $(TESTOUT_TARGETS) # TODO: test_grammar2
-
-# TODO: The following needs something like this added to TESTOUT_SRCS:
-#        abspath ./typeshed/stdlib/3/builtins.pyi
-
-.PHONY: test_grammar2
-test_grammar2: $(TESTOUT_TYPESHED)/stdlib/3/builtins.kythe.json
-
-.PHONY: test_pykythe_pykythe
-# This is an example of how to generate outputs for a single source
-# (it also generates *.kythe.entries for all the imported files).
-# test_pykythe_pykythe: $(KYTHEOUTDIR)$(PWD_REAL)/pykythe/__main__.kythe.entries
-# Or do "make -n test_python_lib" and fiddle with the command
-test_pykythe_pykythe: $(KYTHEOUTDIR)$(PWD_REAL)/pykythe/__main__.kythe.entries
-
-.PHONY: test_pykythe_pykythe_all
-# This is an example of running on multiple sources
-test_pykythe_pykythe_all:
-	$(MAKE) $(PYKYTHE_EXE) $(BUILTINS_SYMTAB_FILE)
-	@# specify the order of the *.py files, to allow verifying that the cache is used:
-	$(TIME) $(PYKYTHE_EXE) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) __main__.py pykythe/*.py
+.PHONY: test_data_tests
+test_data_tests:
+	@# running in parallel gains ~30%, it seems
+	$(MAKE) -j$(NPROC) -Oline $(TESTOUT_TARGETS) \
+		$(KYTHEOUTDIR)$(PWD_REAL)/pykythe/__main__.kythe.entries
 
 .PHONY: test_python_lib
 test_python_lib: # Also does some other source files I have lying around
@@ -423,7 +408,7 @@ test_single_src:
 .PHONY: pyformat
 pyformat:
 	find . -type f -name '*.py' | \
-		grep -v $(TEST_GRAMMAR_DIR) | grep -v /typeshed/ | \
+		grep -v $(TEST_DATA_DIR) | grep -v /typeshed/ | \
 		xargs yapf -i
 
 .PHONY: yapf
@@ -433,16 +418,16 @@ yapf: pyformat
 # (adds "," to lists).
 .PHONY: black
 black:
-	find . -type f -name '*.py' | grep -v $(TEST_GRAMMAR_DIR) | xargs black -l 99 -S
+	find . -type f -name '*.py' | grep -v $(TEST_DATA_DIR) | xargs black -l 99 -S
 
 .PHONY: pylint
 pylint:
-	find . -type f -name '*.py' | grep -v $(TEST_GRAMMAR_DIR) | grep -v /typeshed/ | \
+	find . -type f -name '*.py' | grep -v $(TEST_DATA_DIR) | grep -v /typeshed/ | \
 		grep -v snippets.py | xargs -L1 pylint --disable=missing-docstring,fixme,no-else-return,bad-continuation
 
 .PHONY: pyflakes
 pyflakes:
-	find . -type f -name '*.py' | grep -v $(TEST_GRAMMAR_DIR) | \
+	find . -type f -name '*.py' | grep -v $(TEST_DATA_DIR) | \
 		grep -v snippets.py | xargs -L1 pyflakes
 
 PYTYPE_DIR=/tmp/pykythe_pytype
@@ -546,7 +531,8 @@ make-js:
 	$(RM) -r $(TESTOUTDIR)/browser
 	mkdir -p $(TESTOUTDIR)/browser/files
 	set -o pipefail; \
-	    cat $$(find $(KYTHEOUTDIR) -name '*.kythe.json' | grep /pykythe/test_data) /dev/null | \
+	    cat $$(find $(KYTHEOUTDIR) -name '*.kythe.json' | \
+		egrep '/pykythe/test_data|/pykythe/pykythe/') /dev/null | \
 	    time $(SWIPL_EXE) -g get_and_print_color_text -t halt scripts/extract_color.pl -- \
 		--filesdir=$(TESTOUTDIR)/browser/files
 	@# ln browser/static/* $(TESTOUTDIR)/browser/
@@ -556,7 +542,7 @@ make-js:
 # To prepare this: make-js
 # http://localhost:$(SRC_BROWSER_PORT)/static/src_browser.html
 run_src_browser run-src-browser:
-	$(SWIPL_EXE) --no-tty browser/src_browser.pl -- \
+	$(SWIPL_EXE) --no-tty -g main browser/src_browser.pl -- \
 		--port=$(SRC_BROWSER_PORT) \
 		--filesdir=$(TESTOUTDIR)/browser/files \
 		--staticdir=$(realpath ./browser/static)
@@ -627,7 +613,7 @@ snapshot:
 
 #@#@# PHONY: ls_decor
 #@#@# ls_decor:
-#@#@# 	$(KYTHE_EXE) -api $(TESTOUTDIR)/tables decor kythe://CORPUS?path=$(TEST_GRAMMAR_DIR)/$(TEST_GRAMMAR_FILE).py
+#@#@# 	$(KYTHE_EXE) -api $(TESTOUTDIR)/tables decor kythe://CORPUS?path=$(TEST_DATA_DIR)/$(TEST_GRAMMAR_FILE).py
 
 .PHONY: push_to_github_setup
 push_to_github_setup:
@@ -641,7 +627,7 @@ push_to_github_setup:
 .PHONY: push_to_github
 push_to_github:
 	@# TODO: remove ./typeshed from following:
-	-grep SUBMIT $$(find tests pykythe scripts ./typeshed $(TEST_GRAMMAR_DIR) tests -type f); if [ $$? -eq 0 ]; then exit 1; fi  # DO NOT SUBMIT - enable this test
+	-grep SUBMIT $$(find tests pykythe scripts ./typeshed $(TEST_DATA_DIR) tests -type f); if [ $$? -eq 0 ]; then exit 1; fi  # DO NOT SUBMIT - enable this test
 	cd $(TESTGITHUB)/pykythe && git pull
 	rsync -aAHX --delete --exclude .git \
 		--exclude .coverage --exclude htmlcov --exclude __pykythe__ \
@@ -672,7 +658,7 @@ FORCE:
 #@#@# 	-# TODO: run test_pykythe.py and add to coverage results
 #@#@# 	$(PYTHON3_EXE) $(COVERAGE) run --branch -m pykythe \
 #@#@# 		$(KYTHE_CORPUS_ROOT_OPT) \
-#@#@# 		--src="$(TEST_GRAMMAR_DIR)/py3_test_grammar.py" \
+#@#@# 		--src="$(TEST_DATA_DIR)/py3_test_grammar.py" \
 #@#@# 		--out_kythe=/dev/null --out_fqn_expr=/dev/null
 #@#@# 	-# $(PYTHON3_EXE) $(COVERAGE) run --branch tests/test_pykythe.py
 #@#@# 	$(COVERAGE) html

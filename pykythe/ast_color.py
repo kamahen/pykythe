@@ -36,7 +36,14 @@ class ColorFile:
 
     def color(self) -> List[Color]:
         """Traverse parse tree, outputting Color nodes."""
-        return list(self._color()) if self.src_file and self.parse_tree else []
+        color_list = list(self._color()) if self.src_file and self.parse_tree else []
+        # TODO: remove this validation:  # DO NOT SUBMIT
+        if False and color_list:  # DO NOT SUBMIT: enable this
+            assert color_list[0].astn.start == 0, [color_list[0]]
+            for i in range(1, len(color_list)):
+                assert color_list[i - 1].astn.end == color_list[i].astn.start, (i,
+                                                                                color_list[:i + 1])
+        return color_list
 
     def _color(self) -> Iterable[Color]:
         """Generator for self.color()."""
@@ -44,24 +51,24 @@ class ColorFile:
         for node in self.parse_tree.pre_order():
             if isinstance(node, pytree.Leaf):
                 astn = self.src_file.node_to_astn(node)
-                yield from self._color_whitespace(
-                        node.prefix,
-                        self.src_file.byte_offset_adjust_chr(astn.start, -len(node.prefix)))
-                if node.value:
-                    yield from self._color_value(node, astn)
+                start_prefix = self.src_file.byte_offset_adjust_chr(astn.start, -len(node.prefix))
+                yield from self._color_whitespace(node.prefix, start_prefix)
+                yield from self._color_value(node, astn)
             else:
                 assert isinstance(node, pytree.Node), [type(node), node]
 
-    def _make_color(self, value: str, start: int, token_color: str) -> Color:
-        """Create a Color node (computing lineno, column)."""
+    def _make_color(self, value: str, start: int, token_color: str) -> Iterable[Color]:
+        """Yield a Color node (computing lineno, column) if value non-empty."""
+        if not value:
+            return
         assert self.src_file  # For mypy
         lineno, column = self.src_file.byte_offset_to_lineno_column(start)
-        return Color(astn=ast.Astn(value=value,
-                                   start=start,
-                                   end=self.src_file.byte_offset_adjust_chr(start, len(value))),
-                     lineno=lineno,
-                     column=column,
-                     token_color=token_color)
+        yield Color(astn=ast.Astn(value=value,
+                                  start=start,
+                                  end=self.src_file.byte_offset_adjust_chr(start, len(value))),
+                    lineno=lineno,
+                    column=column,
+                    token_color=token_color)
 
     def _color_value(self, node: pytree.Leaf, astn: ast.Astn) -> Iterable[Color]:
         """Generate Color items from a leaf node's value."""
@@ -80,8 +87,7 @@ class ColorFile:
         elif node.type == token.STRING:
             token_color = '<STRING>'
         elif node.value.isspace():
-            assert node.type in {token.INDENT, token.DEDENT, token.NEWLINE, token.ENDMARKER}, [
-                    node]
+            assert node.type in {token.INDENT, token.DEDENT, token.NEWLINE, token.ENDMARKER}
             token_color = '<WHITESPACE>'
         else:
             token_color = '<PUNCTUATION>'  # token.tok_name[node.type])
@@ -96,11 +102,11 @@ class ColorFile:
         for white_line in white_lines:
             without_newline, = white_line.splitlines(keepends=False)
             newline = white_line[len(without_newline):]
+            start_newline = self.src_file.byte_offset_adjust_chr(start, len(without_newline))
+            start_next = self.src_file.byte_offset_adjust_chr(start_newline, len(newline))
             yield from self._color_whitespace_line(without_newline, start)
-            start = self.src_file.byte_offset_adjust_chr(start, len(without_newline))
-            if newline:
-                yield self._make_color(newline, start, '<NEWLINE>')
-                start = self.src_file.byte_offset_adjust_chr(start, len(newline))
+            yield from self._make_color(newline, start_newline, '<NEWLINE>')
+            start = start_next
 
     def _color_whitespace_line(self, value: str, start: int) -> Iterable[Color]:
         """Break up whitespace/comment into chunks and generate Color items."""
@@ -109,21 +115,10 @@ class ColorFile:
         before = value[:len(value) - len(stripped_left)]
         stripped = stripped_left.rstrip()
         assert self.src_file  # For mypy
-        if stripped == stripped_left:
-            after = ''
-        else:
-            after = stripped_left[len(stripped) - len(stripped_left):]
-        if before:
-            yield self._make_color(
-                    before,
-                    self.src_file.byte_offset_adjust_chr(start, -len(before)),
-                    '<WHITESPACE>',
-            )
-        if stripped:
-            yield self._make_color(stripped, start, '<COMMENT>')
-        if after:
-            yield self._make_color(
-                    after,
-                    self.src_file.byte_offset_adjust_chr(start, len(stripped)),
-                    '<WHITESPACE>',
-            )
+        after = '' if stripped == stripped_left else stripped_left[len(stripped) -
+                                                                   len(stripped_left):]
+        start_at = self.src_file.byte_offset_adjust_chr(start, len(before))
+        start_after = self.src_file.byte_offset_adjust_chr(start, len(before) + len(stripped))
+        yield from self._make_color(before, start, '<WHITESPACE>')
+        yield from self._make_color(stripped, start_at, '<COMMENT>')
+        yield from self._make_color(after, start_after, '<WHITESPACE>')

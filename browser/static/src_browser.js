@@ -68,7 +68,6 @@ function set_src_txt() {
 
 function load_new_file(corpus, root, path) {
     // Called from file browser onclick.
-    console.log('Import ' + corpus + ':' + root + ':' + path);
     const src_browser_file = find_file(corpus, root, path);
     if (!src_browser_file) {
         alert("Can't load " + path);
@@ -110,7 +109,6 @@ function find_file(corpus, root, path) {
 function set_src_txt_impl(filename) {
     var table = document.createElement('table');
     var c_d = color_data[filename];
-    console.log('SET_SRC_TXT ' + filename + ' ... ' + c_d.path);
     table.setAttribute('class', 'src_table');
     for (const line_key of c_d.line_keys) {
         const line_parts = c_d.lines[line_key];
@@ -130,7 +128,6 @@ function set_src_txt_impl(filename) {
         td2.appendChild(txt_span);
     }
     replace_child_with('src', table);
-    console.log('SET_SRC_TXT / ' + c_d.path);
 }
 
 function do_for_signature(target, class_action, class_id) {
@@ -149,7 +146,6 @@ function src_line_txt(parts, txt_span) {
         span.setAttribute('class', token_css_color_class[part.token_color]);
         span.innerHTML = sanitize(part.value);
         if (is_token_name[part.token_color]) {
-            // console.log(part.token_color + ' ' + part.signature);
             for (const p_edge of part.edges) {
                 g_anchor_edges.push({signature: part.signature,
                                      edge: p_edge.edge,

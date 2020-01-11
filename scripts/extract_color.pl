@@ -101,11 +101,10 @@ get_color_data1(Vname0,
     log('get_color-dict_keys-done ~q', [Vname0]).
 
 get_color_text_file(Vname0, ColorTextLines) :-
-    % TODO: Use Language
     Vname0 = vname0(Corpus,Root,Path,Language),
     setof(ColorTextStr,
-          ( kythe_node(vname('',Corpus,Root,Path,Language), '/pykythe/color', ColorTextStr)
-          ; kythe_node(vname('',Corpus,Root,Path,''),       '/pykythe/color', ColorTextStr)),
+          ( kythe_node(vname('',Corpus,Root,Path,Lang), '/pykythe/color', ColorTextStr),
+            ( Lang = Language; Lang = '')),
           ColorTextStrs),
     (  ColorTextStrs = [ColorTextStr]
     -> true

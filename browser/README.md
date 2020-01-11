@@ -15,7 +15,9 @@ with statically-generated files in /tmp/pykythe_test/browser.
 ```
 
 This starts a server on port 9999. You can see it at
-`http://localhost:9999/static/src_browser.html`
+[http://localhost:9999](http://localhost:9999).  To terminate the
+server, enter `halt.` or just ctrl-D (this will be changed,
+eventually; but it's useful for testing).
 
 
 ## Miscelaneous

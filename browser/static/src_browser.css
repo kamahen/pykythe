@@ -38,14 +38,14 @@ body {
 
 .file_nav {
     color: red;
-    height: 10%;
+    height: 15%;
     overflow: auto; /* Shouldn't need this */
     position: absolute;
     top: 0;
     width: 99%;
     font-family: "Source Code Pro";
     font-size: 9pt;
-    white-space: pre;
+    /* white-space: pre; */
 }
 
 .file_nav_hover {
@@ -59,7 +59,7 @@ body {
     border-right: 0;
     border-style: groove;
     border-top: 1px solid black;
-    height: 75%;
+    height: 70%;
     overflow: auto;
     position: absolute;
     top: 10%;
@@ -111,7 +111,7 @@ body {
 .src_line {
     border-left: 0px solid black;
     padding-left: 5px;
-    white-space: pre;
+    /* white-space: pre; */
 }
 
 .edge_type {

@@ -42,14 +42,15 @@ c0.x.strip().capitalize()
 from lib2to3.pgen2 import token
 from lib2to3 import pytree
 
-#- { @token ref TOKEN? }
+#- { @token ref vname("${ROOT_FQN}.test_data.t4.token", _, _, "", python) }
+#- // { @token ref/imports TOKEN? }  // DO NOT SUBMIT
 #- { @ENDMARKER ref vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pgen2.token.ENDMARKER", _, _, "", python) }
 print(token.ENDMARKER)
 
 #- { @Base ref vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pytree.Base", _, _, "", python) }
 node: pytree.Base
 
-#- { @parent ref @parent ref vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pytree.Base.parent", _, _, "", python) }
+#- { @parent ref vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pytree.Base.parent", _, _, "", python) }
 #- { @type ref vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pytree.Base.type", _, _, "", python) }
 #- { @type ref vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pytree.Base.type", _, _, "", python) }
 #- { @real ref vname("${BUILTINS_FQN}.builtins.int.real", _, _, "", python) }
