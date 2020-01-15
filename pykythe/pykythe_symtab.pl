@@ -22,6 +22,7 @@
 
 :- use_module(library(apply), [convlist/3]).
 :- use_module(library(pairs), [pairs_values/2]).
+:-use_module(library(rbtrees), [ord_list_to_rbtree/2, rb_insert/4, rb_visit/2]).
 
 symtab_empty(Symtab) :-
     Symtab = symtab{}.

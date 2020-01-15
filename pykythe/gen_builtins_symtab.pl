@@ -26,7 +26,8 @@
 
 :- module(gen_builtins_symtab, [gen_builtins_symtab_main/0]).
 
-:- use_module(library(apply), [convlist/3]).
+:-use_module(library(lists), [append/3, member/2]).
+:- use_module(library(apply), [convlist/3, exclude/3, maplist/3]).
 :- use_module(library(base64), [base64/2 as base64_ascii]).
 :- use_module(library(optparse), [opt_arguments/3]).
 :- use_module(module_path).

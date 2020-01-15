@@ -31,7 +31,6 @@
                           remove_prefix/3,
                           remove_suffix/3,
                           remove_suffix_star/3,
-                          remove_suffix_star/3,
                           safe_delete_file/1,
                           split_atom/4,
                           term_to_canonical_atom/2,
@@ -52,23 +51,22 @@
 :- style_check(+no_effect).
 :- style_check(+discontiguous).
 
-:- use_module(library(apply), [exclude/3, include/3, maplist/2, maplist/3, maplist/4, foldl/4]).
+:- use_module(library(apply), [maplist/2, maplist/3]).
 :- use_module(library(error)).
 :- use_module(library(base64), [base64/2 as base64_ascii]).
 :- use_module(library(utf8), [utf8_codes//1]).
 :- use_module(library(filesex), [make_directory_path/1, directory_file_path/3]).
-:- style_check(-var_branches).
-:- use_module(library(http/json), [json_read_dict/3, json_write_dict/3]).
-:- style_check(+var_branches).
-:- use_module(library(lists), [append/2, append/3, list_to_set/2, member/2, reverse/2, select/3, selectchk/3]).
-:- style_check(-var_branches).
-:- use_module(library(pcre), [re_replace/4]).
-:- style_check(+var_branches).
 :- use_module(library(pprint), [print_term/2]).
 :- use_module(library(rbtrees), [ord_list_to_rbtree/2, rb_insert/4, rb_visit/2] ).
 :- use_module(library(rdet), [rdet/1]).
 :- use_module(library(sha), [sha_hash/3, hash_atom/2]).
 :- use_module(library(yall)).
+:- style_check(-var_branches).
+:- use_module(library(http/json), [json_read_dict/3, json_write_dict/3]).
+:- style_check(+var_branches).
+:- style_check(-var_branches).
+:- use_module(library(pcre), [re_replace/4]).
+:- style_check(+var_branches).
 :- use_module(must_once, [must_once/1, must_once_msg/2, must_once_msg/3, fail/1]).
 
 :- style_check(+singleton).

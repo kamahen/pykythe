@@ -127,11 +127,15 @@ function set_src_txt_impl(corpus, root, path, color_data_str) {
 }
 
 function do_for_signature(target, class_action, class_id) {
-    const a_edges = anchor_target_edges(target.id);
-    for (const a_edge of a_edges) {
-        const t_a_edges = target_anchor_edges(a_edge.target);
-        for (const t_a_edge of t_a_edges) {
-            document.getElementById(t_a_edge.signature).classList[class_action](class_id);
+    for (const a_edge of anchor_target_edges(target.id)) {
+        for (const t_a_edge of target_anchor_edges(a_edge.target)) {
+            var edge = document.getElementById(t_a_edge.signature);
+            if (edge) {
+                edge.classList[class_action](class_id);
+            } else {
+                // TODO: this doesn't seem to happen consistently:
+                console.log('No edge for ' + target.id + ' ' + t_a_edge.signature);
+            }
         }
     }
 }

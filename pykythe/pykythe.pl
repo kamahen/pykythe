@@ -206,6 +206,7 @@
 :- style_check(+var_branches).
 :- use_module(library(prolog_stack)).  % For catch_with_backtrace
 :- use_module(library(readutil), [read_file_to_string/3]).
+:- use_module(library(utf8), [utf8_codes/3]).
 :- use_module(library(yall)).
 :- use_module(module_path).
 :- use_module(must_once, [must_once/1, must_once_msg/2, must_once_msg/3, fail/1,
@@ -688,7 +689,7 @@ interrupt(_Signal) :-
 %% from the suffixes.
 pykythe_opts(SrcPaths, Opts) :-
     current_prolog_flag(version, PrologVersion),
-    must_once_msg(PrologVersion >= 80119, 'SWI-Prolog version is too old'),  % Sync this with README.md
+    must_once_msg(PrologVersion >= 80120, 'SWI-Prolog version is too old'),  % Sync this with README.md
     OptsSpec =
        [[opt(builtins_symtab), type(atom), default(''), longflags(['builtins_symtab']),
          help('File containing a builtins_symtab/1 fact')],

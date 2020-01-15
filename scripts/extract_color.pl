@@ -25,6 +25,9 @@ get_and_print_color_text :-
     get_and_print_color_text(user_input).
 
 get_and_print_color_text(InStream) :-
+    % TODO: remove with swipl 8.1.21
+    set_stream(InStream, tty(false)), % try to ensure no prompting
+    prompt(_, ''),                    % really ensure no prompting
     log('Start'),
     extract_opts(Opts),
     retract_kythe_facts,
