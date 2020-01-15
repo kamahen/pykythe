@@ -17,10 +17,16 @@
                                           http_redirect/3 % TODO: commented out below
                                           ]).
 :- use_module(library(http/http_files), [http_reply_from_files/3]).
+%% TODO: if using daemon, then: swipl src_browser.pl --port=.... --pidfile=/var/run/src_browser.pid
+%%       and kill $(cat /var/run/src_browser.pid)
+%% :- use_module(library(http/http_unix_daemon)).
+%% :- use_module(library(http_log)).
+%% :- set_setting(http:logfile, '/tmp/httpd.log').
 :- use_module(library(http/http_path)).
 :- use_module(library(http/http_error)). % TODO: remove - this decorates uncaught HTTP exceptions with stack-trace
 :- use_module(library(debug)).
 :- use_module(library(optparse), [opt_arguments/3]).
+:- use_module(library(readutil), [read_file_to_string/3]).
 :- use_module('../pykythe/must_once.pl').
 :- use_module('../pykythe/pykythe_utils.pl').
 
@@ -55,6 +61,7 @@
 
 http:location(static, root(static), []).
 http:location(files, static(files), []).
+%% http:location(json, root(json), []).  %% DO NOT SUBMIT - remove?
 
 main :-
     browser_opts(Opts),
@@ -104,8 +111,8 @@ browser_opts(Opts) :-
                 my_http_reply_from_files(files(.), []),
                 [prefix]).
 
-:- http_handler(root(json),     % localhost:9999/json
-                json, []).
+:- http_handler('/json',  %% json(.),     % localhost:9999/json  -- DO NOT SUBMIT - json(.) is better?
+                reply_with_json, [priority(0)]).
 
 my_http_reply_from_files(Dir, Opts, Request0) :-
     opts_dict(Request0, request, Request),
@@ -126,16 +133,17 @@ my_http_reply_from_files(Dir, Opts, Request0) :-
     ;  http_reply_from_files(Dir, Opts, Request0)
     ).
 
-json(Request) :-
-    print_term_cleaned(Request, [], RequestPretty),
-    debug(log, 'Request(handle)0: ~s', [RequestPretty]),
+reply_with_json(Request) :-
+    %% print_term_cleaned(Request, [], RequestPretty),
+    memberchk(method(post), Request),
+    debug(log, 'Request-JSON(handle)0: ~q', [Request]),
     http_read_json_dict(Request, DictIn, [default_tag(json)]), %% [content_type("application/json")]),
-    debug(log, 'Request(handle): ~q', [DictIn]),
+    debug(log, 'Request-JSON(handle): ~q', [DictIn]),
     json_compute(DictIn, DictOut),
-    debug(log, 'Request(handle): ~q => ~q', [DictIn, DictOut]),
+    % debug(log, 'Request(handle): ~q => ~q', [DictIn, DictOut]),
     reply_json_dict(DictOut).
 
-json_compute(json{userName:UserName}, json_result{computedString:ReversedUserName}) :-
-    string_chars(UserName, UserNameChars),
-    reverse(UserNameChars, UserNameCharsReversed),
-    string_chars(ReversedUserName, UserNameCharsReversed).
+json_compute(json{fetch:FileName},
+                  json_result{file:FileName,
+                              contents:Contents}) :-
+    read_file_to_string(files(FileName), Contents, []).

@@ -38,10 +38,11 @@ body {
 
 .file_nav {
     color: red;
-    height: 15%;
+    height: 18%;
     overflow: auto; /* Shouldn't need this */
+    padding-bottom: 5pt;
     position: absolute;
-    top: 0;
+    /* top: 0 */ /* If uncommented, text disappears */
     width: 99%;
     font-family: "Source Code Pro";
     font-size: 9pt;
@@ -59,19 +60,19 @@ body {
     border-right: 0;
     border-style: groove;
     border-top: 1px solid black;
-    height: 70%;
+    height: 60%;
     overflow: auto;
     position: absolute;
-    top: 10%;
+    top: 20%;  /* .file_nav.height + 2% */
     width: 99%;
 }
 
 .xref {
-    height: 15%;
+    height: 20%;
     overflow: auto;
     padding-top: 5pt;
     position: absolute;
-    top: 85%;
+    top: 80%;  /* .file_nav.height + .src.height */
     width: 99%;
 }
 

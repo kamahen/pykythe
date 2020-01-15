@@ -36,11 +36,14 @@ get_and_print_color_text(InStream) :-
     log('get_color_data-done'),
     /* show_profile([cumulative(true)]), */
     maplist(file_name, ColorData, FileNames),
-    open_output_stream(Opts, 'FILES.js', 'corpus_root_path_filename =~n', [], FilesOutStream),
+    open_output_stream(Opts, 'FILES.js',
+                       '', [],
+                       FilesOutStream),
     json_write_dict(FilesOutStream, FileNames,
-                    [width(80),        % DO NOT SUBMIT - should be width(0)
+                    [width(0),
                      true(#(true)),false(#(false)),null(#(null))]),
-    close_output_stream(FilesOutStream, '~n;~n', []),
+    close_output_stream(FilesOutStream,
+                        '~n', []),
     maplist(write_color_data(Opts), ColorData, FileNames),
     log('json_write_dict-done'),
     nl.
@@ -62,14 +65,17 @@ write_color_data(Opts,
                       filename: FileName}) :-
     memberchk(filesdir(FilesDir), Opts),
     log('outputting to directory ~q: ~q', [FilesDir/FileName, Path]),
-    open_output_stream(Opts, FileName, 'color_data["~w"] =~n', [FileName], OutStream),
+    open_output_stream(Opts, FileName,
+                       '', [],
+                       OutStream),
     json_write_dict(OutStream,
                     json{corpus: Corpus, root: Root, path: Path, language: Language,
                          line_keys:LineKeys,
                          lines: ColorText},
-                    [width(80), % DO NOT SUBMIT - should be width(0)
+                    [width(0),
                      true(#(true)),false(#(false)),null(#(null))]),
-    close_output_stream(OutStream, '~n;~n', []).
+    close_output_stream(OutStream,
+                        '~n', []). % '~n;~n', []).
 
 get_color_data(ColorData) :-
     (  setof(vname0(Corpus,Root,Path,Language), kythe_file(Corpus,Root,Path,Language), Files)
@@ -251,7 +257,7 @@ utf8_bytes_to_term_doesnt_work(Bytes, Term) :-
 
 extract_opts(Opts) :-
     current_prolog_flag(version, PrologVersion),
-    must_once_msg(PrologVersion >= 80119, 'SWI-Prolog version is too old'), % Sync this with README.md
+    must_once_msg(PrologVersion >= 80120, 'SWI-Prolog version is too old'), % Sync this with README.md
     OptsSpec =
     [[opt(filesdir), type(atom), default('filesdir-must-be-specified'), longflags([filesdir]),
       help('Directory for putting the files\'s contents')

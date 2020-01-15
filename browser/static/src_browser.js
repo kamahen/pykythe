@@ -5,7 +5,6 @@
 // (see color_data.lines[line_key].edges)
 var g_anchor_edges = [];
 
-var color_data = {};  // set by dynamic load
 var corpus_root_path_filename = null;  // set by dynamic load
 
 function anchor_target_edges(anchor_signature) {
@@ -57,13 +56,8 @@ const is_token_name = {
     '<WHITESPACE>':         false,
 };
 
-function set_src_txt() {
-    // Note: this import requires CORS turned off (see README)
-    // The "./" is not optional
-    // color_data.js is assumed to set color_data
-    import('./files/FILES.js')
-        .then(() => set_files_nav_txt())
-        .then(() => load_new_file('CORPUS', 'ROOT', 'tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t10.py'));
+function initialize() {
+    fetch_from_server({fetch: 'FILES.js'}, set_files_nav_txt);
 }
 
 function load_new_file(corpus, root, path) {
@@ -72,15 +66,17 @@ function load_new_file(corpus, root, path) {
     if (!src_browser_file) {
         alert("Can't load " + path);
     } else {
-        import('./files/' + src_browser_file).then(() => set_src_txt_impl(src_browser_file));
+        fetch_from_server({fetch: src_browser_file},
+                          data => set_src_txt_impl(corpus, root, path, data));
     }
 }
 
-function set_files_nav_txt() {
+function set_files_nav_txt(corpus_root_path_filename_from_server) {
+    // DO NOT SUBMIT -- shouldn't do the double parse
+    corpus_root_path_filename = JSON.parse(corpus_root_path_filename_from_server.contents);
     var table = document.createElement('table');
     table.setAttribute('class', 'file_nav');
     var div = document.createElement('div');
-    console.log('FILES: ' + corpus_root_path_filename.length + ' files');
     for (const fn of corpus_root_path_filename) {
         // fn.path.split('/');
         var td1 = table.insertRow().insertCell();
@@ -92,7 +88,7 @@ function set_files_nav_txt() {
         txt_span.innerHTML = sanitize(fn.corpus) + ':' + sanitize(fn.root) + ':' + sanitize(fn.path);
         td1.appendChild(txt_span);
     }
-    replace_child_with('file_nav', table);
+    replace_child_with('file_nav', table);  // 'file_nav'
 }
 
 function find_file(corpus, root, path) {
@@ -106,12 +102,12 @@ function find_file(corpus, root, path) {
     return null;
 }
 
-function set_src_txt_impl(filename) {
+function set_src_txt_impl(corpus, root, path, color_data_str) {
+    const color_data = JSON.parse(color_data_str.contents);
     var table = document.createElement('table');
-    var c_d = color_data[filename];
     table.setAttribute('class', 'src_table');
-    for (const line_key of c_d.line_keys) {
-        const line_parts = c_d.lines[line_key];
+    for (const line_key of color_data.line_keys) {
+        const line_parts = color_data.lines[line_key];
         var row = table.insertRow();
         var td1 = row.insertCell();
         td1.setAttribute('class', 'src_lineno');
@@ -183,6 +179,27 @@ function sanitize(raw_str) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&apos;')
         .replace(/ /g, '&nbsp;');
+}
+
+function fetch_from_server(request, callback) {
+    // callback should take a single arg, the response from the server,
+    // e.g.: json_data => set_files_nav_txt(json_data))
+    fetch('/json',
+          {method: 'POST',
+           headers: {'Content-Type': 'application/json'},
+           body: JSON.stringify(request),
+           mode: 'cors',                  // Don't need?
+           cache: 'no-cache',             // Don't need?
+           credentials: 'same-origin',    // Don't need?
+           redirect: 'follow',            // Don't need?
+           referrerPolicy: 'no-referrer', // Don't need?
+          })
+        .then(response => response.json())
+        .then(callback)
+        // .catch(err => {  // TODO: move this to before the callback?
+        //     console.log('fetch ' + request + ': ' + err)
+        // })
+    ;
 }
 
 function jq(id) {

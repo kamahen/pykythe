@@ -1,0 +1,4 @@
+https://swi-prolog.discourse.group/t/yet-another-web-applications-tutorial/566
+
+- should use library(http/http_log)) and set_setting(http:logfile, '/tmp/httpd.log')
+- src_browser.html - <body onload="set_src_txt();" instead of script in body.
