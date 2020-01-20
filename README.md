@@ -34,8 +34,8 @@ with associated BUILD files, or ninja, to run in parallel.
 
 ## Installation
 
-There is no installation, because this code is pre-alpha. To try it
-out (on Linux):
+There is no installation script, because this code is pre-alpha. To
+try it out (on Linux):
 
 * `cd` to your top-level source directory (pykythe assumes that all
   sources are in this, including those from other projects such as
@@ -48,16 +48,13 @@ out (on Linux):
     respository. (You can make this automatic by:
     `git config --global alias.update '!git pull && git submodule update --init --recursive'`)
 
-* Follow the instructions for building `kythe` (including installing
-  Bazel).
-
 * Follow the instructions at [Kythe - getting
   started](https://github.com/google/kythe#getting-started ) to
   download the latest tarball from the [Kythe
   repository](https://github.com/google/kythe/releases) and follow the
   instructions to copy the binaries into `/opt/kythe`.
-  * There are rules in the Makefile for building Kythe from scratch,
-    but they often break with new releases.
+  * The `build-kythe` rule in the `pykythe` Makefile will build Kythe from scratch,
+    but the rule often breaks with new releases.
 
 * Install `python3.7`
 
@@ -97,7 +94,8 @@ out (on Linux):
   * rdet 1.0.0
   * edcg 0.9.0
 
-* `git clone https://github.com/python/typeshed.git`
+* Optional (htis is now a submodule of `ptype`):
+  `git clone https://github.com/python/typeshed.git`
 
 * Optional:
 
@@ -114,12 +112,21 @@ out (on Linux):
 	* `git clone https://github.com/python/mypy.git`
 	* `git clone https://github.com/google/yapf.git`
 
-* `make -C <pkgdir> clean_lite tests`
+* `make -C <pkgdir> clean_lite test`
 
 * You can see the generated facts in
   `/tmp/pykythe_test/KYTHE/pykythe/test_data/*.json-decoded`
   (requres running `scripts/decode_json.py` -- see `Makefile` rule
   `json-decoded-all`).
+
+* Run the source browser by:
+
+  * `make -C <pkgdir> make-json`
+  *  `make -C <pkgdir> SRC_BROWSER_PORT=9999 run-src-browser`
+  * `http://localhost:9999` to browse the Kythe facts created by the `test` rule and
+  which were processed into a database for the browser by `make-json`.
+
+* Run the Kythe browser by:
 
 * `make -C <pkgdir> add-index-pykythe
   This creates `/tmp/pykythe_test/tables`, which can be used by
@@ -128,6 +135,9 @@ out (on Linux):
   `make -C <pkgdir> run-server`
 
   You can look run the browser: http://localhost:8080
+
+* Run the `underhood` browser by cloning `https://github.com/TreeTide/underhood.git`
+  and running the commands in `run-underhood-all` (
 
 * You can run `scripts/test3.sh` to see how the system works both with
   processing from source or by reusing the cache (or a combination).

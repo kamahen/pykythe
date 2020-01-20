@@ -373,8 +373,7 @@ files_to_tree(Files, Tree) :-
 split_on_slash(Str, Split) :-
     split_string(Str, '/', '', SplitStr),
     maplist(string_atom, SplitStr, Split0),
-    append(First, [Last], Split0),
-    !,                          % remove choice point from append/3.
+    once(append(First, [Last], Split0)), % like last/2 but also gets first part.
     maplist(wrap_dir, First, FirstWrapped),
     append(FirstWrapped, [file(Last)], Split).
 
@@ -388,14 +387,15 @@ list_to_tree(List, Prefix, Tree) :-
     group_pairs_by_key(HeadTailSorted, HeadTailGroup),
     maplist(subtree(Prefix), HeadTailGroup, Tree).
 
-subtree(Prefix, dir(Dir)-Sublist, dir(Dir,Path,Children)) :-
+subtree(Prefix, Item-Sublist, Result) :-
+    subtree_(Item, Sublist, Prefix, Result).
+
+subtree_(dir(Dir), Sublist, Prefix, dir(Dir,Path,Children)) :-
     append(Prefix, [Dir], Prefix2),
-    !,                          % remove choice point from append/3.  DO NOT SUBMIT -verify need
     atomic_list_concat(Prefix2, '/', Path),
     list_to_tree(Sublist, Prefix2, Children).
-subtree(Prefix, file(File)-[[]], file(File,Path)) :-
+subtree_(file(File), [[]], Prefix, file(File,Path)) :-
     append(Prefix, [File], Prefix2),
-    !,                          % remove choice point from append/3.  DO NOT SUBMIT -verify need
     atomic_list_concat(Prefix2, '/', Path).
 
 head_tail_pair([Hd|Tl], Hd-Tl).
@@ -446,19 +446,19 @@ t1(Ftree) :-
                                     [width(0),
                                      true(#(true)),false(#(false)),null(#(null))]))),
     %% format('~w~n', [JsonAtom]),
-    assertion(JsonAtom == '[ {"type":"dir", "name":"a", "children": [ {"type":"dir", "name":"b", "children": [ {"type":"file", "name":"x1", "path":"a/b/x1"},  {"type":"file", "name":"x2", "path":"a/b/x2"} ]},  {"type":"dir", "name":"d", "children": [ {"type":"dir", "name":"e", "children": [ {"type":"file", "name":"x3", "path":"a/d/e/x3"} ]} ]},  {"type":"file", "name":"c", "path":"a/c"} ]},  {"type":"file", "name":"x", "path":"x"} ]'),
+    assertion(JsonAtom == '[ {"type":"dir", "name":"a", "path":"a", "children": [ {"type":"dir", "name":"b", "path":"a/b", "children": [ {"type":"file", "name":"x1", "path":"a/b/x1"},  {"type":"file", "name":"x2", "path":"a/b/x2"} ]},  {"type":"dir", "name":"d", "path":"a/d", "children": [ {"type":"dir", "name":"e", "path":"a/d/e", "children": [ {"type":"file", "name":"x3", "path":"a/d/e/x3"} ]} ]},  {"type":"file", "name":"c", "path":"a/c"} ]},  {"type":"file", "name":"x", "path":"x"} ]'),
     true.
 
 test(f1) :-
     t1(Ftree),
     assertion(
-              [dir(a,
-                   [dir(b,
+              [dir(a, 'a',
+                   [dir(b, 'a/b',
                         [file(x1, 'a/b/x1'), file(x2, 'a/b/x2')]
                        ),
-                    dir(d,
+                    dir(d, 'a/d',
                         [
-                         dir(e,
+                         dir(e, 'a/d/e',
                              [file(x3, 'a/d/e/x3')]
                             )
                         ]

@@ -567,10 +567,10 @@ kythe-kythe:
 .PHONY: build_kythe build-kythe
 build_kythe build-kythe:
 	cd ../kythe && git remote show origin && git pull --recurse-submodules
-	-# cd ../kythe && git pull --recurse-submodules
 	cd ../kythe && nice bazel build --jobs=$(NPROC_BAZEL) @local_config_cc//:toolchain
 	cd ../kythe && nice bazel build --jobs=$(NPROC_BAZEL) //...
 	cd ../kythe && nice bazel test -k --jobs=$(NPROC_BAZEL) //...
+	@# TODO: don't need LEIN_JAVA_CMD any more?
 	cd ../kythe && LEIN_JAVA_CMD=/usr/lib/jvm/java-8-openjdk-amd64/bin/java nice bazel build //kythe/web/ui
 	cd ../kythe && bazel shutdown
 
@@ -731,7 +731,14 @@ run-underhood-ui:
 	@# View UI at http://localhost:9000
 
 run-underhood-all:
-	# exit 1  # Better to run the following in separate terminals, for easier cleanup.
+	@echo Suggest running the following commands in separate terminals, for easier cleanup.
+	@echo $(MAKE) add-index-pykythe
+	@echo $(MAKE) run-server
+	@echo $(MAKE) run-underhood-frontend
+	@echo $(MAKE) run-underhood-ui
+	@exit 1
+	@# Or you can do the following, which also finds the PIDs so
+	@# that you can kill them.
 	$(MAKE) add-index-pykythe
 	$(MAKE) run-server &
 	$(MAKE) run-underhood-frontend &
