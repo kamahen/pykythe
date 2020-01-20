@@ -1,25 +1,31 @@
-// For the various cursors, see https://www.w3schools.com/cssref/playit.asp?filename=playcss_cursor
 'use strict';
 
 // global 'g_anchor_edges' gets {signature:str, edge:str, target:{corpus,root,path,language,signature} items
 // (see color_data.lines[line_key].edges)
 var g_anchor_edges = [];
 
-var corpus_root_path_filename = null;  // set by dynamic load
+// TODO: use window.location.assign(window.location.assign + '?' + ...)
+
+// list of corpus,root,path tuples - set by dynamic load from server
+// TODO: should become a dict
+var g_corpus_root_path_filename = null;
+
+// tree of dir/file entries - set by dynamic load from server
+var g_file_tree = null;
 
 function anchor_target_edges(anchor_signature) {
     return g_anchor_edges
-        .filter(edge => edge.signature == anchor_signature);
+        .filter(edge => edge.signature === anchor_signature);
 }
 
 function target_anchor_edges(target) {
     return g_anchor_edges
         .filter(edge =>
-                edge.target.signature == target.signature &&
-                edge.target.corpus == target.corpus &&
-                edge.target.root == target.root &&
-                edge.target.path == target.path &&
-                edge.target.language == target.language);
+                edge.target.signature === target.signature &&
+                edge.target.corpus === target.corpus &&
+                edge.target.root === target.root &&
+                edge.target.path === target.path &&
+                edge.target.language === target.language);
 }
 
 const token_css_color_class = {  // See src_browser.css
@@ -57,45 +63,127 @@ const is_token_name = {
 };
 
 function initialize() {
-    fetch_from_server({fetch: 'FILES.js'}, set_files_nav_txt);
+    // https://developers.google.com/web/updates/2016/01/urlsearchparams
+    console.log('QUERY: ' + window.location.search);
+    const params = new URLSearchParams(location.search);
+    fetch_from_server({fetch: 'FILETREE.json'},
+                      data => set_file_tree(data, params.get('file') || ''));
+    fetch_from_server({fetch: 'FILES.json'},
+                      data => set_corpus_root_path_filename(data));
 }
 
-function load_new_file(corpus, root, path) {
+function load_new_file(corpus_root_path) {
     // Called from file browser onclick.
+    const corpus_root_path_split = corpus_root_path.split('/');
+    const corpus = corpus_root_path_split[0];
+    const root = corpus_root_path_split[1];
+    const path = corpus_root_path_split.slice(2).join('/');
     const src_browser_file = find_file(corpus, root, path);
     if (!src_browser_file) {
-        alert("Can't load " + path);
+        window.alert("Can't load " + path);
     } else {
         fetch_from_server({fetch: src_browser_file},
                           data => set_src_txt_impl(corpus, root, path, data));
     }
 }
 
-function set_files_nav_txt(corpus_root_path_filename_from_server) {
+function set_file_tree(file_tree_from_server, initial_path) {
+    // path starts with 'corpus/root/...'
     // DO NOT SUBMIT -- shouldn't do the double parse
-    corpus_root_path_filename = JSON.parse(corpus_root_path_filename_from_server.contents);
-    var table = document.createElement('table');
-    table.setAttribute('class', 'file_nav');
-    var div = document.createElement('div');
-    for (const fn of corpus_root_path_filename) {
-        // fn.path.split('/');
-        var td1 = table.insertRow().insertCell();
-        var txt_span = document.createElement('span');
-        txt_span.onclick = function(xfn) {
-            return function() { load_new_file(xfn.corpus, xfn.root, xfn.path); }; }(fn);
-        txt_span.onmouseover = function(e) { e.currentTarget.classList.add('file_nav_hover'); }
-        txt_span.onmouseleave = function(e) { e.currentTarget.classList.remove('file_nav_hover'); }
-        txt_span.innerHTML = sanitize(fn.corpus) + ':' + sanitize(fn.root) + ':' + sanitize(fn.path);
-        td1.appendChild(txt_span);
+    g_file_tree = JSON.parse(file_tree_from_server.contents);
+    display_file_tree(initial_path);
+}
+
+function file_nav_element() {
+    return document.getElementById('file_nav');
+}
+
+function display_file_tree(path) {
+    const path_items = (path === '') ? [] : path.split('/');
+    var tree = file_nav_element();
+    while (tree.firstChild) {
+        tree.firstChild.remove();
     }
-    replace_child_with('file_nav', table);  // 'file_nav'
+    display_file_tree_items(0, path_items, g_file_tree);
+}
+
+function display_file_tree_items(item_i, path_items, file_tree_nodes) {
+    // file_tree_nodes is a list of 'file' or 'dir' items
+
+    var dropdown = create_dropdown(item_i);
+    if (path_items.length == 0) {
+        if (file_tree_nodes.length > 1) {
+            add_dropdown_option(dropdown, '-----', 'nav_sel-' + file_tree_nodes.path);
+        }
+        for (const tree_item of file_tree_nodes) {
+            add_dropdown_option(dropdown, tree_item.name, 'nav_sel-' + tree_item.path);
+        }
+        dropdown.selectedIndex = 0;
+    } else {
+        for (var i = 0; i < file_tree_nodes.length; i++) {
+            var tree_item = file_tree_nodes[i];
+            add_dropdown_option(dropdown, tree_item.name, 'nav_sel-' + tree_item.path);
+            if (tree_item.name == path_items[0]) {
+                dropdown.selectedIndex = i;
+            }
+        }
+    }
+    file_nav_element().appendChild(dropdown);
+    const selected_node = file_tree_nodes[dropdown.selectedIndex];
+
+    if (path_items.length > 0) {
+        if (selected_node.type == 'dir') {
+            display_file_tree_items(item_i + 1, path_items.slice(1),
+                                    selected_node.children);
+        } else if (selected_node.type == 'file') {
+            load_new_file(selected_node.path);
+        } else {
+            return alert('Bad file_tree_nodes.type: ' + selected_node[0].type);
+        }
+    } else if (file_tree_nodes.length == 1) {
+        if (file_tree_nodes[0].type == 'dir') {
+            display_file_tree_items(item_i + 1, [], file_tree_nodes[0].children);
+        } else if (file_tree_nodes[0].type == 'file') {
+            load_new_file(selected_node.path);
+        } else {
+            return alert('Bad file_tree_nodes.type: ' + file_tree_nodes[0].type);
+        }
+    }
+}
+
+function create_dropdown(i) {
+    var dropdown = document.createElement('select');
+    dropdown.setAttribute('class', 'file_nav_sel');
+    // dropdown.id = 'path-' + i;
+    dropdown.onclick = function(e) {
+        const  t = e.currentTarget;
+        const  t_selected = t[t.selectedIndex];
+        if (t_selected.id.startsWith('nav_sel-')) {
+            display_file_tree(t_selected.id.substr('nav_sel-'.length));
+        }
+        return false;
+    };
+    return dropdown;
+}
+
+function add_dropdown_option(dropdown, text, id) {
+    var option = document.createElement('option');
+    option.setAttribute('class', 'file_nav_sel');
+    option.text = text;
+    option.id = id;
+    dropdown.add(option);
+}
+
+function set_corpus_root_path_filename(corpus_root_path_filename_from_server) {
+    // DO NOT SUBMIT -- shouldn't do the double parse
+    g_corpus_root_path_filename = JSON.parse(corpus_root_path_filename_from_server.contents);
 }
 
 function find_file(corpus, root, path) {
-    for (const fn of corpus_root_path_filename) {
-        if (fn.corpus == corpus &&
-            fn.root == root &&
-            fn.path == path) {
+    for (const fn of g_corpus_root_path_filename) {
+        if (fn.corpus === corpus &&
+            fn.root === root &&
+            fn.path === path) {
             return fn.filename;
         }
     }
@@ -149,7 +237,7 @@ function src_line_txt(parts, txt_span) {
             for (const p_edge of part.edges) {
                 g_anchor_edges.push({signature: part.signature,
                                      edge: p_edge.edge,
-                                     target: p_edge.target})
+                                     target: p_edge.target});
             }
             span.id = part.signature;
             span.onmouseover = function(e) { // e is MouseEvent
@@ -162,10 +250,10 @@ function src_line_txt(parts, txt_span) {
             };
             span.onclick = function(e) { // e is MouseEvent
                 return false;
-            }
+            };
             span.oncontextmenu = function(e) { // e is MouseEvent
                 return false;
-            }
+            };
             txt_span.appendChild(span);
         } else {
             txt_span.appendChild(span);
@@ -176,18 +264,21 @@ function src_line_txt(parts, txt_span) {
 function sanitize(raw_str) {
     // There shouldn't be a need for .replace(/ /g, '&nbsp;') if CSS
     // has white-space:pre ... but by experiment, it's needed.
+    // TODO: remove the '<br/>' insertion and put it into extract_color.pl.
     return (raw_str)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&apos;')
-        .replace(/ /g, '&nbsp;');
+        .replace(/\n/g, '<br/>')
+        .replace(/\s/g, '&nbsp;');  // TODO: test tabs in source
 }
 
 function fetch_from_server(request, callback) {
     // callback should take a single arg, the response from the server,
-    // e.g.: json_data => set_files_nav_txt(json_data))
+    // e.g.: json_data => set_corpus_root_path_filename(json_data))
+    console.log('FETCH ' + JSON.stringify(request));
     fetch('/json',
           {method: 'POST',
            headers: {'Content-Type': 'application/json'},

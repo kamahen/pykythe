@@ -2,8 +2,12 @@
 /* Validation: https://jigsaw.w3.org/css-validator/validator */
 /*             https://codebeautify.org/cssvalidate */
 
+/* For the various cursors, see https://www.w3schools.com/cssref/playit.asp?filename=playcss_cursor */
+
 body {
     /* Colors from https://ethanschoonover.com/solarized/ */
+    /* Commented out because jigsaw doesn't like them. */
+    /* ---
     --base03:    #002b36;
     --base02:    #073642;
     --base01:    #586e75;
@@ -22,11 +26,22 @@ body {
     --green:     #859900;
 
     background-color: var(--base3);
+    --- */
+    background-color: #fdf6e3;
 }
 
-.src_hover {
+.src_hover {  /* Added by mouseover on an anchor */
     background-color: lightpink;
     cursor: pointer;
+}
+
+/* Used by select (dropdown) */
+.file_nav_sel {
+    background-color: #f1f1f1;
+    border: none;
+    border-radius: 4px;
+    color: red;
+    padding: 4px 0;
 }
 
 .container {
@@ -38,32 +53,28 @@ body {
 
 .file_nav {
     color: red;
-    height: 18%;
+    font-family: "Source Code Pro";
+    font-size: 9pt;
+    height: 4%;
     overflow: auto; /* Shouldn't need this */
     padding-bottom: 5pt;
     position: absolute;
     /* top: 0 */ /* If uncommented, text disappears */
     width: 99%;
-    font-family: "Source Code Pro";
-    font-size: 9pt;
     /* white-space: pre; */
 }
 
-.file_nav_hover {
-    background-color: darkgrey;
-    cursor: pointer;
-}
-
+/* TODO: min-top hack: https://stackoverflow.com/questions/15552358/is-there-a-css-min-top-property */
 .src {
     border-bottom: 1px solid black;
     border-left: 0;
     border-right: 0;
     border-style: groove;
     border-top: 1px solid black;
-    height: 60%;
+    height: 74%;
     overflow: auto;
     position: absolute;
-    top: 20%;  /* .file_nav.height + 2% */
+    top: 6%;  /* .file_nav.height + 2% */
     width: 99%;
 }
 
@@ -77,8 +88,8 @@ body {
 }
 
 .src_row {
-    border-collapse: collapse;
     border: 0 solid black;
+    border-collapse: collapse;
     overflow: auto;
     width: 99%;
 }
@@ -91,8 +102,8 @@ body {
     /* font-family: "Roboto Mono"; */
     /* https://fonts.google.com/?category=Monospace */
     background-color: #fbfbfb;
-    border-collapse: collapse;
     border: 0 solid black;
+    border-collapse: collapse;
     font-family: "Source Code Pro";
     font-size: 9pt;
     overflow: auto;
@@ -102,8 +113,8 @@ body {
 .src_lineno {
     background: lightgrey;
     border-right: 0 solid black;
-    text-align: right;
     padding-right: 5px;
+    text-align: right;
     vertical-align: top;
     white-space: nowrap;
     width: 1px; /* fit as tight as possible */
@@ -134,7 +145,7 @@ body {
 
 /* Colors: https://www.w3schools.com/colors/colors_names.asp */
 
-/* Corresponds to src_browser.js token_color */
+/* The following correspond to src_browser.js token_color */
 
 .python_arg_keyword         { color: darkblue; }
 .python_attr_binding        { color: green; font-weight: bold; text-decoration: underline; }
@@ -142,7 +153,7 @@ body {
 .python_bare                { color: darkblue; }
 .python_comment             { color: darkred; font-style: italic; }
 .python_keyword             { color: brown; font-weight: bold; }
-.python_newline             { } /* for completeness; not used */
+.python_newline             { }  /* for completeness; not used */
 .python_number              { color: black; }
 .python_punctuation         { color: black; font-weight: bold; }
 .python_string              { color: green; font-style: italic; }

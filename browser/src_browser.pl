@@ -19,6 +19,11 @@
 :- use_module(library(http/http_files), [http_reply_from_files/3]).
 %% TODO: if using daemon, then: swipl src_browser.pl --port=.... --pidfile=/var/run/src_browser.pid
 %%       and kill $(cat /var/run/src_browser.pid)
+%% TODO: Support HTTPS: https://www.swi-prolog.org/pldoc/man?section=ssl-https-server
+%%                      /usr/share/doc/openssl/HOWTO/certificates.txt.gz
+%%                          openssl genrsa -out privkey.pem
+%%                          openssl req -new -x509 -key privkey.pem -out cacert.pem -days 1095
+%%                      https://www.openssl.org/docs/manmaster/man1/CA.pl.html
 %% :- use_module(library(http/http_unix_daemon)).
 %% :- use_module(library(http_log)).
 %% :- set_setting(http:logfile, '/tmp/httpd.log').
@@ -119,11 +124,7 @@ my_http_reply_from_files(Dir, Opts, Request0) :-
     %% debug(log, '~q', [my_http_reply_from_files(Dir, Request)]),
     debug(log, 'Request (~q): ~q', [Dir, [method:Request.method,
                                           path_info:Request.path_info]]),
-    %% This is a hack because I can't seem to get static/files to work
-    %% otherwise, and JS import('files/FILES.js') ends up as
-    %% static/files/FILES.js ... No doubt there are more elgant ways of
-    %% doing this, such as locate-relative-to but eventually I'll be
-    %% getting rid of this anyway, and using AJAX.
+    %% This is a hack because I can't seem to get static/files to work.
     (  Dir = static(.),
        split_string(Request.path_info, '/', '', SplitList),
        SplitList = ["files", FileStr]
@@ -139,11 +140,14 @@ reply_with_json(Request) :-
     debug(log, 'Request-JSON(handle)0: ~q', [Request]),
     http_read_json_dict(Request, DictIn, [default_tag(json)]), %% [content_type("application/json")]),
     debug(log, 'Request-JSON(handle): ~q', [DictIn]),
-    json_compute(DictIn, DictOut),
+    json_response(DictIn, DictOut),
     % debug(log, 'Request(handle): ~q => ~q', [DictIn, DictOut]),
     reply_json_dict(DictOut).
 
-json_compute(json{fetch:FileName},
-                  json_result{file:FileName,
-                              contents:Contents}) :-
-    read_file_to_string(files(FileName), Contents, []).
+json_response(json{fetch:FileName},
+              json_result{file:FileName,
+                          contents:Contents}) :-
+    % TODO: catch error(existence_error(source_sink,...),_)
+    read_file_to_string(files(FileName), Contents, []),
+    string_length(Contents, ContentsLen),
+    debug(log, 'json_response: ~q => ~d chars', [FileName, ContentsLen]).

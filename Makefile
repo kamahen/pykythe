@@ -526,8 +526,8 @@ make-tables: # add-index-pykythe
 	@ # $(KYTHE_EXE) -api http://localhost:$(BROWSE_PORT_PYKYTHE) xrefs -definitions all -node_definitions -page_size 999999 -references all 'kythe://CORPUS?lang=python?root=ROOT#.tmp.pykythe_test.SUBST.home.peter.src.pykythe.pykythe.pod.PlainOldData'
 	@ # https://kythe.io/docs/kythes-command-line-tool.html
 
-.PHONY: make-js
-make-js:
+.PHONY: make-json
+make-json:
 	$(RM) -r $(TESTOUTDIR)/browser
 	mkdir -p $(TESTOUTDIR)/browser/files
 	set -o pipefail; \
@@ -539,7 +539,7 @@ make-js:
 	@# ln browser/static/no_browse.html $(TESTOUTDIR)/browser/index.html
 
 .PHONY: run_src_browser run-src-browser
-# To prepare this: make-js
+# To prepare this: make-json
 # http://localhost:$(SRC_BROWSER_PORT)/static/src_browser.html
 run_src_browser run-src-browser:
 	$(SWIPL_EXE) --no-tty -g main browser/src_browser.pl -- \

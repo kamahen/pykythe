@@ -3261,7 +3261,7 @@ my_run_tests :-
     assertz(pykythe_test:opts(Opts)),
     plunit:run_tests.
 
-:- begin_tests(imports).
+:- begin_tests(dev).
 
 :- use_module(library(lists), [subtract/3]).
 
@@ -3463,4 +3463,4 @@ test(kyImportDottedAsNamesFqn_as) :-
                                       modules_to_import:[Module_os,
                                                          Module_os_path]}]).
 
-:- end_tests(imports).
+:- end_tests(dev).

@@ -1,9 +1,20 @@
-:- use_module(library(http/json), [json_read_dict/3, json_write_dict/3]).
+% -*- mode: Prolog -*-
 
-%% See test predicates at end.
+%% Read in Kythe JSON facts and extract the color-related data,
+%% outputting to a directory, for use by src_browser.pl
+
+%% TODO: performance
+%%  pykythe_utils:base64_utf8/2 (and b64_to_utf8_to_atom/2) take 57% of the CPU.
+%%  json:json_read_dict/3 takes 41%
+%%  json:json_string_codes/3 takes 15% (most of it in utf8_codes/3).
+
+:- use_module(library(http/json), [json_read_dict/3, json_write_dict/3]).
+:- use_module(library(pairs)).
 
 %% swipl -g get_and_print_color_text -t halt extract_color.pl </tmp/pykythe_test/KYTHE/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t10.kythe.json --filesdir=/tmp/pykte_test/browser/files
 %% debugging: get_and_print_color_text('/tmp/pykythe_test/KYTHE/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t10.kythe.json').
+
+%% See also test predicates at end.
 
 %! kythe_node(Source: vname, FactName:atom, FactValue:atom).
 %! kythe_edge(Source: vname, EdgeKind:atom, Target:vname).
@@ -16,6 +27,7 @@
 %% We also define vname0:   Corpus,Root,Path,Language
 
 :- use_module(library(optparse), [opt_arguments/3]).
+:- use_module(library(thread), [concurrent_maplist/3]).
 :- use_module('../pykythe/pykythe_utils.pl', [base64_utf8/2]).
 :- use_module('../pykythe/must_once.pl').
 
@@ -39,7 +51,10 @@ get_and_print_color_text(InStream) :-
     log('get_color_data-done'),
     /* show_profile([cumulative(true)]), */
     maplist(file_name, ColorData, FileNames),
-    open_output_stream(Opts, 'FILES.js',
+    maplist(file_path, ColorData, PathNames),
+    files_to_tree(PathNames, PathTree),
+    tree_to_json(PathTree, PathTreeJson),
+    open_output_stream(Opts, 'FILES.json',
                        '', [],
                        FilesOutStream),
     json_write_dict(FilesOutStream, FileNames,
@@ -47,7 +62,15 @@ get_and_print_color_text(InStream) :-
                      true(#(true)),false(#(false)),null(#(null))]),
     close_output_stream(FilesOutStream,
                         '~n', []),
-    maplist(write_color_data(Opts), ColorData, FileNames),
+    open_output_stream(Opts, 'FILETREE.json',
+                       '', [],
+                       FileTreeOutStream),
+    json_write_dict(FileTreeOutStream, PathTreeJson,
+                    [width(0),
+                     true(#(true)),false(#(false)),null(#(null))]),
+    close_output_stream(FileTreeOutStream,
+                        '~n', []),
+    concurrent_maplist(write_color_data(Opts), ColorData, FileNames),  % concurrent gives a slight speed-up
     log('json_write_dict-done'),
     nl.
 
@@ -56,9 +79,15 @@ file_name(json{corpus:Corpus, root:Root, path:Path, language:Language,
                lines:_ColorText},
           json{corpus: Corpus, root: Root, path: Path, language: Language,
                filename: FileName}) :-
-    format(atom(CombinedName), '~w', [Corpus:Root:Path]),
+    format(atom(CombinedName), '~w:~w:~w', [Corpus, Root, Path]),
     base64(CombinedName, FileName0),
-    atomic_list_concat(['file-', FileName0, '.js'], FileName).
+    atomic_list_concat(['file-', FileName0, '.json'], FileName).
+
+file_path(json{corpus:Corpus, root:Root, path:Path, language:_Language,
+               line_keys:_LineKeys,
+               lines:_ColorText},
+          CombinedPath) :-
+    format(atom(CombinedPath), '~w/~w/~w', [Corpus, Root, Path]).
 
 write_color_data(Opts,
                  json{corpus:Corpus, root:Root, path:Path, language:Language,
@@ -86,7 +115,7 @@ get_color_data(ColorData) :-
     ;  Files = []
     ),
     assertion(Files \== []),
-    maplist(get_color_data1, Files, ColorData).
+    concurrent_maplist(get_color_data1, Files, ColorData). % concurrent gives slight speed-up
 
 kythe_file(Corpus, Root, Path, Language) :-
     kythe_node(vname('',Corpus,Root,Path,_), '/kythe/node/kind', file),
@@ -132,7 +161,7 @@ get_color_text_file(Vname0, ColorTextLines) :-
     -> true
     ;  ColorTextLines0 = []
     ),
-    maplist(add_links(Vname0), ColorTextLines0, ColorTextLines1),
+    maplist(add_links(Vname0), ColorTextLines0, ColorTextLines1), % concurrent gives slight slow-down
     dict_pairs(ColorTextLines, json, ColorTextLines1).
 
 single_line_items(LineNoAndLines, LineNos, LineNoStr, LineItems) :-
@@ -306,9 +335,9 @@ close_output_stream(OutStream, Fmt, Args) :-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-user:portray(Term) :-
-    is_dict(Term, TermTag),
-    format('~w{...}', [TermTag]).
+% user:portray(Term) :-
+%     is_dict(Term, TermTag),
+%     format('~w{...}', [TermTag]).
 
 %% For non-graphical profiling:
 :- unload_file('/usr/lib/swi-prolog/xpce/prolog/lib/swi/pce_profile.pl').
@@ -332,6 +361,55 @@ kythe_anchor(Vname, Start, End, Token) :-
     sub_string(SourceText, Start, Len, _, TokenStr),
     atom_string(Token, TokenStr).
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Transform a list of file names to a tree for browser.
+
+files_to_tree(Files, Tree) :-
+    maplist(split_on_slash, Files, SplitFiles),
+    list_to_tree(SplitFiles, [], Tree).
+
+split_on_slash(Str, Split) :-
+    split_string(Str, '/', '', SplitStr),
+    maplist(string_atom, SplitStr, Split0),
+    append(First, [Last], Split0),
+    !,                          % remove choice point from append/3.
+    maplist(wrap_dir, First, FirstWrapped),
+    append(FirstWrapped, [file(Last)], Split).
+
+wrap_dir(Dir, dir(Dir)).
+
+string_atom(Str, Atom) :- atom_string(Atom, Str).
+
+list_to_tree(List, Prefix, Tree) :-
+    maplist(head_tail_pair, List, HeadTail),
+    keysort(HeadTail, HeadTailSorted),
+    group_pairs_by_key(HeadTailSorted, HeadTailGroup),
+    maplist(subtree(Prefix), HeadTailGroup, Tree).
+
+subtree(Prefix, dir(Dir)-Sublist, dir(Dir,Path,Children)) :-
+    append(Prefix, [Dir], Prefix2),
+    !,                          % remove choice point from append/3.  DO NOT SUBMIT -verify need
+    atomic_list_concat(Prefix2, '/', Path),
+    list_to_tree(Sublist, Prefix2, Children).
+subtree(Prefix, file(File)-[[]], file(File,Path)) :-
+    append(Prefix, [File], Prefix2),
+    !,                          % remove choice point from append/3.  DO NOT SUBMIT -verify need
+    atomic_list_concat(Prefix2, '/', Path).
+
+head_tail_pair([Hd|Tl], Hd-Tl).
+
+tree_to_json([X|Xs], Ys) :-
+    maplist(tree_to_json, [X|Xs], Ys).
+tree_to_json(file(N,Path), json([type=file, name=N, path=Path])).
+tree_to_json(dir(N,Path,Children), json([type=dir, name=N, path=Path, children=ChildrenDict])) :-
+    tree_to_json(Children, ChildrenDict).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% For manual testing:
+
 test :-
     open('/tmp/t10.kythe.json', read, InStream),
     get_and_print_color_text(InStream).
@@ -346,3 +424,50 @@ test_anchor_and_edges :-
             setof(Edge-Target, node_and_edge(Vname, Edge, Target), Edges),
             Edges = [_,_|_]),
            format('~q~n', [Vname:Start:End:Token:Edges])).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- use_module(library(plunit)).
+
+:- begin_tests(file_tree).
+
+t1(Ftree) :-
+    F = ['x',
+         'a/b/x1',
+         'a/b/x2',
+         'a/c',
+         'a/d/e/x3'
+        ],
+    files_to_tree(F, Ftree),
+    tree_to_json(Ftree, FtreeJson),
+    with_output_to(atom(JsonAtom),
+                   (current_output(JsonStream),
+                    json_write_dict(JsonStream, FtreeJson,
+                                    [width(0),
+                                     true(#(true)),false(#(false)),null(#(null))]))),
+    %% format('~w~n', [JsonAtom]),
+    assertion(JsonAtom == '[ {"type":"dir", "name":"a", "children": [ {"type":"dir", "name":"b", "children": [ {"type":"file", "name":"x1", "path":"a/b/x1"},  {"type":"file", "name":"x2", "path":"a/b/x2"} ]},  {"type":"dir", "name":"d", "children": [ {"type":"dir", "name":"e", "children": [ {"type":"file", "name":"x3", "path":"a/d/e/x3"} ]} ]},  {"type":"file", "name":"c", "path":"a/c"} ]},  {"type":"file", "name":"x", "path":"x"} ]'),
+    true.
+
+test(f1) :-
+    t1(Ftree),
+    assertion(
+              [dir(a,
+                   [dir(b,
+                        [file(x1, 'a/b/x1'), file(x2, 'a/b/x2')]
+                       ),
+                    dir(d,
+                        [
+                         dir(e,
+                             [file(x3, 'a/d/e/x3')]
+                            )
+                        ]
+                       ),
+                    file(c, 'a/c')
+                   ]
+                  ),
+               file(x, 'x')
+              ]
+             = Ftree).
+
+:- end_tests(file_tree).
