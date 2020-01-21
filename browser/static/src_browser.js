@@ -1,5 +1,11 @@
 'use strict';
 
+// Implementation of annotated source browser, using nodes defined by
+// src_browser.html.
+
+// TODO: The code is inconsistent in whether it has corpus, root, path as
+//       separate items or combined into 'corpus/root/path'.
+
 // global 'g_anchor_edges' gets {signature:str, edge:str, target:{corpus,root,path,language,signature} items
 // (see color_data.lines[line_key].edges)
 var g_anchor_edges = [];
@@ -82,6 +88,9 @@ function load_new_file(corpus_root_path) {
     if (!src_browser_file) {
         window.alert("Can't load " + path);
     } else {
+        var progress = document.createElement('span');
+        progress.innerHTML = '&nbsp;&nbsp;&nbsp;Fetching file ' + sanitize(corpus_root_path) + ' ...';
+        file_nav_element().appendChild(progress);
         fetch_from_server({fetch: src_browser_file},
                           data => set_src_txt_impl(corpus, root, path, data));
     }
@@ -191,6 +200,7 @@ function find_file(corpus, root, path) {
 }
 
 function set_src_txt_impl(corpus, root, path, color_data_str) {
+    file_nav_element().lastChild.innerHTML = 'Rendering file ' + corpus + '/' + root + '/' + path + '...';
     const color_data = JSON.parse(color_data_str.contents);
     var table = document.createElement('table');
     table.setAttribute('class', 'src_table');
@@ -212,6 +222,7 @@ function set_src_txt_impl(corpus, root, path, color_data_str) {
         td2.appendChild(txt_span);
     }
     replace_child_with('src', table);
+    file_nav_element().lastChild.remove();
 }
 
 function do_for_signature(target, class_action, class_id) {

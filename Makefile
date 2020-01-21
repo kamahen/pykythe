@@ -725,7 +725,16 @@ run-underhood-frontend:
 	nix-shell --run 'bazel shutdown'
 
 run-underhood-ui:
-	@# treetide/underhood/ui/webpack.config.js
+	@# If this fails, try:
+	@#   cd ../underhood/treetide/underhood/ui && nix-shell --run 'npm ci'
+	@# and if 'npm ci' fails, try 'npm i'
+	@# See also treetide/underhood/ui/webpack.config.js for things such
+	@# as the port.
+	@# See also treetide/underhood/ui/src/App.vue for highlight-mode
+	@# (search for regexp '\bgo\b'):
+	@#   highlight-mode="go"
+	@#   codemirror/mode/go/go/js
+	@#   mode: 'go'
 	cd ../underhood/treetide/underhood/ui && \
 	nix-shell --run 'npm run-script start:dev'
 	@# View UI at http://localhost:9000
