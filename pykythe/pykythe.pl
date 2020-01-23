@@ -654,12 +654,13 @@ pykythe_main2 :-
     pykythe_opts(SrcPaths, Opts),
     %% BuiltinsSymtabFile is created by gen_builtins_symtab.pl
     unload_file(Opts.builtins_symtab), % TODO: should be a module and list the predicates
-    load_files([Opts.builtins_symtab], [silent(true), % TODO: should be a module
-                                      imports([builtins_pairs/1,
-                                               builtins_symtab/1,
-                                               builtins_symtab_modules/1,
-                                               builtins_symtab_primitive/2,
-                                               builtins_version/1])]),
+    load_files([Opts.builtins_symtab],
+               [silent(true),   % TODO: should be a module
+                imports([builtins_pairs/1,
+                         builtins_symtab/1,
+                         builtins_symtab_modules/1,
+                         builtins_symtab_primitive/2,
+                         builtins_version/1])]),
     object_fqn(ObjectFqn),                      % TODO: delete
     log_if(true, 'ObjectFqn: ~q', [ObjectFqn]), % TODO: delete
     maplist(process_src(Opts), SrcPaths).
@@ -689,7 +690,7 @@ interrupt(_Signal) :-
 %% from the suffixes.
 pykythe_opts(SrcPaths, Opts) :-
     current_prolog_flag(version, PrologVersion),
-    must_once_msg(PrologVersion >= 80120, 'SWI-Prolog version is too old'),  % Sync this with README.md
+    must_once_msg(PrologVersion >= 80121, 'SWI-Prolog version is too old'),  % Sync this with README.md
     OptsSpec =
        [[opt(builtins_symtab), type(atom), default(''), longflags(['builtins_symtab']),
          help('File containing a builtins_symtab/1 fact')],

@@ -54,25 +54,34 @@ get_and_print_color_text(InStream) :-
     maplist(file_path, ColorData, PathNames),
     files_to_tree(PathNames, PathTree),
     tree_to_json(PathTree, PathTreeJson),
-    open_output_stream(Opts, 'FILES.json',
-                       '', [],
-                       FilesOutStream),
-    json_write_dict(FilesOutStream, FileNames,
-                    [width(0),
-                     true(#(true)),false(#(false)),null(#(null))]),
-    close_output_stream(FilesOutStream,
-                        '~n', []),
-    open_output_stream(Opts, 'FILETREE.json',
-                       '', [],
-                       FileTreeOutStream),
-    json_write_dict(FileTreeOutStream, PathTreeJson,
-                    [width(0),
-                     true(#(true)),false(#(false)),null(#(null))]),
-    close_output_stream(FileTreeOutStream,
-                        '~n', []),
+    do_output_stream(Opts, 'FILES.json', '', [],
+                     my_json_write_dict(FileNames),
+                     '~n', []),
+    do_output_stream(Opts, 'FILETREE.json', '', [],
+                     my_json_write_dict(PathTreeJson),
+                     '~n', []),
+    do_output_stream(Opts, 'kythe_facts.pl', '', [],
+                     write_kythe_facts,
+                     '', []),
     concurrent_maplist(write_color_data(Opts), ColorData, FileNames),  % concurrent gives a slight speed-up
     log('json_write_dict-done'),
     nl.
+
+my_json_write_dict(Data, OutStream) :-
+    json_write_dict(OutStream, Data,
+                    [width(0),
+                     true(#(true)),false(#(false)),null(#(null))]).
+
+write_kythe_facts(KytheFactsOutStream) :-
+    %% TODO: use fast_serialize?
+    forall(kythe_node(Signature,Corpus,Root,Path,Language, FactName, FactValue),
+           format(KytheFactsOutStream, '~q.~n',
+                  [kythe_node(Signature,Corpus,Root,Path,Language, FactName, FactValue)])),
+    forall(kythe_edge(Signature1,Corpus1,Root1,Path1,Language1, EdgeName,
+                      Signature2,Corpus2,Root2,Path2,Language2),
+           format(KytheFactsOutStream, '~q.~n',
+                  [kythe_edge(Signature1,Corpus1,Root1,Path1,Language1, EdgeName,
+                              Signature2,Corpus2,Root2,Path2,Language2)])).
 
 file_name(json{corpus:Corpus, root:Root, path:Path, language:Language,
                line_keys:_LineKeys,
@@ -289,7 +298,7 @@ utf8_bytes_to_term_doesnt_work(Bytes, Term) :-
 
 extract_opts(Opts) :-
     current_prolog_flag(version, PrologVersion),
-    must_once_msg(PrologVersion >= 80120, 'SWI-Prolog version is too old'), % Sync this with README.md
+    must_once_msg(PrologVersion >= 80121, 'SWI-Prolog version is too old'), % Sync this with README.md
     OptsSpec =
     [[opt(filesdir), type(atom), default('filesdir-must-be-specified'), longflags([filesdir]),
       help('Directory for putting the files\'s contents')
@@ -321,6 +330,11 @@ vname_vname0(vname(Signature,Corpus,Root,Path,Language),
 
 vname_json(vname(Signature,Corpus,Root,Path,Language),
            json{signature:Signature,corpus:Corpus,root:Root,path:Path,language:Language}).
+
+do_output_stream(Opts, FileName, Fmt1, Args1, Goal, Fmt2, Args2) :-
+    open_output_stream(Opts, FileName, Fmt1, Args1, OutStream),
+    call(Goal, OutStream),
+    close_output_stream(OutStream, Fmt2, Args2).
 
 open_output_stream(Opts, FileName, Fmt, Args, OutStream) :-
     memberchk(filesdir(FilesDir), Opts),
@@ -446,10 +460,9 @@ t1(Ftree) :-
                                     [width(0),
                                      true(#(true)),false(#(false)),null(#(null))]))),
     %% format('~w~n', [JsonAtom]),
-    assertion(JsonAtom == '[ {"type":"dir", "name":"a", "path":"a", "children": [ {"type":"dir", "name":"b", "path":"a/b", "children": [ {"type":"file", "name":"x1", "path":"a/b/x1"},  {"type":"file", "name":"x2", "path":"a/b/x2"} ]},  {"type":"dir", "name":"d", "path":"a/d", "children": [ {"type":"dir", "name":"e", "path":"a/d/e", "children": [ {"type":"file", "name":"x3", "path":"a/d/e/x3"} ]} ]},  {"type":"file", "name":"c", "path":"a/c"} ]},  {"type":"file", "name":"x", "path":"x"} ]'),
-    true.
+    assertion(JsonAtom == '[ {"type":"dir", "name":"a", "path":"a", "children": [ {"type":"dir", "name":"b", "path":"a/b", "children": [ {"type":"file", "name":"x1", "path":"a/b/x1"},  {"type":"file", "name":"x2", "path":"a/b/x2"} ]},  {"type":"dir", "name":"d", "path":"a/d", "children": [ {"type":"dir", "name":"e", "path":"a/d/e", "children": [ {"type":"file", "name":"x3", "path":"a/d/e/x3"} ]} ]},  {"type":"file", "name":"c", "path":"a/c"} ]},  {"type":"file", "name":"x", "path":"x"} ]').
 
-test(f1) :-
+test(f1, [true]) :-
     t1(Ftree),
     assertion(
               [dir(a, 'a',

@@ -192,6 +192,8 @@ def _process_ast(
         with_fqns = parse_error
         logging.error('Parse error: %s', parse_error)
     except Exception as exc:  # pylint: disable=broad-except
+        # DO NOT SUBMIT: the parse_error assignment is probably incorrect
+        parse_error = exc  # TODO: is this correct? we get this from an assertion check, for example
         new_parse_tree = parse_tree
         logging.error('Caught error in cvt_parse_tree/with_fqns: %s %r', exc, exc)
         traceback.print_exc()

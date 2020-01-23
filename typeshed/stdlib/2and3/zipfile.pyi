@@ -1,6 +1,6 @@
 # Stubs for zipfile
 
-from typing import Callable, Dict, IO, Iterable, Iterator, List, Optional, Text, Tuple, Type, Union, Sequence, Pattern
+from typing import Any, Callable, Dict, IO, Iterable, Iterator, List, Optional, Protocol, Text, Tuple, Type, Union, Sequence, Pattern
 from types import TracebackType
 import io
 import os
@@ -36,17 +36,30 @@ class ZipExtFile(io.BufferedIOBase):
     newlines: Optional[List[bytes]]
     mode: str
     name: str
-    def __init__(
-        self,
-        fileobj: IO[bytes],
-        mode: str,
-        zipinfo: ZipInfo,
-        decrypter: Optional[Callable[[Sequence[int]], bytes]] = ...,
-        close_fileobj: bool = ...,
-    ) -> None: ...
+    if sys.version_info >= (3, 7):
+        def __init__(
+            self,
+            fileobj: IO[bytes],
+            mode: str,
+            zipinfo: ZipInfo,
+            pwd: Optional[bytes] = ...,
+            close_fileobj: bool = ...,
+        ) -> None: ...
+    else:
+        def __init__(
+            self,
+            fileobj: IO[bytes],
+            mode: str,
+            zipinfo: ZipInfo,
+            decrypter: Optional[Callable[[Sequence[int]], bytes]] = ...,
+            close_fileobj: bool = ...,
+        ) -> None: ...
     def __repr__(self) -> str: ...
     def peek(self, n: int = ...) -> bytes: ...
     def read1(self, n: Optional[int]) -> bytes: ...  # type: ignore
+
+class _Writer(Protocol):
+    def write(self, __s: str) -> Any: ...
 
 class ZipFile:
     filename: Optional[Text]
@@ -93,12 +106,20 @@ class ZipFile:
     def extractall(
         self, path: Optional[_Path] = ..., members: Optional[Iterable[Text]] = ..., pwd: Optional[bytes] = ...
     ) -> None: ...
-    def printdir(self) -> None: ...
+    if sys.version_info >= (3,):
+        def printdir(self, file: Optional[_Writer] = ...) -> None: ...
+    else:
+        def printdir(self) -> None: ...
     def setpassword(self, pwd: bytes) -> None: ...
     def read(self, name: _SZI, pwd: Optional[bytes] = ...) -> bytes: ...
     def testzip(self) -> Optional[str]: ...
-    def write(self, filename: _Path, arcname: Optional[_Path] = ..., compress_type: Optional[int] = ...) -> None: ...
-    if sys.version_info >= (3,):
+    if sys.version_info >= (3, 7):
+        def write(self, filename: _Path, arcname: Optional[_Path] = ..., compress_type: Optional[int] = ..., compresslevel: Optional[int] = ...) -> None: ...
+    else:
+        def write(self, filename: _Path, arcname: Optional[_Path] = ..., compress_type: Optional[int] = ...) -> None: ...
+    if sys.version_info >= (3, 7):
+        def writestr(self, zinfo_or_arcname: _SZI, data: Union[bytes, str], compress_type: Optional[int] = ..., compresslevel: Optional[int] = ...) -> None: ...
+    elif sys.version_info >= (3,):
         def writestr(self, zinfo_or_arcname: _SZI, data: Union[bytes, str], compress_type: Optional[int] = ...) -> None: ...
     else:
         def writestr(self, zinfo_or_arcname: _SZI, bytes: bytes, compress_type: Optional[int] = ...) -> None: ...
