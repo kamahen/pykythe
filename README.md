@@ -130,7 +130,7 @@ try it out (on Linux):
   already defined data:
 
   * `mkdir /tmp/pykythe_test`
-  * `cd /tmp/pykythe_test && tar xjf <pkgdir>/browser_data.tjz`
+  * `cd /tmp/pykythe_test && tar xjf <pkgdir>/browser/browser_data.tjz`
   * `make -C <pkgdir> SRC_BROWSER_PORT=9999 run-src-browser`
   * http://localhost:9999 as above
 

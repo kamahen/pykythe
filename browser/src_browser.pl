@@ -266,7 +266,6 @@ guess_language(Extension, _) :-
 
 anchor_links(AnchorVname1, Semantic, SemanticNodeValues, SortedLinks) :-
     %% TODO: filter Edge1 by anchor_out_edge?
-    debug(log, 'AAA: ~q~n', [anchor_links(AnchorVname1, Semantic, SemanticNodeValues, SortedLinks)]),
     (  setof(Edge2-AnchorVname2flipped,
              anchor_link_anchor_sort_order(AnchorVname1, Semantic, Edge2, AnchorVname2flipped),
              SortedLinks)
