@@ -634,6 +634,8 @@ push_to_github:
 		--exclude snippets.py --exclude typescript.gz \
 		./ $(TESTGITHUB)/pykythe/
 	rsync -aAHX --delete ../kythe $(TESTGITHUB)/
+	@# The following is for people who want to test run the soruce browser
+	cd $(TESTOUTDIR) && tar cjf $(TESTGITHUB)/pykythe/browser/browser_data.tjz browser
 	-cd $(TESTGITHUB)/pykythe && git status
 	-cd $(TESTGITHUB)/pykythe && git difftool --no-prompt --tool=tkdiff
 	@echo '# pushd $(TESTGITHUB)/pykythe && git commit -mCOMMIT-MSG' -a

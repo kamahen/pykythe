@@ -23,6 +23,7 @@
 %%                      /usr/share/doc/openssl/HOWTO/certificates.txt.gz
 %%                          openssl genrsa -out privkey.pem
 %%                          openssl req -new -x509 -key privkey.pem -out cacert.pem -days 1095
+%%                          ? openssl req -new -key privkey.pem -out cert.csr
 %%                      https://www.openssl.org/docs/manmaster/man1/CA.pl.html
 %% :- use_module(library(http/http_unix_daemon)).
 %% :- use_module(library(http_log)).
@@ -96,7 +97,7 @@ kythe_edge(vname(Signature1, Corpus1, Root1, Path1, Language1),
 
 http:location(static, root(static), []).
 http:location(files, static(files), []).
-%% http:location(json, root(json), []).  %% DO NOT SUBMIT - remove?
+http:location(json, root(json), []).  %% DO NOT SUBMIT - remove?
 
 main :-
     browser_opts(Opts),
@@ -119,9 +120,10 @@ read_and_assert_kythe_facts :-
                          kythe_edge/11])]).
 
 server(Opts) :-
+    %% See comments with "Support HTTPS" above.
     http_server([port(Opts.port),
                  %% TODO: enable ssl (https):
-                 %% ssl([certificate_file('cacert.pem'),
+                 %% ssl([certificate_file('cacert.pem'), %% or cert.csr?
                  %%      key_file('privkey.pem')]),
                  workers(5)]).
 
