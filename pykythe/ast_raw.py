@@ -223,7 +223,8 @@ def cvt_argument(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     if node.children[0].type == token.DOUBLESTAR:
         return cvt(node.children[1], ctx)  # Ignore the `**`
     # TODO: not clear why token.STAR can appear here
-    assert node.children[0].type in (SYMS_STAR_EXPR, token.STAR), dict(ch0=node.children[0], node=node)
+    assert node.children[0].type in (SYMS_STAR_EXPR, token.STAR), dict(ch0=node.children[0],
+                                                                       node=node)
     return cvt(node.children[0], ctx)  # Ignores the `*`
 
 

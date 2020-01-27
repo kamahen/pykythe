@@ -538,6 +538,12 @@ make-json:
 	@# ln browser/static/* $(TESTOUTDIR)/browser/
 	@# ln browser/static/no_browse.html $(TESTOUTDIR)/browser/index.html
 
+.PHONY: make-json-pretty
+make-json-pretty:
+	find $(TESTOUTDIR)/browser/files -name '*.json' | \
+		parallel --will-cite -L1 -j$(NPROC) \
+		'$(PYTHON3_EXE) -m json.tool <{} >{}-pretty'
+
 .PHONY: run_src_browser run-src-browser
 # To prepare this: make-json
 # http://localhost:$(SRC_BROWSER_PORT)/static/src_browser.html
@@ -635,6 +641,7 @@ push_to_github:
 		./ $(TESTGITHUB)/pykythe/
 	rsync -aAHX --delete ../kythe $(TESTGITHUB)/
 	@# The following is for people who want to test run the soruce browser
+	find $(TESTOUTDIR) -name '*.json-pretty' -delete
 	cd $(TESTOUTDIR) && tar cjf $(TESTGITHUB)/pykythe/browser/browser_data.tjz browser
 	-cd $(TESTGITHUB)/pykythe && git status
 	-cd $(TESTGITHUB)/pykythe && git difftool --no-prompt --tool=tkdiff
@@ -720,8 +727,8 @@ run-pytype-server:
 # https://github.com/TreeTide/underhood
 
 run-underhood-frontend:
-	@# 8081 matches webpack.config.js
-	@# --port 8081 --kythe_api_host=localhost --kythe_api_port=$(BROWSE_PORT_PYKYTHE)
+	@# http://localhost:9000 (see ../underhood/treetide/underhood/ui/webpack.config.js)
+	@# TODO: --port 8081 --kythe_api_host=localhost --kythe_api_port=$(BROWSE_PORT_PYKYTHE)
 	cd ../underhood && \
 	nix-shell --run 'bazel run -c opt //treetide/underhood/frontend_server'
 	nix-shell --run 'bazel shutdown'
@@ -742,6 +749,7 @@ run-underhood-ui:
 	@# View UI at http://localhost:9000
 
 run-underhood-all:
+	@# http://localhost:9000 (see run-underhood-frontend)
 	@echo Suggest running the following commands in separate terminals, for easier cleanup.
 	@echo $(MAKE) add-index-pykythe
 	@echo $(MAKE) run-server

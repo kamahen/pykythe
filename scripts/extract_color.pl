@@ -45,9 +45,7 @@ get_and_print_color_text(InStream) :-
     retract_kythe_facts,
     get_and_assert_kythe_facts(InStream),
     log('get_and_assert_kythe_facts-done'),
-        /* profile( */
-    get_color_data(ColorData)
-        /* ) */ ,
+    get_color_data(ColorData),
     log('get_color_data-done'),
     /* show_profile([cumulative(true)]), */
     maplist(file_name, ColorData, FileNames),
@@ -84,7 +82,6 @@ write_kythe_facts(KytheFactsOutStream) :-
                               Signature2,Corpus2,Root2,Path2,Language2)])).
 
 file_name(json{corpus:Corpus, root:Root, path:Path, language:Language,
-               line_keys:_LineKeys,
                lines:_ColorText},
           json{corpus: Corpus, root: Root, path: Path, language: Language,
                filename: FileName}) :-
@@ -93,25 +90,20 @@ file_name(json{corpus:Corpus, root:Root, path:Path, language:Language,
     atomic_list_concat(['file-', FileName0, '.json'], FileName).
 
 file_path(json{corpus:Corpus, root:Root, path:Path, language:_Language,
-               line_keys:_LineKeys,
                lines:_ColorText},
           CombinedPath) :-
     format(atom(CombinedPath), '~w/~w/~w', [Corpus, Root, Path]).
 
 write_color_data(Opts,
                  json{corpus:Corpus, root:Root, path:Path, language:Language,
-                      line_keys:LineKeys,
                       lines:ColorText},
                  json{corpus: Corpus, root: Root, path: Path, language: Language,
                       filename: FileName}) :-
-    memberchk(filesdir(FilesDir), Opts),
-    log('outputting to directory ~q: ~q', [FilesDir/FileName, Path]),
     open_output_stream(Opts, FileName,
                        '', [],
                        OutStream),
     json_write_dict(OutStream,
                     json{corpus: Corpus, root: Root, path: Path, language: Language,
-                         line_keys:LineKeys,
                          lines: ColorText},
                     [width(0),
                      true(#(true)),false(#(false)),null(#(null))]),
@@ -124,7 +116,7 @@ get_color_data(ColorData) :-
     ;  Files = []
     ),
     assertion(Files \== []),
-    concurrent_maplist(get_color_data1, Files, ColorData). % concurrent gives slight speed-up
+    concurrent_maplist(get_color_data_one_file, Files, ColorData). % concurrent gives slight speed-up
 
 kythe_file(Corpus, Root, Path, Language) :-
     kythe_node(vname('',Corpus,Root,Path,_), '/kythe/node/kind', file),
@@ -138,16 +130,17 @@ guess_language(py, python).
 guess_language(Extension, _) :-
     domain_error(file_name_extension, Extension).
 
-get_color_data1(Vname0,
-                json{corpus:Corpus, root:Root, path:Path, language:Language,
-                     line_keys:LineKeys,
-                     lines:ColorText}) :-
+get_color_data_one_file(Vname0,
+                        json{corpus:Corpus, root:Root, path:Path, language:Language,
+                             lines:ColorText}) :-
+    statistics(thread_cputime, T0),
     Vname0 = vname0(Corpus,Root,Path,Language),
-    get_color_text_file(Vname0, ColorText),
-    dict_keys(ColorText, LineKeys),
-    log('get_color-dict_keys-done ~q', [Vname0]).
+    get_color_text_one_file(Vname0, ColorText),
+    statistics(thread_cputime, T1),
+    T is T1 - T0,
+    log('get_color-dict_keys-done ~q (~3f sec)', [Vname0, T]).
 
-get_color_text_file(Vname0, ColorTextLines) :-
+get_color_text_one_file(Vname0, ColorTextLines) :-
     Vname0 = vname0(Corpus,Root,Path,Language),
     setof(ColorTextStr,
           ( kythe_node(vname('',Corpus,Root,Path,Lang), '/pykythe/color', ColorTextStr),
@@ -161,35 +154,14 @@ get_color_text_file(Vname0, ColorTextLines) :-
            Err,
            ( ColorText = [],
              log('ERROR: ~q in ~q', [Err, ColorTextStr]))),
-    maplist(lineno_and_line, ColorText, LineNoAndLines0, LineNos0),
-    sort(LineNoAndLines0, LineNoAndLines),
-    sort(LineNos0, LineNos),
-    (  setof(LineNoStr-LineItems,
-             single_line_items(LineNoAndLines, LineNos, LineNoStr, LineItems),
-             ColorTextLines0)
-    -> true
-    ;  ColorTextLines0 = []
-    ),
+    maplist(lineno_and_chunk, ColorText, LineNoAndChunk0),
+    keysort(LineNoAndChunk0, LineNoAndChunk),
+    group_pairs_by_key(LineNoAndChunk, ColorTextLines0),
     maplist(add_links(Vname0), ColorTextLines0, ColorTextLines1), % concurrent gives slight slow-down
-    dict_pairs(ColorTextLines, json, ColorTextLines1).
+    pairs_values(ColorTextLines1, ColorTextLines).
 
-single_line_items(LineNoAndLines, LineNos, LineNoStr, LineItems) :-
-    member(LineNo, LineNos),
-    (  setof(Item, not_newline(LineNo, LineNoAndLines, Item), LineItems)
-    -> true
-    ;  LineItems = []
-    ),
-    %% Make the keys sort nicely:
-    %% Javascript: ('00000000' + lineno).slice(-8)
-    %%             or (''+lineno).PadStart(8, '0')
-    format(atom(LineNoStr), '~|~`0t~d~8+', [LineNo]).
-
-lineno_and_line(Line, LineNo-Line, LineNo) :-
-    LineNo = Line.lineno.
-
-not_newline(LineNo, Items, Item) :-
-    member(LineNo-Item, Items),
-    Item.token_color \== '<NEWLINE>'.
+lineno_and_chunk(Chunk, LineNo-Chunk) :-
+    LineNo = Chunk.lineno.
 
 add_links(Vname0, LineNo-Items, LineNo-AppendedItems) :-
     maplist(add_link(Vname0), Items, AppendedItems).
@@ -425,7 +397,7 @@ tree_to_json(dir(N,Path,Children), json([type=dir, name=N, path=Path, children=C
 % For manual testing:
 
 test :-
-    open('/tmp/t10.kythe.json', read, InStream),
+    open('/tmp/i7.kythe.json', read, InStream),
     get_and_print_color_text(InStream).
 
 test_get_facts :-

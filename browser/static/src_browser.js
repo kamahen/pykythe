@@ -7,7 +7,7 @@
 //       separate items or combined into 'corpus/root/path'.
 
 // global 'g_anchor_edges' gets {signature:str, edge:str, target:{corpus,root,path,language,signature} items
-// (see color_data.lines[line_key].edges)
+// (see color_data.lines[*].edges)
 var g_anchor_edges = [];
 
 // TODO: use window.location.assign(window.location.assign + '?' + ...)
@@ -222,12 +222,12 @@ function set_src_txt_impl(corpus, root, path, color_data_str) {
     const color_data = JSON.parse(color_data_str.contents);
     var table = document.createElement('table');
     table.setAttribute('class', 'src_table');
-    for (const line_key of color_data.line_keys) {
-        const line_parts = color_data.lines[line_key];
+    for (var line_key = 1; line_key <= color_data.lines.length; line_key++) {
+        const line_parts = color_data.lines[line_key - 1];
         var row = table.insertRow();
         var td1 = row.insertCell();
         td1.setAttribute('class', 'src_lineno');
-        td1.setAttribute('id', line_key.replace(/^0+/g, ''));
+        td1.setAttribute('id', line_key);
         var td2 = row.insertCell();
         td2.setAttribute('class', 'src_line');
         var txt_span = document.createElement('span');
@@ -343,8 +343,8 @@ function sanitize_text(raw_str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&apos;')
-        .replace(/\n/g, '<br/>')
-        .replace(/\s/g, '&nbsp;');  // TODO: test tabs in source
+        .replace(/\n/g, '<br/>')  // TODO: remove - not needed?
+        .replace(/\s/g, '&nbsp;');  // TODO: add test for tabs in source
 }
 
 // Send a request to the server and schedule a callback.

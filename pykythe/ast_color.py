@@ -75,26 +75,28 @@ class ColorFile:
         if not node.value:
             return
         assert self.src_file and self.parse_tree  # For mypy
-        if node.type == token.NAME:
-            # TODO: need to handle 'print', 'exec' in Python 3 ... see
-            #       ast_raw.parse.
-            if astn.value in pygram.python_grammar.keywords:
-                token_color = '<KEYWORD>'
-            else:
-                token_color = self.name_astns[astn]
-        elif node.type == token.NUMBER:
-            token_color = '<NUMBER>'
-        elif node.type == token.STRING:
+        if node.type == token.STRING:
             token_color = '<STRING>'
-        elif node.value.isspace():
-            assert node.type in {token.INDENT, token.DEDENT, token.NEWLINE, token.ENDMARKER}
-            token_color = '<WHITESPACE>'
+            yield from self._string_lines(astn=astn, token_color=token_color)
         else:
-            token_color = '<PUNCTUATION>'  # token.tok_name[node.type])
-        yield Color(astn=astn, lineno=node.lineno, column=node.column, token_color=token_color)
+            if node.type == token.NAME:
+                # TODO: need to handle 'print', 'exec' in Python 3 ... see
+                #       ast_raw.parse.
+                if astn.value in pygram.python_grammar.keywords:
+                    token_color = '<KEYWORD>'
+                else:
+                    token_color = self.name_astns[astn]
+            elif node.type == token.NUMBER:
+                token_color = '<NUMBER>'
+            elif node.value.isspace():
+                assert node.type in {token.INDENT, token.DEDENT, token.NEWLINE, token.ENDMARKER}
+                token_color = '<WHITESPACE>'
+            else:
+                token_color = '<PUNCTUATION>'  # token.tok_name[node.type])
+            yield Color(astn=astn, lineno=node.lineno, column=node.column, token_color=token_color)
 
     def _color_whitespace(self, value: str, start: int) -> Iterable[Color]:
-        """Generate Color items from whitespace/comment (prefix starting at stat)."""
+        """Generate Color items from whitespace/comment (prefix starting at start)."""
         if not value:  # zero-length - ignore
             return
         assert self.src_file  # For mypy
@@ -122,3 +124,21 @@ class ColorFile:
         yield from self._make_color(before, start, '<WHITESPACE>')
         yield from self._make_color(stripped, start_at, '<COMMENT>')
         yield from self._make_color(after, start_after, '<WHITESPACE>')
+
+    def _string_lines(self, astn: ast.Astn, token_color: str) -> Iterable[Color]:
+        """Break up string into chunks and generate Color items."""
+        # TODO: can this be combined with _color_whitespace?
+        astn_value_pieces = astn.value.splitlines(keepends=True)
+        start = astn.start
+        for piece in astn_value_pieces:
+            without_newline, = piece.splitlines(keepends=False)
+            newline = piece[len(without_newline):]
+            start_newline = self.src_file.byte_offset_adjust_chr(start, len(without_newline))
+            start_next = self.src_file.byte_offset_adjust_chr(start_newline, len(newline))
+            yield from self._make_color(value=without_newline,
+                                        start=start,
+                                        token_color=token_color)
+            yield from self._make_color(value=newline,
+                                        start=start_newline,
+                                        token_color=token_color)
+            start = start_next
