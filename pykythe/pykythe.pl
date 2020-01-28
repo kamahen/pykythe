@@ -186,6 +186,7 @@
 %% TODO: Use QLF: http://www.swi-prolog.org/pldoc/man?section=qlf
 
 :- module(pykythe, [pykythe_main/0]).
+:- encoding(utf8).
 
 %% :- use_module(library(apply_macros).  % TODO: for performance (also maplist_kyfact_symrej etc)
 :- use_module(c3, [mro/2]).
@@ -353,8 +354,8 @@
                   merge_cache_into_symtab/3,
                   modules_in_exprs/2,
                   modules_in_symtab/2,
-                  %% my_portray/1,
-                  %% my_portray_unify/2,
+                  %% pykythe_portray/1,
+                  %% pykythe_portray_unify/2,
                   %% node_astn/4,
                   normalize_type/2,
                   object_fqn/1,
@@ -404,7 +405,7 @@
 %% The "-O" flag changes things slightly; the following directive
 %% needs to be here (and not earlier) with "-O".
 
-%% :- set_prolog_flag(autoload, false). % See comment in pykythe_utils:my_json_read_dict/2.  % TODO: for saved state
+%% :- set_prolog_flag(autoload, false). % See comment in pykythe_utils:pykythe_json_read_dict/2.  % TODO: for saved state
 
 %% "kyfact" accumulator gets FQN anchor facts, in an ordinary list
 %% with each value being a dict to be output in JSON (and eventually
@@ -1234,10 +1235,8 @@ write_to_protobuf(EntriesCmd, SrcPath, KytheJsonPath, KytheEntriesPath) :-
 run_parse_cmd(Opts, SrcPath, SrcFqn, OutPath) :-
     must_once_msg(ground(Opts), 'Invalid command line options'),
     must_once_msg(memberchk(Opts.python_version, [2, 3]), 'Invalid Python version: ~q', [Opts.python_version]),
-    current_prolog_flag(tmp_dir, SaveTmpDir),
-    set_prolog_flag(tmp_dir, Opts.kytheout), % TODO: mkdir separate subdir for these
-    tmp_file_stream(OutPath, OutPathStream, [encoding(binary), extension('fqn-ast.pl')]),
-    set_prolog_flag(tmp_dir, SaveTmpDir),
+    pykythe_tmp_file_stream(Opts.kytheout, OutPath, % TODO: mkdir separate subdir for these
+                       OutPathStream, [encoding(binary), extension('fqn-ast.pl')]),
     do_if(trace_file(SrcPath), link_src_file(SrcPath, OutPath)), % TODO: delete
     close(OutPathStream),
     atomic_list_concat(
@@ -1253,7 +1252,7 @@ run_parse_cmd(Opts, SrcPath, SrcFqn, OutPath) :-
     %% TODO: An alternative way of doing the following is to have
     %% ParseCmd output to stdout and then get it by:
     %%   process_create(ParseCmd, ParseCmdArgs, [stdout(pipe(CmdPipe))]),
-    %%   my_json_read_dict(CmdPipe, ...), ...
+    %%   pykythe_json_read_dict(CmdPipe, ...), ...
 
     %% Note that a syntax error is handled specially, so that it seems
     %% to have succeeded at this point, with nothing to analyze. (See
@@ -3045,60 +3044,60 @@ goal_failed(Goal) :-
     fail.
 
 user:portray(Term) :-
-    %% fail,  %% uncomment this line to turn off my_portray/1
+    %% fail,  %% uncomment this line to turn off pykythe_portray/1
     %% in the following, format/2 is used because
     %% print_message(warning, E) gives an infinite recursion.
     E = error(_, _),            % avoid trapping abort, timeout, etc.
-    catch(my_portray(Term),
+    catch(pykythe_portray(Term),
           E,
           format('EXCEPTION:portray(~q)', [Term])).
 
-%! my_portray is semidet.
-%%  TODO: change all to use my_portray_unify (see 1st clause).
-my_portray(Astn) :-
+%! pykythe_portray is semidet.
+%%  TODO: change all to use pykythe_portray_unify (see 1st clause).
+pykythe_portray(Astn) :-
     node_astn(Astn0, Start, End, Value),
-    my_portray_unify(Astn0, Astn), !,
+    pykythe_portray_unify(Astn0, Astn), !,
     format("'ASTN'(~d:~d, ~q)", [Start, End, Value]).
-my_portray('NameBareNode'{name:Astn}) :-
+pykythe_portray('NameBareNode'{name:Astn}) :-
     format("'NameBareNode'{name:~p}", [Astn]).
-my_portray(module_and_token(Path, Token)) :-
+pykythe_portray(module_and_token(Path, Token)) :-
     format("module_and_token(~p, ~p)", [Path, Token]).
-my_portray(str(S)) :- !,
+pykythe_portray(str(S)) :- !,
     format('str(~q)', [S]).
-my_portray(bool(B)) :- !,
+pykythe_portray(bool(B)) :- !,
     format('bool(~q)', [B]).
-my_portray('StringNode'{astns: [Astn]}) :- !, % doesn't handle "foo" "bar"
+pykythe_portray('StringNode'{astns: [Astn]}) :- !, % doesn't handle "foo" "bar"
     format("'StringNode'{astns:[~p]}", [Astn]).
-my_portray('StringBytesNode'{astns: [Astn]}) :- !, % doesn't handle "foo" "bar"
+pykythe_portray('StringBytesNode'{astns: [Astn]}) :- !, % doesn't handle "foo" "bar"
     format("'StringBytesNode'{astns:[~p]}", [Astn]).
-my_portray('NumberComplexNode'{astn: Astn}) :-
+pykythe_portray('NumberComplexNode'{astn: Astn}) :-
     format("'NumberComplexNode'{astn:~p}", [Astn]).
-my_portray('NumberFloatNode'{astn: Astn}) :-
+pykythe_portray('NumberFloatNode'{astn: Astn}) :-
     format("'NumberFloatNode'{astn:~p}", [Astn]).
-my_portray('NumberIntNode'{astn: Astn}) :-
+pykythe_portray('NumberIntNode'{astn: Astn}) :-
     format("'NumberIntNode'{astn:~p}", [Astn]).
-my_portray(op([Astn])) :-
+pykythe_portray(op([Astn])) :-
     node_astn(Astn, _, _, _), !,
     format('op([~p])', [Astn]).
-my_portray(var_ref(X)) :- !,
+pykythe_portray(var_ref(X)) :- !,
     format('var_ref(~p)', [X]).
-my_portray(var_binds(X)) :- !,
+pykythe_portray(var_binds(X)) :- !,
     format('var_binds(~p)', [X]).
-my_portray(var_binds_lookup(X)) :- !,
+pykythe_portray(var_binds_lookup(X)) :- !,
     format('var_binds_lookup(~p)', [X]).
-my_portray(var_ref_lookup(X)) :- !,
+pykythe_portray(var_ref_lookup(X)) :- !,
     format('var_ref_lookup(~p)', [X]).
-my_portray(function_type(F,P,R)) :- !,
+pykythe_portray(function_type(F,P,R)) :- !,
     format('function_type(~p, ~p, ~p)', [F, P, R]).
-my_portray(class_type(F, R)) :- !,
+pykythe_portray(class_type(F, R)) :- !,
     format('class_type(~p, ~p)', [F, R]).
-my_portray(union(U)) :- !,
+pykythe_portray(union(U)) :- !,
     format('union(~p)', [U]).
-my_portray(astn(Start, End, String)) :- !,
+pykythe_portray(astn(Start, End, String)) :- !,
     format('astn(~p,~p, ~p)', [Start, End, String]).
-my_portray('*list*'(List)) :- !, % To make print_term output more compact
+pykythe_portray('*list*'(List)) :- !, % To make print_term output more compact
     format('~p', [List]).
-my_portray(Meta) :-
+pykythe_portray(Meta) :-
     is_dict(Meta, MetaTag),
     MetaTag == meta,        % ==/2 in case dict has uninstantiated tag
     get_dict(kythe_corpus, Meta, KytheCorpus),
@@ -3109,18 +3108,18 @@ my_portray(Meta) :-
     dict_pairs(Meta, _, MetaPairs),
     pairs_keys(MetaPairs, MetaKeys),
     format('meta{~q, ~q, ~q, ~q, ...: ~q}', [KytheCorpus, KytheRoot, Path, SrcFqn, MetaKeys]).
-my_portray('$VAR'('_')) :- !, % work around a bug in print_term
+pykythe_portray('$VAR'('_')) :- !, % work around a bug in print_term
     format('_', []).          % (numbervars(true) should handle this)
-my_portray('$VAR'(N)) :- !,
+pykythe_portray('$VAR'(N)) :- !,
     Chr is N + 65,
     format('~c', [Chr]).
-my_portray(Assoc) :-
+pykythe_portray(Assoc) :-
     is_assoc(Assoc), !,
     aggregate_all(count, gen_assoc(_, Assoc, _), Length),
     min_assoc(Assoc, MinKey, MinValue),
     max_assoc(Assoc, MaxKey, MaxValue),
     format('<assoc:~d, ~p: ~p ... ~p: ~p>', [Length, MinKey, MinValue, MaxKey, MaxValue]).
-my_portray(Symtab) :-
+pykythe_portray(Symtab) :-
     %% DO NOT SUBMIT - replace this with something that uses pykythe_symtab predicates.
     is_dict(Symtab, Tag),
     Tag == symtab,          % ==/2 in case dict has uninstantiated tag
@@ -3129,19 +3128,19 @@ my_portray(Symtab) :-
     length(Entries, NumEntries),
     (  NumEntries < 30
     -> format('~q{', [Tag]),
-       my_portray_dict_entries(Entries, ''),
+       pykythe_portray_dict_entries(Entries, ''),
        format('}', [])
     ;  format('symtab{<~d items>...}', [NumEntries])
     ).
 
-my_portray_dict_entries([], _Sep).
-my_portray_dict_entries([K-V|KVs], Sep) :-
+pykythe_portray_dict_entries([], _Sep).
+pykythe_portray_dict_entries([K-V|KVs], Sep) :-
     format('~w~q:~q', [Sep, K, V]),
-    my_portray_dict_entries(KVs, ', ').
+    pykythe_portray_dict_entries(KVs, ', ').
 
-%! my_portray_unify(?Generic, ?Term).
-%% A "safe" version of unify, for my_portray/1.
-my_portray_unify(Generic, Term) :-
+%! pykythe_portray_unify(?Generic, ?Term).
+%% A "safe" version of unify, for pykythe_portray/1.
+pykythe_portray_unify(Generic, Term) :-
     subsumes_term(Generic, Term),
     Generic = Term.
 
@@ -3256,7 +3255,7 @@ statistic_kv(Key, Key:Value) :-
 
 :- use_module(library(plunit)).
 
-my_run_tests :-
+pykythe_run_tests :-
     pykythe:pykythe_opts(SrcPaths, Opts),
     assertz(pykythe_test:src_paths(SrcPaths)),
     assertz(pykythe_test:opts(Opts)),

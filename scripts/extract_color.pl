@@ -53,10 +53,10 @@ get_and_print_color_text(InStream) :-
     files_to_tree(PathNames, PathTree),
     tree_to_json(PathTree, PathTreeJson),
     do_output_stream(Opts, 'FILES.json', '', [],
-                     my_json_write_dict(FileNames),
+                     pykythe_json_write_dict(FileNames),
                      '~n', []),
     do_output_stream(Opts, 'FILETREE.json', '', [],
-                     my_json_write_dict(PathTreeJson),
+                     pykythe_json_write_dict(PathTreeJson),
                      '~n', []),
     do_output_stream(Opts, 'kythe_facts.pl', '', [],
                      write_kythe_facts,
@@ -65,7 +65,7 @@ get_and_print_color_text(InStream) :-
     log('json_write_dict-done'),
     nl.
 
-my_json_write_dict(Data, OutStream) :-
+pykythe_json_write_dict(Data, OutStream) :-
     json_write_dict(OutStream, Data,
                     [width(0),
                      true(#(true)),false(#(false)),null(#(null))]).

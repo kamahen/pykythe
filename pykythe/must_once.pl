@@ -10,6 +10,7 @@
                       must_once/7,
                       must_once/8,
                       fail/1]).
+:- encoding(utf8).
 :- meta_predicate
        must_once(0),
        must_once_msg(0, +),

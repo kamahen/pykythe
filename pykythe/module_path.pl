@@ -33,6 +33,7 @@
                         src_base/2,
                         token_part/2
                        ]).
+:- encoding(utf8).
 
 :- use_module(library(apply), [maplist/3]).
 :- use_module(library(filesex), [directory_file_path/3]).

@@ -222,7 +222,7 @@ pykythe_test: # $(TESTOUTDIR)/KYTHE/builtins_symtab.pl
 	mkdir -p $(PYTHONPATH_DOT) "$(PYTHONPATH_BUILTINS)"
 	@# "test_data/imports1.py" is used in the test suite and must be a real file
 	@# because absolute_file resolution uses the existence of the file.
-	$(SWIPL_EXE) -g pykythe:my_run_tests -t halt pykythe/pykythe.pl \
+	$(SWIPL_EXE) -g pykythe:pykythe_run_tests -t halt pykythe/pykythe.pl \
 		-- $(PYTHONPATH_OPT) test_data/dummy_dir/dummy_file.py
 
 $(PYKYTHE_EXE): pykythe/*.pl pykythe_test

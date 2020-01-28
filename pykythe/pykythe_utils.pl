@@ -24,10 +24,11 @@
                           log_if/3,
                           maybe_absolute_dir/2,
                           maybe_open_read/2,
-                          my_json_read_dict/2,
                           opts_dict/2,
                           opts_dict/3,
                           print_term_cleaned/3,
+                          pykythe_json_read_dict/2,
+                          pykythe_tmp_file_stream/4,
                           remove_prefix/3,
                           remove_suffix/3,
                           remove_suffix_star/3,
@@ -38,6 +39,7 @@
                           write_atomic_file/2,
                           write_atomic_stream/2
                          ]).
+:- encoding(utf8).
 
 :- meta_predicate
        do_if(0, 0),
@@ -204,7 +206,7 @@ hash_hex(Text, Hex) :-
 %% is FactName and unify the entire term with Dict) - throws an error
 %% if validation fails.
 json_read_dict_validate(KytheInputStream, FactName, Dict) :-
-    my_json_read_dict(KytheInputStream, Dict),
+    pykythe_json_read_dict(KytheInputStream, Dict),
     ensure_dict_fact(Dict, fact_name, FactName).
 
 %! json_write_dict_nl(+KytheStream:stream, +JsonAsDict:json_dict) is det.
@@ -242,12 +244,12 @@ maybe_open_read_impl(Path, InputStream) :-
           error(existence_error(source_sink, Path), _),
           fail).
 
-%! my_json_read_dict(+Stream, -Dict) is det.
+%! pykythe_json_read_dict(+Stream, -Dict) is det.
 %% Wrapper on library(http/json, [json_read_dict/2]) that sets the
 %% dict tags to 'json' (json_read_dict/2 leaves the tag as an
 %% uninstantiated variable).  And gets strings as atoms. And
 %% handles true/false.
-my_json_read_dict(Stream, Dict) :-
+pykythe_json_read_dict(Stream, Dict) :-
     json_read_dict(Stream, Dict, [value_string_as(atom), end_of_file(@(end)), default_tag(json),
                                   true(#(true)),false(#(false)),null(#(null))]).
 
@@ -313,6 +315,19 @@ maybe_absolute_dir(Path0, AbsPath) :-
 term_to_canonical_atom(Term, Atom) :-
     format(atom(Atom), '~k', [Term]).
 
+%! pykythe_tmp_file_stream(+Dir, -FileName, -Stream, +Options) is det.
+%% Like tmp_file_stream/3, but allows specifying a directory rather
+%% than using TMPDIR or similar. Also creates Dir if needed.
+pykythe_tmp_file_stream(Dir, FileName, Stream, Options) :-
+    make_directory_path(Dir),
+    with_mutex(
+        tmp_dir_lock,
+        ( current_prolog_flag(tmp_dir, SaveTmpDir),
+          set_prolog_flag(tmp_dir, Dir),
+          tmp_file_stream(FileName, Stream, Options),
+          set_prolog_flag(tmp_dir, SaveTmpDir)
+        )).
+
 %! write_atomic_stream(:WritePred, +Path:atom) is semidet.
 %% Write to a file "atomically" -- that is, if another process is
 %% trying to write to the same file, there will be no collision (it is
@@ -343,16 +358,15 @@ write_atomic_stream(WritePred, Path) :-
     %% (see swipl-devel/src/os/pl-os.c), and that doesn't happen if
     %% we roll our own.
     directory_file_path(PathDir, _, Path),
-    make_directory_path(PathDir),
-    tmp_file_stream(TmpPath, Stream, [encoding(utf8)]), % implies open [type(binary)]
+    pykythe_tmp_file_stream(PathDir, TmpPath, Stream, [encoding(utf8)]), % implies open [type(binary)]
     %% TODO: instead of at_halt/1, use setup_call_cleanup/3
     at_halt(pykythe_utils:safe_delete_file(TmpPath)), % in case WritePred crashes or fails
     (  call(WritePred, Stream)
-    -> close(Stream),
-       %% atomically rename file -- this prevents a race condition if
+    -> %% atomically rename file -- this prevents a race condition if
        %% two pykythe processes are processing the same file at the
        %% same time.
-       rename_file(TmpPath, Path)
+       rename_file(TmpPath, Path),
+       close(Stream)
     ;  close(Stream),
        pykythe_utils:safe_delete_file(TmpPath),
        fail
@@ -364,14 +378,14 @@ write_atomic_stream(WritePred, Path) :-
 %% WritePred must take the stream as its last argument.
 write_atomic_file(WritePred, Path) :-
     directory_file_path(PathDir, _, Path),
-    make_directory_path(PathDir),
-    tmp_file_stream(TmpPath, Stream, [encoding(utf8)]), % implies open [type(binary)]
+    pykythe_tmp_file_stream(PathDir, TmpPath, Stream, [encoding(utf8)]), % implies open [type(binary)]
     %% TODO: instead of setting up at_halt, use setup_call_cleanup/3
     at_halt(pykythe_utils:safe_delete_file(TmpPath)), % in case WritePred crashes or fails
-    close(Stream),
     (  call(WritePred, TmpPath)
-    -> rename_file(TmpPath, Path)
-    ;  pykythe_utils:safe_delete_file(TmpPath),
+    -> rename_file(TmpPath, Path),
+       close(Stream)
+    ;  close(Stream),
+       pykythe_utils:safe_delete_file(TmpPath),
        fail
     ).
 

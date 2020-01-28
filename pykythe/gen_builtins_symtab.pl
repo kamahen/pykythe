@@ -25,6 +25,7 @@
 
 
 :- module(gen_builtins_symtab, [gen_builtins_symtab_main/0]).
+:- encoding(utf8).
 
 :-use_module(library(lists), [append/3, member/2]).
 :- use_module(library(apply), [convlist/3, exclude/3, maplist/3]).
@@ -147,7 +148,7 @@ read_symtab_from_cache(PykytheSymtabInputStream, SymtabFromCache) :-
     must_once(is_symtab(SymtabFromCache)).
 
 read_package_from_cache(KytheInputStream, Package) :-
-    my_json_read_dict(KytheInputStream, JsonDict),
+    pykythe_json_read_dict(KytheInputStream, JsonDict),
     (  JsonDict.fact_name == '/kythe/node/kind',
        base64_utf8(package, JsonDict.fact_value)
     -> Package = JsonDict.source.signature,
@@ -156,7 +157,7 @@ read_package_from_cache(KytheInputStream, Package) :-
     ).
 
 ensure_no_more_package_facts(KytheInputStream, Package) :-
-    my_json_read_dict(KytheInputStream, JsonDict),
+    pykythe_json_read_dict(KytheInputStream, JsonDict),
     (  JsonDict == @(end)
     -> true
     ;  JsonDict.fact_name == '/kythe/node/kind',

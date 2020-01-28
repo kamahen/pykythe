@@ -15,6 +15,7 @@
                            symtab_pairs/2,
                            symtab_values/2
                           ]).
+:- encoding(utf8).
 
 :- meta_predicate
        conv_symtab(2, +, -),
