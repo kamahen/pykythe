@@ -7,6 +7,8 @@
 
 :- encoding(utf8).
 
+:- set_prolog_flag(autoload, false).
+
 builtins_version('${VERSION}').
 
 %% TODO: for Python 2: basestring, unicode, long, xrange, buffer (is this all?)

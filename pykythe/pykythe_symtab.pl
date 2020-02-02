@@ -16,6 +16,7 @@
                            symtab_values/2
                           ]).
 :- encoding(utf8).
+%% :- set_prolog_flag(autoload, false).  % TODO: breaks qsave
 
 :- meta_predicate
        conv_symtab(2, +, -),

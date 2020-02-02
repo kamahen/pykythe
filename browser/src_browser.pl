@@ -12,7 +12,6 @@
 :- use_module(library(http/http_server), [http_server/1,
                                           reply_html_page/2,
                                           http_read_json_dict/3,
-                                          reply_json_dict/1,
                                           reply_json_dict/2, % TODO: Options=[status(201)]
                                           http_redirect/3 % TODO: commented out below
                                           ]).
@@ -39,14 +38,20 @@
 %% The "base" Kythe facts, which are dynamically loaded at start-up.
 :- dynamic kythe_node/7, kythe_edge/11.
 
-%% Convenience predicates for access the base Kythe facts,
+%% Convenience predicates for accessing the base Kythe facts,
 %% using vname(Signature, Corpus, Root, Path, Language).
-
+%% We also define vname0: Corpus, Root, Path, Language
+%! kythe_node(Source: vname, FactName:atom, FactValue:atom) is nondet.
 kythe_node(vname(Signature, Corpus, Root, Path, Language),
            FactName, FactValue) :-
     kythe_node(Signature, Corpus, Root, Path, Language,
                FactName, FactValue).
 
+%! kythe_edge(Source: vname, EdgeKind:atom, Target:vname).
+%% Kythe facts are of one of these forms:
+%%   (source, edge, target, /, "")
+%%   (source, edge, target, /kythe/ordinal, base10string)
+%%   (source, "", "", string, _)
 kythe_edge(vname(Signature1, Corpus1, Root1, Path1, Language1),
            Edge,
            vname(Signature2, Corpus2, Root2, Path2, Language2)) :-
@@ -81,7 +86,7 @@ kythe_edge(vname(Signature1, Corpus1, Root1, Path1, Language1),
 
 % :- debug.                       % TODO: remove
 
-%% :- initialization main.  % TODO: restore this.
+%% :- initialization main.  % TODO: restore this - currently it's in Makefile
 
 :- multifile http:location/3.
 :- multifile user:file_search_path/2.
@@ -113,7 +118,10 @@ assert_server_locations(Opts) :-
     asserta(user:file_search_path(static, Opts.staticdir)).
 
 read_and_assert_kythe_facts :-
-    unload_file(files('kythe_facts.pl')),
+    %% DO NOT SUBMIT - verify this and report
+    %% TODO: files('kythe_facts') results in bogus
+    %%       "recompiling QLF file (incompatible with current Prolog version)"
+    unload_file(files('kythe_facts.pl')),  % DO NOT SUBMIT - qlf
     load_files([files('kythe_facts.pl')],
                [silent(false),
                 imports([kythe_node/7,
@@ -180,13 +188,21 @@ my_http_reply_from_files(Dir, Opts, Request0) :-
 
 reply_with_json(Request) :-
     %% print_term_cleaned(Request, [], RequestPretty),
+    %% TODO: why doesn't thead_cputime give non-zero value?
+    statistics(cputime, T0),
     memberchk(method(post), Request),
-    % debug(log, 'Request-JSON(handle)0: ~q', [Request]),
     my_http_read_json_dict(Request, DictIn), %% [content_type("application/json")]),
-    % debug(log, 'Request-JSON(handle): ~q', [DictIn]),
+    statistics(cputime, T1),
+    Tdelta1 is T1 - T0,
+    debug(timing, 'Request-JSON: ~q [~3f sec]', [DictIn, Tdelta1]),
     json_response(DictIn, DictOut),
-    % debug(log, 'Request(handle): ~q => ~q', [DictIn, DictOut]),
-    reply_json_dict(DictOut).
+    statistics(cputime, T2),
+    Tdelta2 is T2 - T1,
+    debug(timing, 'Request-response: ~q [~3f sec]', [DictIn, Tdelta2]),
+    reply_json_dict(DictOut, [width(0)]), % TODO: this is the most expensive part
+    statistics(cputime, T3),
+    Tdelta3 is T3 - T2,
+    debug(timing, 'Request-reply: ~q [~3f sec]', [DictIn, Tdelta3]).
 
 json_response(json{fetch:FileName},
               json_result{file:FileName,
@@ -194,8 +210,6 @@ json_response(json{fetch:FileName},
     !,
     % TODO: catch error(existence_error(source_sink,...),_)
     read_file_to_string(files(FileName), Contents, []).
-    % string_length(Contents, ContentsLen),
-    % debug(log, 'json_response: ~q => ~d chars', [FileName, ContentsLen]).
 
 json_response(json{anchor: json{signature: Signature,
                                 corpus: Corpus, root: Root,
@@ -213,6 +227,17 @@ json_response(json{anchor: json{signature: Signature,
     link_to_dict(Semantic, SemanticJson),
     maplist(pair_to_json(kind, value), SemanticNodeValues, SemanticNodeValuesJson),
     maplist(group_to_dict, EdgeLinks, EdgeLinksJson).
+json_response(json{src_browser_file:
+                  json{corpus:Corpus, root:Root, path:Path}},
+              Contents) :-
+    !,
+    get_color_data_one_file(Corpus, Root, Path, Contents).
+json_response(json{src_file_tree: _}, PathTreeJson) :-
+    !,
+    setof(Path, file_path(Path), PathNames),
+    %% path_tree(PathTree), % DO NOT SUBMIT - delete
+    files_to_tree(PathNames, PathTree),
+    tree_to_json(PathTree, PathTreeJson).
 json_response(Request) :-
     debug(log, 'JSON_RESPONSE fail: ~q~n', [Request]),
     fail.
@@ -251,19 +276,6 @@ anchor_link_anchor(AnchorVname1, Edge1, Semantic, Edge2, AnchorVname2) :-
     kythe_edge(AnchorVname2, Edge2, Semantic),
     kythe_node(AnchorVname2, '/kythe/node/kind', 'anchor').
 
-
-kythe_file(Corpus, Root, Path, Language) :-
-    kythe_node(vname('',Corpus,Root,Path,_), '/kythe/node/kind', file),
-    (  kythe_node(vname('',Corpus,Root,Path,_), '/kythe/language', Language)
-    -> true
-    ;  file_name_extension(_, Extension, Path),
-       guess_language(Extension, Language)
-    ).
-
-guess_language(py, python).
-guess_language(Extension, _) :-
-    domain_error(file_name_extension, Extension).
-
 anchor_links(AnchorVname1, Semantic, SemanticNodeValues, SortedLinks) :-
     %% TODO: filter Edge1 by anchor_out_edge?
     (  setof(Edge2-AnchorVname2flipped,
@@ -301,3 +313,197 @@ anchor_out_edge('%/kythe/edge/defines').
 anchor_out_edge('%/kythe/edge/defines/binding').
 anchor_out_edge('%/kythe/edge/ref').
 anchor_out_edge('%/kythe/edge/ref/call').
+
+%% TODO: currently unused
+kythe_anchor(Vname, Start, End, Token) :-
+    kythe_node(Vname, '/kythe/node/kind', anchor),
+    kythe_node(Vname, '/kythe/loc/start', StartStr),
+    kythe_node(Vname, '/kythe/loc/end', EndStr),
+    term_string(Start, StartStr),
+    term_string(End, EndStr),
+    Len is End - Start,
+    Vname = vname(_, Corpus, Root, Path, _),
+    kythe_node(vname('', Corpus, Root, Path, _), '/kythe/text', SourceText),
+    sub_string(SourceText, Start, Len, _, TokenStr),
+    atom_string(Token, TokenStr).
+
+%% TODO: currently unused
+test_anchor_and_edges :-
+    test_get_facts,
+    forall((kythe_anchor(Vname, Start, End, Token),
+            setof(Edge-Target, node_and_edge(Vname, Edge, Target), Edges),
+            Edges = [_,_|_]),
+           format('~q~n', [Vname:Start:End:Token:Edges])).
+
+%% TODO: Escape '/' in Corpus, Root
+file_path(CombinedPath) :-
+    kythe_file(Corpus, Root, Path, _Language),
+    %% TODO: escape '/' inside Corpus, Root
+    format(atom(CombinedPath), '~w/~w/~w', [Corpus, Root, Path]).
+
+kythe_file(Corpus, Root, Path, Language) :-
+    kythe_node(vname('',Corpus,Root,Path,_), '/kythe/node/kind', file),
+    (  kythe_node(vname('',Corpus,Root,Path,_), '/kythe/language', Language)
+    -> true
+    ;  file_name_extension(_, Extension, Path),
+       guess_language(Extension, Language)
+    ).
+
+guess_language(py, python).
+guess_language(Extension, _) :-
+    domain_error(file_name_extension, Extension).
+
+tree_to_json([X|Xs], Ys) :-
+    maplist(tree_to_json, [X|Xs], Ys).
+tree_to_json(file(N,Path), json([type=file, name=N, path=Path])).
+tree_to_json(dir(N,Path,Children), json([type=dir, name=N, path=Path, children=ChildrenDict])) :-
+    tree_to_json(Children, ChildrenDict).
+
+get_color_data_one_file(Corpus, Root, Path,
+                        json{corpus:Corpus, root:Root, path:Path, language:Language,
+                             lines:ColorTextLines}) :-
+    kythe_file(Corpus,Root,Path,Language),
+    Vname0 = vname0(Corpus,Root,Path,Language),
+    setof(ColorTextStr,
+          ( kythe_node(vname('',Corpus,Root,Path,Lang), '/pykythe/color', ColorTextStr),
+            ( Lang = Language; Lang = '')),
+          ColorTextStrs),
+    (  ColorTextStrs = [ColorTextStr]
+    -> true
+    ;  throw('Multiple /pykythe/color':Vname0)
+    ),
+    catch(term_string(ColorText, ColorTextStr),
+           Err,
+           ( ColorText = [],
+             debug(log, 'ERROR: ~q in ~q', [Err, ColorTextStr]))),
+    maplist(lineno_and_chunk, ColorText, LineNoAndChunk0),
+    keysort(LineNoAndChunk0, LineNoAndChunk),
+    group_pairs_by_key(LineNoAndChunk, ColorTextLines0),
+    maplist(add_links(Vname0), ColorTextLines0, ColorTextLines1), % concurrent gives slight slow-down
+    pairs_values(ColorTextLines1, ColorTextLines).
+
+lineno_and_chunk(Chunk, LineNo-Chunk) :-
+    LineNo = Chunk.lineno.
+
+add_links(Vname0, LineNo-Items, LineNo-AppendedItems) :-
+    maplist(add_link(Vname0), Items, AppendedItems).
+
+add_link(Vname0, Item, ItemWithEdges) :-
+    Signature = Item.signature,
+    %% There can be multiple edges with the same label (but different
+    %% targets, so leave as a list and don't combine into a dict.
+    (  setof(json{edge:Edge,target:TargetJson},
+             node_and_edge_json(Signature, Vname0, Edge, TargetJson),
+             Edges)
+    -> true
+    ;  Edges = []
+    ),
+    put_dict(edges, Item, Edges, ItemWithEdges).
+
+node_and_edge_json(Signature, Vname0, Edge, TargetJson) :-
+    node_and_edge(Signature, Vname0, Edge, Target),
+    vname_json(Target, TargetJson).
+
+node_and_edge(Signature, Vname0, Edge, Target) :-
+    vname_vname0(Vname, Signature, Vname0),
+    node_and_edge(Vname, Edge, Target).
+
+node_and_edge(Vname, Edge, Target) :-
+    kythe_edge(Vname, Edge, Target).
+node_and_edge(Vname, Edge, Target) :-
+    kythe_edge(Target, ReverseEdge, Vname),
+    reverse_edge_name(ReverseEdge, Edge).
+
+reverse_edge_name(Edge, ReverseEdge) :-
+    atom_concat('%', Edge, ReverseEdge).
+
+vname_json(vname(Signature,Corpus,Root,Path,Language),
+           json{signature:Signature,corpus:Corpus,root:Root,path:Path,language:Language}).
+
+vname_vname0(vname(Signature,Corpus,Root,Path,Language),
+             Signature,
+             vname0(Corpus,Root,Path,Language)).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Transform a list of file names to a tree for browser.
+
+files_to_tree(Files, Tree) :-
+    maplist(split_on_slash, Files, SplitFiles),
+    list_to_tree(SplitFiles, [], Tree).
+
+split_on_slash(Str, Split) :-
+    split_string(Str, '/', '', SplitStr),
+    maplist(string_atom, SplitStr, Split0),
+    once(append(First, [Last], Split0)), % like last/2 but also gets first part.
+    maplist(wrap_dir, First, FirstWrapped),
+    append(FirstWrapped, [file(Last)], Split).
+
+wrap_dir(Dir, dir(Dir)).
+
+string_atom(Str, Atom) :- atom_string(Atom, Str).
+
+list_to_tree(List, Prefix, Tree) :-
+    maplist(head_tail_pair, List, HeadTail),
+    keysort(HeadTail, HeadTailSorted),
+    group_pairs_by_key(HeadTailSorted, HeadTailGroup),
+    maplist(subtree(Prefix), HeadTailGroup, Tree).
+
+subtree(Prefix, Item-Sublist, Result) :-
+    subtree_(Item, Sublist, Prefix, Result).
+
+subtree_(dir(Dir), Sublist, Prefix, dir(Dir,Path,Children)) :-
+    append(Prefix, [Dir], Prefix2),
+    atomic_list_concat(Prefix2, '/', Path),
+    list_to_tree(Sublist, Prefix2, Children).
+subtree_(file(File), [[]], Prefix, file(File,Path)) :-
+    append(Prefix, [File], Prefix2),
+    atomic_list_concat(Prefix2, '/', Path).
+
+head_tail_pair([Hd|Tl], Hd-Tl).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- use_module(library(plunit)).
+
+:- begin_tests(file_tree).
+
+t1(Ftree) :-
+    F = ['x',
+         'a/b/x1',
+         'a/b/x2',
+         'a/c',
+         'a/d/e/x3'
+        ],
+    files_to_tree(F, Ftree),
+    tree_to_json(Ftree, FtreeJson),
+    with_output_to(atom(JsonAtom),
+                   (current_output(JsonStream),
+                    pykythe_json_write_dict_nl(JsonStream, FtreeJson))),
+    %% format('~w~n', [JsonAtom]),
+    assertion(JsonAtom == '[ {"type":"dir", "name":"a", "path":"a", "children": [ {"type":"dir", "name":"b", "path":"a/b", "children": [ {"type":"file", "name":"x1", "path":"a/b/x1"},  {"type":"file", "name":"x2", "path":"a/b/x2"} ]},  {"type":"dir", "name":"d", "path":"a/d", "children": [ {"type":"dir", "name":"e", "path":"a/d/e", "children": [ {"type":"file", "name":"x3", "path":"a/d/e/x3"} ]} ]},  {"type":"file", "name":"c", "path":"a/c"} ]},  {"type":"file", "name":"x", "path":"x"} ]\n').
+
+test(f1, [true]) :-
+    t1(Ftree),
+    assertion(
+              [dir(a, 'a',
+                   [dir(b, 'a/b',
+                        [file(x1, 'a/b/x1'), file(x2, 'a/b/x2')]
+                       ),
+                    dir(d, 'a/d',
+                        [
+                         dir(e, 'a/d/e',
+                             [file(x3, 'a/d/e/x3')]
+                            )
+                        ]
+                       ),
+                    file(c, 'a/c')
+                   ]
+                  ),
+               file(x, 'x')
+              ]
+             = Ftree).
+
+:- end_tests(file_tree).
+
+end_of_file.

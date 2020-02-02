@@ -37,12 +37,10 @@ class ColorFile:
     def color(self) -> List[Color]:
         """Traverse parse tree, outputting Color nodes."""
         color_list = list(self._color()) if self.src_file and self.parse_tree else []
-        # TODO: remove this validation:  # DO NOT SUBMIT
-        if False and color_list:  # DO NOT SUBMIT: enable this
-            assert color_list[0].astn.start == 0, [color_list[0]]
-            for i in range(1, len(color_list)):
-                assert color_list[i - 1].astn.end == color_list[i].astn.start, (i,
-                                                                                color_list[:i + 1])
+        # DO NOT SUBMIT - remove this validation:
+        assert not color_list or color_list[0].astn.start == 0, [color_list[0]]
+        for i in range(1, len(color_list)):
+            assert color_list[i - 1].astn.end == color_list[i].astn.start, (i, color_list[:i + 1])
         return color_list
 
     def _color(self) -> Iterable[Color]:

@@ -188,6 +188,7 @@
 :- module(pykythe, [pykythe_main/0]).
 :- encoding(utf8).
 
+:- set_prolog_flag(autoload, true). % For the library modules
 %% :- use_module(library(apply_macros).  % TODO: for performance (also maplist_kyfact_symrej etc)
 :- use_module(c3, [mro/2]).
 :- use_module(library(aggregate), [aggregate_all/3, foreach/2]).
@@ -208,7 +209,10 @@
 :- use_module(library(prolog_stack)).  % For catch_with_backtrace
 :- use_module(library(readutil), [read_file_to_string/3]).
 :- use_module(library(utf8), [utf8_codes/3]).
-:- use_module(library(yall)).
+
+%% Many of the libraries need autoload, so put our autoload here:
+%% :- set_prolog_flag(autoload, false).   % TODO: breaks qsave
+
 :- use_module(module_path).
 :- use_module(must_once, [must_once/1, must_once_msg/2, must_once_msg/3, fail/1,
                           must_once/3 as must_once_symrej]).
@@ -244,6 +248,7 @@
 
 :- if(true).  % Turning off rdet can sometimes make debugging easier.
 
+:- set_prolog_flag(autoload, true).
 %% Higher-level predicates that we use deterministically.
 %% Can't use rdet with them because that generates an error
 %%     No permission to redefine imported_procedure `apply:convlist/3'
@@ -397,15 +402,8 @@
                   %% write_to_protobuf/4,  % Is det, but expansion confuses write_atomic_file/2.
                   %% write_kythe_facts/3  % TODO: failed to analyse
                  ]).
-
+%% :- set_prolog_flag(autoload, false).      % TODO: breaks qsave
 :- endif.
-
-%% The autoload directive needs to be after rdet/1 is used once, to
-%% allow its autoload to get rdet:debug.
-%% The "-O" flag changes things slightly; the following directive
-%% needs to be here (and not earlier) with "-O".
-
-%% :- set_prolog_flag(autoload, false). % See comment in pykythe_utils:pykythe_json_read_dict/2.  % TODO: for saved state
 
 %% "kyfact" accumulator gets FQN anchor facts, in an ordinary list
 %% with each value being a dict to be output in JSON (and eventually
@@ -1201,7 +1199,7 @@ write_kythe_facts(KytheFacts, KytheOutStream) :-
 
 transform_and_write_kythe_fact(KytheOutStream, KytheFact) :-
     transform_kythe_fact(KytheFact, KytheFact2),
-    json_write_dict_nl(KytheOutStream, KytheFact2).
+    pykythe_json_write_dict_nl(KytheOutStream, KytheFact2).
 
 %! write_batch_symtab(+Symtab, +Version, +PykytheBatchOutStream) is det.
 %% If you change this code, also change gen_builtins_symtab.pl
@@ -3464,3 +3462,5 @@ test(kyImportDottedAsNamesFqn_as) :-
                                                          Module_os_path]}]).
 
 :- end_tests(dev).
+
+end_of_file.

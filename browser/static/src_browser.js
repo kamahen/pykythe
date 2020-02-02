@@ -12,11 +12,8 @@ var g_anchor_edges = [];
 
 // TODO: use window.location.assign(window.location.assign + '?' + ...)
 
-// list of corpus,root,path tuples - set by dynamic load from server
-// TODO: should become a dict
-var g_corpus_root_path_filename = null;
-
 // tree of dir/file entries - set by dynamic load from server
+// TODO: can we get rid of this (singleton) global?
 var g_file_tree = null;
 
 // Look up edges that match an anchor signature (click/mouseover target.id)
@@ -76,38 +73,36 @@ const is_token_name = {
 // Callback from <body onload=intialize();">
 function initialize() {
     // https://developers.google.com/web/updates/2016/01/urlsearchparams
+    // TODO: process file name, line number
     console.log('QUERY: ' + window.location.search);
     const params = new URLSearchParams(location.search);
-    fetch_from_server({fetch: 'FILETREE.json'},
+    fetch_from_server({src_file_tree: ''},
                       data => set_file_tree(data, params.get('file') || ''));
-    fetch_from_server({fetch: 'FILES.json'},
-                      data => set_corpus_root_path_filename(data));
 }
 
 // Callback from file tree navigation click, to load a file into the
 // file_nav_element() via set_src_txt_impl.
 function load_new_file(corpus_root_path) {
+    // TODO: should have corpus and root as separate, or with '/' escaped.
     const corpus_root_path_split = corpus_root_path.split('/');
     const corpus = corpus_root_path_split[0];
     const root = corpus_root_path_split[1];
     const path = corpus_root_path_split.slice(2).join('/');
-    const src_browser_file = find_file(corpus, root, path);
-    if (!src_browser_file) {
-        window.alert("Can't load " + path);
-    } else {
-        var progress = document.createElement('span');
-        progress.innerHTML = '&nbsp;&nbsp;&nbsp;Fetching file ' + sanitize_text(corpus_root_path) + ' ...';
-        file_nav_element().appendChild(progress);
-        fetch_from_server({fetch: src_browser_file},
-                          data => set_src_txt_impl(corpus, root, path, data));
-    }
+    var progress = document.createElement('span');
+    progress.innerHTML = '&nbsp;&nbsp;&nbsp;Fetching file ' + sanitize_text(corpus_root_path) + ' ...';
+    file_nav_element().appendChild(progress);
+    // TODO: alert if fetch fails
+    fetch_from_server(
+        {src_browser_file: {
+            corpus: corpus, root: root, path: path}},
+        data => set_src_txt_impl(corpus, root, path, data));
 }
 
-// Callback from loading FILETREE.json, for displaying the file navigation tree
+// Callback from fetch_from_server({src_file_tree: ''}), for displaying the file navigation tree
 function set_file_tree(file_tree_from_server, initial_path) {
     // path starts with 'corpus/root/...'
     // DO NOT SUBMIT -- shouldn't do the double parse
-    g_file_tree = JSON.parse(file_tree_from_server.contents);
+    g_file_tree = file_tree_from_server;
     display_file_tree(initial_path);
 }
 
@@ -197,29 +192,9 @@ function add_dropdown_option(dropdown, text, id) {
     dropdown.add(option);
 }
 
-// Callback from fetching FILES.json
-function set_corpus_root_path_filename(corpus_root_path_filename_from_server) {
-    // DO NOT SUBMIT -- shouldn't do the double parse
-    g_corpus_root_path_filename = JSON.parse(corpus_root_path_filename_from_server.contents);
-}
-
-// Lookup a file path, getting the name of a file to request from the server
-// Returns null on failure.
-function find_file(corpus, root, path) {
-    for (const fn of g_corpus_root_path_filename) {
-        if (fn.corpus === corpus &&
-            fn.root === root &&
-            fn.path === path) {
-            return fn.filename;
-        }
-    }
-    return null;
-}
-
 // Callback from server fetch of a single source file (from load_new_file)
-function set_src_txt_impl(corpus, root, path, color_data_str) {
+function set_src_txt_impl(corpus, root, path, color_data) {
     file_nav_element().lastChild.innerHTML = 'Rendering file ' + corpus + '/' + root + '/' + path + '...';
-    const color_data = JSON.parse(color_data_str.contents);
     var table = document.createElement('table');
     table.setAttribute('class', 'src_table');
     for (var line_key = 1; line_key <= color_data.lines.length; line_key++) {
@@ -351,7 +326,6 @@ function sanitize_text(raw_str) {
 function fetch_from_server(request, callback) {
     // callback should take a single arg, the response from the server,
     // e.g.: json_data => set_corpus_root_path_filename(json_data))
-    console.log('FETCH ' + JSON.stringify(request));
     fetch('/json',
           {method: 'POST',
            headers: {'Content-Type': 'application/json'},

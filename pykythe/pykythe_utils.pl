@@ -19,7 +19,6 @@
                           has_suffix/2,
                           hash_hex/2,
                           json_read_dict_validate/3,
-                          json_write_dict_nl/2,
                           log_if/2,
                           log_if/3,
                           maybe_absolute_dir/2,
@@ -28,6 +27,7 @@
                           opts_dict/3,
                           print_term_cleaned/3,
                           pykythe_json_read_dict/2,
+                          pykythe_json_write_dict_nl/2,
                           pykythe_tmp_file_stream/4,
                           remove_prefix/3,
                           remove_suffix/3,
@@ -40,6 +40,7 @@
                           write_atomic_stream/2
                          ]).
 :- encoding(utf8).
+%% :- set_prolog_flag(autoload, false).  % TODO: breaks qsave
 
 :- meta_predicate
        do_if(0, 0),
@@ -53,6 +54,8 @@
 :- style_check(+no_effect).
 :- style_check(+discontiguous).
 
+:- set_prolog_flag(autoload, true). % For the library modules
+:- use_module(library(rdet), [rdet/1]).
 :- use_module(library(apply), [maplist/2, maplist/3]).
 :- use_module(library(error)).
 :- use_module(library(base64), [base64/2 as base64_ascii]).
@@ -60,15 +63,17 @@
 :- use_module(library(filesex), [make_directory_path/1, directory_file_path/3]).
 :- use_module(library(pprint), [print_term/2]).
 :- use_module(library(rbtrees), [ord_list_to_rbtree/2, rb_insert/4, rb_visit/2] ).
-:- use_module(library(rdet), [rdet/1]).
 :- use_module(library(sha), [sha_hash/3, hash_atom/2]).
-:- use_module(library(yall)).
+:- use_module(library(yall)).   % For [S,A]>>atom_string(A,S) etc.
 :- style_check(-var_branches).
 :- use_module(library(http/json), [json_read_dict/3, json_write_dict/3]).
 :- style_check(+var_branches).
 :- style_check(-var_branches).
 :- use_module(library(pcre), [re_replace/4]).
 :- style_check(+var_branches).
+
+%% :- set_prolog_flag(autoload, false). % TODO: breaks qsave
+
 :- use_module(must_once, [must_once/1, must_once_msg/2, must_once_msg/3, fail/1]).
 
 :- style_check(+singleton).
@@ -80,6 +85,7 @@
 
 :- if(true).  % Turning off rdet can sometimes make debugging easier.
 
+:- set_prolog_flag(autoload, true).
 :- maplist(rdet, [
                   %% base64_string/2, % handled by must_once
                   %% do_if/2,    % rdet wrap interferes with meta_predicate declaration
@@ -94,7 +100,7 @@
                   %% write_atomic_stream/2, % rdet wrap interferes with meta_predicate declaration
                   %% write_atomic_file/2    % rdet wrap interferes with meta_predicate declaration
                  ]).
-
+%% :- set_prolog_flag(autoload, false).   % TODO: breaks qsave
 :- endif.
 
 %! absolute_file_name_rel(+File, -Absolute) is det.
@@ -209,13 +215,14 @@ json_read_dict_validate(KytheInputStream, FactName, Dict) :-
     pykythe_json_read_dict(KytheInputStream, Dict),
     ensure_dict_fact(Dict, fact_name, FactName).
 
-%! json_write_dict_nl(+KytheStream:stream, +JsonAsDict:json_dict) is det.
+%! pykythe_json_write_dict_nl(+KytheStream:stream, +JsonAsDict:json_dict) is det.
 %% Output a single Kythe fact.
-json_write_dict_nl(KytheStream, JsonAsDict) :-
+pykythe_json_write_dict_nl(KytheStream, JsonAsDict) :-
     %% The tags are ignored unless option tag(type) is specified
     %% (which it isn't). All dicts should have the tag 'json', for
     %% simplicity.
-    json_write_dict(KytheStream, JsonAsDict, [width(0),true(#(true)),false(#(false)),null(#(null))]),
+    json_write_dict(KytheStream, JsonAsDict,
+                    [width(0),true(#(true)),false(#(false)),null(#(null))]),
     nl(KytheStream).
 
 log_if(Cond, Fmt) :- log_if(Cond, Fmt, []).
@@ -320,13 +327,12 @@ term_to_canonical_atom(Term, Atom) :-
 %% than using TMPDIR or similar. Also creates Dir if needed.
 pykythe_tmp_file_stream(Dir, FileName, Stream, Options) :-
     make_directory_path(Dir),
-    with_mutex(
-        tmp_dir_lock,
-        ( current_prolog_flag(tmp_dir, SaveTmpDir),
-          set_prolog_flag(tmp_dir, Dir),
-          tmp_file_stream(FileName, Stream, Options),
-          set_prolog_flag(tmp_dir, SaveTmpDir)
-        )).
+    %% {set,current}_prolog_flag is copied to a thread, so
+    %% no need to use a mutex.
+    current_prolog_flag(tmp_dir, SaveTmpDir),
+    set_prolog_flag(tmp_dir, Dir),
+    tmp_file_stream(FileName, Stream, Options),
+    set_prolog_flag(tmp_dir, SaveTmpDir).
 
 %! write_atomic_stream(:WritePred, +Path:atom) is semidet.
 %% Write to a file "atomically" -- that is, if another process is

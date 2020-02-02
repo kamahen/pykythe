@@ -26,15 +26,19 @@
 
 :- module(gen_builtins_symtab, [gen_builtins_symtab_main/0]).
 :- encoding(utf8).
+:- set_prolog_flag(autoload, true). % For the library modules
 
-:-use_module(library(lists), [append/3, member/2]).
+:- use_module(library(lists), [append/3, member/2]).
 :- use_module(library(apply), [convlist/3, exclude/3, maplist/3]).
 :- use_module(library(base64), [base64/2 as base64_ascii]).
 :- use_module(library(optparse), [opt_arguments/3]).
+
 :- use_module(module_path).
 :- use_module(must_once).
 :- use_module(pykythe_utils).
 :- use_module(pykythe_symtab).
+
+:- set_prolog_flag(autoload, false).
 
 :- load_files([bootstrap_builtins_symtab], [silent(true), % TODO: should be a module
                                             imports([builtins_symtab_primitive/2])]).

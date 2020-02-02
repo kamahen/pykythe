@@ -11,6 +11,8 @@
                       must_once/8,
                       fail/1]).
 :- encoding(utf8).
+%% :- set_prolog_flag(autoload, false).  % TODO: breaks qsave
+
 :- meta_predicate
        must_once(0),
        must_once_msg(0, +),

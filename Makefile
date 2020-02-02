@@ -330,8 +330,8 @@ etags: pykythe/TAGS
 pykythe/TAGS: pykythe/TAGS-py pykythe/TAGS-pl
 	cat pykythe/TAGS-pl pykythe/TAGS-py >$@
 
-pykythe/TAGS-pl: pykythe/*.pl tests/test_pykythe.py
-	cd pykythe ; etags -l prolog -o ../$@ *.pl ../scripts/*.pl
+pykythe/TAGS-pl: pykythe/*.pl tests/test_pykythe.py /usr/lib/swi-prolog/library/*.pl /usr/lib/swi-prolog/library/http/*.pl
+	cd pykythe ; etags -l prolog -o ../$@ *.pl ../scripts/*.pl /usr/lib/swi-prolog/library/*.pl /usr/lib/swi-prolog/library/http/*.pl
 
 pykythe/TAGS-py: pykythe/*.py
 	cd pykythe ; etags -l python -o ../$@ *.py tests/test_pykythe.py
@@ -533,10 +533,11 @@ make-json:
 	set -o pipefail; \
 	    cat $$(find $(KYTHEOUTDIR) -name '*.kythe.json' | \
 		egrep '/pykythe/test_data|/pykythe/pykythe/') /dev/null | \
-	    time $(SWIPL_EXE) -g get_and_print_color_text -t halt scripts/extract_color.pl -- \
+	    time $(SWIPL_EXE) -g get_and_print_color_text -t halt \
+		browser/kythe_json_to_prolog.pl -- \
 		--filesdir=$(TESTOUTDIR)/browser/files
-	@# ln browser/static/* $(TESTOUTDIR)/browser/
-	@# ln browser/static/no_browse.html $(TESTOUTDIR)/browser/index.html
+	@# DO NOT SUBMIT - the following should work:
+	@# $(SWIPL_EXE) -o $(TESTOUTDIR)/browser/files/kythe_facts.qlf -c $(TESTOUTDIR)/browser/files/kythe_facts.pl
 
 .PHONY: make-json-pretty
 make-json-pretty:
@@ -640,8 +641,8 @@ push_to_github:
 		--exclude snippets.py --exclude typescript.gz \
 		./ $(TESTGITHUB)/pykythe/
 	rsync -aAHX --delete ../kythe $(TESTGITHUB)/
+	@# $(RM) $(TESTOUTDIR)/browser/files/kythe_facts.pl
 	@# The following is for people who want to test run the soruce browser
-	find $(TESTOUTDIR) -name '*.json-pretty' -delete
 	cd $(TESTOUTDIR) && tar cjf $(TESTGITHUB)/pykythe/browser/browser_data.tjz browser
 	-cd $(TESTGITHUB)/pykythe && git status
 	-cd $(TESTGITHUB)/pykythe && git difftool --no-prompt --tool=tkdiff

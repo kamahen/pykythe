@@ -34,6 +34,7 @@
                         token_part/2
                        ]).
 :- encoding(utf8).
+%% :- set_prolog_flag(autoload, false).  % TODO: breaks qsave
 
 :- use_module(library(apply), [maplist/3]).
 :- use_module(library(filesex), [directory_file_path/3]).
@@ -54,6 +55,7 @@
 
 :- if(true).  % Turning off rdet can sometimes make debugging easier.
 
+:- set_prolog_flag(autoload, true).
 :- maplist(rdet, [
                   append_fqn_dot/2,
                   full_path/6,
@@ -70,7 +72,7 @@
                   split_fqn/2,
                   split_path/2
                   ]).
-
+%% :- set_prolog_flag(autoload, false). % TODO: breaks qsave
 :- endif.
 
 %! full_path(+FromDots, +Path, +Pythonpaths, +CurrModulePath, -ModuleAndMaybeToken, -ModulePieces:list(atom)) is det.

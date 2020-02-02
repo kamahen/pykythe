@@ -8,7 +8,7 @@ names (including handling of names that were marked "global" or
 
 ast_cooked defines an add_fqns() method for all the nodes, which
 resolves most names to fully qualified names (FQNs). Some nodes, when
-processesd by add_fqns, produce a slightly different form cotaining
+processesd by add_fqns, produce a slightly different form containing
 the FQN.
 
 The basic usage is (assuming cooked_nodes was created by
@@ -395,8 +395,7 @@ class AsNameNode(Base):
     as_name: Union['NameBindsNode', 'NameBindsFqn', 'NameBindsGlobalNode', 'NameBindsUnknown']
     __slots__ = ['name', 'as_name']
 
-    def __post_init__(self) -> None:  # DO NOT SUBMIT
-        # DO NOT SUBMIT - remove this test
+    def __post_init__(self) -> None:  # DO NOT SUBMIT - remove this validation
         assert isinstance(self.name, NameBareNode) and isinstance(
                 self.as_name,
                 (NameBindsNode, NameBindsFqn, NameBindsGlobalNode, NameBindsUnknown)), dict(
@@ -1126,8 +1125,7 @@ class ImportDottedAsNameFqn(Base):
     as_name: Union['NameBindsFqn', 'NameBindsUnknown']
     __slots__ = ['dotted_name', 'as_name']
 
-    def __post_init__(self) -> None:  # DO NOT SUBMIT
-        # DO NOT SUBMIT - remove this test
+    def __post_init__(self) -> None:  # DO NOT SUBMIT - remove this validation
         assert isinstance(self.as_name, (NameBindsFqn, NameBindsUnknown)), [
                 type(self.as_name), self.as_name]
 
@@ -1211,8 +1209,7 @@ class ImportDottedFqn(Base):
     top_name: 'NameBindsFqn'
     __slots__ = ['dotted_name', 'top_name']
 
-    def __post_init__(self) -> None:  # DO NOT SUBMIT
-        # DO NOT SUBMIT - remove this test
+    def __post_init__(self) -> None:  # DO NOT SUBMIT - remove this validation
         assert isinstance(self.top_name, NameBindsFqn), [type(self.top_name), self.top_name]
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
@@ -1773,8 +1770,7 @@ class TnameNode(Base):
     type_expr: Base
     __slots__ = ['name', 'type_expr']
 
-    def __post_init__(self) -> None:  # DO NOT SUBMIT
-        # DO NOT SUBMIT - remove this test
+    def __post_init__(self) -> None:  # DO NOT SUBMIT - remove this validation
         assert isinstance(self.name, (NameBindsNode, NameBindsFqn)), dict(name=type(self.name))
 
     def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
