@@ -370,3 +370,5 @@ join_path(PathParts, Path) :-
 
 append_fqn_dot(Fqn, FqnDot) :-
     atomic_list_concat([Fqn, '.'], FqnDot).
+
+end_of_file.

@@ -79,3 +79,5 @@ in_tail(X, [_|Tail]) :-
 %! remove_candidate(+Candidate:atom, +Seq:list(atom), -SeqOut:list(atom)) is det.
 remove_candidate(Candidate, [Candidate|Seq], Seq) :- !.
 remove_candidate(_, Seq, Seq).
+
+end_of_file.

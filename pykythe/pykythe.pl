@@ -3247,9 +3247,9 @@ statistic_kv(Key, Key:Value) :-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% tests %%%%%%%%%%%%%%%%
 %%
-%% Most tests are outside of this, using Kythe's verifier.
-%% However, a few tests are here, as they were used for
-%% developing the code, so why not keep them?
+%% Most tests are outside of this, using Kythe's verifier.  However, a
+%% few tests are here, as they were used for developing the code, so
+%% why not keep them?
 
 :- use_module(library(plunit)).
 

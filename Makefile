@@ -218,12 +218,13 @@ importlab:
 	../importlab/bin/importlab --tree --trim -P.. .
 
 .PHONY: pykythe_test
-pykythe_test: # $(TESTOUTDIR)/KYTHE/builtins_symtab.pl
+pykythe_test: # $(TESTOUTDIR)/KYTHE/builtins_symtab.pl tests/c3_tests.pl
 	mkdir -p $(PYTHONPATH_DOT) "$(PYTHONPATH_BUILTINS)"
 	@# "test_data/imports1.py" is used in the test suite and must be a real file
 	@# because absolute_file resolution uses the existence of the file.
 	$(SWIPL_EXE) -g pykythe:pykythe_run_tests -t halt pykythe/pykythe.pl \
 		-- $(PYTHONPATH_OPT) test_data/dummy_dir/dummy_file.py
+	$(SWIPL_EXE) -g run_tests -t halt tests/c3_tests.pl
 
 $(PYKYTHE_EXE): pykythe/*.pl pykythe_test
 	mkdir -p $(dir $@)
@@ -533,9 +534,10 @@ make-json:
 	set -o pipefail; \
 	    cat $$(find $(KYTHEOUTDIR) -name '*.kythe.json' | \
 		egrep '/pykythe/test_data|/pykythe/pykythe/') /dev/null | \
-	    time $(SWIPL_EXE) -g get_and_print_color_text -t halt \
+	    time $(SWIPL_EXE) -g main -t halt \
 		browser/kythe_json_to_prolog.pl -- \
 		--filesdir=$(TESTOUTDIR)/browser/files
+	time $(SWIPL_EXE) -g "qcompile('$(TESTOUTDIR)/browser/files/kythe_facts.pl')" -t halt
 	@# DO NOT SUBMIT - the following should work:
 	@# $(SWIPL_EXE) -o $(TESTOUTDIR)/browser/files/kythe_facts.qlf -c $(TESTOUTDIR)/browser/files/kythe_facts.pl
 
@@ -641,7 +643,9 @@ push_to_github:
 		--exclude snippets.py --exclude typescript.gz \
 		./ $(TESTGITHUB)/pykythe/
 	rsync -aAHX --delete ../kythe $(TESTGITHUB)/
-	@# $(RM) $(TESTOUTDIR)/browser/files/kythe_facts.pl
+	@# ensure "make make-json" has been done:
+	test -f $(TESTOUTDIR)/browser/files/kythe_facts.qlf
+	$(RM) $(TESTOUTDIR)/browser/files/kythe_facts.pl
 	@# The following is for people who want to test run the soruce browser
 	cd $(TESTOUTDIR) && tar cjf $(TESTGITHUB)/pykythe/browser/browser_data.tjz browser
 	-cd $(TESTGITHUB)/pykythe && git status

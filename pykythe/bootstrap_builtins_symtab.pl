@@ -54,4 +54,4 @@ builtins_symtab(Symtab) :-
 % symtab_pairs(Symtab, Pairs) :-
 %     dict_pairs(Symtab, symtab,  Pairs).
 
-
+end_of_file.

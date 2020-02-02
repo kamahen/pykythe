@@ -121,8 +121,8 @@ read_and_assert_kythe_facts :-
     %% DO NOT SUBMIT - verify this and report
     %% TODO: files('kythe_facts') results in bogus
     %%       "recompiling QLF file (incompatible with current Prolog version)"
-    unload_file(files('kythe_facts.pl')),  % DO NOT SUBMIT - qlf
-    load_files([files('kythe_facts.pl')],
+    unload_file(files('kythe_facts')),
+    load_files([files('kythe_facts')],
                [silent(false),
                 imports([kythe_node/7,
                          kythe_edge/11])]).

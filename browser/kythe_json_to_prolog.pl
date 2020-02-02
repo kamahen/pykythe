@@ -15,8 +15,8 @@
 :- use_module(library(http/json), [json_read_dict/3]).
 :- use_module(library(pairs)).
 
-%% swipl -g get_and_print_color_text -t halt extract_color.pl </tmp/pykythe_test/KYTHE/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t10.kythe.json --filesdir=/tmp/pykte_test/browser/files
-%% debugging: get_and_print_color_text('/tmp/pykythe_test/KYTHE/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t10.kythe.json').
+%% swipl -g main -t halt extract_color.pl </tmp/pykythe_test/KYTHE/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t10.kythe.json --filesdir=/tmp/pykte_test/browser/files
+%% debugging: main('/tmp/pykythe_test/KYTHE/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t10.kythe.json').
 
 %% Kythe vname is Signature,Corpus,Root,Path,Language
 %% We also define vname0:   Corpus,Root,Path,Language
@@ -34,10 +34,10 @@
 
 :- dynamic kythe_node/7, kythe_edge/11.
 
-get_and_print_color_text :-
-    get_and_print_color_text(user_input).
+main :-
+    main(user_input).
 
-get_and_print_color_text(InStream) :-
+main(InStream) :-
     % TODO: remove with swipl 8.1.21
     set_stream(InStream, tty(false)), % try to ensure no prompting
     prompt(_, ''),                    % really ensure no prompting
@@ -45,31 +45,36 @@ get_and_print_color_text(InStream) :-
     extract_opts(Opts),
     retract_kythe_facts,
     get_and_assert_kythe_facts(InStream),
-    log_if(true, 'get_and_assert_kythe_facts-done'),
     do_output_stream(Opts, 'kythe_facts.pl', '', [],
                      write_kythe_facts,
-                     '', []).
+                     '', []),
+    log_if(true, 'End').
 
 write_kythe_facts(KytheFactsOutStream) :-
     %% TODO: use fast_serialize?
     forall(kythe_node(Signature,Corpus,Root,Path,Language, FactName, FactValue),
            format(KytheFactsOutStream, '~q.~n',
                   [kythe_node(Signature,Corpus,Root,Path,Language, FactName, FactValue)])),
-    log_if(true, 'write_kythe_facts-kythe_node-done'),
+    log_if(true, 'Write_kythe_facts: kythe_node-done'),
     forall(kythe_edge(Signature1,Corpus1,Root1,Path1,Language1, EdgeName,
                       Signature2,Corpus2,Root2,Path2,Language2),
            format(KytheFactsOutStream, '~q.~n',
                   [kythe_edge(Signature1,Corpus1,Root1,Path1,Language1, EdgeName,
                               Signature2,Corpus2,Root2,Path2,Language2)])),
-    log_if(true, 'write_kythe_facts-kythe_edge-done').
+    log_if(true, 'Write_kythe_facts: kythe_edge-done').
 
 get_and_assert_kythe_facts(InStream) :-
     read_kythe_json_facts(InStream, KytheDicts),
-    log_if(true, 'read_kythe_json_facts-done'),
+    log_if(true, 'Read_kythe_json_facts-done'),
+    %% TODO: base64/2 takes most of the CPU time (from b64_to_utf8_to_atom/2)
     maplist(kythe_fact_pred, KytheDicts, Preds0),
+    log_if(true, 'Kythe_fact_pred-done'),
     sort(Preds0, Preds), % remove dups, although there shouldn't be any
+    log_if(false, 'Sort preds-done'),
     assertion(ground(Preds)),
-    maplist(assert_pred, Preds).
+    log_if(false, 'Assert ground-done'),
+    maplist(assert_pred, Preds),
+    log_if(true, 'Assert_kythe_facts-done').
 
 retract_kythe_facts :-
     functor(KytheNode, kythe_node, 7),
@@ -89,14 +94,16 @@ read_kythe_json_facts(InStream, KytheDicts) :-
 %! kythe_fact_pred(+JsonFact:dict, -Pred) is det.
 %% See transform_kythe_fact/3 in pykythe.pl
 kythe_fact_pred(json{source:Source0, fact_name:FactName, fact_value:FactValueB64},
-                kythe_node(Source1, FactName, FactValue)) :- !,
+                kythe_node(Source1, FactName, FactValue)) :-
+    !,
     vname_fix(Source0, Source1),
     (  FactName == '/pykythe/symtab'
     -> FactValue = FactValueB64  % It's not b64-encoded for performance
     ;  base64_utf8(FactValue, FactValueB64)
     ).
 kythe_fact_pred(json{source:Source0, fact_name:'/', edge_kind:EdgeKind, target:Target0},
-                kythe_edge(Source1, EdgeKind, Target1)) :- !,
+                kythe_edge(Source1, EdgeKind, Target1)) :-
+    !,
     vname_fix(Source0, Source1),
     vname_fix(Target0, Target1).
 kythe_fact_pred(Fact, Fact) :-

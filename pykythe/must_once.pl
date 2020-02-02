@@ -128,3 +128,5 @@ fail(_) :-
 %   :- multifile(prolog:message//1).
 %   prolog:message(error(must_once_failed(Goal), _)) -->
 %       ['Goal failed: ~w'-[Goal]].
+
+end_of_file.

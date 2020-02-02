@@ -80,3 +80,5 @@ make_rb([], Rb, Rb).
 make_rb([K-V|KVs], Rb0, Rb) :-
     rb_insert(Rb0, K, V, Rb1),
     make_rb(KVs, Rb1, Rb).
+
+end_of_file.

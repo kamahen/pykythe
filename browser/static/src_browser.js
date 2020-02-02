@@ -16,23 +16,6 @@ var g_anchor_edges = [];
 // TODO: can we get rid of this (singleton) global?
 var g_file_tree = null;
 
-// Look up edges that match an anchor signature (click/mouseover target.id)
-function anchor_target_edges(anchor_signature) {
-    return g_anchor_edges
-        .filter(edge => edge.signature === anchor_signature);
-}
-
-// Look up edges that match a corpus,root,path,signature,language
-function target_anchor_edges(target) {
-    return g_anchor_edges
-        .filter(edge =>
-                edge.target.signature === target.signature &&
-                edge.target.corpus === target.corpus &&
-                edge.target.root === target.root &&
-                edge.target.path === target.path &&
-                edge.target.language === target.language);
-}
-
 // Map the ast_color.Color.token_color enumeration to CSS class names
 const token_css_color_class = {  // See src_browser.css
     '<ARG_KEYWORD>':        'python_arg_keyword',
@@ -54,7 +37,7 @@ const token_css_color_class = {  // See src_browser.css
 // Map the ast_color.Color.token_color enumeration to whether it's
 // a colorable item (a "token") or not.
 const is_token_name = {
-    '<ARG_KEYWORD>':        false, // for now
+    '<ARG_KEYWORD>':        false, // TODO: multiple keyword colors?
     '<ATTR_BINDING>':       true,
     '<ATTR_REF>':           true,
     '<BARE>':               true,
@@ -70,8 +53,8 @@ const is_token_name = {
     '<WHITESPACE>':         false,
 };
 
-// Callback from <body onload=intialize();">
-function initialize() {
+// Callback from <body onload=render_page();">
+function render_page() {
     // https://developers.google.com/web/updates/2016/01/urlsearchparams
     // TODO: process file name, line number
     console.log('QUERY: ' + window.location.search);
@@ -80,35 +63,12 @@ function initialize() {
                       data => set_file_tree(data, params.get('file') || ''));
 }
 
-// Callback from file tree navigation click, to load a file into the
-// file_nav_element() via set_src_txt_impl.
-function load_new_file(corpus_root_path) {
-    // TODO: should have corpus and root as separate, or with '/' escaped.
-    const corpus_root_path_split = corpus_root_path.split('/');
-    const corpus = corpus_root_path_split[0];
-    const root = corpus_root_path_split[1];
-    const path = corpus_root_path_split.slice(2).join('/');
-    var progress = document.createElement('span');
-    progress.innerHTML = '&nbsp;&nbsp;&nbsp;Fetching file ' + sanitize_text(corpus_root_path) + ' ...';
-    file_nav_element().appendChild(progress);
-    // TODO: alert if fetch fails
-    fetch_from_server(
-        {src_browser_file: {
-            corpus: corpus, root: root, path: path}},
-        data => set_src_txt_impl(corpus, root, path, data));
-}
-
 // Callback from fetch_from_server({src_file_tree: ''}), for displaying the file navigation tree
 function set_file_tree(file_tree_from_server, initial_path) {
     // path starts with 'corpus/root/...'
     // DO NOT SUBMIT -- shouldn't do the double parse
     g_file_tree = file_tree_from_server;
     display_file_tree(initial_path);
-}
-
-// Convenience function: get the 'file_nav' element
-function file_nav_element() {
-    return document.getElementById('file_nav');
 }
 
 // Display file tree (id='file_nav')
@@ -137,6 +97,7 @@ function display_file_tree_items(item_i, path_items, file_tree_nodes) {
         dropdown.selectedIndex = 0;
     } else {
         for (var i = 0; i < file_tree_nodes.length; i++) {
+            // TODO: make directories display differently
             var tree_item = file_tree_nodes[i];
             add_dropdown_option(dropdown, tree_item.name, 'nav_sel-' + tree_item.path);
             if (tree_item.name == path_items[0]) {
@@ -152,7 +113,7 @@ function display_file_tree_items(item_i, path_items, file_tree_nodes) {
             display_file_tree_items(item_i + 1, path_items.slice(1),
                                     selected_node.children);
         } else if (selected_node.type == 'file') {
-            load_new_file(selected_node.path);
+            display_new_src_file(selected_node.path);
         } else {
             return alert('Bad file_tree_nodes.type: ' + selected_node[0].type);
         }
@@ -160,7 +121,7 @@ function display_file_tree_items(item_i, path_items, file_tree_nodes) {
         if (file_tree_nodes[0].type == 'dir') {
             display_file_tree_items(item_i + 1, [], file_tree_nodes[0].children);
         } else if (file_tree_nodes[0].type == 'file') {
-            load_new_file(selected_node.path);
+            display_new_src_file(selected_node.path);
         } else {
             return alert('Bad file_tree_nodes.type: ' + file_tree_nodes[0].type);
         }
@@ -192,8 +153,26 @@ function add_dropdown_option(dropdown, text, id) {
     dropdown.add(option);
 }
 
-// Callback from server fetch of a single source file (from load_new_file)
-function set_src_txt_impl(corpus, root, path, color_data) {
+// Callback from file tree navigation click, to load a file into the
+// file_nav_element() via display_src_contents.
+function display_new_src_file(corpus_root_path) {
+    // TODO: should have corpus and root as separate, or with '/' escaped.
+    const corpus_root_path_split = corpus_root_path.split('/');
+    const corpus = corpus_root_path_split[0];
+    const root = corpus_root_path_split[1];
+    const path = corpus_root_path_split.slice(2).join('/');
+    var progress = document.createElement('span');
+    progress.innerHTML = '&nbsp;&nbsp;&nbsp;Fetching file ' + sanitize_text(corpus_root_path) + ' ...';
+    file_nav_element().appendChild(progress);
+    // TODO: alert if fetch fails
+    fetch_from_server(
+        {src_browser_file: {
+            corpus: corpus, root: root, path: path}},
+        data => display_src_contents(corpus, root, path, data));
+}
+
+// Callback from server fetch of a single source file (from display_new_src_file)
+function display_src_contents(corpus, root, path, color_data) {
     file_nav_element().lastChild.innerHTML = 'Rendering file ' + corpus + '/' + root + '/' + path + '...';
     var table = document.createElement('table');
     table.setAttribute('class', 'src_table');
@@ -218,9 +197,45 @@ function set_src_txt_impl(corpus, root, path, color_data) {
     file_nav_element().lastChild.remove();
 }
 
+// Display a single part of a source display
+function src_line_txt(parts, txt_span, corpus, root, path) {
+    for (const part of parts) {
+        var span = document.createElement('span');
+        span.setAttribute('class', token_css_color_class[part.token_color]);
+        span.innerHTML = sanitize_text(part.value);
+        if (is_token_name[part.token_color]) {
+            for (const p_edge of part.edges) {
+                g_anchor_edges.push({signature: part.signature,
+                                     edge: p_edge.edge,
+                                     target: p_edge.target});
+            }
+            span.id = part.signature;
+            span.onmouseover = function(e) { // e is MouseEvent
+                mouseover_anchor(e.currentTarget, 'add', 'src_hover');
+                e.preventDefault();
+            };
+            span.onmouseleave = function(e) { // e is MouseEvent
+                mouseover_anchor(e.currentTarget, 'remove', 'src_hover');
+                e.preventDefault();
+            };
+            span.onclick = function(e) { // e is MouseEvent
+                click_anchor(e.currentTarget, corpus, root, path);
+                e.preventDefault();
+            };
+            // TODO: handle right-click
+            // span.oncontextmenu = function(e) { // e is MouseEvent
+            //     e.preventDefault();
+            // };
+            txt_span.appendChild(span);
+        } else {
+            txt_span.appendChild(span);
+        }
+    }
+}
+
 // Do an action ('add' or 'remove') for an item in a class list
 // - callback from mouseover/leave on a token (anchor) in the source display
-function do_for_signature(target, class_action, class_id) {
+function mouseover_anchor(target, class_action, class_id) {
     for (const a_edge of anchor_target_edges(target.id)) {
         for (const t_a_edge of target_anchor_edges(a_edge.target)) {
             var edge = document.getElementById(t_a_edge.signature);
@@ -237,7 +252,7 @@ function do_for_signature(target, class_action, class_id) {
 }
 
 // Callback for a click on a token (anchor) in the source display
-function click_signature(target, corpus, root, path) {
+function click_anchor(target, corpus, root, path) {
     console.log('CLICK ' + target.id + ' in ' + corpus + ':' + root + ':' + path);
     fetch_from_server({anchor: {signature: target.id,
                                 corpus: corpus, root: root,
@@ -269,42 +284,6 @@ function set_xref(corpus, root, path, signature, data) {
 
 function table_insert_row_text(table, text) {
     table.insertRow().insertCell().appendChild(document.createTextNode(text));
-}
-
-// Display a single part of a source display
-function src_line_txt(parts, txt_span, corpus, root, path) {
-    for (const part of parts) {
-        var span = document.createElement('span');
-        span.setAttribute('class', token_css_color_class[part.token_color]);
-        span.innerHTML = sanitize_text(part.value);
-        if (is_token_name[part.token_color]) {
-            for (const p_edge of part.edges) {
-                g_anchor_edges.push({signature: part.signature,
-                                     edge: p_edge.edge,
-                                     target: p_edge.target});
-            }
-            span.id = part.signature;
-            span.onmouseover = function(e) { // e is MouseEvent
-                do_for_signature(e.currentTarget, 'add', 'src_hover');
-                e.preventDefault();
-            };
-            span.onmouseleave = function(e) { // e is MouseEvent
-                do_for_signature(e.currentTarget, 'remove', 'src_hover');
-                e.preventDefault();
-            };
-            span.onclick = function(e) { // e is MouseEvent
-                click_signature(e.currentTarget, corpus, root, path);
-                e.preventDefault();
-            };
-            // TODO: handle right-click
-            // span.oncontextmenu = function(e) { // e is MouseEvent
-            //     e.preventDefault();
-            // };
-            txt_span.appendChild(span);
-        } else {
-            txt_span.appendChild(span);
-        }
-    }
 }
 
 // Sanitize a string, allowing tags to not cause problems
@@ -345,7 +324,7 @@ function fetch_from_server(request, callback) {
 }
 
 function jq(id) {
-    // DO NOT SUBMIT - unused?
+    // TODO: unused?
     return '.' + id.replace( /(:|\.|\[|\]|,|=|@|<|>)/g, "\\$1" );
 }
 
@@ -363,3 +342,27 @@ function delete_all_children(elem) {
         elem.firstChild.remove();
     }
 }
+
+// Look up edges that match an anchor signature (click/mouseover target.id)
+function anchor_target_edges(anchor_signature) {
+    return g_anchor_edges
+        .filter(edge => edge.signature === anchor_signature);
+}
+
+// Look up edges that match a corpus,root,path,signature,language
+function target_anchor_edges(target) {
+    return g_anchor_edges
+        .filter(edge =>
+                edge.target.signature === target.signature &&
+                edge.target.corpus === target.corpus &&
+                edge.target.root === target.root &&
+                edge.target.path === target.path &&
+                edge.target.language === target.language);
+}
+
+// Convenience function: get the 'file_nav' element
+function file_nav_element() {
+    return document.getElementById('file_nav');
+}
+
+// End of file

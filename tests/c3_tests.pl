@@ -61,3 +61,5 @@ end_tests(c3).
 
 ?- run_tests.
 %% ?- halt.
+
+end_of_file.
