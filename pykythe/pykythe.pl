@@ -330,6 +330,7 @@
                   kyedge_fqn/6,
                   kyfact/6,
                   kyfact_attr/6,
+                  kyfact_color/4,
                   kyfact_signature_node/6,
                   kyfacts/5,
                   kyfacts_signature_node/5,
@@ -449,6 +450,7 @@ edcg:pred_info(kyedge, 3,                              [kyfact,file_meta]).
 edcg:pred_info(kyedge_fqn, 3,                          [kyfact,file_meta]).
 edcg:pred_info(kyfact, 3,                              [kyfact,file_meta]).
 edcg:pred_info(kyfact_attr, 3,                         [kyfact,file_meta]).
+edcg:pred_info(kyfact_color, 1,                        [kyfact,file_meta]).
 edcg:pred_info(kyfact_signature_node, 3,               [kyfact,file_meta]).
 edcg:pred_info(kyfacts, 2,                             [kyfact,file_meta]).
 edcg:pred_info(kyfacts_signature_node, 2,              [kyfact,file_meta]).
@@ -939,8 +941,10 @@ process_module_from_src_impl(Opts, SrcPath, SrcFqn, Symtab0, Symtab) :-
     path_with_suffix(Opts, SrcPath, kythejson_suffix, KytheJsonPath),
     log_if(true,
            'Processing from source ~q (output: ~q) for ~q ~w', [SrcPath, KytheJsonPath, SrcFqn, Stats0]),
-    parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes, ColorText),
-    process_nodes(Nodes, src{src_fqn: Meta.src_fqn, src_path: Meta.path, color_text:ColorText},
+    parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes, ColorTexts),
+    process_nodes(Nodes, src{src_fqn: Meta.src_fqn,
+                             src_path: Meta.path,
+                             color_text:ColorTexts},
                   KytheFactsFromNodes0, Exprs, Meta),
     %% DO NOT SUBMIT -- why does the following log_kythe_fact_msgs need to be
     %%                  done here? -- if it isn't done, then an empty(?)
@@ -1050,14 +1054,14 @@ transform_kythe_path(AbsPath, RelPath) :-
     sub_atom(AbsPath, 0, 1, _, '/'),   % First char is '/'
     sub_atom(AbsPath, 1, _, 0, RelPath). % Strip first char.
 
-%! parse_and_get_meta(+Opts:list, +SrcPath:atom, +SrcFqn:atom, -Meta:dict, -Nodes, -ColorText) is det.
-parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes, ColorText) :-
+%! parse_and_get_meta(+Opts:list, +SrcPath:atom, +SrcFqn:atom, -Meta:dict, -Nodes, -ColorTexts:list) is det.
+parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes, ColorTexts) :-
     builtins_version(BuiltinsVersion),
     must_once_msg(BuiltinsVersion == Opts.version,
                   'builtins_version(~q) should be ~q', [BuiltinsVersion, Opts.version]),
     run_parse_cmd(Opts, SrcPath, SrcFqn, ParsedPath),
     log_if(true, 'Python parser: finished ~q', [ParsedPath]),
-    read_nodes(ParsedPath, Nodes, Meta, ColorText),
+    read_nodes(ParsedPath, Nodes, Meta, ColorTexts),
     log_if(true, 'Processed AST nodes from Python parser'),
     %% Fill in dict items that were left uninstantiated in simplify_meta/2 (read_nodes/3):
     Meta.pythonpath = Opts.pythonpath,
@@ -1304,26 +1308,26 @@ add_kyfact_types(Prefix, Fqn-Type) -->>
     ;  [ ]
     ).
 
-%! read_nodes(+FqnExprPath:atom, -Nodes, -Meta:dict) is det.
+%! read_nodes(+FqnExprPath:atom, -Nodes, -Meta:dict, -ColorTexts:list(dict)) is det.
 %% Read the JSON node tree (with FQNs) into Nodes and file meta-data into Meta.
-read_nodes(FqnExprPath, Nodes, Meta, ColorText) :-
+read_nodes(FqnExprPath, Nodes, Meta, ColorTexts) :-
     open(FqnExprPath, read, FqnExprStream, [type(binary)]),
-    read_term(FqnExprStream, MetaDict, []),
-    read_term(FqnExprStream, NodesDict, []),
-    read_term(FqnExprStream, ColorTextDict, []),
+    read_term(FqnExprStream, MetaJson, []),
+    read_term(FqnExprStream, NodesJson, []),
+    read_term(FqnExprStream, ColorTextsJson, []),
     %% sanity check that capitalized strings were quoted:
-    must_once(ground(MetaDict)),
-    must_once(ground(NodesDict)),
-    must_once(ground(ColorTextDict)),
-    simplify_meta(MetaDict, Meta),
-    simplify_ast(NodesDict, Nodes),
-    maplist(simplify_color, ColorTextDict, ColorText).
+    must_once(ground(MetaJson)),
+    must_once(ground(NodesJson)),
+    must_once(ground(ColorTextsJson)),
+    simplify_meta(MetaJson, Meta),
+    simplify_ast(NodesJson, Nodes),
+    maplist(simplify_color, ColorTextsJson, ColorTexts).
 
-%! simplify_meta(+MetaDictJson:dict, -Meta:dict) is det.
+%! simplify_meta(+MetaJson:dict, -Meta:dict) is det.
 %% Simplify the file meta-data. The argument is the Prolog dict form
 %% of the first JSON item (see ast_cooked.Meta).
-simplify_meta(MetaDictJson, Meta) :-
-    MetaDictJson = json{
+simplify_meta(
+    json{
         kind: 'Meta',
         slots: json{
             kythe_corpus: KytheCorpus,
@@ -1335,24 +1339,25 @@ simplify_meta(MetaDictJson, Meta) :-
             contents_bytes: ContentsBytes, % TODO: delete (for debugging only)
             sha1: Sha1,
             encoding: Encoding}},
-    canonical_path(Path, CanonicalPath),
+    meta{
+        kythe_corpus: KytheCorpus,
+         kythe_root: KytheRoot,
+         path: CanonicalPath,
+         language: Language,
+         encoding: Encoding,
+         contents_base64: ContentsBase64,
+         contents_str: ContentsStr,
+         contents_bytes: ContentsBytes,
+         sha1: Sha1,
+         src_fqn: _,
+         pythonpath: _,
+         opts: _,
+         version: _}) :-
     %% For debugging, might want to use contents_base64:"LS0t",
     %%     derived from:
     %%     base64_ascii('---', 'LS0t').
     %% Note that keys 'src_fqn', 'pythonpath', 'opts', 'version' get added later
-    Meta = meta{kythe_corpus: KytheCorpus,
-                kythe_root: KytheRoot,
-                path: CanonicalPath,
-                language: Language,
-                encoding: Encoding,
-                contents_base64: ContentsBase64,
-                contents_str: ContentsStr,
-                contents_bytes: ContentsBytes,
-                sha1: Sha1,
-                src_fqn: _,
-                pythonpath: _,
-                opts: _,
-                version: _}.
+    canonical_path(Path, CanonicalPath).
 
 %! simplify_ast(+Json, -Prolog) is det.
 %% Simplify the JSON term into more specific dicts, each one
@@ -1454,13 +1459,50 @@ kyfile(SrcInfo) -->>
     kyfact(Source, '/kythe/text/encoding', Meta.encoding),
     kyfact(Source, '/kythe/language', python),
     kyfact(Source, '/kythe/text', Meta.contents_base64),  % Special case - see transform_kythe_fact/2
-    term_string(SrcInfo.color_text, ColorTextStr),
-    kyfact(Source, '/pykythe/color', ColorTextStr),
+    maplist_kyfact(kyfact_color, SrcInfo.color_text),
     kyedge_fqn(Source, '/kythe/edge/childof', SrcInfo.src_fqn),
     %% Kythe's "package" is the equivalent of Python's "module".
     %% (There is no equivalent of Python's "package" ... we just use
     %% /kythe/edge/ref/imports on the import statements.)
     kyfact_signature_node(SrcInfo.src_fqn, '/kythe/node/kind', 'package').
+
+%! kyfact_color(+ColorItem)//[kyfact,file_meta] is det.
+%% Output flattened color facts for one token
+kyfact_color(color{lineno:Lineno,
+                   column:Column,
+                   start:Start,
+                   end:End,
+                   token_color:TokenColor,
+                   signature:Signature,
+                   value:Value
+                  }) -->>
+    %% See anchor_signature_str/4:
+    { format(atom(ColorSignature), '#~d', [Start]) },
+    signature_source(ColorSignature, Source),
+    %% TODO: The following /pykythe/color/... facts are too verbose, but
+    %%      they fit with Kythe style - outputting the color info also
+    %%      increases processing time by ~50% vs no color info.
+    %%         Not outputting any color info:              13MB
+    %%         Outputting all color info as single string: 19MB
+    %%         Outputting one fact per token:              26MB
+    %%         Outputting details per token:               62MB
+    %% kyfact(Source, '/pykythe/color/lineno', Lineno),
+    %% kyfact(Source, '/pykythe/color/column', Column),
+    %% kyfact(Source, '/pykythe/color/start', Start),
+    %% kyfact(Source, '/pykythe/color/end', End),
+    %% kyfact(Source, '/pykythe/color/signature', Signature),
+    %% kyfact(Source, '/pykythe/color/color', TokenColor),
+    %% kyfact(Source, '/pykythe/color/value', Value),
+    %% TODO: flatten this to a simple CSV?
+    { format(atom(ColorFactText), '~q',
+             [color{lineno:Lineno,
+                    column:Column,
+                    start:Start,
+                    end:End,
+                    token_color:TokenColor,
+                    signature:Signature,
+                    value:Value}]) },
+    kyfact(Source, '/pykythe/color', ColorFactText).
 
 %! kynode(+Node:json_dict, -Type)//[kyfact,expr,file_meta] is det.
 %% Extract anchors (with FQNs) from the the AST nodes.  The anchors go
@@ -2120,8 +2162,9 @@ kyanchor(Start, End, Token, Source) -->>
     kyfact(Source, '/kythe/loc/start', Start),
     kyfact(Source, '/kythe/loc/end', End).
 
-anchor_signature_str(Start, End, Token, Signature) :-
-    format(atom(Signature), '@~d:~d<~w>', [Start, End, Token]).
+anchor_signature_str(Start, _End, _Token, Signature) :-
+    %% For debugging: format(atom(Signature), '@~d:~d<~w>', [Start, End, Token]).
+    format(atom(Signature), '@~d', [Start]).
 
 anchor_signature_str('Astn'{start:Start, end:End, value:Token}, Signature) :-
     anchor_signature_str(Start, End, Token, Signature).

@@ -358,26 +358,17 @@ get_color_data_one_file(Corpus, Root, Path,
                              lines:ColorTextLines}) :-
     kythe_file(Corpus,Root,Path,Language),
     Vname0 = vname0(Corpus,Root,Path,Language),
-    setof(ColorTextStr,
-          ( kythe_node(vname('',Corpus,Root,Path,Lang), '/pykythe/color', ColorTextStr),
-            ( Lang = Language; Lang = '')),
-          ColorTextStrs),
-    (  ColorTextStrs = [ColorTextStr]
-    -> true
-    ;  throw('Multiple /pykythe/color':Vname0)
-    ),
-    catch(term_string(ColorText, ColorTextStr),
-           Err,
-           ( ColorText = [],
-             debug(log, 'ERROR: ~q in ~q', [Err, ColorTextStr]))),
-    maplist(lineno_and_chunk, ColorText, LineNoAndChunk0),
-    keysort(LineNoAndChunk0, LineNoAndChunk),
-    group_pairs_by_key(LineNoAndChunk, ColorTextLines0),
+    setof(LineNo-ColorText, color_fact(Corpus,Root,Path,Language,LineNo,ColorText),
+          LineNoAndChunks),
+    group_pairs_by_key(LineNoAndChunks, ColorTextLines0),
     maplist(add_links(Vname0), ColorTextLines0, ColorTextLines1), % concurrent gives slight slow-down
     pairs_values(ColorTextLines1, ColorTextLines).
 
-lineno_and_chunk(Chunk, LineNo-Chunk) :-
-    LineNo = Chunk.lineno.
+color_fact(Corpus, Root, Path, Language, LineNo, ColorText) :-
+    kythe_node(vname(_Signature,Corpus,Root,Path,Lang), '/pykythe/color', ColorTextStr),
+    term_string(ColorText, ColorTextStr),
+    LineNo = ColorText.lineno,
+    ( Lang = Language; Lang = '').
 
 add_links(Vname0, LineNo-Items, LineNo-AppendedItems) :-
     maplist(add_link(Vname0), Items, AppendedItems).
