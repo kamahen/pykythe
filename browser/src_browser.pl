@@ -124,6 +124,7 @@ read_and_assert_kythe_facts :-
     unload_file(files('kythe_facts')),
     load_files([files('kythe_facts')],
                [silent(false),
+                optimise(true),
                 imports([kythe_node/7,
                          kythe_edge/11])]).
 
@@ -162,20 +163,19 @@ browser_opts(Opts) :-
 
 % Serve localhost:9999/static/ from 'static' directory (See also facts for http:location/3)
 :- http_handler(static(.),
-                my_http_reply_from_files(static(.), []),
+                http_handler_reply_from_files(static(.), []),
                 [prefix]).
 :- http_handler(files(.),
-                my_http_reply_from_files(files(.), []),
+                http_handler_reply_from_files(files(.), []),
                 [prefix]).
 
 :- http_handler('/json',  %% json(.),     % localhost:9999/json  -- DO NOT SUBMIT - json(.) is better?
                 reply_with_json, [priority(0)]).
 
-my_http_reply_from_files(Dir, Opts, Request0) :-
+http_handler_reply_from_files(Dir, Opts, Request0) :-
     opts_dict(Request0, request, Request),
-    %% debug(log, '~q', [my_http_reply_from_files(Dir, Request)]),
-    debug(log, 'Request (~q): ~q', [Dir, [method:Request.method,
-                                          path_info:Request.path_info]]),
+    debug(request_log, 'Request (~q): ~q', [Dir, [method:Request.method,
+                                                  path_info:Request.path_info]]),
     %% This is a hack because I can't seem to get static/files to work.
     (  Dir = static(.),
        split_string(Request.path_info, '/', '', SplitList),
@@ -191,18 +191,19 @@ reply_with_json(Request) :-
     %% TODO: why doesn't thead_cputime give non-zero value?
     statistics(cputime, T0),
     memberchk(method(post), Request),
-    my_http_read_json_dict(Request, DictIn), %% [content_type("application/json")]),
+    http_handler_read_json_dict(Request, JsonIn), %% [content_type("application/json")]),
+    debug(request_json_log, 'Request(json): ~q', [JsonIn]),
     statistics(cputime, T1),
     Tdelta1 is T1 - T0,
-    debug(timing, 'Request-JSON: ~q [~3f sec]', [DictIn, Tdelta1]),
-    json_response(DictIn, DictOut),
+    debug(timing, 'Request-JSON: ~q [~3f sec]', [JsonIn, Tdelta1]),
+    json_response(JsonIn, JsonOut),
     statistics(cputime, T2),
     Tdelta2 is T2 - T1,
-    debug(timing, 'Request-response: ~q [~3f sec]', [DictIn, Tdelta2]),
-    reply_json_dict(DictOut, [width(0)]), % TODO: this is the most expensive part
+    debug(timing, 'Request-response: ~q [~3f sec]', [JsonIn, Tdelta2]),
+    reply_json_dict(JsonOut, [width(0)]), % TODO: this is the most expensive part
     statistics(cputime, T3),
     Tdelta3 is T3 - T2,
-    debug(timing, 'Request-reply: ~q [~3f sec]', [DictIn, Tdelta3]).
+    debug(timing, 'Request-reply: ~q [~3f sec]', [JsonIn, Tdelta3]).
 
 json_response(json{fetch:FileName},
               json_result{file:FileName,
@@ -257,8 +258,9 @@ link_to_dict(vname_flip(Corpus, Root, Path, Signature, Language),
 pair_to_json(KeyTag, ValueTag, Key-Value, Json) :-
     dict_create(Json, json, [KeyTag-Key, ValueTag-Value]).
 
-my_http_read_json_dict(Request, DictIn) :-
-    http_read_json_dict(Request, DictIn,
+%% TODO: combine with pykythe_utils:pykythe_json_read_dict?
+http_handler_read_json_dict(Request, JsonIn) :-
+    http_read_json_dict(Request, JsonIn,
                         [value_string_as(atom), end_of_file(@(end)), default_tag(json),
                          true(#(true)),false(#(false)),null(#(null))]).
 
@@ -326,14 +328,6 @@ kythe_anchor(Vname, Start, End, Token) :-
     kythe_node(vname('', Corpus, Root, Path, _), '/kythe/text', SourceText),
     sub_string(SourceText, Start, Len, _, TokenStr),
     atom_string(Token, TokenStr).
-
-%% TODO: currently unused
-test_anchor_and_edges :-
-    test_get_facts,
-    forall((kythe_anchor(Vname, Start, End, Token),
-            setof(Edge-Target, node_and_edge(Vname, Edge, Target), Edges),
-            Edges = [_,_|_]),
-           format('~q~n', [Vname:Start:End:Token:Edges])).
 
 %% TODO: Escape '/' in Corpus, Root
 file_path(CombinedPath) :-

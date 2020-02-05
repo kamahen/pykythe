@@ -36,11 +36,21 @@ body {
 }
 
 /* Used by select (dropdown) */
-.file_nav_sel {
+.file_nav_sel_dir {
     background-color: #f1f1f1;
     border: none;
     border-radius: 4px;
     color: red;
+    /* font-style: italic; */
+    padding: 4px 0;
+}
+
+/* Used by select (dropdown) */
+.file_nav_sel_file {
+    background-color: #f1f1f1;
+    border: none;
+    border-radius: 4px;
+    color: blue;
     padding: 4px 0;
 }
 

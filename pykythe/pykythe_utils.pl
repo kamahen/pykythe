@@ -257,8 +257,9 @@ maybe_open_read_impl(Path, InputStream) :-
 %% uninstantiated variable).  And gets strings as atoms. And
 %% handles true/false.
 pykythe_json_read_dict(Stream, Dict) :-
-    json_read_dict(Stream, Dict, [value_string_as(atom), end_of_file(@(end)), default_tag(json),
-                                  true(#(true)),false(#(false)),null(#(null))]).
+    json_read_dict(Stream, Dict,
+                   [value_string_as(atom), end_of_file(@(end)), default_tag(json),
+                    true(#(true)),false(#(false)),null(#(null))]).
 
 opts_dict(Opts, OptsDict) :- opts_dict(Opts, opts, OptsDict).
 

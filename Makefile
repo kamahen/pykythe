@@ -537,9 +537,8 @@ make-json:
 	    time $(SWIPL_EXE) -g main -t halt \
 		browser/kythe_json_to_prolog.pl -- \
 		--filesdir=$(TESTOUTDIR)/browser/files
-	time $(SWIPL_EXE) -g "qcompile('$(TESTOUTDIR)/browser/files/kythe_facts.pl')" -t halt
-	@# DO NOT SUBMIT - the following should work:
-	@# $(SWIPL_EXE) -o $(TESTOUTDIR)/browser/files/kythe_facts.qlf -c $(TESTOUTDIR)/browser/files/kythe_facts.pl
+	@# see run-src-browser, which forces a compile on first load
+	@# time $(SWIPL_EXE) -g "qcompile('$(TESTOUTDIR)/browser/files/kythe_facts.pl')" -t halt
 
 .PHONY: make-json-pretty
 make-json-pretty:
@@ -551,6 +550,10 @@ make-json-pretty:
 # To prepare this: make-json
 # http://localhost:$(SRC_BROWSER_PORT)/static/src_browser.html
 run_src_browser run-src-browser:
+	@# if .qlf doesn't exist, make an empty one, which
+	@# will cause recompilation when it's loaded
+	[ -e $(TESTOUTDIR)/browser/files/kythe_facts.qlf ] || \
+	    touch $(TESTOUTDIR)/browser/files/kythe_facts.qlf
 	$(SWIPL_EXE) --no-tty -g main browser/src_browser.pl -- \
 		--port=$(SRC_BROWSER_PORT) \
 		--filesdir=$(TESTOUTDIR)/browser/files \
@@ -643,9 +646,11 @@ push_to_github:
 		--exclude snippets.py --exclude typescript.gz \
 		./ $(TESTGITHUB)/pykythe/
 	rsync -aAHX --delete ../kythe $(TESTGITHUB)/
-	@# ensure "make make-json" has been done:
-	test -f $(TESTOUTDIR)/browser/files/kythe_facts.qlf
-	$(RM) $(TESTOUTDIR)/browser/files/kythe_facts.pl
+	@# ensure "make make-json" has been done - keep the .pl file
+	@# but delete the .qlf file, which might be incompatible
+	@# with whatever is installed
+	test -e $(TESTOUTDIR)/browser/files/kythe_facts.pl
+	$(RM) $(TESTOUTDIR)/browser/files/kythe_facts.qlf
 	@# The following is for people who want to test run the soruce browser
 	cd $(TESTOUTDIR) && tar cjf $(TESTGITHUB)/pykythe/browser/browser_data.tjz browser
 	-cd $(TESTGITHUB)/pykythe && git status
