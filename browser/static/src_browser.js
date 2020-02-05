@@ -14,19 +14,29 @@
 class SourceItem {
     constructor(corpus, root, path, lineno) {
         // TODO: escape '/' in corpus, root
-        this.corpus = corpus;
-        this.root = root;
-        this.path = path;
-        this.lineno = lineno;
+        this.corpus = corpus || '';
+        this.root = root || '';
+        this.path = path || '';
+        this.lineno = lineno || 1;
     }
 
-    static new_from_combined(corpus_root_path, lineno) {
+    static newFromCombined(corpus_root_path, lineno) {
         // TODO: escape '/' in corpus, root
         const corpus_root_path_split = corpus_root_path.split('/');
-        const corpus = corpus_root_path_split[0];
-        const root = corpus_root_path_split[1];
-        const path = corpus_root_path_split.slice(2).join('/');
-        return new SourceItem(corpus, root, path, lineno || 1);
+        return new SourceItem(corpus_root_path_split[0], // corpus
+                              corpus_root_path_split[1], // root
+                              corpus_root_path_split.slice(2).join('/'), // path
+                              lineno);
+    }
+
+    static newFromJSON(json) {
+        return new SourceItem(json.corpus, json.root, json.path, json.lineno);
+    }
+
+    pathItems() {
+        // ''.split('') == [''] but we want []
+        return [this.corpus, this.root]
+            .concat((this.path === '') ? [] : this.path.split('/'));
     }
 
     combinedFilePath() {
@@ -95,67 +105,65 @@ const path_type_to_class = {
 };
 
 // Callback from <body onload="render_page();">
-function render_page() {
+function renderPage() {
     // https://developers.google.com/web/updates/2016/01/urlsearchparams
     const params = new URLSearchParams(location.search);
-    fetch_from_server({src_file_tree: ''},
-                      file_tree_from_server => set_file_tree(
-                          file_tree_from_server,
-                          new SourceItem(
-                              params.get('corpus') || '',
-                              params.get('root') || '',
-                              params.get('path') || '',
-                              params.get('line') || 1)));
+    fetchFromServer({src_file_tree: ''},
+                    file_tree_from_server => setFileTree(
+                        file_tree_from_server,
+                        new SourceItem(
+                            params.get('corpus'),
+                            params.get('root'),
+                            params.get('path'),
+                            params.get('line'))));
 }
 
-// Callback from fetch_from_server({src_file_tree: ''}),
+// Callback from fetchFromServer({src_file_tree: ''}),
 // for displaying the file navigation tree
-function set_file_tree(file_tree_from_server, source_item) {
+function setFileTree(file_tree_from_server, source_item) {
     g_file_tree = file_tree_from_server;
-    display_file_tree(source_item);
+    displayFileTree(source_item);
 }
 
 // Display file tree (id='file_nav')
-function display_file_tree(source_item) {
-    // ''.split('') == [''] but we want []
-    const path_items = [source_item.corpus, source_item.root]
-          .concat((source_item.path === '') ? [] : source_item.path.split('/'));
+function displayFileTree(source_item) {
+    const path_items = source_item.pathItems();
     var tree = file_nav_element();
     while (tree.firstChild) {
         tree.firstChild.remove();
     }
-    display_file_tree_items(0, path_items, g_file_tree, source_item.lineno);
+    displayFileTreeItems(0, path_items, g_file_tree, source_item.lineno);
 }
 
 // Recursive function for displaying the remaining file tree
 // navigation items, starting from item_i (0-indexed).
 // The path_items are used to "pre-select" items in the drop-downs.
-function display_file_tree_items(item_i, path_items, file_tree_nodes, lineno) {
+function displayFileTreeItems(item_i, path_items, file_tree_nodes, lineno) {
     // file_tree_nodes is a list of 'file' or 'dir' items
     // TODO: for now, corpus and root are treated as path items
 
     var dropdown = null;
     if (path_items.length == 0) {
         if (file_tree_nodes.length > 1) {
-            dropdown = create_dropdown(item_i, 'dir');
+            dropdown = createDropdown(item_i, 'dir');
             // The following is multiple Unicode em-dashes:
-            add_dropdown_option(dropdown, '————', 'dir',
-                                'nav_sel-' + file_tree_nodes.path);
+            addDropdownOption(dropdown, '————', 'dir',
+                              'nav_sel-' + file_tree_nodes.path);
         } else {
-            dropdown = create_dropdown(item_i, 'dir');
+            dropdown = createDropdown(item_i, 'dir');
         }
         for (const tree_item of file_tree_nodes) {
-            add_dropdown_option(dropdown, tree_item.name, tree_item.type,
-                                'nav_sel-' + tree_item.path);
+            addDropdownOption(dropdown, tree_item.name, tree_item.type,
+                              'nav_sel-' + tree_item.path);
         }
         dropdown.selectedIndex = 0;
     } else {
-        dropdown = create_dropdown(item_i, 'dir');
+        dropdown = createDropdown(item_i, 'dir');
         for (var i = 0; i < file_tree_nodes.length; i++) {
             // TODO: make directories display differently
             var tree_item = file_tree_nodes[i];
-            add_dropdown_option(dropdown, tree_item.name, tree_item.type,
-                                'nav_sel-' + tree_item.path);
+            addDropdownOption(dropdown, tree_item.name, tree_item.type,
+                              'nav_sel-' + tree_item.path);
             if (tree_item.name == path_items[0]) {
                 dropdown.selectedIndex = i;
             }
@@ -166,18 +174,18 @@ function display_file_tree_items(item_i, path_items, file_tree_nodes, lineno) {
 
     if (path_items.length > 0) {
         if (selected_node.type == 'dir') {
-            display_file_tree_items(item_i + 1, path_items.slice(1),
-                                    selected_node.children, lineno);
+            displayFileTreeItems(item_i + 1, path_items.slice(1),
+                                 selected_node.children, lineno);
         } else if (selected_node.type == 'file') {
-            display_new_src_file(SourceItem.new_from_combined(selected_node.path, lineno));
+            displayNewSrcFile(SourceItem.newFromCombined(selected_node.path, lineno));
         } else {
             return alert('Bad file_tree_nodes.type: ' + selected_node[0].type);
         }
     } else if (file_tree_nodes.length == 1) {
         if (file_tree_nodes[0].type == 'dir') {
-            display_file_tree_items(item_i + 1, [], file_tree_nodes[0].children, lineno);
+            displayFileTreeItems(item_i + 1, [], file_tree_nodes[0].children, lineno);
         } else if (file_tree_nodes[0].type == 'file') {
-            display_new_src_file(SourceItem.new_from_combined(selected_node.path, lineno));
+            displayNewSrcFile(SourceItem.newFromCombined(selected_node.path, lineno));
         } else {
             return alert('Bad file_tree_nodes.type: ' + file_tree_nodes[0].type);
         }
@@ -185,7 +193,7 @@ function display_file_tree_items(item_i, path_items, file_tree_nodes, lineno) {
 }
 
 // Create a dropdown (<SELECT ...>) element
-function create_dropdown(i, type) {
+function createDropdown(i, type) {
     var dropdown = document.createElement('select');
     dropdown.setAttribute('class', path_type_to_class[type]);
     // dropdown.id = 'path-' + i;
@@ -193,8 +201,7 @@ function create_dropdown(i, type) {
         const  t = e.currentTarget;
         const  t_selected = t[t.selectedIndex];
         if (t_selected.id.startsWith('nav_sel-')) {
-            display_file_tree(
-                SourceItem.new_from_combined(t_selected.id.substr('nav_sel-'.length)));
+            displayFileTree(SourceItem.newFromCombined(t_selected.id.substr('nav_sel-'.length)));
         }
         e.preventDefault();
     };
@@ -202,7 +209,7 @@ function create_dropdown(i, type) {
 }
 
 // Add an <OPTION ...> element to a dropdown
-function add_dropdown_option(dropdown, text, type, id) {
+function addDropdownOption(dropdown, text, type, id) {
     var option = document.createElement('option');
     option.setAttribute('class', path_type_to_class[type]);
     option.text = text;
@@ -211,23 +218,22 @@ function add_dropdown_option(dropdown, text, type, id) {
 }
 
 // Callback from file tree navigation click, to load a file into the
-// file_nav_element() via display_src_contents.
-function display_new_src_file(source_item) {
-    // TODO: should have corpus and root as separate, or with '/' escaped.
+// file_nav_element() via displaySrcContents.
+function displayNewSrcFile(source_item) {
     var progress = document.createElement('span');
     progress.innerHTML = '&nbsp;&nbsp;&nbsp;Fetching file ' +
-        sanitize_text(source_item.combinedFilePath()) + ' ...';
+        sanitizeText(source_item.combinedFilePath()) + ' ...';
     file_nav_element().appendChild(progress);
     // TODO: alert if fetch fails
-    fetch_from_server(
+    fetchFromServer(
         {src_browser_file: {corpus: source_item.corpus,
-                            root: source_item.root, path:
-                            source_item.path}},
-        color_data => display_src_contents(source_item, color_data));
+                            root: source_item.root,
+                            path: source_item.path}},
+        color_data => displaySrcContents(source_item, color_data));
 }
 
-// Callback from server fetch of a single source file (from display_new_src_file)
-function display_src_contents(source_item, color_data) {
+// Callback from server fetch of a single source file (from displayNewSrcFile)
+function displaySrcContents(source_item, color_data) {
     file_nav_element().lastChild.innerHTML =
         'Rendering file ' + source_item.combinedFilePath() + '...';
     var table = document.createElement('table');
@@ -243,13 +249,13 @@ function display_src_contents(source_item, color_data) {
         var txt_span = document.createElement('span');
         if (line_parts.length) {
             td1.appendChild(document.createTextNode(line_parts[0].lineno));
-            src_line_txt(line_parts, txt_span, source_item);
+            srcLineText(line_parts, txt_span, source_item);
         } else {
             txt_span.innerHTML = '&nbsp;';
         }
         td2.appendChild(txt_span);
     }
-    replace_child_with('src', table);
+    replaceChildWith('src', table);
     if (source_item.lineno) {
         var line_elem = document.getElementById('L' + source_item.lineno);
         if (line_elem) {
@@ -261,11 +267,11 @@ function display_src_contents(source_item, color_data) {
 }
 
 // Display a single part of a source display
-function src_line_txt(parts, txt_span, source_item) {
+function srcLineText(parts, txt_span, source_item) {
     for (const part of parts) {
         var span = document.createElement('span');
         span.setAttribute('class', token_css_color_class[part.token_color]);
-        span.innerHTML = sanitize_text(part.value);
+        span.innerHTML = sanitizeText(part.value);
         if (is_token_name[part.token_color]) {
             for (const p_edge of part.edges) {
                 g_anchor_edges.push({signature: part.signature,
@@ -274,15 +280,15 @@ function src_line_txt(parts, txt_span, source_item) {
             }
             span.id = part.signature;
             span.onmouseover = function(e) { // e is MouseEvent
-                mouseover_anchor(e.currentTarget, 'add', 'src_hover');
+                mouseoverAnchor(e.currentTarget, 'add', 'src_hover');
                 e.preventDefault();
             };
             span.onmouseleave = function(e) { // e is MouseEvent
-                mouseover_anchor(e.currentTarget, 'remove', 'src_hover');
+                mouseoverAnchor(e.currentTarget, 'remove', 'src_hover');
                 e.preventDefault();
             };
             span.onclick = function(e) { // e is MouseEvent
-                click_anchor(e.currentTarget, source_item);
+                clickAnchor(e.currentTarget, source_item);
                 e.preventDefault();
             };
             // TODO: handle right-click
@@ -298,7 +304,7 @@ function src_line_txt(parts, txt_span, source_item) {
 
 // Do an action ('add' or 'remove') for an item in a class list
 // - callback from mouseover/leave on a token (anchor) in the source display
-function mouseover_anchor(target, class_action, class_id) {
+function mouseoverAnchor(target, class_action, class_id) {
     for (const a_edge of anchor_target_edges(target.id)) {
         for (const t_a_edge of target_anchor_edges(a_edge.target)) {
             var edge = document.getElementById(t_a_edge.signature);
@@ -315,42 +321,43 @@ function mouseover_anchor(target, class_action, class_id) {
 }
 
 // Callback for a click on a token (anchor) in the source display
-function click_anchor(target, source_item) {
+function clickAnchor(target, source_item) {
     // console.log('CLICK ' + target.id + ' in ' + source_item.combinedFilePath());
-    fetch_from_server({anchor: {signature: target.id,
-                                corpus: source_item.corpus, root: source_item.root,
-                                path: source_item.path,
-                                language: 'python'}},  // DO NOT SUBMIT - don't hard-code language
-                      data => set_xref(source_item, target.id, data));
+    fetchFromServer({anchor: {signature: target.id,
+                              corpus: source_item.corpus,
+                              root: source_item.root,
+                              path: source_item.path,
+                              language: 'python'}},  // DO NOT SUBMIT - don't hard-code language
+                    data => setXref(source_item, target.id, data));
 }
 
 // Callback from getting Kythe facts for a token (anchor) click
-function set_xref(source_item, signature, data) {
+function setXref(source_item, signature, data) {
     // expected out-edges for anchor: defines, defines/binding, ref, ref/call
     // console.log('SET_XREF: ' + JSON.stringify(data));
     document.getElementById('xref').innerHTML = 'Getting Kythe links for ' + source_item.combinedFilePath() + ' anchor:' + signature + ' ...';
     var table = document.createElement('table');
     table.setAttribute('class', 'src_table');  // DO NOT SUBMIT - should we have a new class for this?
-    table_insert_row_text(table, data.semantic.signature);
+    tableInsertRowText(table, data.semantic.signature);
     for (const nv of data.semantic_node_values) {
         // TODO: this sanitizes the text; might want to use something different:
-        table_insert_row_text(table, '  ' + nv.kind +': ' + nv.value);
+        tableInsertRowText(table, '  ' + nv.kind +': ' + nv.value);
     }
     for (const edge_links of data.edge_links) {
-        table_insert_row_text(table, edge_links.edge);
+        tableInsertRowText(table, edge_links.edge);
         for (const link of edge_links.links) {
-            table_insert_row_text(table, link.signature + ' ' + link.path);
+            tableInsertRowText(table, link.signature + ' ' + link.path);
         }
     }
-    replace_child_with('xref', table);
+    replaceChildWith('xref', table);
 }
 
-function table_insert_row_text(table, text) {
+function tableInsertRowText(table, text) {
     table.insertRow().insertCell().appendChild(document.createTextNode(text));
 }
 
 // Sanitize a string, allowing tags to not cause problems
-function sanitize_text(raw_str) {
+function sanitizeText(raw_str) {
     // There shouldn't be a need for .replace(/ /g, '&nbsp;') if CSS
     // has white-space:pre ... but by experiment, it's needed.
     // TODO: remove the '<br/>' insertion and put it into extract_color.pl.
@@ -365,7 +372,7 @@ function sanitize_text(raw_str) {
 }
 
 // Send a request to the server and schedule a callback.
-function fetch_from_server(request, callback) {
+function fetchFromServer(request, callback) {
     // callback should take a single arg, the response from the server,
     // e.g.: json_data => set_corpus_root_path_filename(json_data))
     fetch('/json',
@@ -392,15 +399,15 @@ function jq(id) {
 }
 
 // Clear an element and replace with a single child
-function replace_child_with(id, new_child) {
+function replaceChildWith(id, new_child) {
     var elem = document.getElementById(id);
     // elem.replaceChild(new_child, elem.firstChild);
-    delete_all_children(elem);
+    deleteAllChildren(elem);
     elem.appendChild(new_child);
 }
 
 // Clear an element
-function delete_all_children(elem) {
+function deleteAllChildren(elem) {
     while (elem.firstChild) {
         elem.firstChild.remove();
     }
@@ -416,7 +423,7 @@ function anchor_target_edges(anchor_signature) {
 function target_anchor_edges(target) {
     return g_anchor_edges
         .filter(edge =>
-                edge.target.signature === target.signature &&
+            edge.target.signature === target.signature &&
                 edge.target.corpus === target.corpus &&
                 edge.target.root === target.root &&
                 edge.target.path === target.path &&
