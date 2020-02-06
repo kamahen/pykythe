@@ -127,10 +127,9 @@ try it out (on Linux):
   which were processed into a database for the browser by `make-json`.
 
 * If you wish to do a quick look at the source browser with
-  already defined data:
+  already defined data (in `browser/examples/kythe_facts.pl`):
 
   * `mkdir /tmp/pykythe_test`
-  * `cd /tmp/pykythe_test && tar xjf <pkgdir>/browser/browser_data.tjz`
   * `make -C <pkgdir> SRC_BROWSER_PORT=9999 run-src-browser`
   * http://localhost:9999 as above
 

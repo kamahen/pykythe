@@ -19,8 +19,16 @@ This starts a server on port 9999. You can see it at
 server, enter `halt.` or just ctrl-D (this will be changed,
 eventually; but it's useful for testing).
 
+## Examples
 
-## Miscelaneous
+The file `examples/kythe_facts.pl` contains Kythe facts (in Prolog
+form) that are generated from the pykythe sources (see Makefile rule
+`make-json`). The Makefile rule `run-src-browser` uses this if nothing
+has been generated in `/tmp/pykyth_test/browser/files` (e.g.,
+by `make test make-json`).
+
+
+## Miscellaneous
 
 favicon shamelessly taken from https://lsc.saillouisville.org/cropped-favicon-png/#prettyPhoto/0/
 
@@ -34,8 +42,4 @@ supported, so using them.
 
 Add marks on scrollbar that correspond to highlighted text.
 
-Add a real server (to get around CORS issues).
-
 Handle Kythe protobufs.
-
-Get rid of `line_keys` - `lines` becomes a 0-origin array and access is by `lineno - 1`.

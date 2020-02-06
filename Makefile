@@ -539,6 +539,7 @@ make-json:
 		--filesdir=$(TESTOUTDIR)/browser/files
 	@# see run-src-browser, which forces a compile on first load
 	@# time $(SWIPL_EXE) -g "qcompile('$(TESTOUTDIR)/browser/files/kythe_facts.pl')" -t halt
+	cp --preserve=timestamps $(TESTOUTDIR)/browser/files/kythe_facts.pl browser/examples/
 
 .PHONY: make-json-pretty
 make-json-pretty:
@@ -552,6 +553,8 @@ make-json-pretty:
 run_src_browser run-src-browser:
 	@# if .qlf doesn't exist, make an empty one, which
 	@# will cause recompilation when it's loaded
+	[ -e $(TESTOUTDIR)/browser/files/kythe_facts.pl ] || \
+	    cp --preserve=timestamps browser/examples/kythe_facts.pl $(TESTOUTDIR)/browser/files/
 	[ -e $(TESTOUTDIR)/browser/files/kythe_facts.qlf ] || \
 	    touch $(TESTOUTDIR)/browser/files/kythe_facts.qlf
 	$(SWIPL_EXE) --no-tty -g main browser/src_browser.pl -- \

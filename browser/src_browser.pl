@@ -358,16 +358,21 @@ get_color_data_one_file(Corpus, Root, Path,
                              lines:ColorTextLines}) :-
     kythe_file(Corpus,Root,Path,Language),
     Vname0 = vname0(Corpus,Root,Path,Language),
-    setof(LineNo-ColorText, color_fact(Corpus,Root,Path,Language,LineNo,ColorText),
-          LineNoAndChunks),
+    setof(KeyedColorText, keyed_color_fact(Corpus, Root, Path, Language, KeyedColorText),
+          LineNoAndChunks0),
+    pairs_values(LineNoAndChunks0, LineNoAndChunks),
     group_pairs_by_key(LineNoAndChunks, ColorTextLines0),
     maplist(add_links(Vname0), ColorTextLines0, ColorTextLines1), % concurrent gives slight slow-down
     pairs_values(ColorTextLines1, ColorTextLines).
 
-color_fact(Corpus, Root, Path, Language, LineNo, ColorText) :-
+keyed_color_fact(Corpus, Root, Path, Language, Start-(LineNo-ColorText)) :-
+    color_fact(Corpus, Root, Path, Language, ColorText),
+    Start = ColorText.start,
+    LineNo = ColorText.lineno.
+
+color_fact(Corpus, Root, Path, Language, ColorText) :-
     kythe_node(vname(_Signature,Corpus,Root,Path,Lang), '/pykythe/color', ColorTextStr),
     term_string(ColorText, ColorTextStr),
-    LineNo = ColorText.lineno,
     ( Lang = Language; Lang = '').
 
 add_links(Vname0, LineNo-Items, LineNo-AppendedItems) :-
