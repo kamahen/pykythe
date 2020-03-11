@@ -126,12 +126,13 @@ try it out (on Linux):
   * http://localhost:9999 to browse the Kythe facts created by the `test` rule and
   which were processed into a database for the browser by `make-json`.
 
-* If you wish to do a quick look at the source browser with
-  already defined data (in `browser/examples/kythe_facts.pl`):
+* --If you wish to do a quick look at the source browser with
+  already defined data (in `browser/examples/kythe_facts.pl`):--
+  (Removed because the file became over 100MB.)
 
-  * `mkdir /tmp/pykythe_test`
-  * `make -C <pkgdir> SRC_BROWSER_PORT=9999 run-src-browser`
-  * http://localhost:9999 as above
+  * --`mkdir /tmp/pykythe_test`--
+  * --`make -C <pkgdir> SRC_BROWSER_PORT=9999 run-src-browser`--
+  * --http://localhost:9999 as above--
 
 * Run the Kythe browser by:
 
