@@ -2,6 +2,15 @@
 
 %% Utilities for pykythe symtab.
 
+%% TODO: use library(assoc) or library(rbtrees) or trie or hash
+%%       instead of dict for Symtab (performance)
+%%       symrej_accum(Fqn-Type.  (Probably rbtrees, because we do a
+%%       lot of insertions when reading in a cached symtab compared to
+%%       the number of lookups that will be done ... also might want
+%%       to create a merge_ord_list_to_rbtree for making the update
+%%       faster.)
+
+
 :- module(pykythe_symtab, [
                            conv_symtab/3,
                            conv_symtab_pairs/3,

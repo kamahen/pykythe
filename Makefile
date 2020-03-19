@@ -222,13 +222,13 @@ pykythe_test: # $(TESTOUTDIR)/KYTHE/builtins_symtab.pl tests/c3_tests.pl
 	mkdir -p $(PYTHONPATH_DOT) "$(PYTHONPATH_BUILTINS)"
 	@# "test_data/imports1.py" is used in the test suite and must be a real file
 	@# because absolute_file resolution uses the existence of the file.
-	$(SWIPL_EXE) -g pykythe:pykythe_run_tests -t halt pykythe/pykythe.pl \
+	$(SWIPL_EXE) -g 'load_test_files([])' -g plunit:pykythe_run_tests -t halt -l pykythe/pykythe.pl \
 		-- $(PYTHONPATH_OPT) test_data/dummy_dir/dummy_file.py
 	$(SWIPL_EXE) -g run_tests -t halt tests/c3_tests.pl
 
 $(PYKYTHE_EXE): pykythe/*.pl pykythe_test
 	mkdir -p $(dir $@)
-	$(SWIPL_EXE) --goal=pykythe_main --stand_alone=true --undefined=error --verbose=false \
+	$(SWIPL_EXE) --stand_alone=true --undefined=error --verbose=false \
 	    --foreign=save \
 	    -o $@ -c pykythe/pykythe.pl
 	@# To find the .so files and packages:
@@ -331,17 +331,17 @@ etags: pykythe/TAGS
 pykythe/TAGS: pykythe/TAGS-py pykythe/TAGS-pl
 	cat pykythe/TAGS-pl pykythe/TAGS-py >$@
 
-pykythe/TAGS-pl: pykythe/*.pl tests/test_pykythe.py /usr/lib/swi-prolog/library/*.pl /usr/lib/swi-prolog/library/http/*.pl
-	cd pykythe ; etags -l prolog -o ../$@ *.pl ../scripts/*.pl /usr/lib/swi-prolog/library/*.pl /usr/lib/swi-prolog/library/http/*.pl
+pykythe/TAGS-pl: pykythe/*.pl browser/*.pl scripts/*.pl /usr/lib/swi-prolog/library/*.pl /usr/lib/swi-prolog/library/http/*.pl
+	cd pykythe ; etags -l prolog -o ../$@ *.pl ../browser/*.pl ../scripts/*.pl ../tests/test_pykythe.py /usr/lib/swi-prolog/library/*.pl /usr/lib/swi-prolog/library/http/*.pl
 
-pykythe/TAGS-py: pykythe/*.py
-	cd pykythe ; etags -l python -o ../$@ *.py tests/test_pykythe.py
+pykythe/TAGS-py: pykythe/*.py tests/test_pykythe.py
+	cd pykythe ; etags -l python -o ../$@ *.py ../tests/test_pykythe.py
 
 .PHONY: test
 test: all_tests
 
 .PHONY: all_tests
-all_tests: etags unit_tests pykythe_test test_imports1 test_data_tests # json-decoded-all  # pykythe_http_server
+all_tests: etags unit_tests pykythe_test test_imports1 test_data_tests # json-decoded-all
 
 .PHONY: unit_tests
 unit_tests: tests/test_pykythe.py \
@@ -490,7 +490,8 @@ clean-batch clean_batch:
 
 .PHONY: tkdiff
 tkdiff:
-	git difftool --no-prompt --tool=tkdiff
+	git difftool --no-prompt --tool=tkdiff \
+		$$(git diff --name-only | fgrep -v browser/examples/kythe_facts.pl)
 
 # .nq.gz files are for Cayley
 
@@ -531,15 +532,16 @@ make-tables: # add-index-pykythe
 make-json:
 	$(RM) -r $(TESTOUTDIR)/browser
 	mkdir -p $(TESTOUTDIR)/browser/files
+	@# in following: - 99 files in typeshed, 43 in test_data, 10 in pykythe
 	set -o pipefail; \
-	    cat $$(find $(KYTHEOUTDIR) -name '*.kythe.json' | \
-		egrep '/pykythe/test_data|/pykythe/pykythe/') /dev/null | \
+	    find $(KYTHEOUTDIR) -name '*.kythe.json' | \
 	    time $(SWIPL_EXE) -g main -t halt \
 		browser/kythe_json_to_prolog.pl -- \
 		--filesdir=$(TESTOUTDIR)/browser/files
 	@# see run-src-browser, which forces a compile on first load
 	@# time $(SWIPL_EXE) -g "qcompile('$(TESTOUTDIR)/browser/files/kythe_facts.pl')" -t halt
-	cp --preserve=timestamps $(TESTOUTDIR)/browser/files/kythe_facts.pl browser/examples/
+	@# kythe_facts.pl is 114MB, so don't copy it.
+	@# cp --preserve=timestamps $(TESTOUTDIR)/browser/files/kythe_facts.pl browser/examples/
 
 .PHONY: make-json-pretty
 make-json-pretty:
@@ -551,13 +553,16 @@ make-json-pretty:
 # To prepare this: make-json
 # http://localhost:$(SRC_BROWSER_PORT)/static/src_browser.html
 run_src_browser run-src-browser:
+	@mkdir -p $(TESTOUTDIR)/browser/files
 	@# if .qlf doesn't exist, make an empty one, which
 	@# will cause recompilation when it's loaded
 	[ -e $(TESTOUTDIR)/browser/files/kythe_facts.pl ] || \
 	    cp --preserve=timestamps browser/examples/kythe_facts.pl $(TESTOUTDIR)/browser/files/
 	[ -e $(TESTOUTDIR)/browser/files/kythe_facts.qlf ] || \
 	    touch $(TESTOUTDIR)/browser/files/kythe_facts.qlf
-	$(SWIPL_EXE) --no-tty -g main browser/src_browser.pl -- \
+	@# TODO: remove "-g src_browser:main -l" (which are for debugging)  DO NOT SUBMIT
+	@# TODO: compile src_browser.pl and use src_browser.qlf
+	$(SWIPL_EXE) --no-tty -g src_browser:main2 -l browser/src_browser.pl -- \
 		--port=$(SRC_BROWSER_PORT) \
 		--filesdir=$(TESTOUTDIR)/browser/files \
 		--staticdir=$(realpath ./browser/static)
@@ -652,22 +657,11 @@ push_to_github:
 	@# ensure "make make-json" has been done - keep the .pl file
 	@# but delete the .qlf file, which might be incompatible
 	@# with whatever is installed
-	test -e $(TESTOUTDIR)/browser/files/kythe_facts.pl
-	$(RM) $(TESTOUTDIR)/browser/files/kythe_facts.qlf
-	@# The following is for people who want to test run the soruce browser
-	cd $(TESTOUTDIR) && tar cjf $(TESTGITHUB)/pykythe/browser/browser_data.tjz browser
 	-cd $(TESTGITHUB)/pykythe && git status
+	@# $$(git diff --name-only | fgrep -v browser/examples/kythe_facts.pl)
 	-cd $(TESTGITHUB)/pykythe && git difftool --no-prompt --tool=tkdiff
 	@echo '# pushd $(TESTGITHUB)/pykythe && git commit -mCOMMIT-MSG' -a
 	@echo '# pushd $(TESTGITHUB)/pykythe && git push -u origin master'
-
-
-# Not yet implemented
-#@#@# PHONY: pykythe_http_server
-#@#@# pykythe_http_server: $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).kythe.json scripts/pykythe_http_server.pl FORCE
-#@#@# 	scripts/pykythe_http_server.pl \
-#@#@# 		--port 8008 \
-#@#@# 		--kythe $(TESTOUTDIR)/$(TEST_GRAMMAR_FILE).kythe.json
 
 FORCE:
 .PHONY: FORCE
@@ -784,3 +778,48 @@ lint-logtalk:
 
 unused-predicates:
 	cd pykythe && echo 'xref_source(pykythe, [silent(true)]). xref_defined(_, Goal, _), \+ xref_called(_, Goal, _), writeln(Goal), fail ; true.' | $(SWIPL_EXE)
+
+upgrade-mypy:
+	python3 -m pip install -U git+git://github.com/python/mypy.git
+
+upgrade-pkgs:
+	sudo apt update
+	sudo apt --with-new-pkgs upgrade
+	@# And an old incantation from decades ago
+	sudo sync
+	sudo sync
+	sudo sync
+	sudo time fstrim --all -v
+
+upgrade-swipl:
+	@# See ../swipl-devel/CMAKE.md
+	cd ../swipl-devel && \
+		git pull --recurse && \
+		cd build && \
+		mkdir -p ../man/archive && \
+		cmake .. && \
+		ninja && \
+		ctest -j 8
+	@# ninja install
+
+upgrade-swipl-full:
+	cd ../swipl-devel && \
+		git pull --recurse && \
+		rm -rf build && \
+		mkdir build && \
+		mkdir -p ../man/archive && \
+		cd build && \
+		cmake -G Ninja .. && \
+		ninja && ctest -j 8
+	@# ninja install
+
+upgrade-emacs:
+	@# https://www.emacswiki.org/emacs/EmacsSnapshotAndDebian
+	cd ../emacs && \
+		git clean -dxf && \
+		./autogen.sh && \
+		./configure --prefix=/home/peter/emacs-2019-12-17 && \
+		make bootstrap install
+
+rsync-backup:
+	rsync -va --delete -e ssh 192.168.1.79:src/pykythe /home/peter/src_backup/

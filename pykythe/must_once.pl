@@ -9,11 +9,13 @@
                       must_once/6,
                       must_once/7,
                       must_once/8,
+                      must_fail/1,
                       fail/1]).
 :- encoding(utf8).
 %% :- set_prolog_flag(autoload, false).  % TODO: breaks qsave
 
 :- meta_predicate
+       must_fail(0),
        must_once(0),
        must_once_msg(0, +),
        must_once_msg(0, +, +),
@@ -117,6 +119,12 @@ must_once(Goal, AccumA0, AccumA, AccumB0, AccumB, AccumC0, AccumC, PassA) :-
     (  call(Goal, AccumA0, AccumA, AccumB0, AccumB, AccumC0, AccumC, PassA)
     -> true
     ;  throw(error(must_once_failed(Goal), _))
+    ).
+
+must_fail(Goal) :-
+    (  call(Goal)
+    -> throw(error(must_fail(Goal), _))
+    ;  true
     ).
 
 fail(_) :-

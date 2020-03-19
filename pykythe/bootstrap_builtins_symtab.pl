@@ -7,7 +7,7 @@
 
 :- encoding(utf8).
 
-:- set_prolog_flag(autoload, false).
+%% :- set_prolog_flag(autoload, false). % TODO: https://swi-prolog.discourse.group/t/ann-swi-prolog-8-1-22/1867/7
 
 builtins_version('${VERSION}').
 

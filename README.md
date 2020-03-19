@@ -80,7 +80,7 @@ try it out (on Linux):
 
 
 * Install [SWI-Prolog](http://www.swi-prolog.org/Download.html). You
-  need at least version 8.1.4, so as of 2019-03-27, this means
+  need at least version 8.1.24, so as of 2020-03-04, this means
   using the "devel" download or PPA.
 
   After installing, add the packages
@@ -126,13 +126,13 @@ try it out (on Linux):
   * http://localhost:9999 to browse the Kythe facts created by the `test` rule and
   which were processed into a database for the browser by `make-json`.
 
-* --If you wish to do a quick look at the source browser with
-  already defined data (in `browser/examples/kythe_facts.pl`):--
+* <strike>If you wish to do a quick look at the source browser with
+  already defined data (in `browser/examples/kythe_facts.pl`):</strike>
   (Removed because the file became over 100MB.)
 
-  * --`mkdir /tmp/pykythe_test`--
-  * --`make -C <pkgdir> SRC_BROWSER_PORT=9999 run-src-browser`--
-  * --http://localhost:9999 as above--
+  * <strike>`mkdir /tmp/pykythe_test`</strike>
+  * <strike>`make -C <pkgdir> SRC_BROWSER_PORT=9999 run-src-browser`</strike>
+  * <strike>http://localhost:9999 as above</strike>
 
 * Run the Kythe browser by:
 

@@ -7,6 +7,7 @@
                           absolute_dir/2,
                           absolute_file_name_rel/2,
                           absolute_file_name_rel/3,
+                          at_most/3,
                           base64_utf8/2,
                           do_if/2,
                           dump_term/2,
@@ -23,8 +24,6 @@
                           log_if/3,
                           maybe_absolute_dir/2,
                           maybe_open_read/2,
-                          opts_dict/2,
-                          opts_dict/3,
                           print_term_cleaned/3,
                           pykythe_json_read_dict/2,
                           pykythe_json_write_dict_nl/2,
@@ -36,6 +35,7 @@
                           split_atom/4,
                           term_to_canonical_atom/2,
                           %% update_dict/3,
+                          validate_prolog_version/0,
                           write_atomic_file/2,
                           write_atomic_stream/2
                          ]).
@@ -65,7 +65,7 @@
 :- use_module(library(rbtrees), [ord_list_to_rbtree/2, rb_insert/4, rb_visit/2] ).
 :- use_module(library(sha), [sha_hash/3, hash_atom/2]).
 :- use_module(library(yall)).   % For [S,A]>>atom_string(A,S) etc.
-:- style_check(-var_branches).
+:- style_check(-var_branches).  % TODO: fix the library code
 :- use_module(library(http/json), [json_read_dict/3, json_write_dict/3]).
 :- style_check(+var_branches).
 :- style_check(-var_branches).
@@ -102,6 +102,11 @@
                  ]).
 %% :- set_prolog_flag(autoload, false).   % TODO: breaks qsave
 :- endif.
+
+validate_prolog_version :-
+    current_prolog_flag(version, PrologVersion),
+    %% Sync this with README.md:
+    must_once_msg(PrologVersion >= 80124, 'SWI-Prolog version is too old').
 
 %! absolute_file_name_rel(+File, -Absolute) is det.
 %% For now, this is the same as absolute_file_name/2.
@@ -261,24 +266,6 @@ pykythe_json_read_dict(Stream, Dict) :-
                    [value_string_as(atom), end_of_file(@(end)), default_tag(json),
                     true(#(true)),false(#(false)),null(#(null))]).
 
-opts_dict(Opts, OptsDict) :- opts_dict(Opts, opts, OptsDict).
-
-%! opts_dict(+Opts:list, ?DictTag:atom, -OptsDict:dict) is det.
-%! opts_dict(-Opts:list, ?DictTag:atom, +OptsDict:dict) is det.
-opts_dict(Opts, DictTag, OptsDict) :-
-    (  var(Opts)
-    -> dict_pairs(OptsDict, DictTag, OptsPairs),
-       maplist(dict_pair_to_opt, OptsPairs, Opts)
-    ;  var(OptsDict)
-    -> maplist(opt_to_dict_pair, Opts, OptsPairs),
-       dict_pairs(OptsDict, DictTag, OptsPairs)
-    ;  instantiation_error(opts_dict(Opts, OptsDict))
-    ).
-
-dict_pair_to_opt(K-V, KV) :- KV =.. [K, V].
-
-opt_to_dict_pair(KV, K-V) :- KV =.. [K, V].
-
 %! print_term_cleaned(+Term, +Options, -TermStr) is det.
 %% print_term, cleaned up
 print_term_cleaned(Term, Options, TermStr) :-
@@ -343,6 +330,7 @@ pykythe_tmp_file_stream(Dir, FileName, Stream, Options) :-
 %% isn't created (even if `WritePred` fails and write_atomic/2 fails.
 %% If needed, directories to Path are created.
 %% WritePred must take the stream as its last argument.
+%% TODO: contribute this as a SWI-Prolog package.
 write_atomic_stream(WritePred, Path) :-
     %% TODO: See '$stage_file' in /usr/lib/swi-prolog/boot/init.pl
     %%       and setup_call_catcher_cleanup
@@ -442,3 +430,15 @@ b64_to_utf8_to_atom(BytesBase64, Atom) :-
     atom_codes(Utf8, Utf8codes),
     phrase(utf8_codes(Codes), Utf8codes),
     atom_codes(Atom, Codes).
+
+%! at_most(+List, +Length, -TruncatedList) is det.
+%% Takes the first Length items from List; if there are
+%% fewer then TruncatedList = List
+at_most([], _, []).
+at_most([X|Xs], Length, TruncatedList) :-
+    (  Length > 0
+    -> TruncatedList = [X|Ys],
+       Length2 is Length - 1,
+       at_most(Xs, Length2, Ys)
+    ;  TruncatedList = []
+    ).

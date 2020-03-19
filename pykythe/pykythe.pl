@@ -224,10 +224,16 @@
 :- meta_predicate
        maplist_kyfact(4, +, +, -, +),
        maplist_kyfact(5, +, -, +, -, +),
+       maplist_kyfact_(+, 4, +, -, +),
+       maplist_kyfact_(+, 5, -, +, -, +),
        maplist_kyfact_expr(6, +, +, -, +, -, +),
        maplist_kyfact_expr(7, +, +, +, -, +, -, +),
+       maplist_kyfact_expr_(+, 6, +, -, +, -, +),
+       maplist_kyfact_expr_(+, 7, +, +, -, +, -, +),
        maplist_kyfact_symrej(6, +, +, -, +, -, +),
        maplist_kyfact_symrej(7, +, -, +, -, +, -, +),
+       maplist_kyfact_symrej_(+, 6, +, -, +, -, +),
+       maplist_kyfact_symrej_(+, 7, -, +, -, +, -, +),
        maplist_kyfact_symrej_union(7, +, -, +, -, +, -, +).
 
 :- style_check(+singleton).
@@ -439,6 +445,8 @@ edcg:pass_info(file_meta).
 edcg:pred_info(log_kyfact_msg, 2,                      [kyfact,file_meta]).
 edcg:pred_info(maplist_kyfact, 2,                      [kyfact,file_meta]).
 edcg:pred_info(maplist_kyfact, 3,                      [kyfact,file_meta]).
+edcg:pred_info(maplist_kyfact_, 2,                     [kyfact,file_meta]).
+edcg:pred_info(maplist_kyfact_, 3,                     [kyfact,file_meta]).
 
 edcg:pred_info(kyanchor, 4,                            [kyfact,file_meta]).
 edcg:pred_info(kyanchor_kyedge_fqn, 5,                 [kyfact,file_meta]).
@@ -460,6 +468,8 @@ edcg:pred_info(symtab_pykythe_types, 1,                [kyfact,file_meta]).
 
 edcg:pred_info(maplist_kyfact_expr, 2,                 [kyfact,expr,file_meta]).
 edcg:pred_info(maplist_kyfact_expr, 3,                 [kyfact,expr,file_meta]).
+edcg:pred_info(maplist_kyfact_expr_, 2,                [kyfact,expr,file_meta]).
+edcg:pred_info(maplist_kyfact_expr_, 3,                [kyfact,expr,file_meta]).
 
 edcg:pred_info(assign_normalized, 2,                   [kyfact,expr,file_meta]).
 edcg:pred_info(expr_normalized, 1,                     [kyfact,expr,file_meta]).
@@ -483,6 +493,8 @@ edcg:pred_info(process_nodes_impl, 2,                  [kyfact,expr,file_meta]).
 
 edcg:pred_info(maplist_kyfact_symrej, 2,               [kyfact,symrej,file_meta]).
 edcg:pred_info(maplist_kyfact_symrej, 3,               [kyfact,symrej,file_meta]).
+edcg:pred_info(maplist_kyfact_symrej_, 2,              [kyfact,symrej,file_meta]).
+edcg:pred_info(maplist_kyfact_symrej_, 3,              [kyfact,symrej,file_meta]).
 edcg:pred_info(maplist_kyfact_symrej_union, 3,         [kyfact,symrej,file_meta]).
 
 edcg:pred_info(eval_assign_dot_op_binds_single, 4,     [kyfact,symrej,file_meta]).
@@ -521,15 +533,16 @@ edcg:pred_info(signature_source, 2,                    [file_meta]).
 
 edcg:pred_info(exprs, 1,                               [expr]).
 
-%% For debugging, comment out the following and run:
+%% For debugging, load this file (using `swipl -l pykythe/pykythe.pl` or
+%% by using `[pykythe/pykythe].`) -- this does not run the initialization.
 %%       set_prolog_flag(autoload,true).  debug.
 %%       pykythe:pykythe_main2.
 %% or from a script:
 %%      echo "pykythe:pykythe_main" | swipl ...
 %% Note that for running in an emacs shell, you might want swipl --no-tty
 %% See https://groups.google.com/forum/#!topic/swi-prolog/WrC9x3vQBBY
-%% The following is commented out because it's set by the compile step
-%% :- initialization(pykythe_main, main).  % TODO: reinstate?
+
+:- initialization(pykythe_main, main).
 
 %! main is det.
 %% The main predicate, run during initialization.
@@ -690,8 +703,7 @@ interrupt(_Signal) :-
 %% Adds "fake" options that contain the full file paths generated
 %% from the suffixes.
 pykythe_opts(SrcPaths, Opts) :-
-    current_prolog_flag(version, PrologVersion),
-    must_once_msg(PrologVersion >= 80121, 'SWI-Prolog version is too old'),  % Sync this with README.md
+    validate_prolog_version,
     OptsSpec =
        [[opt(builtins_symtab), type(atom), default(''), longflags(['builtins_symtab']),
          help('File containing a builtins_symtab/1 fact')],
@@ -724,7 +736,7 @@ pykythe_opts(SrcPaths, Opts) :-
          help('Suffix (extension) for cache symtab files - should have leading ".".')]
        ],
     opt_arguments(OptsSpec, OptsList, PositionalArgs),
-    opts_dict(OptsList, Opts0),
+    dict_create(Opts0, opts, OptsList),
     split_atom(Opts0.pythonpath, ':', '', PythonpathList0),
     convlist(maybe_absolute_dir, PythonpathList0, PythonpathList),
     put_dict(pythonpath, Opts0, PythonpathList, Opts),
@@ -1400,22 +1412,9 @@ simplify_color(json{ kind:'Color',
               color{end:End,
                     start:Start,
                     value:Value,
-                    signature:Signature,
                     column:Column,
                     lineno:Lineno,
-                    token_color:TokenColor}) :-
-    (  no_signature(TokenColor)
-    -> Signature = ''
-    ;  anchor_signature_str(Start, End, Value, Signature)
-    ).
-
-no_signature('<COMMENT>').
-no_signature('<KEYWORD>').
-no_signature('<NEWLINE>').
-no_signature('<NUMBER>').
-no_signature('<PUNCTUATION>').
-no_signature('<STRING>').
-no_signature('<WHITESPACE>').
+                    token_color:TokenColor}).
 
 %! process_nodes(+Nodes, +SrcInfo:dict, -KytheFacts:list, -Exprs:list, +Meta:dict) is det.
 %% Wrapper for process_nodes//[kyfact,expr,file_meta].
@@ -1470,13 +1469,14 @@ kyfile(SrcInfo) -->>
 %% Output flattened color facts for one token
 kyfact_color(color{lineno:Lineno,
                    column:Column,
-                   start:Start,
-                   end:End,
+                   start:StartAtom,
+                   end:EndAtom,
                    token_color:TokenColor,
-                   signature:Signature,
                    value:Value
                   }) -->>
     %% See anchor_signature_str/4:
+    term_to_atom(Start, StartAtom),
+    term_to_atom(End, EndAtom),
     { format(atom(ColorSignature), '#~d', [Start]) },
     signature_source(ColorSignature, Source),
     %% TODO: The following /pykythe/color/... facts are too verbose, but
@@ -1486,13 +1486,12 @@ kyfact_color(color{lineno:Lineno,
     %%         Outputting all color info as single string: 19MB
     %%         Outputting one fact per token:              26MB
     %%         Outputting details per token:               62MB
-    %% kyfact(Source, '/pykythe/color/lineno', Lineno),
-    %% kyfact(Source, '/pykythe/color/column', Column),
-    %% kyfact(Source, '/pykythe/color/start', Start),
-    %% kyfact(Source, '/pykythe/color/end', End),
-    %% kyfact(Source, '/pykythe/color/signature', Signature),
-    %% kyfact(Source, '/pykythe/color/color', TokenColor),
-    %% kyfact(Source, '/pykythe/color/value', Value),
+    %%           kyfact(Source, '/pykythe/color/lineno', Lineno),
+    %%           kyfact(Source, '/pykythe/color/column', Column),
+    %%           kyfact(Source, '/pykythe/color/start', Start),
+    %%           kyfact(Source, '/pykythe/color/end', End),
+    %%           kyfact(Source, '/pykythe/color/color', TokenColor),
+    %%           kyfact(Source, '/pykythe/color/value', Value),
     %% TODO: flatten this to a simple CSV?
     { format(atom(ColorFactText), '~q',
              [color{lineno:Lineno,
@@ -1500,7 +1499,6 @@ kyfact_color(color{lineno:Lineno,
                     start:Start,
                     end:End,
                     token_color:TokenColor,
-                    signature:Signature,
                     value:Value}]) },
     kyfact(Source, '/pykythe/color', ColorFactText).
 
@@ -2162,9 +2160,9 @@ kyanchor(Start, End, Token, Source) -->>
     kyfact(Source, '/kythe/loc/start', Start),
     kyfact(Source, '/kythe/loc/end', End).
 
-anchor_signature_str(Start, _End, _Token, Signature) :-
-    %% For debugging: format(atom(Signature), '@~d:~d<~w>', [Start, End, Token]).
-    format(atom(Signature), '@~d', [Start]).
+anchor_signature_str(Start, End, Token, Signature) :-
+    format(atom(Signature), '@~d:~d<~w>', [Start, End, Token]).  %% DO NOT SUBMIT (for debugging)
+    %% format(atom(Signature), '@~d', [Start]).
 
 anchor_signature_str('Astn'{start:Start, end:End, value:Token}, Signature) :-
     anchor_signature_str(Start, End, Token, Signature).
@@ -2885,13 +2883,6 @@ add_rej_to_symtab(Fqn-RejType, Symtab0, Symtab) :-
 %% TODO: can we eliminate the "(Type=[]->true;true)" ?
 %%       One way would be to do an initial pass that
 %%       enters all the identifiers into symtab (with type=[]).
-%% TODO: use library(assoc) or library(rbtrees) or trie or hash
-%%       instead of dict for Symtab (performance)
-%%       symrej_accum(Fqn-Type.  (Probably rbtrees, because we do a
-%%       lot of insertions when reading in a cached symtab compared to
-%%       the number of lookups that will be done ... also might want
-%%       to create a merge_ord_list_to_rbtree for making the update
-%%       faster.)
 symrej_accum(Fqn-Type-TypeSymtab, sym_rej(Symtab0,Rej0), sym_rej(Symtab,Rej)) :-
     (  symtab_lookup(Fqn, Symtab0, TypeSymtab)
     -> symrej_accum_found(Fqn, Type, TypeSymtab, Symtab0, Symtab, Rej0, Rej)
@@ -3189,51 +3180,57 @@ pykythe_portray_unify(Generic, Term) :-
 
 %! maplist_kyfact(:Pred, +L:list)//[kyfact,file_meta] is det.
 %% maplist/2 for EDCG [kyfact,file_meta]
-maplist_kyfact(_Pred, []) -->> [ ].
-maplist_kyfact(Pred, [X|Xs]) -->>
+maplist_kyfact(Pred, L) -->> maplist_kyfact_(L, Pred).
+maplist_kyfact_([], _Pred) -->> [ ].
+maplist_kyfact_([X|Xs], Pred) -->>
     call(Pred, X):[kyfact,file_meta],
     !,                          % "cut" for memory usage
-    maplist_kyfact(Pred, Xs).
+    maplist_kyfact_(Xs, Pred).
 
 %! maplist_kyfact(:Pred, +L0:list, -L:list)//[kyfact,file_meta] is det.
 %% maplist/3 for EDCG [kyfact,file_meta]
-maplist_kyfact(_Pred, [], []) -->> [ ].
-maplist_kyfact(Pred, [X|Xs], [Y|Ys]) -->>
+maplist_kyfact(Pred, L0, L) -->> maplist_kyfact_(L0, Pred, L).
+maplist_kyfact_([], _Pred, []) -->> [ ].
+maplist_kyfact_([X|Xs], Pred, [Y|Ys]) -->>
     call(Pred, X, Y):[kyfact,file_meta],
     !,                          % "cut" for memory usage
-    maplist_kyfact(Pred, Xs, Ys).
+    maplist_kyfact_(Xs, Pred, Ys).
 
 %! maplist_kyfact_symrej(:Pred, +L:list)//[kyfact,symrej,file_meta] is det.
 %% maplist/2 for EDCG [kyfact,symrej,file_meta]
-maplist_kyfact_symrej(_Pred, []) -->> [ ].
-maplist_kyfact_symrej(Pred, [X|Xs]) -->>
+maplist_kyfact_symrej(Pred, L) -->> maplist_kyfact_symrej_(L, Pred).
+maplist_kyfact_symrej_([], _Pred) -->> [ ].
+maplist_kyfact_symrej_([X|Xs], Pred) -->>
     call(Pred, X):[kyfact,symrej,file_meta],
     !,                          % "cut" for memory usage
-    maplist_kyfact_symrej(Pred, Xs).
+    maplist_kyfact_symrej_(Xs, Pred).
 
 %! maplist_kyfact_symrej(:Pred, +L0:list, -L:list)//[kyfact,symrej,file_meta] is det.
 %% maplist/3 for EDCG [kyfact,symrej,file_meta]
-maplist_kyfact_symrej(_Pred, [], []) -->> [ ].
-maplist_kyfact_symrej(Pred, [X|Xs], [Y|Ys]) -->>
+maplist_kyfact_symrej(Pred, L0, L) -->> maplist_kyfact_symrej_(L0, Pred, L).
+maplist_kyfact_symrej_([], _Pred, []) -->> [ ].
+maplist_kyfact_symrej_([X|Xs], Pred, [Y|Ys]) -->>
     call(Pred, X, Y):[kyfact,symrej,file_meta],
     !,                          % "cut" for memory usage
-    maplist_kyfact_symrej(Pred, Xs, Ys).
+    maplist_kyfact_symrej_(Xs, Pred, Ys).
 
 %! maplist_kyfact_expr(:Pred, +L0:list)//[kyfact,expr,file_meta] is det.
 %% maplist/2 for EDCG [kyfact,expr,file_meta]
-maplist_kyfact_expr(_Pred, []) -->> [ ].
-maplist_kyfact_expr(Pred, [X|Xs]) -->>
+maplist_kyfact_expr(Pred, L) -->> maplist_kyfact_expr_(L, Pred).
+maplist_kyfact_expr_([], _Pred) -->> [ ].
+maplist_kyfact_expr_([X|Xs], Pred) -->>
     call(Pred, X):[kyfact,expr,file_meta],
     !,                          % "cut" for memory usage
-    maplist_kyfact_expr(Pred, Xs).
+    maplist_kyfact_expr_(Xs, Pred).
 
 %! maplist_kyfact_expr(:Pred, +L0:list, -L:list)//[kyfact,expr,file_meta] is det.
 %% maplist/3 for EDCG [kyfact,expr,file_meta]
-maplist_kyfact_expr(_Pred, [], []) -->> [ ].
-maplist_kyfact_expr(Pred, [X|Xs], [Y|Ys]) -->>
+maplist_kyfact_expr(Pred, L0, L) -->> maplist_kyfact_expr_(L0, Pred, L).
+maplist_kyfact_expr_([], _Pred, []) -->> [ ].
+maplist_kyfact_expr_([X|Xs], Pred, [Y|Ys]) -->>
     call(Pred, X, Y):[kyfact,expr,file_meta], !,
     !,                          % "cut" for memory usage
-    maplist_kyfact_expr(Pred, Xs, Ys).
+    maplist_kyfact_expr_(Xs, Pred, Ys).
 
 trace_file(this_will_never_match).
 %% trace_file('/home/peter/src/typeshed/stdlib/3/collections/__init__.pyi'). % TODO: delete
@@ -3287,223 +3284,5 @@ stats(Stats) :-
 
 statistic_kv(Key, Key:Value) :-
     statistics(Key, Value).
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%% tests %%%%%%%%%%%%%%%%
-%%
-%% Most tests are outside of this, using Kythe's verifier.  However, a
-%% few tests are here, as they were used for developing the code, so
-%% why not keep them?
-
-:- use_module(library(plunit)).
-
-pykythe_run_tests :-
-    pykythe:pykythe_opts(SrcPaths, Opts),
-    assertz(pykythe_test:src_paths(SrcPaths)),
-    assertz(pykythe_test:opts(Opts)),
-    plunit:run_tests.
-
-:- begin_tests(dev).
-
-:- use_module(library(lists), [subtract/3]).
-
-test_meta(meta{kythe_corpus: 'CORPUS',
-               kythe_root: 'ROOT',
-               path: SrcPath,
-               language: python,
-               encoding: 'utf-8',
-               contents_base64: '',
-               contents_str: _,
-               contents_bytes: _,
-               sha1: '',
-               src_fqn: SrcFqn,
-               pythonpath: Pythonpath,
-               opts: Opts,
-               version: ''}) :-
-    pykythe_test:opts(Opts),
-    pykythe_test:src_paths([SrcPath]),
-    Pythonpath = Opts.pythonpath,
-    module_path:path_to_module_fqn_or_unknown(SrcPath, SrcFqn).
-
-kyfact_edge(EdgeKind, Tag, Json, Out) :-
-    get_dict(edge_kind, Json, EdgeKind0),
-    EdgeKind0 == EdgeKind,
-    Out = Tag{source: Json.source.signature, target: Json.target.signature}.
-
-find_anchor(Line, I-Match, Astn) :-
-    %% setof guarantees ordering of find_anchor results
-    setof(Astn, find_anchor_match(Line, Match, Astn), Astns),
-    nth0(I, Astns, Astn).
-
-find_anchor_match(Line, Match, 'Astn'{start:Start, end:End, value:Match}) :-
-    sub_atom(Line, Start, Len, _After, Match),
-    End is Start + Len.
-
-path_module(Meta, Path, Module) :-
-    module_path:full_path_prefixed(Path, Meta.pythonpath, Module).
-
-symtab_subtract(Symtab1, Symtab2, DiffPairs) :-
-    symtab_pairs(Symtab1, Pairs1),
-    symtab_pairs(Symtab2, Pairs2),
-    subtract(Pairs1, Pairs2, DiffPairs).
-
-convset(Pred, L1, S2) :-
-    convlist(Pred, L1, L2),
-    list_to_set(L2, S2).
-
-round_trip_base64_utf8(Original) :-
-    base64_utf8(Original, B64),
-    base64_utf8(RoundTrip, B64),
-    assertion(Original == RoundTrip).
-
-test(base64_misc) :-
-    Original = '├',
-    %% using Python:
-    %% >>> '├'.encode('utf8')
-    %% '\xe2\x94\x9c'
-    %% >>> [c for c in '├'.encode('utf8')]
-    %% [226, 148, 156]
-    atom_codes(Original, OriginalCodes),
-    OriginalCodes = [9500],
-    phrase(utf8_codes(OriginalCodes), EncodedUtf8codes),
-    assertion(EncodedUtf8codes == [226, 148, 156]),
-    atom_codes(EncodedUtf8, EncodedUtf8codes),
-    assertion(EncodedUtf8 == '\u00e2\u0094\u009c').
-
-test(base64_utf8) :-
-    forall(member(Original,
-                  ['ab', 'AB',
-                   '├',
-                   '網目錦蛇 = 1  # アミメニシキヘビ 《網目錦蛇》 【あみめにしきへび】 (n) (uk) reticulated python (Python reticulatus)']),
-           round_trip_base64_utf8(Original)).
-
-test(kyImportDottedAsNamesFqn_top) :-
-    %% This test is not exhaustive -- it's mainly for developing the code.
-    %% Additional tests are done using the Kythe verifier.
-    %% Note that this imports a variable (os.path.sep) whereas comb_as test imports
-    %% a file (os.path). This shouldn't be any different, but it exercises things a bit more.
-    test_meta(Meta),
-    Meta.contents_str = 'import os.path.sep',
-    Meta.contents_bytes = Meta.contents_str,  % ascii "decoding"
-    %% If you change this setup, also change test(kyImportDottedAsNamesFqn1). DO NOT SUBMIT
-    maplist(find_anchor(Meta.contents_str),
-            [0-os, 0-path, 0-sep],
-            [OsAstn, PathAstn, SepAstn]),
-    maplist(path_module(Meta),
-            ['os', 'os/path', 'os/path/sep'],
-            [Module_os, Module_os_path, Module_os_path_sep]),
-
-    %% Module_os_path_sep = module_and_token('___.typeshed.stdlib.3.os.path',
-    %%                                       '___/typeshed/stdlib/3/os/path.pyi', sep)
-    full_module_part(Module_os_path_sep, ModuleModule_os_path_sep),
-    remove_suffix(ModuleModule_os_path_sep, '.stdlib.3.os.path.sep', TypeshedFqn),
-    assertion(has_suffix(TypeshedFqn, '.typeshed')),
-    assertion(token_part(Module_os_path_sep, sep)),
-
-    %% Module_os_path = module_alone('___.typeshed.stdlib.3.os.path', '___/typeshed/stdlib/3/os/path.pyi')
-    full_module_part(Module_os_path, ModuleModule_os_path),
-    assertion(atomic_list_concat([TypeshedFqn, '.stdlib.3.os.path'], ModuleModule_os_path)),
-
-    %% Module_os = module_alone('___.typeshed.stdlib.3.os', '___/typeshed/stdlib/3/os/__init__.pyi')
-    full_module_part(Module_os, ModuleModule_os),
-    assertion(atomic_list_concat([TypeshedFqn, '.stdlib.3.os'], ModuleModule_os)),
-
-    _FromDots = [],
-    DottedNameItems = ['NameBareNode'{name:OsAstn}, 'NameBareNode'{name:PathAstn}, 'NameBareNode'{name:SepAstn}],
-    join_fqn([Meta.src_fqn, 'os'], BindsFqn),
-    BindsNameAstn = OsAstn,
-    %% phrase(kyImportDottedAsNamesFqn_top(...)):
-    kyImportDottedAsNamesFqn_top(DottedNameItems, BindsFqn, BindsNameAstn,
-                                 KyFactsAll, [], Exprs, [], Meta),
-
-    convset(kyfact_edge('/kythe/edge/ref/imports',     imports), KyFactsAll, KyFactsImports),
-    convset(kyfact_edge('/kythe/edge/defines/binding', binding), KyFactsAll, KyFactsBinding),
-    maplist(anchor_signature_str, [OsAstn, PathAstn, SepAstn], [OsSig, PathSig, SepSig]),
-    assertion(KyFactsImports == [imports{source:OsSig,   target:ModuleModule_os},
-                                 imports{source:PathSig, target:ModuleModule_os_path},
-                                 imports{source:SepSig,  target:ModuleModule_os_path_sep}]),
-    list_to_symtab([ModuleModule_os-[module_type(Module_os)],
-                    ModuleModule_os_path-[module_type(Module_os_path)],
-                    ModuleModule_os_path_sep-[module_type(Module_os_path_sep)]],
-                   Symtab0),
-    assign_exprs_count_impl(Exprs, Meta, Symtab0, SymtabWithRej, Rej, KytheFacts),
-
-    symtab_subtract(SymtabWithRej, Symtab0, SymtabAddedPairs),
-    assertion(Rej == SymtabAddedPairs),
-    must_once(SymtabAddedPairs = [OsVar - [ module_type(Module_os) ]]),
-    %% The following ("dummy_dir.dummy") depends on the source file
-    %% specified when running the tests.
-    %% See Makefile rule pykythe_test.
-    assertion(has_suffix(OsVar, '.pykythe.test_data.dummy_dir.dummy_file.os')),
-    anchor_signature_str(OsAstn, OsSignature),
-    assertion(KyFactsBinding == [binding{source:OsSignature,
-                                 target:OsVar}]),
-    assertion([] == KytheFacts),
-    assertion(Exprs == [assign_import{binds_fqn:BindsFqn,
-                                      module_and_maybe_token:Module_os,
-                                      modules_to_import:[Module_os,
-                                                         Module_os_path,
-                                                         Module_os_path_sep]}]).
-
-test(kyImportDottedAsNamesFqn_as) :-
-    %% This test is not exhaustive -- it's mainly for developing the code.
-    %% Additional tests are done using the Kythe verifier.
-    %% Note that this imports a file (os.path) whereas comb_top test imports
-    %% a variable within a file (os.path.sep). This shouldn't be any different,
-    %% but it exercises things a bit more.
-    test_meta(Meta),
-    Meta.contents_str = 'import os.path as os_path',
-    Meta.contents_bytes = Meta.contents_str,  % ascii "decoding"
-    maplist(find_anchor(Meta.contents_str),
-            [0-os, 0-path, 0-os_path],
-            [OsAstn, PathAstn, OsPathAstn]),
-    maplist(path_module(Meta),
-            ['os', 'os/path'],
-            [Module_os, Module_os_path]),
-    %% OsAstn = 'Astn'{start:7, end:9, value:os}
-    %% OsSig = '@7:9<os>'
-
-    %% Module_os_path = module_alone('___.typeshed.stdlib.3.os.path', '___/typeshed/stdlib/3/os/path.pyi')
-    full_module_part(Module_os_path, ModuleModule_os_path),
-    assertion(has_suffix(ModuleModule_os_path, '.stdlib.3.os.path')),
-
-    %% Module_os = module_alone('___.typeshed.stdlib.3.os', '___/typeshed/stdlib/3/os/__init__.pyi')
-    full_module_part(Module_os, ModuleModule_os),
-    assertion(has_suffix(ModuleModule_os, '.stdlib.3.os')),
-
-    FromDots = [],
-    DottedNameItems = ['NameBareNode'{name:OsAstn}, 'NameBareNode'{name:PathAstn}],
-    join_fqn([Meta.src_fqn, 'os_path'], BindsFqn),
-    BindsNameAstn = OsPathAstn,
-    %% phrase(kyImportDottedAsNamesFqn_top(...)):
-    kyImportDottedAsNamesFqn_as(FromDots, DottedNameItems, BindsFqn, BindsNameAstn,
-                                KyFactsAll, [], Exprs, [], Meta),
-
-    convset(kyfact_edge('/kythe/edge/ref/imports',     imports), KyFactsAll, KyFactsImports),
-    convset(kyfact_edge('/kythe/edge/defines/binding', binding), KyFactsAll, KyFactsBinding),
-    maplist(anchor_signature_str, [OsAstn, PathAstn, OsPathAstn], [OsSig, PathSig, OsPathSig]),
-    assertion(KyFactsImports == [imports{source:OsSig,     target:ModuleModule_os},
-                                 imports{source:PathSig,   target:ModuleModule_os_path},
-                                 imports{source:OsPathSig, target:ModuleModule_os_path}]),
-    list_to_symtab([ModuleModule_os-[module_type(Module_os)],
-                    ModuleModule_os_path-[module_type(Module_os_path)]],
-                   Symtab0),
-    assign_exprs_count_impl(Exprs, Meta, Symtab0, SymtabWithRej, Rej, KytheFacts),
-
-    symtab_subtract(SymtabWithRej, Symtab0, SymtabAddedPairs),
-    assertion(Rej == SymtabAddedPairs),
-    must_once(SymtabAddedPairs = [OsPathVar - [ module_type(Module_os_path) ]]),
-    %% The following ("dummy_dir.dummy_file.os_path") depends on the
-    %% source file specified when running the tests.
-    %% See Makefile rule pykythe_test.
-    assertion(has_suffix(OsPathVar, '.pykythe.test_data.dummy_dir.dummy_file.os_path')),
-    assertion(KyFactsBinding == [binding{source:OsPathSig,
-                                         target:OsPathVar}]),
-    assertion([] == KytheFacts),
-    assertion(Exprs == [assign_import{binds_fqn:BindsFqn,
-                                      module_and_maybe_token:Module_os_path,
-                                      modules_to_import:[Module_os,
-                                                         Module_os_path]}]).
-
-:- end_tests(dev).
 
 end_of_file.

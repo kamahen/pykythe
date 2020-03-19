@@ -16,6 +16,7 @@ zzz = True
 xxx = 'abc'
 xxx = 1.23
 xxx = 4j
+xxx_yyy = xxx
 
 import sys
 

@@ -29,7 +29,7 @@
 %%   (source, "", "", string, _)
 
 :- use_module(library(optparse), [opt_arguments/3]).
-:- use_module('../pykythe/pykythe_utils.pl', [base64_utf8/2, log_if/2, log_if/3]).
+:- use_module('../pykythe/pykythe_utils.pl', [base64_utf8/2, log_if/2, log_if/3, validate_prolog_version/0]).
 :- use_module('../pykythe/must_once.pl').
 
 :- dynamic kythe_node/7, kythe_edge/11.
@@ -44,37 +44,52 @@ main(InStream) :-
     log_if(true, 'Start'),
     extract_opts(Opts),
     retract_kythe_facts,
-    get_and_assert_kythe_facts(InStream),
+    read_lines(InStream, Files),
+    concurrent_maplist(get_and_assert_kythe_facts, Files),
     do_output_stream(Opts, 'kythe_facts.pl', '', [],
                      write_kythe_facts,
                      '', []),
     log_if(true, 'End').
 
+read_lines(InStream, Files) :-
+    read_lines(InStream, [], Files).
+
+read_lines(InStream, FilesAcc, Files) :-
+    read_line_to_string(InStream, FileStr),
+    (  FileStr == end_of_file
+    -> reverse(FilesAcc, Files)
+    ;  read_lines(InStream, [FileStr|FilesAcc], Files)
+    ).
+
 write_kythe_facts(KytheFactsOutStream) :-
     %% TODO: use fast_serialize?
+    log_if(false, 'Write_kythe_facts: start'),
     forall(kythe_node(Signature,Corpus,Root,Path,Language, FactName, FactValue),
            format(KytheFactsOutStream, '~q.~n',
                   [kythe_node(Signature,Corpus,Root,Path,Language, FactName, FactValue)])),
-    log_if(true, 'Write_kythe_facts: kythe_node-done'),
+    log_if(false, 'Write_kythe_facts: kythe_node-done'),
     forall(kythe_edge(Signature1,Corpus1,Root1,Path1,Language1, EdgeName,
                       Signature2,Corpus2,Root2,Path2,Language2),
            format(KytheFactsOutStream, '~q.~n',
                   [kythe_edge(Signature1,Corpus1,Root1,Path1,Language1, EdgeName,
                               Signature2,Corpus2,Root2,Path2,Language2)])),
-    log_if(true, 'Write_kythe_facts: kythe_edge-done').
+    log_if(false, 'Write_kythe_facts: kythe_edge-done').
 
-get_and_assert_kythe_facts(InStream) :-
+get_and_assert_kythe_facts(File) :-
+    open(File, read, InStream, [encoding(utf8)]),
     read_kythe_json_facts(InStream, KytheDicts),
-    log_if(true, 'Read_kythe_json_facts-done'),
+    log_if(false, 'Read_kythe_json_facts-done ~q', [File]),
     %% TODO: base64/2 takes most of the CPU time (from b64_to_utf8_to_atom/2)
+    %% TODO: slightly more efficient if kythe_fact_pred/2 is
+    %%       moved into read_kythe_json_facts/2.
     maplist(kythe_fact_pred, KytheDicts, Preds0),
-    log_if(true, 'Kythe_fact_pred-done'),
+    log_if(false, 'Kythe_fact_pred-done ~q', [File]),
     sort(Preds0, Preds), % remove dups, although there shouldn't be any
-    log_if(false, 'Sort preds-done'),
+    %% log_if(false, 'Sort preds-done ~q', [File]),
     assertion(ground(Preds)),
-    log_if(false, 'Assert ground-done'),
+    %% log_if(false, 'Assert ground-done ~q', [File]),
     maplist(assert_pred, Preds),
-    log_if(true, 'Assert_kythe_facts-done').
+    log_if(false, 'Assert_kythe_facts-done ~q', [File]).
 
 retract_kythe_facts :-
     functor(KytheNode, kythe_node, 7),
@@ -99,7 +114,8 @@ kythe_fact_pred(json{source:Source0, fact_name:FactName, fact_value:FactValueB64
     vname_fix(Source0, Source1),
     (  FactName == '/pykythe/symtab'
     -> FactValue = FactValueB64  % It's not b64-encoded for performance
-    ;  base64_utf8(FactValue, FactValueB64)
+    ;  base64_utf8(FactValue0, FactValueB64),
+       post_process_fact(FactName, FactValue0, FactValue)
     ).
 kythe_fact_pred(json{source:Source0, fact_name:'/', edge_kind:EdgeKind, target:Target0},
                 kythe_edge(Source1, EdgeKind, Target1)) :-
@@ -108,6 +124,14 @@ kythe_fact_pred(json{source:Source0, fact_name:'/', edge_kind:EdgeKind, target:T
     vname_fix(Target0, Target1).
 kythe_fact_pred(Fact, Fact) :-
     domain_error(json, Fact).
+
+post_process_fact('/kythe/loc/start', Value0, Value) :- !, atom_number(Value0, Value).
+post_process_fact('/kythe/loc/end',   Value0, Value) :- !, atom_number(Value0, Value).
+post_process_fact('/kythe/snippet/start', Value0, Value) :- !, atom_number(Value0, Value).
+post_process_fact('/kythe/snippet/end',   Value0, Value) :- !, atom_number(Value0, Value).
+%% TODO: other numeric facts to convert?
+post_process_fact(_, Value, Value).
+
 
 %! vname_fix(+Json:json, -Vname:vname) is det.
 %% vname is same as verifier:
@@ -146,8 +170,7 @@ utf8_bytes_to_term_doesnt_work(Bytes, Term) :-
     read(Stream, Term).
 
 extract_opts(Opts) :-
-    current_prolog_flag(version, PrologVersion),
-    must_once_msg(PrologVersion >= 80121, 'SWI-Prolog version is too old'), % Sync this with README.md
+    validate_prolog_version,
     OptsSpec =
     [[opt(filesdir), type(atom), default('filesdir-must-be-specified'), longflags([filesdir]),
       help('Directory for putting the files\'s contents')
@@ -186,5 +209,9 @@ open_output_stream(Opts, FileName, Fmt, Args, OutStream) :-
 close_output_stream(OutStream, Fmt, Args) :-
     format(OutStream, Fmt, Args),
     close(OutStream).
+
+:- use_module(library(check)).  %% DO NOT SUBMIT
+%% TODO: trap print_message(informational,check(pass(Message)))
+?- check. %% DO NOT SUBMIT
 
 end_of_file.

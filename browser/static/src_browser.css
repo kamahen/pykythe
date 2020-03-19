@@ -81,7 +81,7 @@ body {
     border-right: 0;
     border-style: groove;
     border-top: 1px solid black;
-    height: 74%;
+    height: 64%;
     overflow: auto;
     position: absolute;
     top: 6%;  /* .file_nav.height + 2% */
@@ -89,11 +89,11 @@ body {
 }
 
 .xref {
-    height: 20%;
+    height: 30%;
     overflow: auto;
     padding-top: 5pt;
     position: absolute;
-    top: 80%;  /* .file_nav.height + .src.height */
+    top: 70%;  /* .file_nav.height + .src.height */
     width: 99%;
 }
 

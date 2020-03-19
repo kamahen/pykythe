@@ -3,13 +3,16 @@
 // Implementation of annotated source browser, using nodes defined by
 // src_browser.html.
 
-// http://localhost:9999/static/src_browser.html?corpus=CORPUS&root=ROOT&path=home/peter/src/pykythe/pykythe/ast_raw.py&line=81
+// http://localhost:9999?corpus=CORPUS&root=ROOT&path=tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/a11.py&line=11
+// http://localhost:9999?corpus=CORPUS&root=ROOT&path=home/peter/src/pykythe/pykythe/ast_raw.py&line=81
+//    which does redirect to:
+// http://localhost:999/static/src_browser.html?corpus=...
+// and we depend on the server to handle redirections transparently,
+// per the HTTP specs.
 
 // TODO: The code is inconsistent in whether it has corpus, root, path as
 //       separate items or combined into 'corpus/root/path'.
-
-// DO NOT SUBMIT -- make a class for corpus, root, path, lineno, highlight, ...
-//   (scan for "lineno")
+//       Scan for newFromCombined.
 
 class SourceItem {
     constructor(corpus, root, path, lineno) {
@@ -54,8 +57,6 @@ class SourceItem {
 //    {signature:str, edge:str, target:{corpus,root,path,language,signature}
 // items (see color_data.lines[*].edges)
 var g_anchor_edges = [];
-
-// TODO: use window.location.assign(window.location.assign + '?' + ...)
 
 // tree of dir/file entries - set by dynamic load from server
 // TODO: can we get rid of this (singleton) global?
@@ -201,6 +202,10 @@ function createDropdown(i, type) {
         const  t = e.currentTarget;
         const  t_selected = t[t.selectedIndex];
         if (t_selected.id.startsWith('nav_sel-')) {
+            // TODO: window.location.href = window.location.origin + '?' +
+            //         corpus=CORPUS&root=ROOT&path=home/peter/src/pykythe/pykythe/ast_raw.py&line=81
+            // and omit displayFileTree ... but this requires a bit of work
+            // to avoid an infinite loop
             displayFileTree(SourceItem.newFromCombined(t_selected.id.substr('nav_sel-'.length)));
         }
         e.preventDefault();
@@ -220,6 +225,10 @@ function addDropdownOption(dropdown, text, type, id) {
 // Callback from file tree navigation click, to load a file into the
 // file_nav_element() via displaySrcContents.
 function displayNewSrcFile(source_item) {
+    // console.log('SRC: ' + window.location.origin);
+    // http://localhost:9999
+    // console.log('SRC: ' + window.location.href);
+    // http://localhost:9999/static/src_browser.html?corpus=CORPUS&root=ROOT&path=home/peter/src/pykythe/pykythe/ast_raw.py&line=81
     var progress = document.createElement('span');
     progress.innerHTML = '&nbsp;&nbsp;&nbsp;Fetching file ' +
         sanitizeText(source_item.combinedFilePath()) + ' ...';
@@ -266,6 +275,24 @@ function displaySrcContents(source_item, color_data) {
     file_nav_element().lastChild.remove(); // Remove status message
 }
 
+// Simplified source display (no active links)
+function srcLineTextSimple(txt_span, parts, highlight_semantic) {
+    // DO NOT SUBMIT -- highlight_semantic_signature is FQN but
+    //                  part.signature is anchor signature.
+    //                  See src_browser.pl link_chunk/2.
+    for (const part of parts) {
+        var span = document.createElement('span');
+        span.setAttribute('class', token_css_color_class[part.token_color]);
+        if (is_token_name[part.token_color]) {
+            if (part.signature == highlight_semantic) {
+                span.classList.add('src_hover');
+            }
+        }
+        span.innerHTML = sanitizeText(part.value);
+        txt_span.appendChild(span)
+    }
+}
+
 // Display a single part of a source display
 function srcLineText(parts, txt_span, source_item) {
     for (const part of parts) {
@@ -278,7 +305,7 @@ function srcLineText(parts, txt_span, source_item) {
                                      edge: p_edge.edge,
                                      target: p_edge.target});
             }
-            span.id = part.signature;
+            span.id = part.signature;  // DO NOT SUBMIT -- should have a known prefix on the id
             span.onmouseover = function(e) { // e is MouseEvent
                 mouseoverAnchor(e.currentTarget, 'add', 'src_hover');
                 e.preventDefault();
@@ -295,10 +322,8 @@ function srcLineText(parts, txt_span, source_item) {
             // span.oncontextmenu = function(e) { // e is MouseEvent
             //     e.preventDefault();
             // };
-            txt_span.appendChild(span);
-        } else {
-            txt_span.appendChild(span);
         }
+        txt_span.appendChild(span);
     }
 }
 
@@ -322,38 +347,65 @@ function mouseoverAnchor(target, class_action, class_id) {
 
 // Callback for a click on a token (anchor) in the source display
 function clickAnchor(target, source_item) {
-    // console.log('CLICK ' + target.id + ' in ' + source_item.combinedFilePath());
-    fetchFromServer({anchor: {signature: target.id,
-                              corpus: source_item.corpus,
-                              root: source_item.root,
-                              path: source_item.path,
-                              language: 'python'}},  // DO NOT SUBMIT - don't hard-code language
+    console.log('CLICK ' + target.id + ' in ' + source_item.combinedFilePath());
+    fetchFromServer({anchor_xref: {signature: target.id,
+                                   corpus: source_item.corpus,
+                                   root: source_item.root,
+                                   path: source_item.path,
+                                   language: 'python'}},  // DO NOT SUBMIT - don't hard-code language
                     data => setXref(source_item, target.id, data));
 }
 
 // Callback from getting Kythe facts for a token (anchor) click
 function setXref(source_item, signature, data) {
     // expected out-edges for anchor: defines, defines/binding, ref, ref/call
-    // console.log('SET_XREF: ' + JSON.stringify(data));
+
+    const origin_path = location.origin + location.pathname + '?';
+
     document.getElementById('xref').innerHTML = 'Getting Kythe links for ' + source_item.combinedFilePath() + ' anchor:' + signature + ' ...';
     var table = document.createElement('table');
-    table.setAttribute('class', 'src_table');  // DO NOT SUBMIT - should we have a new class for this?
-    tableInsertRowText(table, data.semantic.signature);
+    table.setAttribute('class', 'src_table');  // DO NOT SUBMIT - should we have a new CSS class for this?
+    var row_cell = tableInsertRowCell(table);
+    // TODO: remove <i> using row_cell.settAttribute('class', some-other-class)
+    row_cell.appendChild(document.createElement('span'))
+            .innerHTML = '<i>' + sanitizeText(data.semantic.signature) + '</i>';
     for (const nv of data.semantic_node_values) {
-        // TODO: this sanitizes the text; might want to use something different:
-        tableInsertRowText(table, '  ' + nv.kind +': ' + nv.value);
+        tableInsertRowCellHTML(table, sanitizeText('  ' + nv.kind +': ' + nv.value));
     }
     for (const edge_links of data.edge_links) {
-        tableInsertRowText(table, edge_links.edge);
-        for (const link of edge_links.links) {
-            tableInsertRowText(table, link.signature + ' ' + link.path);
+        row_cell = tableInsertRowCell(table);
+        row_cell.setAttribute('class', 'xref_head');
+        cellHTML(row_cell,
+                 sanitizeText(edge_links.edge + ' (' + edge_links.links.length + ')'));
+        for (const path_link of edge_links.links) {
+            row_cell = tableInsertRowCell(table);
+            // DO NOT SUBMIT - use a CSS class:
+            cellHTML(row_cell,
+                     '<i><b>' + sanitizeText(path_link.path) + '</b></i>');
+            for (const link_line of path_link.lines) {
+                row_cell = tableInsertRowCell(table);
+                var lineno_span = row_cell.appendChild(document.createElement('span'));
+                lineno_span.innerHTML = '<b><i>' + link_line.lineno + ':&nbsp;</i></b>';  // DO NOT SUBMIT - CSS class, rowspan
+                var txt_span = row_cell.appendChild(document.createElement('span'));
+                srcLineTextSimple(txt_span, link_line.line, data.semantic);
+            }
         }
     }
+    row_cell = tableInsertRowCell(table);
+    cellHTML(row_cell, '&nbsp;');  // ensure some space at the bottom
     replaceChildWith('xref', table);
 }
 
-function tableInsertRowText(table, text) {
-    table.insertRow().insertCell().appendChild(document.createTextNode(text));
+function tableInsertRowCell(table) {
+    return table.insertRow().insertCell();
+}
+
+function cellHTML(cell, html) {
+    cell.appendChild(document.createElement('span')).innerHTML = html
+}
+
+function tableInsertRowCellHTML(table, html) {
+    cellHTML(tableInsertRowCell(table), html);
 }
 
 // Sanitize a string, allowing tags to not cause problems

@@ -41,6 +41,7 @@ import typing
 
 # The following requires pip3 install mypy_extensions
 # and possibly symlinking into /usr/local/lib/python3.6/dist-packages
+# TODO: can mypy run with python3.7?
 from mypy_extensions import Arg
 
 from . import ast, ast_cooked, fakesys, pod, typing_debug

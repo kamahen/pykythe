@@ -2,6 +2,8 @@
 % -*- mode: Prolog -*-
 
 %% Start this with
+%%   http://localhost:9999
+%%     which does a redirect to:
 %%   http://localhost:9999/static/src_browser.html
 
 %% See also:
@@ -9,12 +11,13 @@
 %%    https://swi-prolog.discourse.group/t/yet-another-web-applications-tutorial/566
 %%    https://www.swi-prolog.org/howto/http/
 
+:- module(src_browser, [main/0]).
+
 :- use_module(library(http/http_server), [http_server/1,
-                                          reply_html_page/2,
                                           http_read_json_dict/3,
                                           reply_json_dict/2, % TODO: Options=[status(201)]
-                                          http_redirect/3 % TODO: commented out below
-                                          ]).
+                                          http_redirect/3
+                                         ]).
 :- use_module(library(http/http_files), [http_reply_from_files/3]).
 %% TODO: if using daemon, then: swipl src_browser.pl --port=.... --pidfile=/var/run/src_browser.pid
 %%       and kill $(cat /var/run/src_browser.pid)
@@ -29,9 +32,13 @@
 %% :- set_setting(http:logfile, '/tmp/httpd.log').
 :- use_module(library(http/http_path)).
 :- use_module(library(http/http_error)). % TODO: remove - this decorates uncaught HTTP exceptions with stack-trace
+:- use_module(library(uri)).
 :- use_module(library(debug)).
 :- use_module(library(optparse), [opt_arguments/3]).
 :- use_module(library(readutil), [read_file_to_string/3]).
+:- use_module(library(aggregate)). % TODO: do we use all of these?
+:- use_module(library(solution_sequences), [distinct/1, distinct/2, order_by/2, group_by/4]). % TODO: do we use all of these?
+:- use_module(library(yall)).   % For [S,A]>>atom_string(A,S) etc.
 :- use_module('../pykythe/must_once.pl').
 :- use_module('../pykythe/pykythe_utils.pl').
 
@@ -41,6 +48,7 @@
 %% Convenience predicates for accessing the base Kythe facts,
 %% using vname(Signature, Corpus, Root, Path, Language).
 %% We also define vname0: Corpus, Root, Path, Language
+
 %! kythe_node(Source: vname, FactName:atom, FactValue:atom) is nondet.
 kythe_node(vname(Signature, Corpus, Root, Path, Language),
            FactName, FactValue) :-
@@ -73,20 +81,77 @@ kythe_edge(vname(Signature1, Corpus1, Root1, Path1, Language1),
     ).
 
 :- debug(log).    % enable log messages with debug(log, '...', [...]).
-% :- debug(http_path).            % TODO: remove
-% :- debug(http(request)).        % TODO: remove
-% :- debug(http(hook)).           % TODO: remove
-:- debug(http_session).         % TODO: remove
+%% :- debug(redirect_log).
+%% :- debug(request_json_log).
+
+%% TODO: remove this list
+%% List of all http debug flags (grep /usr/lib/swi-prolog/library/http/):
+%% :- debug(calc).
+%% :- debug(cookie).
+%% :- debug(daemon).
+%% :- debug(daemon(socket)).
+%% :- debug(false).
+%% :- debug(html(mailman)).
+%% :- debug(html(script)).
+%% :- debug(http_authenticate).
+%% :- debug(http(authenticate)).
+%% :- debug(http(cgi)).
+%% :- debug(http(connection)).
+%% :- debug(http(cookie)).
+%% :- debug(http(error)).
+%% :- debug(http(header)).
+%% :- debug(http(hook)).
+%% :- debug(http(keep_alive)).
+%% :- debug(http(nonce)).
+%% :- debug(http(open)).
+%% :- debug(http_path).
+%% :- debug(http(proxy)).
+%% :- debug(http(redirect)).
+%% :- debug(http(request)).
+%% :- debug(http(scheduler)).
+%% :- debug(http(send_request)).
+%% :- debug(http(server)).
+%% :- debug(http_session).
+%% :- debug(http_session(gc)).
+%% :- debug(http(spawn)).
+%% :- debug(http(transfer_encoding)).
+%% :- debug(http(worker)).
+%% :- debug(hub(broadcast)).
+%% :- debug(hub(event)).
+%% :- debug(hub(gate)).
+%% :- debug(hub(ready)).
+%% :- debug(hub(wait)).
+%% :- debug(json_arg).
+%% :- debug(logrotate).
+%% :- debug(multipart(bom)).
+%% :- debug(multipart(content)).
+%% :- debug(obsolete).
+%% :- debug(openid(associate)).
+%% :- debug(openid(authenticate)).
+%% :- debug(openid(ax)).
+%% :- debug(openid(check_authentication)).
+%% :- debug(openid(crypt)).
+%% :- debug(openid(resolve)).
+%% :- debug(openid(test)).
+%% :- debug(openid(verify)).
+%% :- debug(openid(yadis)).
+%% :- debug(post).
+%% :- debug(post_request).
+%% :- debug(proxy).
+%% :- debug(sgml_plugin).
+%% :- debug(websocket).
+%% :- debug(websocket(close)).
+%% :- debug(websocket(open)).
+
+%% :- debug(http(post_request)).   % TODO: remove
+:- debug(http(request)).        % TODO: remove % TODO: figure out why If-modified-since and friends don't work
+%% :- debug(http_session).         % TODO: remove
 :- debug(http(error)).          % TODO: remove
-% :- debug(http(header)).         % TODO: remove
-:- debug(http(send_request)).   % TODO: remove
-:- debug(websocket).            % TODO: remove
-:- debug(websocket(open)).      % TODO: remove
-:- debug(websocket(close)).     % TODO: remove
+%% :- debug(http_path).            % TODO: remove
+%% :- debug(http(header)).         % TODO: remove
+%% :- debug(http(hook)).           % TODO: remove
 
-% :- debug.                       % TODO: remove
-
-%% :- initialization main.  % TODO: restore this - currently it's in Makefile
+:- initialization(main, main).  % TODO: restore this and remove from Makefile  DO NOT SUBMIT
 
 :- multifile http:location/3.
 :- multifile user:file_search_path/2.
@@ -101,15 +166,34 @@ kythe_edge(vname(Signature1, Corpus1, Root1, Path1, Language1),
 %%   The only current option is priority(...).
 
 http:location(static, root(static), []).
-http:location(files, static(files), []).
+http:location(files, root(files), []).
 http:location(json, root(json), []).  %% DO NOT SUBMIT - remove?
 
 main :-
+    main2,
+    %% When started via initialization, need to handle inputs
+    %% via a simple REPL.
+    %% TODO: start as daemon (see library(http/http_unix_daemon)).
+    repl.
+
+main2 :-
     browser_opts(Opts),
     %% set_prolog_flag(verbose_file_search, true),
     assert_server_locations(Opts),
     read_and_assert_kythe_facts,
     server(Opts).
+
+repl :-
+    read(Goal),
+    (  Goal == end_of_file
+    -> format('*** exiting src_browser~n', [])
+    ;  E = error(_, _),            % avoid trapping abort, timeout, etc.
+       catch(Goal, E, handle_repl_throw(Goal, E)),
+       repl
+    ).
+
+handle_repl_throw(_Goal, E) :-
+    print_message(error, E).
 
 assert_server_locations(Opts) :-
     debug(log, 'files dir:  ~q', [Opts.filesdir]),
@@ -117,16 +201,122 @@ assert_server_locations(Opts) :-
     asserta(user:file_search_path(files,  Opts.filesdir)),
     asserta(user:file_search_path(static, Opts.staticdir)).
 
+%% DO NOT SUBMIT:
+%% TODO: move the read/assert stuff to a separate module,
+%%       also the convenience preds (kythe_node/3, etc.)
 read_and_assert_kythe_facts :-
     %% DO NOT SUBMIT - verify this and report
     %% TODO: files('kythe_facts') results in bogus
     %%       "recompiling QLF file (incompatible with current Prolog version)"
     unload_file(files('kythe_facts')),
+    garbage_collect,
     load_files([files('kythe_facts')],
                [silent(false),
                 optimise(true),
                 imports([kythe_node/7,
-                         kythe_edge/11])]).
+                         kythe_edge/11])]),
+    forall(retract(kythe_node(Signature, Corpus,Root,Path,Language, '/pykythe/color', ColorTermStr)),
+           assert_color_items(Signature, Corpus,Root,Path,Language, ColorTermStr)),
+    thread_create(validate_kythe_facts, _, [detached(true)]).
+
+assert_color_items(Signature, Corpus,Root,Path,Language, ColorTermStr) :-
+    term_string(ColorTerm, ColorTermStr),
+    dict_pairs(ColorTerm, color, ColorPairs),
+    %% TODO: There are more color items than anything else -- need to
+    %%       use a more compact representation, especially as there is
+    %%       no need for lookup on most of the fields.
+    maplist(assert_color_item(Signature, Corpus,Root,Path,Language), ColorPairs).
+
+assert_color_item(Signature, Corpus,Root,Path,Language, Key-Value) :-
+    %% Key: lineno, column, start, end, token_color, value
+    atomic_list_concat(['/pykythe/color/', Key], FactName),
+    assertz(kythe_node(Signature, Corpus,Root,Path,Language, FactName, Value)).
+
+%% validate_kythe_facts/0 takes a bit of time because it builds the
+%% JIT indexes; if you run it a second time, it's fast. (The indexes
+%% are used elsewhere, so no harm.)
+%% e.g.: Building the JIT indexes takes 8-10 seconds, validation takes 10 seconds
+validate_kythe_facts :-
+    statistics(cputime, T0),
+    %% Without the call to index_pred (kythe_edge/11, kythe_edge/3 had no change):
+    %%   Predicate                                     Indexed  Buckets Speedup Flags
+    %%   ============================================================================
+    %%   src_browser:kythe_node/7                        1+7   2,097,152  536399.3
+    %%                                                   1+4     524,288  299008.9
+    %%                                                   6+7     262,144    4821.3
+    %% With the call to index_pred:
+    %%   src_browser:kythe_node/7                        1+4     524,288  298977.2
+    %%                                                   6+7     262,144    4821.1
+    %%
+    %% kythe_node/7 1+7 would be generated by orphan_semantic/3,
+    %% but seems to not help anything.
+    concurrent_maplist(index_pred,
+                       [kythe_node(sig,corpus,root,path,lang,_,_),         % kythe_node/7 1+4
+                        kythe_node(_,_,_,_,_,fact,value),                  % kythe_node/7 6+7
+                        %% kythe_node(sig,_,_,_,_,_,value),                % kythe_node/7 1+7
+                        kythe_edge(sig,corpus,root,path,lang,_,_,_,_,_,_), % kythe_edge/11 1
+                        kythe_edge(_,_,_,_,_,_,sig,corpus,root,path,lang), % kythe_edge/11 7
+                        kythe_edge(vname(sig,corpus,root,path,lang),_,_),  % kythe_edge/3 1
+                        kythe_edge(_,_,vname(sig,corpus,root,path,lang))   % kythe_edge/3 1
+                       ]),
+    statistics(cputime, T1),
+    garbage_collect,
+    show_jiti,
+    must_fail(orphan_semantic(_AnchorVname, _SemanticVname, _Edge)),
+    %% Ensure that every token anchor has an associated color anchor
+    %% (the inverse isn't true).
+    forall(kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
+           must_once(( kythe_node(Anchor, '/kythe/loc/start', Start),
+                       kythe_node(Anchor, '/kythe/loc/end', End),
+                       kythe_node(ColorAnchor, '/pykythe/color/start', Start),
+                       kythe_node(ColorAnchor, '/pykythe/color/end', End) ))),
+    forall(kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
+           must_once( anchor_to_lineno(Anchor, _LineNo) )),
+    forall(kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
+           must_once(( anchor_to_line_chunks(Anchor, _, Chunks),
+                       Chunks \== [] ))),
+    show_jiti, % Not needed - should be the same as the first one
+    %% TODO: DO NOT SUBMIT - need to fix anchor_links/4.
+    %% Semantic links have unique signatures ... this isn't true. For example
+    %% if we can't resolve an attr to a single item (ast_raw.py at line 267: "ch0.type")
+    %%   validate_anchor_link_anchor,
+    statistics(cputime, T2),
+    Tjiti is T1 - T0,
+    Tvalid is T2 - T1,
+    Ttotal is T2 - T0,
+    debug(log, 'Validation done: ~3f sec (JIT index: ~3f sec) (total: ~3f sec)', [Tvalid, Tjiti, Ttotal]).
+
+index_pred(Goal) :-
+    statistics(cputime, T0),
+    ( Goal -> true ; true ),
+    statistics(cputime, T1),
+    T is T1 - T0,
+    debug(log, 'Indexed ~q in ~3f sec', [Goal, T]).
+
+%% For some reason jiti_list/1 didn't do what I wanted, so extracting
+%% its core logic here, but needs better formatting:
+show_jiti :-
+    strip_module(kythe_node(_,_,_), Module, _),
+    jiti_list(Module:_),
+    findall(S, kythe_node(S,_,_,_,_,_,_), Sigs),
+    length(Sigs, LenSigs),
+    sort(Sigs, SigsSorted),
+    length(SigsSorted, LenSigsSorted),
+    debug(log, 'kythe_node(Signature): ~d entries, ~d unique.', [LenSigs, LenSigsSorted]).
+
+validate_anchor_link_anchor :-
+    forall(anchor_link_anchor(AnchorVname1, Edge1, _SemanticVname, Edge2, AnchorVname2),
+           must_once(setof(anchor_link_anchor(AnchorVname1, Edge1, SemanticVname2, Edge2, AnchorVname2),
+                           anchor_link_anchor(AnchorVname1, Edge1, SemanticVname2, Edge2, AnchorVname2),
+                           [_]))).
+
+%% DO NOT SUBMIT
+edge_edge_3576_results(Length) :-
+    setof(Semantic-Edge1-Edge2-V2,
+          src_browser:anchor_link_anchor(vname('@10560:10564<type>','CORPUS','ROOT','home/peter/src/pykythe/pykythe/ast_raw.py',python),Edge1, Semantic,Edge2, V2),
+          Set),
+    forall(member(Z, Set), format('~q~n', [Z])),
+    length(Set, Length).
 
 server(Opts) :-
     %% See comments with "Support HTTPS" above.
@@ -137,8 +327,7 @@ server(Opts) :-
                  workers(5)]).
 
 browser_opts(Opts) :-
-    current_prolog_flag(version, PrologVersion),
-    must_once_msg(PrologVersion >= 80119, 'SWI-Prolog version is too old'), % Sync this with README.md
+    validate_prolog_version,
     OptsSpec =
     [[opt(port), type(integer), default(9999), longflags([port]),
       help('Server port')],
@@ -148,55 +337,72 @@ browser_opts(Opts) :-
       help('Directory for the static files (for "static" URL)')]
     ],
     opt_arguments(OptsSpec, Opts0, PositionalArgs),
-    opts_dict(Opts0, Opts),
+    dict_create(Opts, opts, Opts0),
     must_once_msg(PositionalArgs = [], 'Unknown positional arg(s)').
 
 
-%% localhost:9999/ ... redirects to /static/src_browser.htmle
+%% localhost:9999/ ... redirects to /static/src_browser.html
 %%      - for debugging, 'moved' can be cleared by chrome://settings/clearBrowserData
 %%        (Cached images and files)
 :- http_handler(root(.),
-                http_redirect(
+                http_handler_redirect(
                     moved_temporary, % or moved - but that makes debugging a bit more difficult
                     static('src_browser.html')),
                 []).
 
-% Serve localhost:9999/static/ from 'static' directory (See also facts for http:location/3)
+%% Serve localhost:9999/static/ from 'static' directory (See also facts for http:location/3)
+%% TODO: remove the cache(false) options
 :- http_handler(static(.),
-                http_handler_reply_from_files(static(.), []),
+                pykythe_http_reply_from_files(static(.), [cache(true)]),
                 [prefix]).
 :- http_handler(files(.),
-                http_handler_reply_from_files(files(.), []),
+                pykythe_http_reply_from_files(files(.), [cache(true)]),
                 [prefix]).
 
 :- http_handler('/json',  %% json(.),     % localhost:9999/json  -- DO NOT SUBMIT - json(.) is better?
                 reply_with_json, [priority(0)]).
 
-http_handler_reply_from_files(Dir, Opts, Request0) :-
-    opts_dict(Request0, request, Request),
-    debug(request_log, 'Request (~q): ~q', [Dir, [method:Request.method,
-                                                  path_info:Request.path_info]]),
-    %% This is a hack because I can't seem to get static/files to work.
-    (  Dir = static(.),
-       split_string(Request.path_info, '/', '', SplitList),
-       SplitList = ["files", FileStr]
-    -> atom_string(FileAtom, FileStr),
-       select(path_info(_), Request0, Request0a),
-       http_reply_from_files(files(.), Opts, [path_info(FileAtom)|Request0a])
-    ;  http_reply_from_files(Dir, Opts, Request0)
-    ).
+pykythe_http_reply_from_files(Dir, Options, Request) :-
+    (  false
+    -> %% TODO: remove the following code, for debugging file caching.
+       %%       See https://swi-prolog.discourse.group/t/how-to-debug-if-modified-since-with-http-reply-from-files/1892/3
+       ( member(path_info(PathInfo), Request) -> true ; PathInfo = '' ),
+       ( member(cache_control(CacheControl), Request) -> true ; CacheControl = '' ),
+       http_files:locate_file(Dir, PathInfo, Path, _IsFile, Options), % TODO: fragile
+       time_file(Path, FileTimeStamp),
+       format_time(string(FileTime), '%FT%T%z', FileTimeStamp),
+       get_time(NowTimeStamp),
+       format_time(string(NowTime), '%FT%T%z', NowTimeStamp),
+       debug(log, 'File modified (~w): ~s (now: ~s) ~q', [CacheControl, FileTime, NowTime, PathInfo])
+    ;  true
+    ),
+    http_reply_from_files(Dir, Options, Request).
+
+http_handler_redirect(How, To, Request) :-
+    memberchk(path(Base), Request),
+    memberchk(request_uri(RequestURI), Request),
+    http_absolute_location(To, ToURL, [relative_to(Base)]),
+    uri_components(RequestURI, URI),
+    uri_data(path, URI, ToURL, ToURI),
+    uri_components(NewTo, ToURI),
+    debug(redirect_log, 'Redirect: ~q', [[how:How, to:To, toURL:ToURL, requestURI:RequestURI, uri:URI, toURI:ToURI, newTo: NewTo]]),
+    http_redirect(How, NewTo, Request).
 
 reply_with_json(Request) :-
     %% print_term_cleaned(Request, [], RequestPretty),
     %% TODO: why doesn't thead_cputime give non-zero value?
     statistics(cputime, T0),
     memberchk(method(post), Request),
+    %% Doesn't show the 302 (or 301) redirect:
+    %%    request_uri('/json'), path('/json'),
+    %%    origin('http://localhost:9999'), content_type('application/json')
     http_handler_read_json_dict(Request, JsonIn), %% [content_type("application/json")]),
     debug(request_json_log, 'Request(json): ~q', [JsonIn]),
     statistics(cputime, T1),
     Tdelta1 is T1 - T0,
     debug(timing, 'Request-JSON: ~q [~3f sec]', [JsonIn, Tdelta1]),
-    json_response(JsonIn, JsonOut),
+    must_once(
+              json_response(JsonIn, JsonOut)), % TODO: improve this error handling
     statistics(cputime, T2),
     Tdelta2 is T2 - T1,
     debug(timing, 'Request-response: ~q [~3f sec]', [JsonIn, Tdelta2]),
@@ -211,49 +417,112 @@ json_response(json{fetch:FileName},
     !,
     % TODO: catch error(existence_error(source_sink,...),_)
     read_file_to_string(files(FileName), Contents, []).
-
-json_response(json{anchor: json{signature: Signature,
-                                corpus: Corpus, root: Root,
-                                path: Path,
-                                language: Language}},
+json_response(json{anchor_xref: json{signature: Signature,
+                                     corpus: Corpus,
+                                     root: Root,
+                                     path: Path,
+                                     language: Language}},
               json{signature: Signature,
+                   lineno: LineNo,
+                   line: LineChunks,
                    corpus: Corpus, root: Root,
                    path: Path, language: Language,
-                   semantic: SemanticJson,
+                   semantic: SemanticVnameJson,
                    semantic_node_values: SemanticNodeValuesJson,
                    edge_links: EdgeLinksJson}) :-
     !,
+    %% TODO: probably better to use nested setof/bagof, but with
+    %%       library(solution_sequences) for ordering, grouping
+    anchor_to_line_chunks(vname(Signature, Corpus, Root, Path, Language), LineNo, LineChunks),
     anchor_links_grouped(vname(Signature, Corpus, Root, Path, Language),
-                         Semantic, SemanticNodeValues, EdgeLinks),
-    link_to_dict(Semantic, SemanticJson),
+                         SemanticVname, SemanticNodeValues, EdgeLinks0),
+    maplist(expand_edge_link, EdgeLinks0, EdgeLinks),
+    link_to_dict(SemanticVname, SemanticVnameJson),
     maplist(pair_to_json(kind, value), SemanticNodeValues, SemanticNodeValuesJson),
-    maplist(group_to_dict, EdgeLinks, EdgeLinksJson).
+    maplist(edge_links_group_to_dict, EdgeLinks, EdgeLinksJson).
 json_response(json{src_browser_file:
                   json{corpus:Corpus, root:Root, path:Path}},
               Contents) :-
     !,
-    get_color_data_one_file(Corpus, Root, Path, Contents).
+    color_data_one_file(Corpus, Root, Path, Contents).
 json_response(json{src_file_tree: _}, PathTreeJson) :-
     !,
     setof(Path, file_path(Path), PathNames),
-    %% path_tree(PathTree), % DO NOT SUBMIT - delete
     files_to_tree(PathNames, PathTree),
     tree_to_json(PathTree, PathTreeJson).
-json_response(Request) :-
-    debug(log, 'JSON_RESPONSE fail: ~q~n', [Request]),
-    fail.
 
-group_to_dict(Edge-Links, json{edge: Edge, links: LinksJson}) :-
+%% TODO: Can we use library(solution_sequences) group_by/4?  It has
+%%       bagof rather than setof at bottom, which is not necessarily a
+%%       bad thing, as it might show errors in the Kythe facts
+%%       (although probably not -- duplicates should have been removed
+%%       by the processing pipeline).
+%! anchor_links_grouped(+AnchorVname, -SemanticVname, -SemanticNodeValues, -GroupedLinks) is det.
+anchor_links_grouped(AnchorVname, SemanticVname, SemanticNodeValues, GroupedLinks) :-
+    anchor_links(AnchorVname, SemanticVname, SemanticNodeValues, SortedLinks),
+    group_pairs_by_key(SortedLinks, GroupedLinks0),
+    maplist(group_edge_by_files, GroupedLinks0, GroupedLinks).
+
+group_edge_by_files(Edge-Vnames, Edge-GroupVnamePaths) :-
+    maplist(path_pair_vname, Vnames, VnamePaths),
+    group_pairs_by_key(VnamePaths, GroupVnamePaths0),
+    maplist(path_vname, GroupVnamePaths0, GroupVnamePaths).
+
+path_vname(Vname0-Signatures, Vname0-Vnames) :-
+    maplist(vname0_join_signature(Vname0), Signatures, Vnames).
+
+%! anchor_links(+AnchorVname, -SemanticVname, -SemanticNodeValues, -SortedLinks) is det.
+anchor_links(AnchorVname, SemanticVname, SemanticNodeValues, SortedLinks) :-
+    %% TODO: filter Edge1 by anchor_out_edge?
+    %% DO NOT SUBMIT: SemanticVname isn't unique (see comment in validate_kythe_facts/0).
+    setof_or_empty(Edge2-AnchorVname2flipped,
+                   anchor_link_anchor_sort_order(AnchorVname, SemanticVname, Edge2, AnchorVname2flipped),
+                   SortedLinks0),
+    maplist(pair_vname_remove_start, SortedLinks0, SortedLinks),
+    setof_or_empty(NodeKind-NodeValue, kythe_node(SemanticVname, NodeKind, NodeValue), SemanticNodeValues),
+    true.
+
+expand_edge_link(Edge-PathAnchors, Edge-PathLines) :-
+    maplist(path_anchors_to_line_chunks, PathAnchors, PathLines).
+
+path_anchors_to_line_chunks(vname0(Corpus, Root, Path, Language)-Anchors,
+                            path{corpus:Corpus, root:Root, path:Path, language:Language,
+                                 lines:Lines}) :-
+    maplist(anchor_to_line_chunks, Anchors, LineNos, LinesLineChunks),
+    maplist(zip_lines, Anchors, LineNos, LinesLineChunks, Lines).
+
+zip_lines(vname(Signature, Corpus, Root, Path, Language),
+          LineNo, LineChunks,
+          line{lineno:LineNo, line:LineChunks,
+               signature: Signature,
+               corpus: Corpus, root: Root,
+               path: Path, language: Language}).
+
+edge_links_group_to_dict(Edge-Links, json{edge: Edge, links: LinksJson}) :-
     maplist(link_to_dict, Links, LinksJson).
 
+%% TODO: can link_to_dict with vname or vname_flip occur?  DO NOT SUBMIT
 link_to_dict(vname(Signature, Corpus, Root, Path, Language),
              json{signature: Signature,
-                    corpus: Corpus, root: Root,
+                  corpus: Corpus, root: Root,
                   path: Path, language: Language}).
 link_to_dict(vname_flip(Corpus, Root, Path, Signature, Language),
              json{signature: Signature,
-                    corpus: Corpus, root: Root,
+                  corpus: Corpus, root: Root,
                   path: Path, language: Language}).
+link_to_dict(line{lineno:LineNo, line:Chunks,
+                  signature: Signature,
+                  corpus: Corpus, root: Root,
+                  path: Path, language: Language},
+             line{lineno:LineNo, line:Chunks,
+                  signature: Signature,
+                  corpus: Corpus, root: Root,
+                  path: Path, language: Language}).
+link_to_dict(path{corpus: Corpus, root: Root,
+                  path: Path, language: Language,
+                  lines:Lines},
+             path{corpus: Corpus, root: Root,
+                  path: Path, language: Language,
+                  lines:Lines}).
 
 pair_to_json(KeyTag, ValueTag, Key-Value, Json) :-
     dict_create(Json, json, [KeyTag-Key, ValueTag-Value]).
@@ -264,48 +533,33 @@ http_handler_read_json_dict(Request, JsonIn) :-
                         [value_string_as(atom), end_of_file(@(end)), default_tag(json),
                          true(#(true)),false(#(false)),null(#(null))]).
 
-orphan_semantic(AnchorVname1, Semantic, Edge) :-
+%% An orphan semantic doesn't have an associated anchor
+orphan_semantic(AnchorVname1, SemanticVname, Edge) :-
     kythe_node(AnchorVname1, '/kythe/node/kind', 'anchor'),
-    kythe_edge(AnchorVname1, Edge, Semantic),
-    \+ (kythe_edge(AnchorVname2, _Edge2, Semantic),
+    kythe_edge(AnchorVname1, Edge, SemanticVname),
+    \+ (kythe_edge(AnchorVname2, _Edge2, SemanticVname),
         kythe_node(AnchorVname2, '/kythe/node/kind', 'anchor')).
 
 %% TODO: orphan semantics for non-anchors
 
-anchor_link_anchor(AnchorVname1, Edge1, Semantic, Edge2, AnchorVname2) :-
+anchor_link_anchor(AnchorVname1, Edge1, SemanticVname, Edge2, AnchorVname2) :-
     kythe_node(AnchorVname1, '/kythe/node/kind', 'anchor'),
-    kythe_edge(AnchorVname1, Edge1, Semantic),
-    kythe_edge(AnchorVname2, Edge2, Semantic),
+    kythe_edge(AnchorVname1, Edge1, SemanticVname),
+    kythe_edge(AnchorVname2, Edge2, SemanticVname),
     kythe_node(AnchorVname2, '/kythe/node/kind', 'anchor').
 
-anchor_links(AnchorVname1, Semantic, SemanticNodeValues, SortedLinks) :-
-    %% TODO: filter Edge1 by anchor_out_edge?
-    (  setof(Edge2-AnchorVname2flipped,
-             anchor_link_anchor_sort_order(AnchorVname1, Semantic, Edge2, AnchorVname2flipped),
-             SortedLinks)
-    -> true
-    ;  SortedLinks = []
-    ),
-    (  setof(NodeKind-NodeValue, kythe_node(Semantic, NodeKind, NodeValue), SemanticNodeValues)
-    -> true
-    ;  SemanticNodeValues = []
-    ).
+pair_vname_remove_start(Key-VnameSort, Key-Vname) :-
+    vname_sort(Vname, VnameSort).
 
-anchor_link_anchor_sort_order(AnchorVname1, Semantic, Edge2, AnchorVname2flipped) :-
-    anchor_link_anchor(AnchorVname1, _Edge1, Semantic, Edge2, AnchorVname2),
-    vname_flip(AnchorVname2, AnchorVname2flipped).
+%! anchor_link_anchor_sort_order(+AnchorVname, -SemanticVname, -Edge2, -AnchorVname2flipped) is det.
+%% This sets SemanticVname - guaranteed to be unique (see validate_kythe_facts/0.
+anchor_link_anchor_sort_order(AnchorVname, SemanticVname, Edge2, AnchorVnameSort) :-
+    anchor_link_anchor(AnchorVname, _Edge1, SemanticVname, Edge2, AnchorVname2),
+    vname_sort(AnchorVname2, AnchorVnameSort).
 
+%% Change the ordering of items in a vname, for sorting
 vname_flip(vname(Signature, Corpus, Root, Path, Language),
            vname_flip(Corpus, Root, Path, Signature, Language)).
-
-%% TODO: Can we use library(solution_sequences) group_by/4?
-%%       It has bagof rather than setof at bottom, which is not
-%%       necessarily a bad thing, as it might show errors in the Kythe
-%%       facts (except that duplicates should have been removed by the
-%%       processing pipeline).
-anchor_links_grouped(AnchorVname1, Semantic, SemanticNodeValues, GroupedLinks) :-
-    anchor_links(AnchorVname1, Semantic, SemanticNodeValues, SortedLinks),
-    group_pairs_by_key(SortedLinks, GroupedLinks).
 
 anchor_out_edge('/kythe/edge/defines').
 anchor_out_edge('/kythe/edge/defines/binding').
@@ -353,9 +607,9 @@ tree_to_json(file(N,Path), json([type=file, name=N, path=Path])).
 tree_to_json(dir(N,Path,Children), json([type=dir, name=N, path=Path, children=ChildrenDict])) :-
     tree_to_json(Children, ChildrenDict).
 
-get_color_data_one_file(Corpus, Root, Path,
-                        json{corpus:Corpus, root:Root, path:Path, language:Language,
-                             lines:ColorTextLines}) :-
+color_data_one_file(Corpus, Root, Path,
+                    json{corpus:Corpus, root:Root, path:Path, language:Language,
+                         lines:ColorTextLines}) :-
     kythe_file(Corpus,Root,Path,Language),
     Vname0 = vname0(Corpus,Root,Path,Language),
     setof(KeyedColorText, keyed_color_fact(Corpus, Root, Path, Language, KeyedColorText),
@@ -365,24 +619,24 @@ get_color_data_one_file(Corpus, Root, Path,
     maplist(add_links(Vname0), ColorTextLines0, ColorTextLines1), % concurrent gives slight slow-down
     pairs_values(ColorTextLines1, ColorTextLines).
 
-keyed_color_fact(Corpus, Root, Path, Language, Start-(LineNo-ColorText)) :-
-    color_fact(Corpus, Root, Path, Language, ColorText),
-    Start = ColorText.start,
-    LineNo = ColorText.lineno.
-
-color_fact(Corpus, Root, Path, Language, ColorText) :-
-    kythe_node(vname(_Signature,Corpus,Root,Path,Lang), '/pykythe/color', ColorTextStr),
-    term_string(ColorText, ColorTextStr),
-    ( Lang = Language; Lang = '').
+keyed_color_fact(Corpus, Root, Path, Language, Start-(LineNo-ColorChunk)) :-
+    line_chunk(vname(_ColorAnchor, Corpus,Root,Path,Language), LineNo, ColorChunk),
+    Start = ColorChunk.start.
 
 add_links(Vname0, LineNo-Items, LineNo-AppendedItems) :-
     maplist(add_link(Vname0), Items, AppendedItems).
 
 add_link(Vname0, Item, ItemWithEdges) :-
-    Signature = Item.signature,
-    %% There can be multiple edges with the same label (but different
-    %% targets, so leave as a list and don't combine into a dict.
-    (  setof(json{edge:Edge,target:TargetJson},
+    Start = Item.start,
+    %% Note the use of Signature -- it gets instantiated by a lookup
+    %% to /kythe/loc/start and then edges are found. The lookup gives
+    %% either 0 or 1 result (Item.start might not have any edges
+    %% associated with it).
+    vname_vname0(Vname, Signature, Vname0),
+    (  kythe_node(Vname, '/kythe/loc/start', Start),
+       %% There can be multiple edges with the same label (but different
+       %% targets, so leave as a list and don't combine into a dict.
+       setof(json{edge:Edge,target:TargetJson},
              node_and_edge_json(Signature, Vname0, Edge, TargetJson),
              Edges)
     -> true
@@ -400,19 +654,119 @@ node_and_edge(Signature, Vname0, Edge, Target) :-
 
 node_and_edge(Vname, Edge, Target) :-
     kythe_edge(Vname, Edge, Target).
-node_and_edge(Vname, Edge, Target) :-
-    kythe_edge(Target, ReverseEdge, Vname),
-    reverse_edge_name(ReverseEdge, Edge).
 
-reverse_edge_name(Edge, ReverseEdge) :-
-    atom_concat('%', Edge, ReverseEdge).
+%% DO NOT SUBMIT - already handled by kythe_edge/3 ?
+% node_and_edge(Vname, Edge, Target) :-
+%     kythe_edge(Target, ReverseEdge, Vname),
+%     reverse_edge_name(ReverseEdge, Edge).
+% reverse_edge_name(Edge, ReverseEdge) :-
+%     atom_concat('%', Edge, ReverseEdge).
 
 vname_json(vname(Signature,Corpus,Root,Path,Language),
            json{signature:Signature,corpus:Corpus,root:Root,path:Path,language:Language}).
 
+vname_signature(vname(Signature,_Corpus,_Root,_Path,_Language), Signature).
+
 vname_vname0(vname(Signature,Corpus,Root,Path,Language),
              Signature,
              vname0(Corpus,Root,Path,Language)).
+
+vname_vname0(vname(_Signature,Corpus,Root,Path,Language),
+             vname0(Corpus,Root,Path,Language)).
+
+path_pair_vname(vname(Signature,Corpus,Root,Path,Language),
+                vname0(Corpus,Root,Path,Language)-Signature).
+
+vname0_join_signature(vname0(Corpus,Root,Path,Language), Signature,
+                      vname(Signature,Corpus,Root,Path,Language)).
+
+vname_sort(vname(Signature, Corpus, Root, Path, Language),
+           vname_sort(Corpus, Root, Path, Start, Language, Signature)) :-
+    (  var(Start)  % No need to do the lookup if nonvar
+    -> kythe_node(Signature, Corpus, Root, Path, Language, '/kythe/loc/start', Start)
+    ;  true
+    ).
+
+vname_strip_signature(vname(_Signature1,Corpus,Root,Path,Language),
+                      vname(_Signature2,Corpus,Root,Path,Language)).
+
+%! anchor_to_line_chunks(+AnchorVname:vname, -LineNo:int, -Chunks:list(dict)) is semidet.
+%% Given an AnchorVname, get all the color chunks (in order) for the
+%% line that anchor is in. Can fail if the anchor is invalid (and if
+%% there isn't a color anchor that matches the token anchor).
+%% TODO: refactor with color_data_one_file
+anchor_to_line_chunks(AnchorVname, LineNo, Chunks) :-
+    anchor_to_lineno(AnchorVname, LineNo),
+    vname_vname0(AnchorVname, Vname0),
+    setof(KeyedChunk, keyed_color_chunk(Vname0, LineNo, KeyedChunk), KeyedChunks),
+    pairs_values(KeyedChunks, Chunks).
+
+anchor_to_lineno(AnchorVname, LineNo) :-
+    kythe_node(AnchorVname, '/kythe/loc/start', Start),
+    vname_strip_signature(AnchorVname, ColorVname),
+    kythe_node(ColorVname, '/pykythe/color/start', Start),
+    %% There can be multiple chunks for a color anchor, but all have
+    %% the same line#.
+    once(kythe_node(ColorVname, '/pykythe/color/lineno', LineNo)). % TODO: once(...)
+
+keyed_color_chunk(Vname0, LineNo, Start-Chunk) :-
+    vname_vname0(ColorVname, Vname0),
+    kythe_node(ColorVname, '/pykythe/color/lineno', LineNo),
+    line_chunk(ColorVname, LineNo, Chunk),
+    Start = Chunk.start.
+
+line_chunk(ColorVname, LineNo, color{lineno:LineNo, column:Column,
+                                     start:Start, end:End,
+                                     signature:Signature,
+                                     semantic_signature:'***',  % DO NOT SUBMIT
+                                     token_color:TokenColor, value:Value}) :-
+    %% DO NOT SUBMIT - needs semantic_signature (above)
+    kythe_node(ColorVname, '/pykythe/color/lineno',      LineNo),
+    kythe_node(ColorVname, '/pykythe/color/column',      Column),
+    kythe_node(ColorVname, '/pykythe/color/start',       Start),
+    kythe_node(ColorVname, '/pykythe/color/end',         End),
+    kythe_node(ColorVname, '/pykythe/color/token_color', TokenColor),
+    kythe_node(ColorVname, '/pykythe/color/value',       Value),
+    vname_vname0(ColorVname, Vname0),
+    vname_vname0(AnchorVname, Signature, Vname0),
+    (  kythe_node(AnchorVname, '/kythe/loc/start', Start)
+    -> true
+    ;  Signature = ''
+    ).
+
+vname_neg_num_edges(Vname, MinNumEdges, NegNumEdges) :-
+    setof(Edge-Vname2, kythe_edge(Vname, Edge, Vname2), Edges),
+    length(Edges, NumEdges),
+    NumEdges >= MinNumEdges,
+    NegNumEdges is -NumEdges.
+
+most_edges :-
+    aggregate(set(N-V), vname_neg_num_edges(V, 2, N), L),
+    aggregate(count, V^N^vname_neg_num_edges(V, 2, N), Len),
+    aggregate(count, V^N^vname_neg_num_edges(V, 0, N), LenAll),
+    format('# vnames: ~w (~w including 1-edge)~n', [Len, LenAll]),
+    pykythe_utils:at_most(L, 20, L0),
+    forall(member(A, L0), format('~q~n', [A])).
+
+:- meta_predicate setof_or_empty(-, 0, -).
+setof_or_empty(Template, Goal, Set) :-
+    (  setof(Template, Goal, Set)
+    -> true
+    ;  Set = []
+    ).
+
+
+%% Add a timestamp to thread messages (which are typically from the http server).
+:- multifile prolog:message_prefix_hook/2.
+prolog:message_prefix_hook(thread, Prefix) :-
+    thread_self(Me),
+    Me \== main,
+    thread_property(Me, id(Id)),
+    get_time(NowTimeStamp),
+    %% %FT adds 2020-02-23T; %% %z adds '-0800'
+    format_time(string(NowTime), '%T', NowTimeStamp),
+    format(atom(Prefix), '[Thread ~w ~w] ', [Id, NowTime]).
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -453,6 +807,10 @@ subtree_(file(File), [[]], Prefix, file(File,Path)) :-
 head_tail_pair([Hd|Tl], Hd-Tl).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% :- use_module(library(check)).  %% DO NOT SUBMIT
+%% %% TODO: trap print_message(informational,check(pass(Message)))
+%% ?- check.                       %% DO NOT SUBMIT
 
 :- use_module(library(plunit)).
 
