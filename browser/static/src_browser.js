@@ -108,7 +108,7 @@ const path_type_to_class = {
 // Callback from <body onload="render_page();">
 function renderPage() {
     // https://developers.google.com/web/updates/2016/01/urlsearchparams
-    const params = new URLSearchParams(location.search);
+    const params = new URLSearchParams(window.location.search);
     fetchFromServer({src_file_tree: ''},
                     file_tree_from_server => setFileTree(
                         file_tree_from_server,
@@ -162,7 +162,7 @@ function displayFileTreeItems(item_i, path_items, file_tree_nodes, lineno) {
         dropdown = createDropdown(item_i, 'dir');
         for (var i = 0; i < file_tree_nodes.length; i++) {
             // TODO: make directories display differently
-            var tree_item = file_tree_nodes[i];
+            const tree_item = file_tree_nodes[i];
             addDropdownOption(dropdown, tree_item.name, tree_item.type,
                               'nav_sel-' + tree_item.path);
             if (tree_item.name == path_items[0]) {
@@ -225,10 +225,6 @@ function addDropdownOption(dropdown, text, type, id) {
 // Callback from file tree navigation click, to load a file into the
 // file_nav_element() via displaySrcContents.
 function displayNewSrcFile(source_item) {
-    // console.log('SRC: ' + window.location.origin);
-    // http://localhost:9999
-    // console.log('SRC: ' + window.location.href);
-    // http://localhost:9999/static/src_browser.html?corpus=CORPUS&root=ROOT&path=home/peter/src/pykythe/pykythe/ast_raw.py&line=81
     var progress = document.createElement('span');
     progress.innerHTML = '&nbsp;&nbsp;&nbsp;Fetching file ' +
         sanitizeText(source_item.combinedFilePath()) + ' ...';
@@ -266,7 +262,7 @@ function displaySrcContents(source_item, color_data) {
     }
     replaceChildWith('src', table);
     if (source_item.lineno) {
-        var line_elem = document.getElementById('L' + source_item.lineno);
+        const line_elem = document.getElementById('L' + source_item.lineno);
         if (line_elem) {
             // Choices are: 'start', 'center', 'end', 'nearest'
             line_elem.scrollIntoView({block: 'center'});
@@ -332,7 +328,7 @@ function srcLineText(parts, txt_span, source_item) {
 function mouseoverAnchor(target, class_action, class_id) {
     for (const a_edge of anchor_target_edges(target.id)) {
         for (const t_a_edge of target_anchor_edges(a_edge.target)) {
-            var edge = document.getElementById(t_a_edge.signature);
+            const edge = document.getElementById(t_a_edge.signature);
             if (edge) {
                 edge.classList[class_action](class_id);
             } else {
@@ -360,7 +356,7 @@ function clickAnchor(target, source_item) {
 function setXref(source_item, signature, data) {
     // expected out-edges for anchor: defines, defines/binding, ref, ref/call
 
-    const origin_path = location.origin + location.pathname + '?';
+    const origin_path = window.location.origin + window.location.pathname + '?';
 
     document.getElementById('xref').innerHTML = 'Getting Kythe links for ' + source_item.combinedFilePath() + ' anchor:' + signature + ' ...';
     var table = document.createElement('table');
@@ -370,7 +366,7 @@ function setXref(source_item, signature, data) {
     row_cell.appendChild(document.createElement('span'))
             .innerHTML = '<i>' + sanitizeText(data.semantic.signature) + '</i>';
     for (const nv of data.semantic_node_values) {
-        tableInsertRowCellHTML(table, sanitizeText('  ' + nv.kind +': ' + nv.value));
+        tableInsertRowCellHTML(table, sanitizeText('  ' + nv.kind + ': ' + nv.value));
     }
     for (const edge_links of data.edge_links) {
         row_cell = tableInsertRowCell(table);
@@ -384,9 +380,18 @@ function setXref(source_item, signature, data) {
                      '<i><b>' + sanitizeText(path_link.path) + '</b></i>');
             for (const link_line of path_link.lines) {
                 row_cell = tableInsertRowCell(table);
-                var lineno_span = row_cell.appendChild(document.createElement('span'));
+                const lineno_span = row_cell.appendChild(document.createElement('a'));
+                lineno_span.title = 'xref link';  // DO NOT SUBMIT - fixme
+                const href = origin_path +
+                      '?corpus=' + link_line.corpus +
+                      '&root=' + link_line.corpus +
+                      '&path=' + link_line.path +
+                      '&line=' + link_line.lineno;
+                lineno_span.href = href;
                 lineno_span.innerHTML = '<b><i>' + link_line.lineno + ':&nbsp;</i></b>';  // DO NOT SUBMIT - CSS class, rowspan
-                var txt_span = row_cell.appendChild(document.createElement('span'));
+                var txt_span = row_cell.appendChild(document.createElement('a'));
+                txt_span.title = 'xref link';  // DO NOT SUBMIT - fixme
+                txt_span.href = href;
                 srcLineTextSimple(txt_span, link_line.line, data.semantic);
             }
         }

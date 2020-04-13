@@ -562,7 +562,7 @@ run_src_browser run-src-browser:
 	    touch $(TESTOUTDIR)/browser/files/kythe_facts.qlf
 	@# TODO: remove "-g src_browser:main -l" (which are for debugging)  DO NOT SUBMIT
 	@# TODO: compile src_browser.pl and use src_browser.qlf
-	$(SWIPL_EXE) --no-tty -g src_browser:main2 -l browser/src_browser.pl -- \
+	$(SWIPL_EXE) --no-tty -g src_browser:src_browser_main2 -l browser/src_browser.pl -- \
 		--port=$(SRC_BROWSER_PORT) \
 		--filesdir=$(TESTOUTDIR)/browser/files \
 		--staticdir=$(realpath ./browser/static)

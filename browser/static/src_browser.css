@@ -158,7 +158,7 @@ body {
 /* The following correspond to src_browser.js token_color */
 
 .python_arg_keyword         { color: darkblue; }
-.python_attr_binding        { color: green; font-weight: bold; text-decoration: underline; }
+.python_attr_binding        { color: green; font-weight: bold; } /* text-decoration: underline; */
 .python_attr_ref            { color: green; }
 .python_bare                { color: darkblue; }
 .python_comment             { color: darkred; font-style: italic; }
@@ -167,7 +167,7 @@ body {
 .python_number              { color: black; }
 .python_punctuation         { color: black; font-weight: bold; }
 .python_string              { color: green; font-style: italic; }
-.python_var_binding         { color: blue; font-weight: bold; text-decoration: underline; }
+.python_var_binding         { color: blue; font-weight: bold; } /* text-decoration: underline; */
 .python_var_binding_global  { color: darkblue; font-weight: bold; } /* TODO: maybe aqua? */
 .python_var_ref             { color: blue; }
 .python_whitespace          { }  /* for completeness; not used */

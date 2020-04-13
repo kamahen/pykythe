@@ -11,7 +11,7 @@
 %%    https://swi-prolog.discourse.group/t/yet-another-web-applications-tutorial/566
 %%    https://www.swi-prolog.org/howto/http/
 
-:- module(src_browser, [main/0]).
+:- module(src_browser, [src_browser_main/0, src_browser_main2/0]).
 
 :- use_module(library(http/http_server), [http_server/1,
                                           http_read_json_dict/3,
@@ -27,6 +27,9 @@
 %%                          openssl req -new -x509 -key privkey.pem -out cacert.pem -days 1095
 %%                          ? openssl req -new -key privkey.pem -out cert.csr
 %%                      https://www.openssl.org/docs/manmaster/man1/CA.pl.html
+%%       ==> See ~/src/swipl-devel/packages/ssl/mkcerts.pl.in
+%%           - look for server-key.pem etc.
+%%             https://swi-prolog.discourse.group/t/debugging-failing-ssl-test/2073
 %% :- use_module(library(http/http_unix_daemon)).
 %% :- use_module(library(http_log)).
 %% :- set_setting(http:logfile, '/tmp/httpd.log').
@@ -151,7 +154,7 @@ kythe_edge(vname(Signature1, Corpus1, Root1, Path1, Language1),
 %% :- debug(http(header)).         % TODO: remove
 %% :- debug(http(hook)).           % TODO: remove
 
-:- initialization(main, main).  % TODO: restore this and remove from Makefile  DO NOT SUBMIT
+:- initialization(src_browser_main, main).  % TODO: restore this and remove from Makefile  DO NOT SUBMIT
 
 :- multifile http:location/3.
 :- multifile user:file_search_path/2.
@@ -167,33 +170,44 @@ kythe_edge(vname(Signature1, Corpus1, Root1, Path1, Language1),
 
 http:location(static, root(static), []).
 http:location(files, root(files), []).
-http:location(json, root(json), []).  %% DO NOT SUBMIT - remove?
+http:location(json, root(json), []). %% DO NOT SUBMIT - remove?
 
-main :-
-    main2,
-    %% When started via initialization, need to handle inputs
-    %% via a simple REPL.
+src_browser_main :-
+    src_browser_main2,
+    %% When started via initialization, need to handle inputs via REPL
     %% TODO: start as daemon (see library(http/http_unix_daemon)).
-    repl.
+    %% See also library(main):main/0
+    debug(log, 'Starting REPL ...', []),
+    prolog.  %% REPL
 
-main2 :-
+src_browser_main2 :-
     browser_opts(Opts),
     %% set_prolog_flag(verbose_file_search, true),
     assert_server_locations(Opts),
     read_and_assert_kythe_facts,
     server(Opts).
 
+%% Not used -- a trivial REPL, in case prolog/0 or
+%% '$toplevel':'$toplevel'/0 doesn't work.
+
+:- if(false).
+
 repl :-
     read(Goal),
     (  Goal == end_of_file
     -> format('*** exiting src_browser~n', [])
-    ;  E = error(_, _),            % avoid trapping abort, timeout, etc.
-       catch(Goal, E, handle_repl_throw(Goal, E)),
+    ;  E = error(_, _),         % avoid trapping abort, timeout, etc.
+       (  catch_with_backtrace(Goal, E, handle_repl_throw(Goal, E))
+       -> format('Result: ~q~n', [Goal])
+       ;  format('*** fail ***~n', [])
+       ),
        repl
     ).
 
 handle_repl_throw(_Goal, E) :-
     print_message(error, E).
+
+:- endif.
 
 assert_server_locations(Opts) :-
     debug(log, 'files dir:  ~q', [Opts.filesdir]),
