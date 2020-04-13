@@ -32,10 +32,26 @@ and can process the entire Python3 library without crashing.)
 Pytype also requires a system such as [Bazel](https://bazel.build)
 with associated BUILD files, or ninja, to run in parallel.
 
+## Run demo
+
+* Edit `scripts/demo.sh` for your preferred source and downloads
+  directory (you can also change the Kythe version but I haven't
+  tested with a more recent version).
+
+* If you need to install python3.7:
+  * `sudo add-apt-repository ppa:deadsnakes/ppa`
+  * `sudo apt install python3.7`
+
+* Run `scripts/demo.sh`. When it gets the end, it starts a
+  server, which you can access by:
+  *  http://localhost:9999
+  *  or http://localhost:9999/static/src_browser.html?corpus=CORPUS&root=ROOT&path=home/peter/src/pykythe/pykythe/ast_raw.py&line=81
+
 ## Installation
 
-There is no installation script, because this code is pre-alpha. To
-try it out (on Linux):
+There is no installation script, because this code is pre-alpha. 
+If you run `scripts/demo.sh`, then most of the prerequisites are
+loaded (with the exception of the Kythe code).
 
 * `cd` to your top-level source directory (pykythe assumes that all
   sources are in this, including those from other projects such as
@@ -82,6 +98,11 @@ try it out (on Linux):
 * Install [SWI-Prolog](http://www.swi-prolog.org/Download.html). You
   need at least version 8.1.24, so as of 2020-03-04, this means
   using the "devel" download or PPA.
+  For Ubuntu, Debian, and similar (following the instructions at https://www.swi-prolog.org/build/PPA.html):
+  *  `sudo apt-get install software-properties-common`
+  *  `sudo apt-add-repository ppa:swi-prolog/devel`
+  *  `sudo apt-get update`
+  *  `sudo apt-get install swi-prolog`
 
   After installing, add the packages
   [edcg](https://github.com/mndrix/edcg) and
