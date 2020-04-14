@@ -19,11 +19,11 @@ KYTHE_VERSION=v0.0.37        # Change as needed
 # sudo add-apt-repository ppa:deadsnakes/ppa
 # sudo apt install python3.7
 
-sudo apt-get install wget
-sudo apt-get install software-properties-common
+sudo apt install wget
+sudo apt install software-properties-common
 sudo apt-add-repository ppa:swi-prolog/devel
-sudo apt-get update
-sudo apt-get install swi-prolog
+sudo apt update
+sudo apt install swi-prolog
 
 cd $DOWNLOADDIR
 wget https://github.com/kythe/kythe/releases/download/$KYTHE_VERSION/kythe-$KYTHE_VERSION.tar.gz

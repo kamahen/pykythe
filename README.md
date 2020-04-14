@@ -83,7 +83,7 @@ loaded (with the exception of the Kythe code).
   that there's a conflict with Ubuntu package `python3-lib2to3`. The
   easiest way to fix this is to clone `cprolog` from github and then
   `sudo cp -r --preserve=mode,timestamps cpython/Lib/lib2to3/*
-  /usr/lib/python3.7/lib2to3/`. Alternatively, `sudo apt-get install
+  /usr/lib/python3.7/lib2to3/`. Alternatively, `sudo apt install
   2to3 python3-lib2to3 python3-toolz`.
 
 * Install `lib2to3` for Python.
@@ -92,17 +92,17 @@ loaded (with the exception of the Kythe code).
 
   `sudo apt install python3.7-lib2to3`
   or
-  `sudo apt-get install 2to3 python3-lib2to3 python3-toolz`
+  `sudo apt install 2to3 python3-lib2to3 python3-toolz`
 
 
 * Install [SWI-Prolog](http://www.swi-prolog.org/Download.html). You
   need at least version 8.1.24, so as of 2020-03-04, this means
   using the "devel" download or PPA.
   For Ubuntu, Debian, and similar (following the instructions at https://www.swi-prolog.org/build/PPA.html):
-  *  `sudo apt-get install software-properties-common`
+  *  `sudo apt install software-properties-common`
   *  `sudo apt-add-repository ppa:swi-prolog/devel`
-  *  `sudo apt-get update`
-  *  `sudo apt-get install swi-prolog`
+  *  `sudo apt update`
+  *  `sudo apt install swi-prolog`
 
   After installing, add the packages
   [edcg](https://github.com/mndrix/edcg) and
@@ -431,7 +431,7 @@ UTF8 everywhere).
   * Doesn't yet handle Python 3.8 "walrus" operator.
 
 * Requires Python 3.7
-   * On Ubuntu: `sudo apt-get install python3.7`
+   * On Ubuntu: `sudo apt install python3.7`
    * You also might have to do something like this: `cd /usr/lib/python3/dist-packages &&
 sudo ln -s apt_pkg.cpython-36m-x86_64-linux-gnu.so apt_pkg.cpython-37m-x86_64-linux-gnu.so`
 
