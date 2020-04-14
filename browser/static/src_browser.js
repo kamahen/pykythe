@@ -3,8 +3,8 @@
 // Implementation of annotated source browser, using nodes defined by
 // src_browser.html.
 
-// http://localhost:9999?corpus=CORPUS&root=ROOT&path=tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/a11.py&line=11
-// http://localhost:9999?corpus=CORPUS&root=ROOT&path=home/peter/src/pykythe/pykythe/ast_raw.py&line=81
+// http://localhost:9999?corpus=CORPUS&root=ROOT&path=tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/a11.py&#L11
+// http://localhost:9999?corpus=CORPUS&root=ROOT&path=home/peter/src/pykythe/pykythe/ast_raw.py#L81
 //    which does redirect to:
 // http://localhost:999/static/src_browser.html?corpus=...
 // and we depend on the server to handle redirections transparently,
@@ -48,7 +48,7 @@ class SourceItem {
     }
 
     toString() {
-        return combinedFilePath + ':#L' + this.lineno;
+        return combinedFilePath + '#' + lineno_id(this.lineno);
     }
 }
 
@@ -108,7 +108,13 @@ const path_type_to_class = {
 // Callback from <body onload="render_page();">
 function renderPage() {
     // https://developers.google.com/web/updates/2016/01/urlsearchparams
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(location.search);
+    var lineno;
+    if (location.hash) {
+        lineno = id_lineno(location.hash);
+    } else {
+        lineno = 1;
+    }
     fetchFromServer({src_file_tree: ''},
                     file_tree_from_server => setFileTree(
                         file_tree_from_server,
@@ -116,7 +122,7 @@ function renderPage() {
                             params.get('corpus'),
                             params.get('root'),
                             params.get('path'),
-                            params.get('line'))));
+                            lineno)));
 }
 
 // Callback from fetchFromServer({src_file_tree: ''}),
@@ -202,8 +208,8 @@ function createDropdown(i, type) {
         const  t = e.currentTarget;
         const  t_selected = t[t.selectedIndex];
         if (t_selected.id.startsWith('nav_sel-')) {
-            // TODO: window.location.href = window.location.origin + '?' +
-            //         corpus=CORPUS&root=ROOT&path=home/peter/src/pykythe/pykythe/ast_raw.py&line=81
+            // TODO: location.href = location.origin + '?' +
+            //         corpus=CORPUS&root=ROOT&path=home/peter/src/pykythe/pykythe/ast_raw.py#L81
             // and omit displayFileTree ... but this requires a bit of work
             // to avoid an infinite loop
             displayFileTree(SourceItem.newFromCombined(t_selected.id.substr('nav_sel-'.length)));
@@ -248,7 +254,7 @@ function displaySrcContents(source_item, color_data) {
         var row = table.insertRow();
         var td1 = row.insertCell();
         td1.setAttribute('class', 'src_lineno');
-        td1.id = 'L' + line_key;
+        td1.id = lineno_id(line_key);
         var td2 = row.insertCell();
         td2.setAttribute('class', 'src_line');
         var txt_span = document.createElement('span');
@@ -262,10 +268,11 @@ function displaySrcContents(source_item, color_data) {
     }
     replaceChildWith('src', table);
     if (source_item.lineno) {
-        const line_elem = document.getElementById('L' + source_item.lineno);
+        const line_elem = document.getElementById(lineno_id(source_item.lineno));
         if (line_elem) {
+            // TODO: ensure behavior is same as hash ('#' + lineno_id(source_item.lineno))
             // Choices are: 'start', 'center', 'end', 'nearest'
-            line_elem.scrollIntoView({block: 'center'});
+            line_elem.scrollIntoView({block: 'start'});
         }
     }
     file_nav_element().lastChild.remove(); // Remove status message
@@ -356,7 +363,7 @@ function clickAnchor(target, source_item) {
 function setXref(source_item, signature, data) {
     // expected out-edges for anchor: defines, defines/binding, ref, ref/call
 
-    const origin_path = window.location.origin + window.location.pathname + '?';
+    const origin_path = location.origin + location.pathname + '?';
 
     document.getElementById('xref').innerHTML = 'Getting Kythe links for ' + source_item.combinedFilePath() + ' anchor:' + signature + ' ...';
     var table = document.createElement('table');
@@ -386,7 +393,7 @@ function setXref(source_item, signature, data) {
                       '?corpus=' + link_line.corpus +
                       '&root=' + link_line.corpus +
                       '&path=' + link_line.path +
-                      '&line=' + link_line.lineno;
+                      '#' + lineno_id(link_line.lineno);
                 lineno_span.href = href;
                 lineno_span.innerHTML = '<b><i>' + link_line.lineno + ':&nbsp;</i></b>';  // DO NOT SUBMIT - CSS class, rowspan
                 var txt_span = row_cell.appendChild(document.createElement('a'));
@@ -490,6 +497,28 @@ function target_anchor_edges(target) {
 // Convenience function: get the 'file_nav' element
 function file_nav_element() {
     return document.getElementById('file_nav');
+}
+
+// Convert a lineno to an ID
+function lineno_id(lineno) {
+    return 'L' + lineno;
+}
+
+// Convert an ID or #ID (from location.hash) to a lineno
+function id_lineno(id) {
+    var lineno;
+    if (id.substr(0, 1) == 'L') {
+        lineno = parseInt(id.substr(1));
+    } else if (id.substr(0, 2) == '#L') {  // From location.hash
+        lineno = parseInt(id.substr(2));
+    } else {
+        lineno = NaN;
+    }
+    if (isNaN(lineno)) {
+        console.log('Invalid lineno ID: "' + id + '"');
+        lineno = 1;
+    }
+    return lineno;
 }
 
 // End of file
