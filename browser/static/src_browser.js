@@ -370,10 +370,19 @@ function setXref(source_item, signature, data) {
     table.setAttribute('class', 'src_table');  // DO NOT SUBMIT - should we have a new CSS class for this?
     var row_cell = tableInsertRowCell(table);
     // TODO: remove <i> using row_cell.settAttribute('class', some-other-class)
-    row_cell.appendChild(document.createElement('span'))
-            .innerHTML = '<i>' + sanitizeText(data.semantic.signature) + '</i>';
+    if (data.semantics.length == 0) {
+        row_cell.appendChild(document.createElement('span')).innerHTML + '<i>(no semantics)</i>';
+    } else {
+        row_cell.appendChild(document.createElement('span'))
+            .innerHTML = data.semantics.map(
+                s => '<i>' + sanitizeText(s.signature) + '</i>').join('<br/>');
+    }
     for (const nv of data.semantic_node_values) {
-        tableInsertRowCellHTML(table, sanitizeText('  ' + nv.kind + ': ' + nv.value));
+        // TODO: use class attributes:
+        tableInsertRowCellHTML(table, '&nbsp;&nbsp;<b>' +
+                               sanitizeText(nv.kind) +
+                               '</b>:&nbsp;' +
+                               sanitizeText(nv.value));
     }
     for (const edge_links of data.edge_links) {
         row_cell = tableInsertRowCell(table);
@@ -382,13 +391,16 @@ function setXref(source_item, signature, data) {
                  sanitizeText(edge_links.edge + ' (' + edge_links.links.length + ')'));
         for (const path_link of edge_links.links) {
             row_cell = tableInsertRowCell(table);
-            // DO NOT SUBMIT - use a CSS class:
+            // DO NOT SUBMIT - use a CSS class for '<i><b>':
             cellHTML(row_cell,
                      '<i><b>' + sanitizeText(path_link.path) + '</b></i>');
             for (const link_line of path_link.lines) {
                 row_cell = tableInsertRowCell(table);
                 const lineno_span = row_cell.appendChild(document.createElement('a'));
-                lineno_span.title = 'xref link';  // DO NOT SUBMIT - fixme
+                // DO NOT SUBMIT - semantic signature is *not* from link_line.line[*].semantic_signature
+                //                 but from a query
+                const xref_title = sanitizeText('xref-title'); // DO NOT SUBMIT - addd semantic signature
+                lineno_span.title = xref_title;
                 const href = origin_path +
                       '?corpus=' + link_line.corpus +
                       '&root=' + link_line.corpus +
@@ -397,7 +409,7 @@ function setXref(source_item, signature, data) {
                 lineno_span.href = href;
                 lineno_span.innerHTML = '<b><i>' + link_line.lineno + ':&nbsp;</i></b>';  // DO NOT SUBMIT - CSS class, rowspan
                 var txt_span = row_cell.appendChild(document.createElement('a'));
-                txt_span.title = 'xref link';  // DO NOT SUBMIT - fixme
+                txt_span.title = xref_title;
                 txt_span.href = href;
                 srcLineTextSimple(txt_span, link_line.line, data.semantic);
             }

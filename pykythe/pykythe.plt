@@ -4,6 +4,8 @@
 %% few tests are here, as they were used for developing the code, so
 %% why not keep them?
 
+%% :- set_prolog_flag(autoload, false).  % TODO: seems to break plunit
+
 :- use_module(library(plunit)).
 
 :- dynamic

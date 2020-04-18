@@ -19,21 +19,34 @@ KYTHE_VERSION=v0.0.37        # Change as needed
 # sudo add-apt-repository ppa:deadsnakes/ppa
 # sudo apt install python3.7
 
-sudo apt install wget
-sudo apt install software-properties-common
-sudo apt-add-repository ppa:swi-prolog/devel
-sudo apt update
-sudo apt install swi-prolog
+if [ ! type swipl ]
+then
+    sudo apt install software-properties-common
+    sudo apt-add-repository ppa:swi-prolog/devel
+    sudo apt update
+    sudo apt install swi-prolog
+fi
 
-cd $DOWNLOADDIR
-wget https://github.com/kythe/kythe/releases/download/$KYTHE_VERSION/kythe-$KYTHE_VERSION.tar.gz
-rm -rf kythe-$KYTHE_VERSION
-tar xzf kythe-$KYTHE_VERSION.tar.gz
+NEED_SWIPL_VERSION="8.1.28"
+SWIPL_VERSION=$(swipl --version | cut -d' ' -f 3)
+if [[ "$SWIPL_VERSION" < "$NEED_SWIPL_VERSION" ]]
+then
+    sudo apt install swi-prolog  # upgrade
+fi
+
+if [ ! -e $DOWNLOADDIR/kythe-$KYTHE_VERSION.tar.gz ]
+then
+    sudo apt install wget
+    cd $DOWNLOADDIR
+    wget https://github.com/kythe/kythe/releases/download/$KYTHE_VERSION/kythe-$KYTHE_VERSION.tar.gz
+    rm -rf kythe-$KYTHE_VERSION
+    tar xzf kythe-$KYTHE_VERSION.tar.gz
+fi
 
 cd $SRC
 
-echo 'pack_install(edcg, [interactive(false), upgrade(true)]).' | swipl
-echo 'pack_install(rdet, [interactive(false), upgrade(true)]).' | swipl
+(echo 'pack_install(edcg, [interactive(false), upgrade(true)]).' ; \
+ echo 'pack_install(rdet, [interactive(false), upgrade(true)]).') | swipl
 
 make --warn-undefined-variables -C $HOME/src/pykythe \
      ENTRYSTREAM_EXE=$DOWNLOADDIR/kythe-$KYTHE_VERSION/tools/entrystream \
@@ -56,8 +69,3 @@ echo And exit by '^D'
 
 make --warn-undefined-variables -C $HOME/src/pykythe \
      SRC_BROWSER_PORT=9999 run-src-browser
-
-
-
-
-

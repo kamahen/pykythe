@@ -40,7 +40,7 @@
                           write_atomic_stream/2
                          ]).
 :- encoding(utf8).
-%% :- set_prolog_flag(autoload, false).  % TODO: breaks qsave
+%% :- set_prolog_flag(autoload, false).  % TODO: seems to break plunit, qsave
 
 :- meta_predicate
        do_if(0, 0),
@@ -54,7 +54,6 @@
 :- style_check(+no_effect).
 :- style_check(+discontiguous).
 
-:- set_prolog_flag(autoload, true). % For the library modules
 :- use_module(library(rdet), [rdet/1]).
 :- use_module(library(apply), [maplist/2, maplist/3]).
 :- use_module(library(error)).
@@ -72,8 +71,6 @@
 :- use_module(library(pcre), [re_replace/4]).
 :- style_check(+var_branches).
 
-%% :- set_prolog_flag(autoload, false). % TODO: breaks qsave
-
 :- use_module(must_once, [must_once/1, must_once_msg/2, must_once_msg/3, fail/1]).
 
 :- style_check(+singleton).
@@ -85,7 +82,6 @@
 
 :- if(true).  % Turning off rdet can sometimes make debugging easier.
 
-:- set_prolog_flag(autoload, true).
 :- maplist(rdet, [
                   %% base64_string/2, % handled by must_once
                   %% do_if/2,    % rdet wrap interferes with meta_predicate declaration
@@ -100,13 +96,12 @@
                   %% write_atomic_stream/2, % rdet wrap interferes with meta_predicate declaration
                   %% write_atomic_file/2    % rdet wrap interferes with meta_predicate declaration
                  ]).
-%% :- set_prolog_flag(autoload, false).   % TODO: breaks qsave
 :- endif.
 
 validate_prolog_version :-
     current_prolog_flag(version, PrologVersion),
     %% Sync this with README.md:
-    must_once_msg(PrologVersion >= 80124, 'SWI-Prolog version is too old').
+    must_once_msg(PrologVersion >= 80128, 'SWI-Prolog version is too old').
 
 %! absolute_file_name_rel(+File, -Absolute) is det.
 %% For now, this is the same as absolute_file_name/2.
