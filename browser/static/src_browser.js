@@ -388,7 +388,13 @@ function setXref(source_item, signature, data) {
         row_cell = tableInsertRowCell(table);
         row_cell.setAttribute('class', 'xref_head');
         cellHTML(row_cell,
-                 sanitizeText(edge_links.edge + ' (' + edge_links.links.length + ')'));
+                 sanitizeText(edge_links.edge + ' (' +
+                              singular_plural(edge_links.links.length, 'file', 'files') +
+                              ', ' +
+                              singular_plural(
+                                  edge_links.links.map(link => link.lines.length)
+                                      .reduce((x,y)=>x+y,0), 'line', 'lines') +
+                              ')'));
         for (const path_link of edge_links.links) {
             row_cell = tableInsertRowCell(table);
             // DO NOT SUBMIT - use a CSS class for '<i><b>':
@@ -430,6 +436,14 @@ function cellHTML(cell, html) {
 
 function tableInsertRowCellHTML(table, html) {
     cellHTML(tableInsertRowCell(table), html);
+}
+
+function singular_plural(number, singular, plural) {
+    if (number == 1) {
+        return 'one ' + singular;
+    } else {
+        return number + ' ' + plural;
+    }
 }
 
 // Sanitize a string, allowing tags to not cause problems

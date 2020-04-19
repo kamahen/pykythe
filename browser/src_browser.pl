@@ -351,14 +351,6 @@ validate_anchor_link_anchor :-
                            anchor_link_anchor(AnchorVname1, Edge1, SemanticVname2, Edge2, AnchorVname2),
                            [_]))).
 
-%% DO NOT SUBMIT
-edge_edge_3576_results(Length) :-
-    setof(Semantic-Edge1-Edge2-V2,
-          src_browser:anchor_link_anchor(vname('@10560:10564<type>','CORPUS','ROOT','home/peter/src/pykythe/pykythe/ast_raw.py',python),Edge1, Semantic,Edge2, V2),
-          Set),
-    forall(member(Z, Set), format('~q~n', [Z])),
-    length(Set, Length).
-
 server(Opts) :-
     %% See comments with "Support HTTPS" above.
     http_server([port(Opts.port),
@@ -472,9 +464,9 @@ json_response(json{anchor_xref: json{signature: Signature,
                    semantic_node_values: SemanticNodeValuesJson,
                    edge_links: EdgeLinksJson}) :-
     !,
+    AnchorVname = vname(Signature, Corpus, Root, Path, Language),
     %% TODO: probably better to use nested setof/bagof, but with
     %%       library(solution_sequences) for ordering, grouping
-    AnchorVname = vname(Signature, Corpus, Root, Path, Language),
     anchor_to_line_chunks(AnchorVname, LineNo, LineChunks),
     debug(log, 'Xref ~q lineno: ~q', [[signature: Signature, corpus=Corpus, root: Root, path: Path, language: Language], LineNo]),
     anchor_links_grouped(AnchorVname, SemanticNodeValues, EdgeLinks0),
@@ -581,10 +573,12 @@ anchor_link_anchor(AnchorVname1, Edge1, SemanticVname, Edge2, AnchorVname2) :-
     node_link_node(AnchorVname1, Edge1, SemanticVname, Edge2, AnchorVname2),
     kythe_node(AnchorVname2, '/kythe/node/kind', 'anchor').
 
+%% Note that because the graph is bidirectional (e.g.,
+%% Edge1='/kythe/edge/ref', Edge2='%/kythe/edge/ref'), it is possible
+%% that Vname1 = Vname2.
 node_link_node(Vname1, Edge1, SemanticVname, Edge2, Vname2) :-
     kythe_edge(Vname1, Edge1, SemanticVname),
-    kythe_edge(Vname2, Edge2, SemanticVname),
-    Vname1 \= Vname2.
+    kythe_edge(Vname2, Edge2, SemanticVname).
 
 node_link_node_value(Vname, EdgeNodeKind, Value) :-
     node_link_node_value(Vname, Edge, _NodeVname, Name, Value),
@@ -610,6 +604,7 @@ anchor_semantic_json(AnchorVname, SemanticJson) :-
     anchor_semantic(AnchorVname, Semantic),
     link_to_dict(Semantic, SemanticJson).
 
+
 %% For testing check/0:  DO NOT SUBMIT
 do_not_submit(AnchorVname, SemanticJsonSet) :-
     setof_or_empty(SemanticJson, Semantic^( anchor_semantic(AnchorVname, Semantic),
@@ -626,15 +621,22 @@ anchor_semantic(AnchorVname, Semantic) :-
     kythe_edge(AnchorVname, Edge, Semantic),
     semantic_edge(Edge).
 
+%% TODO: add all other appropriate edges from https://kythe.io/docs/schema/
 semantic_edge('/kythe/edge/defines').
 semantic_edge('/kythe/edge/defines/binding').
 semantic_edge('/kythe/edge/ref').
 semantic_edge('/kythe/edge/ref/call').
+semantic_edge('/kythe/edge/ref/call/implicit').
+semantic_edge('/kythe/edge/ref/doc'). %% TODO: should this be a semantic edge?
 semantic_edge('/kythe/edge/ref/file').
+semantic_edge('/kythe/edge/ref/implicit').
 semantic_edge('/kythe/edge/ref/imports').
+semantic_edge('/kythe/edge/ref/includes').
+semantic_edge('/kythe/edge/ref/init').
 
 %% anchor/out_edge/1 is generated manually by scanning pykythe.pl
 %%    for /kythe/edge/
+%% TODO: add all other edges from https://kythe.io/docs/schema/
 anchor_out_edge('/kythe/edge/childof').
 anchor_out_edge('/kythe/edge/defines').
 anchor_out_edge('/kythe/edge/defines/binding').
@@ -832,9 +834,9 @@ most_edges :-
 
 :- meta_predicate setof_or_empty(-, 0, -).
 setof_or_empty(Template, Goal, Set) :-
-    (  setof(Template, Goal, Set)
-    -> true
-    ;  Set = []
+    (   setof(Template, Goal, Set)
+    *-> true
+    ;   Set = []
     ).
 
 
