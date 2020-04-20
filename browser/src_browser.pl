@@ -77,6 +77,9 @@ kythe_edge(vname(Signature1, Corpus1, Root1, Path1, Language1),
     kythe_edge(Signature1, Corpus1, Root1, Path1, Language1,
                Edge,
                Signature2, Corpus2, Root2, Path2, Language2).
+%% TODO: instead of using atom_concat/3 to create reverse edges,
+%%       initialize reverse_edge/2 from
+%%       src_browser:findall(E, kythe_edge(_,_,_,_,_,E,_,_,_,_,_), Edges0), sort(Edges0, Edges)
 kythe_edge(vname(Signature1, Corpus1, Root1, Path1, Language1),
            ReverseEdge,
            vname(Signature2, Corpus2, Root2, Path2, Language2)) :-
@@ -622,6 +625,10 @@ anchor_semantic(AnchorVname, Semantic) :-
     semantic_edge(Edge).
 
 %% TODO: add all other appropriate edges from https://kythe.io/docs/schema/
+%% TODO: consider defining this by what is *not* a semantic edge
+%% semantic_edge/1 is for anchor->semantic edges that define semantics
+%% so, for example, a diagnostic (/kythe/edge/tagged) would not be a
+%% semantic edge.
 semantic_edge('/kythe/edge/defines').
 semantic_edge('/kythe/edge/defines/binding').
 semantic_edge('/kythe/edge/ref').

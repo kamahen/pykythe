@@ -14,6 +14,7 @@ set -o pipefail
 SRCDIR=$HOME/src             # Change as needed
 DOWNLOADDIR=$HOME/Downloads  # Change as needed
 KYTHE_VERSION=v0.0.37        # Change as needed
+NEED_SWIPL_VERSION="8.1.28"  # Change as needed
 
 # The following are needed only if you don't have Python3.7 already:
 # sudo add-apt-repository ppa:deadsnakes/ppa
@@ -27,7 +28,6 @@ then
     sudo apt install swi-prolog
 fi
 
-NEED_SWIPL_VERSION="8.1.28"
 SWIPL_VERSION=$(swipl --version | cut -d' ' -f 3)
 if [[ "$SWIPL_VERSION" < "$NEED_SWIPL_VERSION" ]]
 then

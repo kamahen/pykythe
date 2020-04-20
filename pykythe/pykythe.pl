@@ -439,97 +439,107 @@ edcg:acc_info(symrej, FqnType, In, Out, symrej_accum(FqnType, In, Out)).
 %% "file_meta" passed arg contains meta-info about the current file.
 edcg:pass_info(file_meta).
 
-edcg:pred_info(log_kyfact_msg, 5,                      [kyfact,file_meta]).
-edcg:pred_info(maplist_kyfact, 2,                      [kyfact,file_meta]).
-edcg:pred_info(maplist_kyfact, 3,                      [kyfact,file_meta]).
-edcg:pred_info(maplist_kyfact_, 2,                     [kyfact,file_meta]).
-edcg:pred_info(maplist_kyfact_, 3,                     [kyfact,file_meta]).
+edcg:pred_info(Name, Arity, Accs) :-
+    (   pred_info_(Name, Arity, Accs)
+    *-> true
+    ;   Name == (!), Arity == 0
+    ->  true
+    ;   Name == call
+    ->  true
+    ;   throw(error(no_pred_info(Name/Arity), _))
+    ).
 
-edcg:pred_info(kyanchor, 4,                            [kyfact,file_meta]).
-edcg:pred_info(kyanchor_kyedge_fqn, 5,                 [kyfact,file_meta]).
-edcg:pred_info(kyanchor_node, 2,                       [kyfact,file_meta]).
-edcg:pred_info(kyanchor_node, 3,                       [kyfact,file_meta]).
-edcg:pred_info(kyanchor_node_kyedge_fqn, 3,            [kyfact,file_meta]).
-edcg:pred_info(kyanchor_node_kyedge_fqn, 4,            [kyfact,file_meta]).
-edcg:pred_info(kyedge, 3,                              [kyfact,file_meta]).
-edcg:pred_info(kyedge_fqn, 3,                          [kyfact,file_meta]).
-edcg:pred_info(kyfact, 3,                              [kyfact,file_meta]).
-edcg:pred_info(kyfact_attr, 3,                         [kyfact,file_meta]).
-edcg:pred_info(kyfact_color, 1,                        [kyfact,file_meta]).
-edcg:pred_info(kyfact_signature_node, 3,               [kyfact,file_meta]).
-edcg:pred_info(kyfacts, 2,                             [kyfact,file_meta]).
-edcg:pred_info(kyfacts_signature_node, 2,              [kyfact,file_meta]).
-edcg:pred_info(kyfile, 1,                              [kyfact,file_meta]).
-edcg:pred_info(add_kyfact_types, 2,                    [kyfact,file_meta]).
-edcg:pred_info(symtab_pykythe_types, 1,                [kyfact,file_meta]).
+pred_info_(log_kyfact_msg, 5,                      [kyfact,file_meta]).
+pred_info_(maplist_kyfact, 2,                      [kyfact,file_meta]).
+pred_info_(maplist_kyfact, 3,                      [kyfact,file_meta]).
+pred_info_(maplist_kyfact_, 2,                     [kyfact,file_meta]).
+pred_info_(maplist_kyfact_, 3,                     [kyfact,file_meta]).
 
-edcg:pred_info(maplist_kyfact_expr, 2,                 [kyfact,expr,file_meta]).
-edcg:pred_info(maplist_kyfact_expr, 3,                 [kyfact,expr,file_meta]).
-edcg:pred_info(maplist_kyfact_expr_, 2,                [kyfact,expr,file_meta]).
-edcg:pred_info(maplist_kyfact_expr_, 3,                [kyfact,expr,file_meta]).
+pred_info_(kyanchor, 4,                            [kyfact,file_meta]).
+pred_info_(kyanchor_kyedge_fqn, 5,                 [kyfact,file_meta]).
+pred_info_(kyanchor_node, 2,                       [kyfact,file_meta]).
+pred_info_(kyanchor_node, 3,                       [kyfact,file_meta]).
+pred_info_(kyanchor_node_kyedge_fqn, 3,            [kyfact,file_meta]).
+pred_info_(kyanchor_node_kyedge_fqn, 4,            [kyfact,file_meta]).
+pred_info_(kyedge, 3,                              [kyfact,file_meta]).
+pred_info_(kyedge_fqn, 3,                          [kyfact,file_meta]).
+pred_info_(kyfact, 3,                              [kyfact,file_meta]).
+pred_info_(kyfact_attr, 3,                         [kyfact,file_meta]).
+pred_info_(kyfact_color, 1,                        [kyfact,file_meta]).
+pred_info_(kyfact_signature_node, 3,               [kyfact,file_meta]).
+pred_info_(kyfacts, 2,                             [kyfact,file_meta]).
+pred_info_(kyfacts_signature_node, 2,              [kyfact,file_meta]).
+pred_info_(kyfile, 1,                              [kyfact,file_meta]).
+pred_info_(add_kyfact_types, 2,                    [kyfact,file_meta]).
+pred_info_(symtab_pykythe_types, 1,                [kyfact,file_meta]).
 
-edcg:pred_info(assign_normalized, 2,                   [kyfact,expr,file_meta]).
-edcg:pred_info(expr_normalized, 1,                     [kyfact,expr,file_meta]).
-edcg:pred_info(import_from, 1,                         [kyfact,expr,file_meta]).
-edcg:pred_info(kyImportDottedAsNamesFqn, 2,            [kyfact,expr,file_meta]).
-edcg:pred_info(kyImportDottedAsNamesFqn_as, 4,         [kyfact,expr,file_meta]).
-edcg:pred_info(kyImportDottedAsNamesFqn_as_unknown, 4, [kyfact,expr,file_meta]).
-edcg:pred_info(kyImportDottedAsNamesFqn_from_dots, 4,  [kyfact,expr,file_meta]).
-edcg:pred_info(kyImportDottedAsNamesFqn_from_part, 3,  [kyfact,expr,file_meta]).
-edcg:pred_info(kyImportDottedAsNamesFqn_from_part2, 4, [kyfact,expr,file_meta]).
-edcg:pred_info(kyImport_path_pieces_to_module, 4,      [kyfact,expr,file_meta]).
-edcg:pred_info(kyImportDottedAsNamesFqn_top, 3,        [kyfact,expr,file_meta]).
-edcg:pred_info(kyImport_path_dots, 1,                  [kyfact,expr,file_meta]).
-edcg:pred_info(kyImportFromStmt, 4,                    [kyfact,expr,file_meta]).
-edcg:pred_info(kynode, 2,                              [kyfact,expr,file_meta]).
-edcg:pred_info(kynode_add_items, 1,                    [kyfact,expr,file_meta]).
-edcg:pred_info(kynode_if_stmt, 2,                      [kyfact,expr,file_meta]).
-edcg:pred_info(kynode_impl, 2,                         [kyfact,expr,file_meta]).
-edcg:pred_info(maplist_kynode, 2,                      [kyfact,expr,file_meta]).
-edcg:pred_info(process_nodes_impl, 2,                  [kyfact,expr,file_meta]).
+pred_info_(maplist_kyfact_expr, 2,                 [kyfact,expr,file_meta]).
+pred_info_(maplist_kyfact_expr, 3,                 [kyfact,expr,file_meta]).
+pred_info_(maplist_kyfact_expr_, 2,                [kyfact,expr,file_meta]).
+pred_info_(maplist_kyfact_expr_, 3,                [kyfact,expr,file_meta]).
 
-edcg:pred_info(maplist_kyfact_symrej, 2,               [kyfact,symrej,file_meta]).
-edcg:pred_info(maplist_kyfact_symrej, 3,               [kyfact,symrej,file_meta]).
-edcg:pred_info(maplist_kyfact_symrej_, 2,              [kyfact,symrej,file_meta]).
-edcg:pred_info(maplist_kyfact_symrej_, 3,              [kyfact,symrej,file_meta]).
-edcg:pred_info(maplist_kyfact_symrej_union, 3,         [kyfact,symrej,file_meta]).
+pred_info_(assign_normalized, 2,                   [kyfact,expr,file_meta]).
+pred_info_(expr_normalized, 1,                     [kyfact,expr,file_meta]).
+pred_info_(import_from, 1,                         [kyfact,expr,file_meta]).
+pred_info_(kyImportDottedAsNamesFqn, 2,            [kyfact,expr,file_meta]).
+pred_info_(kyImportDottedAsNamesFqn_as, 4,         [kyfact,expr,file_meta]).
+pred_info_(kyImportDottedAsNamesFqn_as_unknown, 4, [kyfact,expr,file_meta]).
+pred_info_(kyImportDottedAsNamesFqn_from_dots, 4,  [kyfact,expr,file_meta]).
+pred_info_(kyImportDottedAsNamesFqn_from_part, 3,  [kyfact,expr,file_meta]).
+pred_info_(kyImportDottedAsNamesFqn_from_part2, 4, [kyfact,expr,file_meta]).
+pred_info_(kyImport_path_pieces_to_module, 4,      [kyfact,expr,file_meta]).
+pred_info_(kyImportDottedAsNamesFqn_top, 3,        [kyfact,expr,file_meta]).
+pred_info_(kyImport_path_dots, 1,                  [kyfact,expr,file_meta]).
+pred_info_(kyImportFromStmt, 4,                    [kyfact,expr,file_meta]).
+pred_info_(kynode, 2,                              [kyfact,expr,file_meta]).
+pred_info_(kynode_add_items, 1,                    [kyfact,expr,file_meta]).
+pred_info_(kynode_if_stmt, 2,                      [kyfact,expr,file_meta]).
+pred_info_(kynode_impl, 2,                         [kyfact,expr,file_meta]).
+pred_info_(maplist_kynode, 2,                      [kyfact,expr,file_meta]).
+pred_info_(process_nodes_impl, 2,                  [kyfact,expr,file_meta]).
 
-edcg:pred_info(eval_assign_dot_op_binds_single, 4,     [kyfact,symrej,file_meta]).
-edcg:pred_info(eval_assign_dot_op_binds_unknown, 4,    [kyfact,symrej,file_meta]).
-edcg:pred_info(eval_assign_expr, 1,                    [kyfact,symrej,file_meta]).
-edcg:pred_info(eval_assign_import, 1,                  [kyfact,symrej,file_meta]).
-edcg:pred_info(eval_assign_single, 3,                  [kyfact,symrej,file_meta]).
-edcg:pred_info(eval_assign_subscr_op_binds_single, 2,  [kyfact,symrej,file_meta]).
-edcg:pred_info(eval_atom_call_single, 3,               [kyfact,symrej,file_meta]).
-edcg:pred_info(eval_atom_dot_single, 3,                [kyfact,symrej,file_meta]).
-edcg:pred_info(eval_atom_subscr_binds_single, 2,       [kyfact,symrej,file_meta]).
-edcg:pred_info(eval_atom_subscr_single, 2,             [kyfact,symrej,file_meta]).
-edcg:pred_info(eval_dot_op_unknown, 3,                 [kyfact,symrej,file_meta]).
-edcg:pred_info(eval_lookup, 2,                         [kyfact,symrej,file_meta]).
-edcg:pred_info(eval_lookup_single, 2,                  [kyfact,symrej,file_meta]).
-edcg:pred_info(eval_single_type, 2,                    [kyfact,symrej,file_meta]).
-edcg:pred_info(eval_single_type_import, 4,             [kyfact,symrej,file_meta]).
-edcg:pred_info(eval_union_type, 2,                     [kyfact,symrej,file_meta]).
-edcg:pred_info(log_possible_classes_from_attr, 3,      [kyfact,symrej,file_meta]).
-edcg:pred_info(maplist_eval_assign_expr, 1,            [kyfact,symrej,file_meta]).
-edcg:pred_info(maybe_resolve_mro_dot, 3,               [kyfact,symrej,file_meta]).
-edcg:pred_info(resolve_mro_dot, 4,                     [kyfact,symrej,file_meta]).
-edcg:pred_info(subscr_resolve_dot_binds, 3,            [kyfact,symrej,file_meta]).
+pred_info_(maplist_kyfact_symrej, 2,               [kyfact,symrej,file_meta]).
+pred_info_(maplist_kyfact_symrej, 3,               [kyfact,symrej,file_meta]).
+pred_info_(maplist_kyfact_symrej_, 2,              [kyfact,symrej,file_meta]).
+pred_info_(maplist_kyfact_symrej_, 3,              [kyfact,symrej,file_meta]).
+pred_info_(maplist_kyfact_symrej_union, 3,         [kyfact,symrej,file_meta]).
 
-edcg:pred_info(possible_classes_from_attr, 2,          [symrej,file_meta]).
-edcg:pred_info(resolve_unknown_fqn, 4,                 [symrej,file_meta]).
-edcg:pred_info(symtab_if_file, 1,                      [symrej,file_meta]).
+pred_info_(eval_assign_dot_op_binds_single, 4,     [kyfact,symrej,file_meta]).
+pred_info_(eval_assign_dot_op_binds_unknown, 4,    [kyfact,symrej,file_meta]).
+pred_info_(eval_assign_expr, 1,                    [kyfact,symrej,file_meta]).
+pred_info_(eval_assign_import, 1,                  [kyfact,symrej,file_meta]).
+pred_info_(eval_assign_single, 3,                  [kyfact,symrej,file_meta]).
+pred_info_(eval_assign_subscr_op_binds_single, 2,  [kyfact,symrej,file_meta]).
+pred_info_(eval_atom_call_single, 3,               [kyfact,symrej,file_meta]).
+pred_info_(eval_atom_dot_single, 3,                [kyfact,symrej,file_meta]).
+pred_info_(eval_atom_subscr_binds_single, 2,       [kyfact,symrej,file_meta]).
+pred_info_(eval_atom_subscr_single, 2,             [kyfact,symrej,file_meta]).
+pred_info_(eval_dot_op_unknown, 3,                 [kyfact,symrej,file_meta]).
+pred_info_(eval_lookup, 2,                         [kyfact,symrej,file_meta]).
+pred_info_(eval_lookup_single, 2,                  [kyfact,symrej,file_meta]).
+pred_info_(eval_single_type, 2,                    [kyfact,symrej,file_meta]).
+pred_info_(eval_single_type_import, 4,             [kyfact,symrej,file_meta]).
+pred_info_(eval_union_type, 2,                     [kyfact,symrej,file_meta]).
+pred_info_(log_possible_classes_from_attr, 3,      [kyfact,symrej,file_meta]).
+pred_info_(maplist_eval_assign_expr, 1,            [kyfact,symrej,file_meta]).
+pred_info_(maybe_resolve_mro_dot, 3,               [kyfact,symrej,file_meta]).
+pred_info_(resolve_mro_dot, 4,                     [kyfact,symrej,file_meta]).
+pred_info_(subscr_resolve_dot_binds, 3,            [kyfact,symrej,file_meta]).
 
-edcg:pred_info(must_once_symrej, 1,                    [symrej]).
-edcg:pred_info(symtab_lookup, 2,                       [symrej]).
+pred_info_(possible_classes_from_attr, 2,          [symrej,file_meta]).
+pred_info_(resolve_unknown_fqn, 4,                 [symrej,file_meta]).
+pred_info_(symtab_if_file, 1,                      [symrej,file_meta]).
 
-edcg:pred_info(diagnostic_source, 2,                   [file_meta]).
-edcg:pred_info(do_if_file, 1,                          [file_meta]).
-edcg:pred_info(log_if_file, 2,                         [file_meta]).
-edcg:pred_info(signature_node, 2,                      [file_meta]).
-edcg:pred_info(signature_source, 2,                    [file_meta]).
+pred_info_(must_once_symrej, 1,                    [symrej]).
+pred_info_(symtab_lookup, 2,                       [symrej]).
 
-edcg:pred_info(exprs, 1,                               [expr]).
+pred_info_(diagnostic_source, 2,                   [file_meta]).
+pred_info_(do_if_file, 1,                          [file_meta]).
+pred_info_(log_if_file, 2,                         [file_meta]).
+pred_info_(signature_node, 2,                      [file_meta]).
+pred_info_(signature_source, 2,                    [file_meta]).
+
+pred_info_(exprs, 1,                               [expr]).
 
 %% For debugging, load this file (using `swipl -l pykythe/pykythe.pl` or
 %% by using `[pykythe/pykythe].`) -- this does not run the initialization.
@@ -1433,12 +1443,12 @@ process_nodes_impl(Node, SrcInfo) -->>
     kyfile(SrcInfo),
     do_if_file(dump_term('NODE', Node)),
     %% TODO: return non-zero for parse failure?
-    (  Node = 'ParseError'{context: Context, msg: Msg, type: Type, value: Value, srcpath: SrcPath}
+    (  { Node = 'ParseError'{context: Context, msg: Msg, type: Type, value: Value, srcpath: SrcPath} }
     -> { log_if(true, 'ERROR: ~w (type=~w) value=~q context:~w file:~q', [Msg, Type, Value, Context, SrcPath]) }
-    ;  Node = 'DecodeError'{encoding:Encoding, start:Start, end:End, reason:Reason, srcpath: SrcPath}
-    -> log_if(true, 'ERROR: bad input (decoding ~w): ~w start=~w end=~w file:~q', [Encoding, Reason, Start, End, SrcPath])
-    ;  Node = 'Crash'{repr: Repr, str: Str, srcpath: SrcPath}
-    -> log_if(true, 'ERROR: crash: ~w repr:~w file:~q', [Str, Repr, SrcPath])
+    ;  { Node = 'DecodeError'{encoding:Encoding, start:Start, end:End, reason:Reason, srcpath: SrcPath} }
+    -> { log_if(true, 'ERROR: bad input (decoding ~w): ~w start=~w end=~w file:~q', [Encoding, Reason, Start, End, SrcPath]) }
+    ;  { Node = 'Crash'{repr: Repr, str: Str, srcpath: SrcPath} }
+    -> { log_if(true, 'ERROR: crash: ~w repr:~w file:~q', [Str, Repr, SrcPath]) }
     ;  kynode(Node, Expr),
        do_if_file(dump_term('NODE=>Expr', Expr))
     ).
@@ -1448,7 +1458,7 @@ process_nodes_impl(Node, SrcInfo) -->>
 kyfile(SrcInfo) -->>
     %% TODO: output x-numlines, x-html ?
     Meta/file_meta,
-    Meta_path = Meta.path, SrcInfo_src_path = SrcInfo.src_path,
+    { Meta_path = Meta.path, SrcInfo_src_path = SrcInfo.src_path },
     { must_once(Meta_path == SrcInfo_src_path) },
     { Source = json{corpus: Meta.kythe_corpus, root: Meta.kythe_root, path: Meta.path} },
     %% If the following is changed, also change the validation
@@ -1476,8 +1486,8 @@ kyfact_color(color{lineno:Lineno,
                    value:Value
                   }) -->>
     %% See anchor_signature_str/4:
-    term_to_atom(Start, StartAtom),
-    term_to_atom(End, EndAtom),
+    { term_to_atom(Start, StartAtom) },
+    { term_to_atom(End, EndAtom) },
     { format(atom(ColorSignature), '#~d', [Start]) },
     signature_source(ColorSignature, Source),
     %% TODO: The following /pykythe/color/... facts are too verbose, but
@@ -1639,7 +1649,7 @@ kynode('DecoratedStmt'{items: Items},
     maplist_kynode(Items, ItemsTypes).
 kynode('DecoratorDottedNameNode'{items: Items},
        [todo_decorator_dottedname(ItemsTypes)]) -->> !,
-    maplist('NameBareNode_astn_and_name', Items, _, ItemsTypes).
+    { maplist('NameBareNode_astn_and_name', Items, _, ItemsTypes) }.
 kynode('DecoratorsNode'{items: Items},
        [todo_decorators(ItemsTypes)]) -->> !,
     maplist_kynode(Items, ItemsTypes).
@@ -1728,10 +1738,10 @@ kynode('ImportFromStmt'{from_dots: FromDots,
     %% For the '*' part, set up binds for __all__ variables.
     %% We need to record this information so that var_binds_lookup etc behave
     %% correctly in the 2nd pass.
-    ImportPartItems = [
+    { ImportPartItems = [
         'AsNameNode'{as_name:'NameBindsFqn'{fqn:StarFqn, name:StarAstn},
-                     name:'NameBareNode'{name:StarAstn}}],
-    ImportPart = 'ImportAsNamesNode'{items: ImportPartItems},
+                     name:'NameBareNode'{name:StarAstn}}] },
+    { ImportPart = 'ImportAsNamesNode'{items: ImportPartItems} },
     kynode('ImportFromStmt'{from_dots: FromDots, from_name: FromName, import_part: ImportPart}, Type).
 kynode('ImportNameFqn'{dotted_as_names: 'ImportDottedAsNamesFqn'{items: DottedAsNames}},
        [unused_import('ImportNameFqn',DottedAsNamesTypes)]) -->> !,
@@ -1858,7 +1868,7 @@ kynode_if_stmt([], []) -->> [ ]. % No 'else'
 kynode_if_stmt([], [ElseItem]) -->>
     kynode(ElseItem, _).
 kynode_if_stmt(['EvalResult'{result:bool('True')}|_], [Cond,ThenItem|ElseItems]) -->> % if/elif True
-    if_stmt_elses(ElseItems, ElseItemsConds),
+    { if_stmt_elses(ElseItems, ElseItemsConds) },
     maplist_kynode([Cond, ThenItem | ElseItemsConds], _).
 kynode_if_stmt(['EvalResult'{result:bool('False')}|Results], [Cond,_Then|Items]) -->> % if/elif False
     kynode(Cond, CondType),
@@ -2236,7 +2246,7 @@ signature_node(AnchorSignature, Vname) -->>
 %% This can generate duplicate facts because FqnAttr can happen in
 %% multiple places.
 kyfact_attr(FqnAttr, astn(Start,End,Attr), Type) -->>
-    term_string(Type, TypeStr),
+    { term_string(Type, TypeStr) },
     signature_node(FqnAttr, FqnAttrSource),
     kyanchor_kyedge_fqn(Start, End, Attr, '/kythe/edge/ref', FqnAttr),
     kyfact(FqnAttrSource, '/pykythe/type', TypeStr).
@@ -2387,8 +2397,8 @@ eval_assign_single(RightEval, _BindsLeft, subscr_op_binds(AtomType,SubscriptsTyp
     maplist_kyfact_symrej(eval_union_type, SubscriptsTypes, _SubscriptsTypesEval),
     maplist_kyfact_symrej(eval_assign_subscr_op_binds_single(RightEval), AtomType).
 eval_assign_single(_RightEval, _BindsLeft, BindsLeftEval) -->>
-    memberchk(BindsLeftEval, [var_binds(_), dot_op_binds(_, _), subscr_op_binds(_),
-                              list_of_type_binds(_), exprlist_binds(_)]),
+    { memberchk(BindsLeftEval, [var_binds(_), dot_op_binds(_, _), subscr_op_binds(_),
+                                list_of_type_binds(_), exprlist_binds(_)]) },
     %% TODO: handle list_of_type_binds (struct unpacking)
     %% l.h.s. is of a form that we can't process.
     !.
@@ -2409,9 +2419,9 @@ eval_assign_subscr_op_binds_single(RightEval, var_ref(BindsFqn)) -->> !,
     %%       from somewhere else also; see /usr/lib/python3.7/typing.py
     %%       and show the Rej in the "Max pass count exceeded" message.
     (  symtab_lookup(BindsFqn, Type), %% TODO: remove this hack
-       member(list_of_type(Type2), Type),
-       member(list_of_type(_), Type2)
-    -> true
+       { member(list_of_type(Type2), Type) },
+       { member(list_of_type(_), Type2) }
+    -> [ ]
     ;  [ BindsFqn-[list_of_type(RightEval)]-_ ]:symrej
     ).
 eval_assign_subscr_op_binds_single(_RightEval, _) -->> [ ].
@@ -2618,7 +2628,7 @@ eval_single_type(call(Atom, Args), EvalType) -->> !,
 eval_single_type(call_op(_OpAstns, ArgsTypes), EvalType) -->> !,
     maplist_kyfact_symrej(eval_union_type, ArgsTypes, _ArgsTypesEval),
     %% See typeshed/stdlib/2and3/operator.pyi
-    EvalType = [].
+    { EvalType = [] }.
 eval_single_type(ellipsis, []) -->> !, [ ].
 eval_single_type(module(Fqn, Path), [module(Fqn,Path)]) -->> !, [ ].
 eval_single_type(omitted, []) -->> !, [ ].
@@ -2692,7 +2702,7 @@ eval_single_type_import(NameAstn, ResolvedFqn, Edge, _Type) -->>
 eval_atom_dot_single(AttrAstn, class_type(ClassName, Bases), EvalType) -->> !,
     (  { setof(Mro, c3:mro(class_type(ClassName, Bases), Mro), Mros0) }
     -> [ ]
-    ;  Mros0 = [[ClassName]]
+    ;  { Mros0 = [[ClassName]] }
     ),
     { object_fqn(ObjectFqn) },
     { maplist(ensure_class_mro_object(ObjectFqn), Mros0, Mros) },
@@ -2718,7 +2728,7 @@ eval_atom_dot_single(AttrAstn, function_type(FunctionName,Params,Return), EvalTy
     [ FqnAttr-EvalType-TypeSymtab ]:symrej,
     kyfact_attr(FqnAttr, AttrAstn, TypeSymtab).
 eval_atom_dot_single(AttrAstn, AtomSingleType, EvalType) -->>
-    (  atom(AtomSingleType)
+    (  { atom(AtomSingleType) }
     -> { AttrAstn= astn(_Start,_End,Attr) },
        { join_fqn([AtomSingleType, Attr], FqnAttr) },
        [ FqnAttr-EvalType-TypeSymtab ]:symrej,
@@ -2774,7 +2784,7 @@ resolve_mro_dot(ClassName, AttrAstn, Mro, EvalType) -->>
     ;  %% Couldn't find it, so assume it's part of ClassName
        { AttrAstn= astn(_Start,_End,Attr) },
        { join_fqn([ClassName, Attr], FqnAttr) },
-       EvalType = [],
+       { EvalType = [] },
        kyfact_attr(FqnAttr, AttrAstn, EvalType)
     ).
 
@@ -2916,7 +2926,7 @@ symrej_accum(Fqn-Type-TypeSymtab, sym_rej(Symtab0,Rej0), sym_rej(Symtab,Rej)) :-
 symtab_lookup(Fqn, Type) -->>
     SymRej/symrej/SymRej,
     { SymRej = sym_rej(Symtab,_) },
-    symtab_lookup(Fqn, Symtab, Type).
+    { symtab_lookup(Fqn, Symtab, Type) }.
 
 symtab_lookup_raw(sym_rej(Symtab,_), Fqn, Type) :-
     symtab_lookup(Fqn, Symtab, Type).
@@ -2945,9 +2955,9 @@ symrej_accum_found(Fqn, Type, TypeSymtab, Symtab0, Symtab, Rej0, Rej) :-
 possible_classes_from_attr(AttrName, Classes) -->>
     { must_once(ground(AttrName)) }, % TODO: delete
     SymRej/symrej/SymRej,
-    (  bagof(ClassFqn, possible_class_from_attr(SymRej, AttrName, ClassFqn), Classes0)
-    -> true
-    ;  Classes0 = []
+    (  { bagof(ClassFqn, possible_class_from_attr(SymRej, AttrName, ClassFqn), Classes0) }
+    -> [ ]
+    ;  { Classes0 = [] }
     ),
     { combine_types(Classes0, Classes) }.
 
@@ -2968,19 +2978,19 @@ possible_class_from_attr(SymRej, AttrName, Type) :-
 %% DO NOT SUBMIT - should output a diagnosis fact
 log_possible_classes_from_attr(BindsOrRef, astn(Start,End,AttrName), Classes) -->>
     Meta/file_meta,
-    maplist(class_no_base, Classes, ClassesNoBase),
-    sort(ClassesNoBase, ClassesNoBaseSorted),
-    length(ClassesNoBaseSorted, Len),
-    (  Len = 0
-    -> Msg0 = 'WARNING',
-       ClassesShow = []
-    ;  Len < 15
-    -> Msg0 = 'INFO',
-       ClassesShow = ClassesNoBaseSorted
-    ;  Msg0 = 'WARNING',
-       length(ClassesShow, 15),
-       append(ClassesShow2, _, ClassesNoBaseSorted), % Only show first few
-       append(ClassesShow2, ['...'], ClassesShow)
+    { maplist(class_no_base, Classes, ClassesNoBase) },
+    { sort(ClassesNoBase, ClassesNoBaseSorted) },
+    { length(ClassesNoBaseSorted, Len) },
+    (  { Len = 0 }
+    -> { Msg0 = 'WARNING' },
+       { ClassesShow = [] }
+    ;  { Len < 15 }
+    -> { Msg0 = 'INFO' },
+       { ClassesShow = ClassesNoBaseSorted }
+    ;  { Msg0 = 'WARNING' },
+       { length(ClassesShow, 15) },
+       { append(ClassesShow2, _, ClassesNoBaseSorted) }, % Only show first few
+       { append(ClassesShow2, ['...'], ClassesShow) }
     ),
     log_kyfact_msg(astn(Start,End,AttrName),
                    '~w: guessed attribute classes/modules for \'~w\'', [Msg0, AttrName],
@@ -3004,7 +3014,7 @@ log_kyfact_msg(Astn, FmtMessage, ArgsMessage, FmtDetails, ArgsDetails) -->>
     { Astn = astn(Start, End, Token) },
     { anchor_signature_str(Start, End, Token, AnchorSignature) },
     signature_source(AnchorSignature, Source),
-    ( diagnostic_source(AnchorSignature, DiagnosticSource) -> true ; throw(error(goal_failed(diagnostic_source(AnchorSignature, DiagnosticSource)), _)) ), % DO NOT SUBMIT must_once
+    ( diagnostic_source(AnchorSignature, DiagnosticSource) -> [ ] ; { throw(error(goal_failed(diagnostic_source(AnchorSignature, DiagnosticSource)), _)) } ), % DO NOT SUBMIT must_once
     kyfact(DiagnosticSource, '/kythe/node/kind', 'diagnostic'),
     kyfact(DiagnosticSource, '/kythe/message', MessageMsg),
     kyfact(DiagnosticSource, '/kythe/details', DetailsMsg),
