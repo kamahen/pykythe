@@ -8,6 +8,9 @@
 %% - resolve and process imports
 %% - in future, things like function call references
 
+%% See the README.md file for an over-all explanation of the system
+%% design,particularly in how caches are used to improve performance.
+
 %% This code heavily uses the EDCG notation (-->>), which might be
 %% unfamiliar to you -- I suggest reading Peter Van Roy's paper,
 %% referenced at the bottom of https://github.com/mndrix/edcg
@@ -208,7 +211,6 @@
 :- use_module(library(pcre), [re_replace/4]).
 :- style_check(+var_branches).
 :- use_module(library(prolog_stack)).  % For catch_with_backtrace
-:- use_module(library(readutil), [read_file_to_string/3]).
 :- use_module(library(utf8), [utf8_codes/3]).
 
 :- use_module(module_path).
@@ -371,6 +373,7 @@
                   object_fqn/1,
                   output_kythe/7,
                   parse_and_get_meta/6,
+                  path_with_suffix/4,
                   %% process_module_cached_or_from_src/6,  % wrapped in must_once
                   %% process_module_from_src/5,  % DO NOT SUBMIT - is this det? (I think it is)
                   %% process_module_from_src_impl/5,  % DO NOT SUBMIT - ditto
@@ -381,7 +384,7 @@
                   %% pykythe_main/0,
                   pykythe_main2/0,
                   pykythe_opts/2,
-                  %% maybe_read_cache/4,
+                  %% maybe_read_cache/6,
                   read_nodes/4,
                   remove_class_cycles/3,
                   remove_class_cycles_one/4,
@@ -403,7 +406,7 @@
                   transform_kythe_path/2,
                   wrap_import_ref/4
                   %% symtab_lookup/4,
-                  %% write_batch_symtab/2, % Is det, but expansion confuses write_atomic_stream/2.
+                  %% write_symtab/3, % Is det, but expansion confuses write_atomic_stream/2.
                   %% write_to_protobuf/4,  % Is det, but expansion confuses write_atomic_file/2.
                   %% write_kythe_facts/3  % TODO: failed to analyse
                  ]).
@@ -693,13 +696,13 @@ process_src(Opts, SrcPath) :-
     path_to_module_fqn_or_unknown(SrcPath, SrcFqn),
     builtins_symtab(Symtab0),
     must_once(
-        process_module_cached_or_from_src(Opts, from_src_ok, SrcPath, SrcFqn, Symtab0, _Symtab)).
+        process_module_cached_or_from_src(Opts, 'from src ok', SrcPath, SrcFqn, Symtab0, _Symtab)).
 
 %! path_with_suffix(+Opts:dict, +SrcPath:atom, +Suffix:atom, -Path:atom) is det.
 %% Create Path from SrcPath's base and Opts.Suffix.
 path_with_suffix(Opts, SrcPath, Suffix, Path) :-
     src_base(SrcPath, SrcPathBase),
-    atomic_list_concat([Opts.kytheout, SrcPathBase, Opts.Suffix], Path).
+    atomic_list_concat([Opts.kytheout, SrcPathBase, Suffix], Path).
 
 %! interrupt(+Signal)
 %% An interrupt handler, installed by on_signal/3.
@@ -751,7 +754,7 @@ pykythe_opts(SrcPaths, Opts) :-
     must_once_msg(PositionalArgs = [_|_], 'Missing positional arg (file to process)'),
     maplist(absolute_file_name_rel, PositionalArgs, SrcPaths).
 
-%! process_module_cached_or_from_src(+Opts:list, +FromSrcOk:{from_src_ok,cached_only}, +SrcPath:atom, +SrcFqn:atom, +Symtab0, -Symtab) is semidet.
+%! process_module_cached_or_from_src(+Opts:list, +FromSrcOk:{'from src ok','cached only'}, +SrcPath:atom, +SrcFqn:atom, +Symtab0, -Symtab) is semidet.
 %%
 %% General algorithm for processing modules.
 %%
@@ -768,11 +771,11 @@ pykythe_opts(SrcPaths, Opts) :-
 %% ID" to avoid the recursive check for all modules being cached (the
 %% "batch" cache file is also in a different format, for performance).
 %%
-%% If the value of FromSrcOk is cached_only, the predicate will fail
+%% If the value of FromSrcOk is 'cached only', the predicate will fail
 %% if any attempt is made to use a from_src version (that is, if the
 %% above conditions for using a cache file fail); and this is
 %% propagated up by failing all the way to the top, at which point,
-%% processing is done with the from_src_ok value.
+%% processing is done with the 'from src ok' value.
 %%
 %% When a module is processed, it updates the symtab.
 %% When a module is output (to the cache), all its symtab entries are output,
@@ -818,7 +821,7 @@ is_assign_import(Term, module_type(Module)) :-
     is_dict(Term, assign_import),  % Term = assign_import{...}
     Term.module_and_maybe_token = Module.
 
-%! maybe_process_module_cached(+Opts:list, +FromSrcOk:{from_src_ok,cached_only}, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
+%! maybe_process_module_cached(+Opts:list, +FromSrcOk:{'from src ok','cached only'}, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
 %% If possible use the cache file to have the same effect as running
 %% process_module_from_src/5.
 %% The logic is:
@@ -827,36 +830,25 @@ is_assign_import(Term, module_type(Module)) :-
 %%     this can fail if the cached file isn't valid (e.g., older than the source)
 %%   [ensure that any open file is closed]
 maybe_process_module_cached(Opts, FromSrcOk, SrcPath, Symtab0, Symtab) :-
-    path_with_suffix(Opts, SrcPath, pykythesymtab_suffix, PykythesymtabPath),
+    path_with_suffix(Opts, SrcPath, Opts.pykythesymtab_suffix, PykythesymtabPath),
     setup_call_cleanup(
         maybe_open_read(PykythesymtabPath, PykytheSymtabInputStream),
         maybe_process_module_cached_impl(Opts, FromSrcOk, PykytheSymtabInputStream, SrcPath, Symtab0, Symtab),
         close(PykytheSymtabInputStream)),
-    log_if(false, 'Reused ~q for ~q', [PykythesymtabPath, SrcPath]), % msg is output by process_module_cached_impl
-    !. % TODO: delete (when the fail catch-all clause is removed).
-maybe_process_module_cached(Opts, _FromSrcOk, SrcPath, _Symtab0, _Symtab)  :-
-    %% TODO: need a better reason for failure ... the tests in
-    %%       process_module_cached_impl/7 should give a
-    %%       message about which one failed (for now, we have
-    %%       must_once/2 and simple tests).
-    %% (Currently, some of the failures output a message; perhaps we can
-    %% remove the following when all failures output a message?)
-    path_with_suffix(Opts, SrcPath, pykythesymtab_suffix, PykytheSymtabPath),
-    %% DO NOT SUBMIT -- if all paths to here output an error message, then
-    %%                  remove this (or remove the "different version" message).
-    log_if(access_file(PykytheSymtabPath, read),
-           'Could not use reuse ~q for ~q', [PykytheSymtabPath, SrcPath]),
-    fail.
+    log_if(false, 'Reused ~q for ~q', [PykythesymtabPath, SrcPath]). % msg is output by process_module_cached_impl
 
-%! maybe_process_module_cached_impl(+Opts:list, +FromSrcOk:{from_src_ok,cached_only}, +PykytheSymtabInputStream, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
+%! maybe_process_module_cached_impl(+Opts:list, +FromSrcOk:{'from src ok','cached only'}, +PykytheSymtabInputStream, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
 %% See README.md's section on caching for an explanation.
 maybe_process_module_cached_impl(Opts, FromSrcOk, PykytheSymtabInputStream, SrcPath, Symtab0, Symtab)  :-
     (  maybe_process_module_cached_batch(Opts, SrcPath, SymtabFromCache)
     -> merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab),
-       path_with_suffix(Opts, SrcPath, pykythebatch_suffix, PykytheBatchPath),
-       log_if(true, 'Reused/batch(~w) ~q for ~q', [FromSrcOk, PykytheBatchPath, SrcPath])
+       path_with_suffix(Opts, SrcPath, Opts.pykythebatch_suffix, PykytheBatchPath),
+       log_if(true, 'Reused/batch(~w) ~q for ~q', [FromSrcOk, PykytheBatchPath, SrcPath]) % DO NOT SUBMIT
     ;  %% The following validation depends on what kyfile//1 generates.
-       maybe_read_cache(Opts, PykytheSymtabInputStream, SrcPath, SymtabFromCache),
+       maybe_read_cache(
+           Opts.version, PykytheSymtabInputStream, SrcPath, SymtabFromCache,
+           log_if(true, 'Cannot reuse cache (different version) ~q for ~q', [PykytheSymtabPath, SrcPath]),
+           log_if(true, 'Cannot reuse cache (different source) ~q for ~q', [PykytheSymtabPath, SrcPath])),
        %% TODO: modules_in_symtab not needed because foldl_process_module_cached_or_from_src/5
        %%       skips non-modules.
        modules_in_symtab(SymtabFromCache, ModulesInSymtab),
@@ -867,26 +859,22 @@ maybe_process_module_cached_impl(Opts, FromSrcOk, PykytheSymtabInputStream, SrcP
        %% modules that were processed will get re-processed (but use
        %% the cached result).
        merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab1),
-       foldl_process_module_cached_or_from_src(Opts, cached_only, ModulesInSymtab, Symtab1, Symtab),
-       path_with_suffix(Opts, SrcPath, kythejson_suffix, KytheJsonPath),
+       foldl_process_module_cached_or_from_src(Opts, 'cached only', ModulesInSymtab, Symtab1, Symtab),
+       path_with_suffix(Opts, SrcPath, Opts.kythejson_suffix, KytheJsonPath),
        log_if(true, 'Reused/cache(~w) ~q for ~q', [FromSrcOk, KytheJsonPath, SrcPath])
     ).
 
 %! maybe_process_module_cached_batch(+Opts:list, +SrcPath:atom, -Symtab:dict) is semidet.
 maybe_process_module_cached_batch(Opts, SrcPath, Symtab) :-
     Opts.pykythebatch_suffix \= '',
-    path_with_suffix(Opts, SrcPath, pykythebatch_suffix, PykytheBatchPath),
+    path_with_suffix(Opts, SrcPath, Opts.pykythebatch_suffix, PykytheBatchPath),
     maybe_open_read(PykytheBatchPath, KytheStreamBatch),
-    read_term(KytheStreamBatch, BatchVersion, []),  % DO NOT SUBMIT -fast_serialize
-    (  BatchVersion == Opts.version
-    -> read_term(KytheStreamBatch, Symtab, [])
-    ;  path_with_suffix(Opts, SrcPath, kythejson_suffix, KytheJsonPath),
-       log_if(true,
-              'Cannot reuse batch cache (different version) ~q for ~q', [KytheJsonPath, SrcPath]),
-       fail
-    ).
+    maybe_read_cache(
+        Opts.version, KytheStreamBatch, SrcPath, Symtab,
+        log_if(true, 'Cannot reuse batch cache (different version) ~q for ~q', [PykytheBatchPath, SrcPath]),
+        log_if(true, 'Cannot reuse cache (different source) ~q for ~q', [PykytheBatchPath, SrcPath])).
 
-%! foldl_process_module_cached_or_from_src(+Opts:list, +FromSrcOk:{from_src_ok,cached_only}, +Modules:list, -Symtab0:dict, +Symtab:dict) is semidet.
+%! foldl_process_module_cached_or_from_src(+Opts:list, +FromSrcOk:{'from src ok','cached only'}, +Modules:list, -Symtab0:dict, +Symtab:dict) is semidet.
 foldl_process_module_cached_or_from_src(_Opts, _FromSrcOk, [], Symtab, Symtab).
 foldl_process_module_cached_or_from_src(Opts, FromSrcOk, [M|Modules], Symtab0, Symtab) :-
     %% TODO: handle module_star, merging its names into the symtab
@@ -902,38 +890,6 @@ foldl_process_module_cached_or_from_src(Opts, FromSrcOk, [M|Modules], Symtab0, S
     !,                          % "cut" for memory usage
     foldl_process_module_cached_or_from_src(Opts, FromSrcOk, Modules, Symtab1, Symtab).
 
-%- maybe_read_cache(+Opts:dict, +PykytheSymtabInputStream, +SrcPath, -SymtabFromCache) is semidet.
-%% Reads just enough to validate.
-maybe_read_cache(Opts, PykytheSymtabInputStream, SrcPath, SymtabFromCache) :-
-    %% See write_batch/2 for how these were output.
-    path_with_suffix(Opts, SrcPath, pykythesymtab_suffix, PykytheSymtabPath),
-    read_term(PykytheSymtabInputStream, CacheVersion, []),
-    %% short-circuit other tests if version mismatch
-    (  CacheVersion == Opts.version
-    -> true
-    ;  log_if(true,
-              'Cannot reuse cache (different version) ~q for ~q', [PykytheSymtabPath, SrcPath]),
-       fail
-    ),
-    read_term(PykytheSymtabInputStream, Sha1Hex, []),
-    read_file_to_string(SrcPath, SrcText, [file_errors(fail)]),
-    hash_hex(SrcText, SrcSha1Hex),
-    (  SrcSha1Hex == Sha1Hex  %% succeed if SHA1 is expected value.
-    -> true
-    ;  log_if(true,
-              'Cannot reuse cache (different source ~q - ~q) ~q for ~q', [Sha1Hex, SrcSha1Hex, PykytheSymtabPath, SrcPath]),
-       fail
-    ),
-    %% TODO - DO NOT SUBMIT
-    %% The JSON read is slow (1.6 sec) and probably the write is
-    %% also slow. Better to put the symtab in a separate file and
-    %% use fast_read/2, fast_write/2.
-    %% term_string->term: 155ms (27K entries in 7.2MB)
-    %% term_string->str:  105ms
-    %% fast_term->term:    25ms
-    %% fast_term->str:     12ms
-    read_term(PykytheSymtabInputStream, SymtabFromCache, []).
-
 %! merge_cache_into_symtab(+SymtabFromCache, +Symtab0,- Symtab) is det.
 merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab) :-
     update_symtab(SymtabFromCache, Symtab0, Symtab).
@@ -943,8 +899,8 @@ merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab) :-
 %% Read in a single file (JSON output from running --parsecmd, which
 %% encodes the AST nodes with FQNs), output Kythe JSON to current
 %% output stream. SrcPath must be in absolute form (leading '/').
-%% Fails if FromSrcOk isn't from_src_ok, otherwise succeeds.
-process_module_from_src(Opts, from_src_ok, SrcFqn, Symtab0, Symtab) :-
+%% Fails if FromSrcOk isn't 'from src ok', otherwise succeeds.
+process_module_from_src(Opts, 'from src ok', SrcFqn, Symtab0, Symtab) :-
     (  module_fqn_path(SrcFqn, SrcPath) % fails if file doesn't exist
     -> process_module_from_src_impl(Opts, SrcPath, SrcFqn, Symtab0, Symtab)
     ;  Symtab = Symtab0,
@@ -958,7 +914,7 @@ process_module_from_src(Opts, from_src_ok, SrcFqn, Symtab0, Symtab) :-
 %! process_module_from_src_impl(+Opts:list, +SrcPath:atom, +SrcFqn:atom, +Symtab0, -Symtab) is det.
 process_module_from_src_impl(Opts, SrcPath, SrcFqn, Symtab0, Symtab) :-
     stats(Stats0),
-    path_with_suffix(Opts, SrcPath, kythejson_suffix, KytheJsonPath),
+    path_with_suffix(Opts, SrcPath, Opts.kythejson_suffix, KytheJsonPath),
     log_if(true,
            'Processing from source ~q (output: ~q) for ~q ~w', [SrcPath, KytheJsonPath, SrcFqn, Stats0]),
     parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes, ColorTexts),
@@ -977,13 +933,13 @@ process_module_from_src_impl(Opts, SrcPath, SrcFqn, Symtab0, Symtab) :-
     do_if(trace_file(Meta.path), dump_term('PASS1-EXPR_MODULES', ModulesInExprs)),
     do_if(trace_file(Meta.path), dump_term('PASS1-EXPR', Exprs)),
     %% Note that the following allows any imported module to be from_src
-    %% (FromSrcOk to process_module_cached_or_from_src is from_src_ok).
+    %% (FromSrcOk to process_module_cached_or_from_src is 'from src ok').
     %% TODO: for ModulesInExprs that are module_star, need
     %%       to update symtab with top-level items (starts
     %%       with module. and doesn't have '.' inside).
     stats(Stats1),
     log_if(true, 'Pass 1: process nodes for ~q ~w', [Meta.path, Stats1]),
-    foldl_process_module_cached_or_from_src(Opts, from_src_ok, ModulesInExprs, Symtab1, Symtab1WithImports),
+    foldl_process_module_cached_or_from_src(Opts, 'from src ok', ModulesInExprs, Symtab1, Symtab1WithImports),
     stats(Stats2),
     log_if(true, 'Pass 2: process exprs for ~q ~w', [Meta.path, Stats2]),
     assign_exprs(Opts, Exprs, Meta, Symtab1WithImports, Symtab, KytheFactsFromExprs0),
@@ -1012,17 +968,19 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
     %% TODO: don't preserve order (for debugging) - use sort/2 to dedup:
     list_to_set(KytheFactsCleaned, KytheFacts),
     log_if(true, 'Writing Kythe facts for ~q', [Meta.path]),
-    path_with_suffix(Opts, SrcPath, kythejson_suffix, KytheJsonPath),
+    path_with_suffix(Opts, SrcPath, Opts.kythejson_suffix, KytheJsonPath),
     write_atomic_stream(write_kythe_facts(KytheFacts), KytheJsonPath),
-    (  Opts.pykythebatch_suffix = ''
+    path_with_suffix(Opts, SrcPath, Opts.pykythesymtab_suffix, PykytheSymtabPath),
+    path_with_suffix(Opts, SrcPath, Opts.pykythebatch_suffix, PykytheBatchPath),
+    write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheSymtabPath),
+    (  PykytheSymtabPath = PykytheBatchPath
     -> log_if(true, 'Not writing to kythebatch: ~w', KytheJsonPath)
-    ;  path_with_suffix(Opts, SrcPath, pykythebatch_suffix, PykytheBatchPath),
-       path_with_suffix(Opts, SrcPath, pykythesymtab_suffix, PykytheSymtabPath),
-       write_atomic_stream(write_batch_symtab(Symtab, Opts.version), PykytheBatchPath),
-       write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheSymtabPath)
+    ; %% write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheBatchPath)
+       safe_delete_file(PykytheBatchPath),
+       link_file(PykytheSymtabPath, PykytheBatchPath, hard)
     ),
     log_if(true, 'Converting to Kythe protobuf'),
-    path_with_suffix(Opts, SrcPath, kytheentries_suffix, KytheEntriesPath),
+    path_with_suffix(Opts, SrcPath, Opts.kytheentries_suffix, KytheEntriesPath),
     write_atomic_file(write_to_protobuf(Opts.entriescmd, SrcPath, KytheJsonPath), KytheEntriesPath),
     log_if(true, 'Finished output ~q (~q) to ~q (~q)', [SrcPath, SrcFqn, KytheEntriesPath, KytheJsonPath]),
     !.                          % "cut" for memory usage
@@ -1228,17 +1186,6 @@ transform_and_write_kythe_fact(KytheOutStream, KytheFact) :-
     transform_kythe_fact(KytheFact, KytheFact2),
     pykythe_json_write_dict_nl(KytheOutStream, KytheFact2).
 
-%! write_batch_symtab(+Symtab, +Version, +PykytheBatchOutStream) is det.
-%% If you change this code, also change gen_builtins_symtab.pl
-write_batch_symtab(Symtab, Version, PykytheBatchOutStream) :-
-    % DO NOT SUBMIT - fast-serialize
-    format(PykytheBatchOutStream, '~k.~n~k.~n', [Version, Symtab]).
-
-%! write_symtab(+Symtab, +Version, +Sha1, +PykytheBatchOutStream) is det.
-write_symtab(Symtab, Version, Sha1, PykytheBatchOutStream) :-
-    % DO NOT SUBMIT - fast-serialize
-    format(PykytheBatchOutStream, '~k.~n~k.~n~k.~n', [Version, Sha1, Symtab]).
-
 %! write_to_protobuf(+EntriesCmd, +SrcPath, +KytheJsonPath, +KytheEntriesPath) is det.
 write_to_protobuf(EntriesCmd, SrcPath, KytheJsonPath, KytheEntriesPath) :-
     atomic_list_concat(
@@ -1298,7 +1245,7 @@ run_parse_cmd(Opts, SrcPath, SrcFqn, OutPath) :-
 link_src_file(SrcPath, OutPath) :- % TODO: delete
     re_replace("/"/g, "@", SrcPath, SrcPathSubs),
     atomic_list_concat(['/tmp/pykythe-parser-output--', SrcPathSubs], TmpParserOutput),
-    pykythe_utils:safe_delete_file(TmpParserOutput),
+    safe_delete_file(TmpParserOutput),
     link_file(OutPath, TmpParserOutput, hard).
 
 %! version_as_kyfact(+Version, +Meta, -KytheFactsAsJsonDict) is det.
@@ -2172,7 +2119,7 @@ kyanchor(Start, End, Token, Source) -->>
     kyfact(Source, '/kythe/loc/end', End).
 
 anchor_signature_str(Start, End, Token, Signature) :-
-    format(atom(Signature), '@~d:~d<~w>', [Start, End, Token]).  %% DO NOT SUBMIT (for debugging)
+    format(atom(Signature), '@~d:~d<~w>', [Start, End, Token]).  %% DO NOT SUBMIT (this form is for debugging)
     %% format(atom(Signature), '@~d', [Start]).
 
 anchor_signature_str('Astn'{start:Start, end:End, value:Token}, Signature) :-
@@ -2295,7 +2242,7 @@ assign_exprs_count(Count, Opts, Exprs, Meta, Symtab0, Symtab, KytheFacts) :-
        include(is_module, RejTypes1, RejModules0),
        sort(RejModules0, RejModules),
        log_if(trace_file(Meta.path), 'REJ-MODULES: ~q', [RejModules]),
-       foldl_process_module_cached_or_from_src(Opts, from_src_ok, RejModules, Symtab1, Symtab1WithImports),
+       foldl_process_module_cached_or_from_src(Opts, 'from src ok', RejModules, Symtab1, Symtab1WithImports),
        assign_exprs_count(CountIncr, Opts, Exprs, Meta, Symtab1WithImports, Symtab, KytheFacts)
     ).
 
@@ -2975,7 +2922,6 @@ possible_class_from_attr(SymRej, AttrName, Type) :-
     symtab_lookup_raw(SymRej, ClassFqn, Type).
 
 %! log_possible_classes_from_attr(+BindsOrRef:atom, +AttrAstn, +Classes)//[kyfact,symrej,file_meta] is nondet.
-%% DO NOT SUBMIT - should output a diagnosis fact
 log_possible_classes_from_attr(BindsOrRef, astn(Start,End,AttrName), Classes) -->>
     Meta/file_meta,
     { maplist(class_no_base, Classes, ClassesNoBase) },
@@ -3014,7 +2960,7 @@ log_kyfact_msg(Astn, FmtMessage, ArgsMessage, FmtDetails, ArgsDetails) -->>
     { Astn = astn(Start, End, Token) },
     { anchor_signature_str(Start, End, Token, AnchorSignature) },
     signature_source(AnchorSignature, Source),
-    ( diagnostic_source(AnchorSignature, DiagnosticSource) -> [ ] ; { throw(error(goal_failed(diagnostic_source(AnchorSignature, DiagnosticSource)), _)) } ), % DO NOT SUBMIT must_once
+    diagnostic_source(AnchorSignature, DiagnosticSource),
     kyfact(DiagnosticSource, '/kythe/node/kind', 'diagnostic'),
     kyfact(DiagnosticSource, '/kythe/message', MessageMsg),
     kyfact(DiagnosticSource, '/kythe/details', DetailsMsg),

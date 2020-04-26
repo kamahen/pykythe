@@ -308,7 +308,7 @@ we avoid having a stack of symtabs.
 When a source file is processed, all the imports must be processed
 first. Pykythe doesn't depend on information about dependencies from a
 build system (which typically aren't available for Python, in
-comparison toC++ or similar, which have dependency information in a
+comparison to C++ or similar, which have dependency information in a
 build system or compiler (e.g.,
 [gcc-M](https://www.gnu.org/software/make/manual/html_node/Automatic-Prerequisites.html)),
 although [importlab](https://github.com/google/importlab) could be
@@ -323,7 +323,7 @@ Circular imports are handled by keeping track of all imports that are
 "in process" and skipping them when they are encountered a second time
 (more details on this are in the [Symtab](#symtab) section).
 
-When processing a codebase, reprocessing the imports cann easily get
+When processing a codebase, reprocessing the imports can easily get
 <i>O(N<sup>3</sup>)</i> behavior (where <i>N</i> is the number of
 lines of code), so a cache is used to avoid this. For each `.py` or
 `.pyi` file, a corresponding `.kythe.json` file (and `.kythe.entries`)
@@ -338,25 +338,27 @@ a hash of the source file go into a `.pykythe.symtab` file. When an
 If any of the imported cache files is not useable, all source files
 that depend on it must be reprocssed to generate new cache files (that
 is, if `a.py` imports `b.py`, `b.py` imports `c.py`, and `c.py`
-imports `d.py`; and `d.pykythe.symtab` is useable but `c.pykythe.symtab` is
-not (because `c.py` has changed since `c.pykythe.symtab` was created),
-then `c.py`, `b.py`, and `a.py` must be reprocessed (`d.py` can be
-reused as-is).
+imports `d.py`; and `d.pykythe.symtab` is useable but
+`c.pykythe.symtab` is not (because `c.py` has changed since
+`c.pykythe.symtab` was created), then `c.py`, `b.py`, and `a.py` must
+be reprocessed (`d.py` can be reused as-is).
 
 This kind of caching reduces the algorithm to <i>O(M<sup>2</sup>)</i>
 (where <i>M</i> is the number of files), which is still a problem. A
 further refinement reduces the cost to <i>O(N)</i>. Assuming that we
-can snapshot the code base, then a single pass over all the source
-files suffices, if we can determine an appropriate ordering. We don't
-need to determine that order if instead we can mark each cache file as
-being valid. We also want to allow processing in parallel. To handle
-this, each processing run is given a unique ID (e.g., a nano-second
-time stamp plus a random number)
+can snapshot the code base (which is identified by a "batch id", given
+with the `--batch_suffix` command-line option, typically a nano-second
+time stamp plus a random number), then a single pass over all the
+source files suffices.
 
-To sum up, pykythe uses the `.pykythe.symtab` files as caches.  To
-void recursively checking cache files, it uses
-`.pykythe-batch-$BATCH_ID` files (using the `--batch_suffix`
-command-line option).
+To sum up, pykythe uses two kinds of caches:
+
+* `.pykythe.symtab` requires checking that the source and all the
+  dependencies haven't changed.
+
+* `.pykythe.batch-$BATCH_ID` can be used without checking dependencies
+  (The `--batch_suffix` command-line option is used to set the batch
+  ID).
 
 Multiple pykythe processes can run at the same time; all output is
 "atomic", as long as it's all on the same file system. (That is, if

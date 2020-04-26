@@ -23,6 +23,7 @@
                           log_if/2,
                           log_if/3,
                           maybe_absolute_dir/2,
+                          maybe_file_sha1/2,
                           maybe_open_read/2,
                           print_term_cleaned/3,
                           pykythe_json_read_dict/2,
@@ -62,6 +63,7 @@
 :- use_module(library(filesex), [make_directory_path/1, directory_file_path/3]).
 :- use_module(library(pprint), [print_term/2]).
 :- use_module(library(rbtrees), [ord_list_to_rbtree/2, rb_insert/4, rb_visit/2] ).
+:- use_module(library(readutil), [read_file_to_string/3]).
 :- use_module(library(sha), [sha_hash/3, hash_atom/2]).
 :- use_module(library(yall)).   % For [S,A]>>atom_string(A,S) etc.
 :- style_check(-var_branches).  % TODO: fix the library code
@@ -250,6 +252,12 @@ maybe_open_read_impl(Path, InputStream) :-
     catch(open(Path, read, InputStream, [type(binary)]),
           error(existence_error(source_sink, Path), _),
           fail).
+
+%! maybe_file_sha1(+SrcPath, -SrcSha1Hex) is semidet.
+%% Fails if file doesn't exist
+maybe_file_sha1(SrcPath, SrcSha1Hex) :-
+    read_file_to_string(SrcPath, SrcText, [file_errors(fail)]),
+    hash_hex(SrcText, SrcSha1Hex).
 
 %! pykythe_json_read_dict(+Stream, -Dict) is det.
 %% Wrapper on library(http/json, [json_read_dict/2]) that sets the

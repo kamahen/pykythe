@@ -65,14 +65,13 @@ gen_builtins_symtab_main :-
     put_dict(pythonpath, Opts0, PythonpathList, Opts),
     must_once_msg(PositionalArgs = [PykytheSymtabInputPath, KytheJsonInputPath, SymtabOutputPath],
                   'Missing/extra positional args'),
-    open(PykytheSymtabInputPath, read, PykytheSymtabInputStream, [type(binary)]),
-    open(KytheJsonInputPath, read, KytheJsonInputStream, [type(binary)]),
 
-    read_symtab_from_cache(PykytheSymtabInputStream, Symtab0),
+    must_once(read_symtab_from_cache_no_check(PykytheSymtabInputPath, Symtab0)),
     log_if(true, '~q', [done-read_symtab_from_cache(PykytheSymtabInputPath)]),
 
-    read_package_from_cache(KytheJsonInputStream, Package),
-    log_if(true, '~q', [done-read_package_from_cache(PykytheSymtabInputPath,Package)]),
+    open(KytheJsonInputPath, read, KytheJsonInputStream, [type(binary)]),
+    must_once(read_package_from_cache(KytheJsonInputStream, Package)),
+    log_if(true, '~q', [done-read_package_from_cache(KytheJsonInputPath, Package)]),
 
     atom_concat(Package, '.', PackageDot),
     conv_symtab_pairs(strip_sym(PackageDot), Symtab0, BuiltinsPairs0),
@@ -141,21 +140,13 @@ write_symtab_fact(Opts, Symtab, BuiltinsSymtab, BuiltinsPairs, SymtabModules, St
             symtab_lookup(Primitive, BuiltinsSymtab, Builtin)),
            format(Stream, '~k.~n', [builtins_symtab_primitive(Primitive, Builtin)])).
 
-%% The following is a cut-down version of pykythe:read_cache_and_validate.
-%% TODO: separate read_cache_and_validate
-read_symtab_from_cache(PykytheSymtabInputStream, SymtabFromCache) :-
-    read_term(PykytheSymtabInputStream, _Version, []),
-    read_term(PykytheSymtabInputStream, _Sha1, []),
-    read_term(PykytheSymtabInputStream, SymtabFromCache, []),
-    must_once(is_symtab(SymtabFromCache)).
-
-read_package_from_cache(KytheInputStream, Package) :-
-    pykythe_json_read_dict(KytheInputStream, JsonDict),
+read_package_from_cache(KytheJsonInputStream, Package) :-
+    pykythe_json_read_dict(KytheJsonInputStream, JsonDict),
     (  JsonDict.fact_name == '/kythe/node/kind',
        base64_utf8(package, JsonDict.fact_value)
     -> Package = JsonDict.source.signature,
-       ensure_no_more_package_facts(KytheInputStream, Package)
-    ;  read_package_from_cache(KytheInputStream, Package)
+       ensure_no_more_package_facts(KytheJsonInputStream, Package)
+    ;  read_package_from_cache(KytheJsonInputStream, Package)
     ).
 
 ensure_no_more_package_facts(KytheInputStream, Package) :-
