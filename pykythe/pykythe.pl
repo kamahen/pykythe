@@ -361,9 +361,8 @@
                   %% maplist_kynode/7, % Need TRO
                   %% maybe_open_read/2,
                   %% maybe_process_module_cached/5,
-                  %% maybe_process_module_cached_batch/3,
+                  %% maybe_process_module_cached_batch/4,
                   %% maybe_process_module_cached_impl/6,
-                  merge_cache_into_symtab/3,
                   modules_in_exprs/2,
                   modules_in_symtab/2,
                   %% pykythe_portray/1,
@@ -384,7 +383,6 @@
                   %% pykythe_main/0,
                   pykythe_main2/0,
                   pykythe_opts/2,
-                  %% maybe_read_cache/6,
                   read_nodes/4,
                   remove_class_cycles/3,
                   remove_class_cycles_one/4,
@@ -613,19 +611,19 @@ pred_info_(exprs, 1,                               [expr]).
 %%   (for builtins.kythe.json only, ~0.4s, so eliminating all the
 %%    recursive checking of imports would save ~2s)
 %%   Most expensive operations were:
-%%      maybe_read_cache/5           70%
-%%          base64_term/2                 42%
+%%      maybe_read_symtab_from_cache/5 70%
+%%          base64_term/2                  42%
 %%            base64/2                         41%
-%%          json_read_dict_validate/3     28%
+%%          json_read_dict_validate/3      28%
 %%            json_read_dict/2                 28%
-%%      merge_cache_into_symtab/3    30%
-%%          put_dict/4                    28%
+%%      update_symtab/3                30%
+%%          put_dict/4                     28%
 %%   After removing the base64 encoding/decoding for symtab, this became (1.7s):
-%%      merge_cache_into_symtab/3    56%
-%%          put_dict/4                    55%
-%%      maybe_read_cache/5           41%
-%%          json_read_dict/2              34%
-%%      $garbage_collect/1           29%       (mostly from put_dict/4)
+%%      update_symtab/3                56%
+%%          put_dict/4                     55%
+%%      maybe_read_symtab_from_cache/5          41%
+%%          json_read_dict/2               34%
+%%      $garbage_collect/1             29%      (mostly from put_dict/4)
 
 %% Predicates that are loaded below by ensure_loaded(BuiltinsSymtabFile):
 :- dynamic
@@ -840,37 +838,35 @@ maybe_process_module_cached(Opts, FromSrcOk, SrcPath, Symtab0, Symtab) :-
 %! maybe_process_module_cached_impl(+Opts:list, +FromSrcOk:{'from src ok','cached only'}, +PykytheSymtabInputStream, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
 %% See README.md's section on caching for an explanation.
 maybe_process_module_cached_impl(Opts, FromSrcOk, PykytheSymtabInputStream, SrcPath, Symtab0, Symtab)  :-
-    (  maybe_process_module_cached_batch(Opts, SrcPath, SymtabFromCache)
-    -> merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab),
-       path_with_suffix(Opts, SrcPath, Opts.pykythebatch_suffix, PykytheBatchPath),
+    (  maybe_process_module_cached_batch(Opts, SrcPath, Symtab0, Symtab)
+    -> path_with_suffix(Opts, SrcPath, Opts.pykythebatch_suffix, PykytheBatchPath),
        log_if(true, 'Reused/batch(~w) ~q for ~q', [FromSrcOk, PykytheBatchPath, SrcPath]) % DO NOT SUBMIT
     ;  %% The following validation depends on what kyfile//1 generates.
-       maybe_read_cache(
-           Opts.version, PykytheSymtabInputStream, SrcPath, SymtabFromCache,
+       maybe_read_symtab_from_cache(
+           Opts.version, PykytheSymtabInputStream, SrcPath, Symtab0, Symtab1,
            log_if(true, 'Cannot reuse cache (different version) ~q for ~q', [PykytheSymtabPath, SrcPath]),
            log_if(true, 'Cannot reuse cache (different source) ~q for ~q', [PykytheSymtabPath, SrcPath])),
-       %% TODO: modules_in_symtab not needed because foldl_process_module_cached_or_from_src/5
-       %%       skips non-modules.
-       modules_in_symtab(SymtabFromCache, ModulesInSymtab),
        %% recursively process modules, failing if any is "from_src"
        %% (not cached). This will cause failure of
        %% maybe_process_module_cached_impl/7, which will result in calling
        %% process_module_from_src/5 for this module.  Any imported
        %% modules that were processed will get re-processed (but use
        %% the cached result).
-       merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab1),
+       %% TODO: modules_in_symtab not needed because foldl_process_module_cached_or_from_src/5
+       %%       skips non-modules.
+       modules_in_symtab(Symtab, ModulesInSymtab),
        foldl_process_module_cached_or_from_src(Opts, 'cached only', ModulesInSymtab, Symtab1, Symtab),
        path_with_suffix(Opts, SrcPath, Opts.kythejson_suffix, KytheJsonPath),
        log_if(true, 'Reused/cache(~w) ~q for ~q', [FromSrcOk, KytheJsonPath, SrcPath])
     ).
 
-%! maybe_process_module_cached_batch(+Opts:list, +SrcPath:atom, -Symtab:dict) is semidet.
-maybe_process_module_cached_batch(Opts, SrcPath, Symtab) :-
+%! maybe_process_module_cached_batch(+Opts:list, +SrcPath:atom, +Symtab0: dict, -Symtab:dict) is semidet.
+maybe_process_module_cached_batch(Opts, SrcPath, Symtab0, Symtab) :-
     Opts.pykythebatch_suffix \= '',
     path_with_suffix(Opts, SrcPath, Opts.pykythebatch_suffix, PykytheBatchPath),
     maybe_open_read(PykytheBatchPath, KytheStreamBatch),
-    maybe_read_cache(
-        Opts.version, KytheStreamBatch, SrcPath, Symtab,
+    maybe_read_symtab_from_cache(
+        Opts.version, KytheStreamBatch, SrcPath, Symtab0, Symtab,
         log_if(true, 'Cannot reuse batch cache (different version) ~q for ~q', [PykytheBatchPath, SrcPath]),
         log_if(true, 'Cannot reuse cache (different source) ~q for ~q', [PykytheBatchPath, SrcPath])).
 
@@ -889,10 +885,6 @@ foldl_process_module_cached_or_from_src(Opts, FromSrcOk, [M|Modules], Symtab0, S
     ),
     !,                          % "cut" for memory usage
     foldl_process_module_cached_or_from_src(Opts, FromSrcOk, Modules, Symtab1, Symtab).
-
-%! merge_cache_into_symtab(+SymtabFromCache, +Symtab0,- Symtab) is det.
-merge_cache_into_symtab(SymtabFromCache, Symtab0, Symtab) :-
-    update_symtab(SymtabFromCache, Symtab0, Symtab).
 
 %% DO NOT SUBMIT - s/semidet/det/?
 %! process_module_from_src(+Opts:list, +FromSrcOk, +SrcFqn:atom, +Symtab0, -Symtab) is semidet.
@@ -975,9 +967,10 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
     write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheSymtabPath),
     (  PykytheSymtabPath = PykytheBatchPath
     -> log_if(true, 'Not writing to kythebatch: ~w', KytheJsonPath)
-    ; %% write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheBatchPath)
-       safe_delete_file(PykytheBatchPath),
-       link_file(PykytheSymtabPath, PykytheBatchPath, hard)
+    ;  %% write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheBatchPath)
+       %% Assume that if a race condition occurs while linking, the
+       %% other process would have generated the same file contents.
+       safe_hard_link_file_dup_ok(PykytheSymtabPath, PykytheBatchPath)
     ),
     log_if(true, 'Converting to Kythe protobuf'),
     path_with_suffix(Opts, SrcPath, Opts.kytheentries_suffix, KytheEntriesPath),
@@ -1123,7 +1116,7 @@ clean_kythe_facts(KytheFacts0, KytheFacts) :-
     kythe_kinds(KytheFacts0, kinds{}, KytheFacts2, Kinds),
     dict_pairs(Kinds, kinds, KindsPairs),
     maplist(clean_kind, KindsPairs, Kinds2),
-    %% Kinds2 must come *after* KytheFacts - maybe_read_cache/5.
+    %% Kinds2 must come *after* KytheFacts - maybe_read_symtab_from_cache/5.
     append(KytheFacts2, Kinds2, KytheFacts).
 
 %! kythe_kinds(+Facts:list, +KindsIn:dict, -FactsOut, -KindsOut:dict) is det.
@@ -1136,7 +1129,7 @@ kythe_kinds([json{fact_name:'/kythe/node/kind', fact_value:KindValue, source:Sou
             KindsIn, FactsOut, KindsOut) :-
     KindValue \= 'anchor',  % should never have another kind
     KindValue \= 'package', % should never have another kind
-    KindValue \= 'file',    % This is special (see maybe_read_cache/5)
+    KindValue \= 'file',    % This is special (see maybe_read_symtab_from_cache/5)
     !,
     term_to_canonical_atom(Source, SourceAtom),
     get_dict_default(SourceAtom, KindsIn, [], KindSeen),
@@ -1245,8 +1238,7 @@ run_parse_cmd(Opts, SrcPath, SrcFqn, OutPath) :-
 link_src_file(SrcPath, OutPath) :- % TODO: delete
     re_replace("/"/g, "@", SrcPath, SrcPathSubs),
     atomic_list_concat(['/tmp/pykythe-parser-output--', SrcPathSubs], TmpParserOutput),
-    safe_delete_file(TmpParserOutput),
-    link_file(OutPath, TmpParserOutput, hard).
+    safe_hard_link_file(OutPath, TmpParserOutput).
 
 %! version_as_kyfact(+Version, +Meta, -KytheFactsAsJsonDict) is det.
 %% Convert the version into a Kythe fact.
@@ -2871,12 +2863,8 @@ symrej_accum(Fqn-Type-TypeSymtab, sym_rej(Symtab0,Rej0), sym_rej(Symtab,Rej)) :-
 %% make symrej_accum/3 more logical (see comments there and
 %% eval_single_type//1).
 symtab_lookup(Fqn, Type) -->>
-    SymRej/symrej/SymRej,
-    { SymRej = sym_rej(Symtab,_) },
+    sym_rej(Symtab,_)/symrej,
     { symtab_lookup(Fqn, Symtab, Type) }.
-
-symtab_lookup_raw(sym_rej(Symtab,_), Fqn, Type) :-
-    symtab_lookup(Fqn, Symtab, Type).
 
 %! symrej_accum_found(+Fqn, +Type, +TypeSymtab, +Symtab0, -Symtab, +Rej0, -Rej).
 %% Helper for symrej_accum/3 for when Fqn is in Symtab with value
@@ -2900,26 +2888,27 @@ symrej_accum_found(Fqn, Type, TypeSymtab, Symtab0, Symtab, Rej0, Rej) :-
 %% Compute a set of possible classes, given an attribute. This looks
 %% at all the classes in the symtab and finds those that have AttrName.
 possible_classes_from_attr(AttrName, Classes) -->>
-    { must_once(ground(AttrName)) }, % TODO: delete
-    SymRej/symrej/SymRej,
-    (  { bagof(ClassFqn, possible_class_from_attr(SymRej, AttrName, ClassFqn), Classes0) }
-    -> [ ]
-    ;  { Classes0 = [] }
-    ),
+    sym_rej(Symtab,_)/symrej,
+    { classes_from_attr_(Symtab, AttrName, Classes0) },
     { combine_types(Classes0, Classes) }.
 
-%! possible_class_from_attr(+SymRej, +AttrName:atom, -Type) is nondet.
-%% Given an AttrName, find a symbol table entry for a class
-%% that defines/uses it.
-possible_class_from_attr(SymRej, AttrName, Type) :-
-    \+ common_attr(AttrName),
-    atomic_list_concat(['.', AttrName], DotAttrName),
-    symtab_lookup_raw(SymRej, Fqn, _), % backtracks over symtab
-    remove_suffix(Fqn, DotAttrName, ClassFqn),
-    %% There are some corner cases that the following doesn't handle,
-    %% such as a class defined within a function but they're rare:
-    \+ sub_atom(ClassFqn, _, _, _, '<'), % doesn't contain '<local>', '<comp_for>', etc.
-    symtab_lookup_raw(SymRej, ClassFqn, Type).
+%! classes_from_attr(+Symtab, +AttrName:atom, -Classes is nondet.
+%% Given an AttrName, find symbol table entries for classes that
+%% define/use it.
+classes_from_attr_(Symtab, AttrName, Classes) :-
+    (  common_attr(AttrName)
+    -> Classes = []
+    ;  atomic_list_concat(['.', AttrName], DotAttrName),
+       conv_symtab_pairs(attr_candidate(Symtab, DotAttrName), Symtab, Candidates),
+       pairs_values(Candidates, Classes)
+    ).
+
+attr_candidate(Symtab, DotAttrName, Fqn-_, ClassFqn-Class) :-
+     remove_suffix(Fqn, DotAttrName, ClassFqn),
+     %% There are some corner cases that the following doesn't handle,
+     %% such as a class defined within a function but they're rare:
+     \+ sub_atom(ClassFqn, _, _, _, '<'), % doesn't contain '<local>', '<comp_for>', etc.
+     symtab_lookup(ClassFqn, Symtab, Class).
 
 %! log_possible_classes_from_attr(+BindsOrRef:atom, +AttrAstn, +Classes)//[kyfact,symrej,file_meta] is nondet.
 log_possible_classes_from_attr(BindsOrRef, astn(Start,End,AttrName), Classes) -->>
@@ -3232,10 +3221,9 @@ do_if_file(Goal) -->>
 %! Dump the symtab if trace_file/1 matches Meta.path. (for debugging)
 symtab_if_file(Msg) -->>    %% DO NOT SUBMIT - replace this with something that uses pykythe_symtab predicates.
     Meta/file_meta,
-    SymRej/symrej/SymRej,
+    sym_rej(Symtab,_)/symrej,
     (  { trace_file(Meta.path) }
-    -> { SymRej = sym_rej(Symtab, _) },
-       { append_fqn_dot(Meta.src_fqn, SrcFqnDot) },
+    -> { append_fqn_dot(Meta.src_fqn, SrcFqnDot) },
        { dict_pairs(Symtab, SymtabTag, SymtabPairs) },
        { log_if(true, 'SYMTAB SrcFqnDot: ~q', [SrcFqnDot]) },
        { convlist(starts_with_fqn_type(SrcFqnDot), SymtabPairs, SymtabPairs2) },

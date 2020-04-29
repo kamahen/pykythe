@@ -33,6 +33,8 @@
                           remove_suffix/3,
                           remove_suffix_star/3,
                           safe_delete_file/1,
+                          safe_hard_link_file/2,
+                          safe_hard_link_file_dup_ok/2,
                           split_atom/4,
                           term_to_canonical_atom/2,
                           %% update_dict/3,
@@ -294,6 +296,24 @@ safe_delete_file(Path) :-
     %% but other errors are possible, such as
     %% error(instantiation_error, _).
     catch(delete_file(Path), _Error, true).
+
+safe_hard_link_file(OldPath, NewPath) :-
+    %% TODO: DO NOT SUBMIT - there's a race condition here; need
+    %%       to retry if error thrown from link_file/3
+    safe_delete_file(NewPath),
+    link_file(OldPath, NewPath, hard).
+
+%% There is a possible race condition between deleting the NewPath and
+%% creating the hard link. This predicate assumes that whoever created
+%% the NewPath would have made it the same as the old one.
+%% TODO: compare OldPath, NewPath (which could also end up with
+%%       another race condition if a 3rd process was trying to
+%%       create the same output file).
+safe_hard_link_file_dup_ok(OldPath, NewPath) :-
+    safe_delete_file(NewPath),
+    catch(link_file(OldPath, NewPath, hard),
+          error(system_error, context(_, 'File exists')),
+          true).
 
 %! split_atom(+Atom:atom, +SepChars:atom, +PadChars:atom, -SubAtoms:list(atom)) is det.
 %% Like split_string, but result is a list of atoms.

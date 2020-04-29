@@ -74,7 +74,7 @@ gen_builtins_symtab_main :-
     log_if(true, '~q', [done-read_package_from_cache(KytheJsonInputPath, Package)]),
 
     atom_concat(Package, '.', PackageDot),
-    conv_symtab_pairs(strip_sym(PackageDot), Symtab0, BuiltinsPairs0),
+    must_once(conv_symtab_pairs(strip_sym(PackageDot), Symtab0, BuiltinsPairs0)),
 
     %% object is special: it needs the 'object' type whereas for all
     %% other classes, 'object' is implied.
