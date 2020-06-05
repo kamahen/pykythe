@@ -3,7 +3,7 @@
 # Mostly this is tests of '.' binding
 
 #- { @ii defines/binding II }
-#- { II./pykythe/type "[import_ref_type(int,'.tmp.pykythe_test.SUBST.BUILTINS.builtins.int',class_type('.tmp.pykythe_test.SUBST.BUILTINS.builtins.int',[]))]" }
+#- { II./pykythe/type II_type? } // DO NOT SUBMIT: "[import_ref_type(int,'.tmp.pykythe_test.SUBST.BUILTINS.builtins.int',class_type('.tmp.pykythe_test.SUBST.BUILTINS.builtins.int',[]))]" }
 #- { @int ref INT? }  // TODO: should be '${BUILTINS_FQN}.builtins.int'
 #- // { INT./pykythe/type INT_type? } //  "[class_type('${BUILTINS_FQN}.builtins.int',[])]" } // type info is in another file
 ii: int
@@ -20,9 +20,9 @@ ABC = " abc "
 #- { @ABC ref ABC }
 #- { @strip ref _ABC_strip=vname("${BUILTINS_FQN}.builtins.str.strip", _, _, "", python) }
 #- // { ABC_strip./pykythe/type ABC_strip_type? } // TODO
-#- { @capitalize ref _ABC_strip_capitalize=vname("${BUILTINS_FQN}.builtins.str.capitalize", _, _, "", python) }
-#- // { _ABC_strip_capitalize./pykythe/type ABC_strip_capitalize_type? } // TODO
-ABC.strip().capitalize()
+#- { @encode ref _ABC_strip_encode=vname("${BUILTINS_FQN}.builtins.str.encode", _, _, "", python) }
+#- // { _ABC_strip_encode./pykythe/type ABC_strip_encode_type? } // TODO
+ABC.strip().encode()
 
 
 # TODO: py3_test_grammar doesn't have assignment unpacking to a "*" (PEP 3132)

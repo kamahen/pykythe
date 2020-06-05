@@ -1,4 +1,4 @@
-#- { @#0"." ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i1_sub", _, _, "", python) } // DO NOT SUBMIT
+#- { @#0"." ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i1_sub", _, _, "", python) } // TODO: this is a directory
 #- { @#0i4  ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i1_sub.i4", _, _, "", python) }
 #- { @import_i4 defines/binding vname("${ROOT_FQN}.test_data.imports_dir1.i1_sub.i4a.import_i4", _, _, "", python) }
 #- { @import_i4 ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i1_sub.i4", _, _, "", python) }

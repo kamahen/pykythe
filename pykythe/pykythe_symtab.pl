@@ -19,6 +19,7 @@
                            symtab_insert/4,
                            symtab_lookup/3,
                            symtab_pairs/2,
+                           symtab_scope_pairs/3,
                            symtab_values/2,
                            write_symtab/4
                           ]).
@@ -149,5 +150,21 @@ write_symtab(Symtab, Version, Sha1, PykytheBatchOutStream) :-
 
 %% DO NOT SUBMIT:
 %% Need to add a portray -- see pykythe:pykythe_portray(Symtab)
+
+%! symtab_scope_pairs(+FqnScope:atom, +Symtab, -SymtabPairsScope) is det.
+%% For debugging: extract only entries that start with FqnScope + '.'
+%% This isn't very useful because all the builgins are added to the local scope,
+%% so it matches a lot of entries.
+symtab_scope_pairs(FqnScope, Symtab, SymtabPairsScope) :-
+    symtab_pairs(Symtab, SymtabPairs),
+    include(symtab_entry_starts_with(FqnScope), SymtabPairs, SymtabPairsScope).
+
+symtab_entry_starts_with(FqnScope, Key-_Type) :-
+    (  FqnScope = Key
+    ;  atom_concat(FqnScope, '.', FqnScopeDot),
+       atom_concat(FqnScopeDot, _, Key)
+    ).
+
+
 
 end_of_file.

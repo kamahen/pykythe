@@ -12,7 +12,7 @@ except NameError:
 y = 1
 
 #- { @x defines/binding ParamX=vname("${ROOT_FQN}.test_data.scoping0.foo.<local>.x", _, _, "", python) }
-#- { @int ref Int? }  // TODO: should get builtins.int
+#- { @int ref vname("${BUILTINS_FQN}.builtins.int", _, _, "", python) }
 def foo(x: int):
     try:
         #- { @x ref ParamX }

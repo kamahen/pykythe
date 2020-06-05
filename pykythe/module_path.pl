@@ -92,7 +92,13 @@ full_path([_|Dots], Path, _Pythonpaths, CurrModulePath, ModuleAndMaybeToken, Mod
     ;  %% File doesn't exist, e.g. '/home/fred/foo/bar/src/../../xyz',
        %% path_to_module_fqn_or_unknown/2 would give
        %% '<unknown>.home.fred.foo.bar.src.......xyz'.
+       %% TODO: AbsFromImportPath2 starts with '.', so this ends up
+       %%       with '<unknown>..' at the beginning; but fixing needs
+       %%       to deal with other code that converts to/from list.
        absolute_file_name_rel(FromImportPath2, AbsFromImportPath2),
+       %% The '{...}' in the following is because there could be
+       %% a ".<id>" following, which would be confused with an extension
+       %% in a file path.
        format(atom(ModuleFqn), '<unknown>.{~w}', [AbsFromImportPath2]),
        ModuleAndMaybeToken = module_alone(ModuleFqn, FromImportPath2)
     ),

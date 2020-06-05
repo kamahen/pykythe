@@ -1,8 +1,6 @@
 # Simple scripts for testing etc.
 
-# time make  --warn-undefined-variables -C ~/src/pykythe clean etags show-vars test make-tables json-decoded-all # test_python_lib # test_single_src
-# make -C ~/src/pykythe clean etags test test_python_lib
-# make -C ~/src/pykythe clean_lite etags test
+# See examples at the end of this file.
 # You should be able to run with --jobs parameter and get the same
 # results each time (the outputs should be idempotent), but the order
 # of running will vary.  If you use --jobs, you should specify
@@ -67,16 +65,16 @@ BROWSE_PORT_PYTYPE:=8089
 SRC_BROWSER_PORT:=9999
 # (VERIFIER_EXE is defined below, using the version built from source)
 # VERIFIER_EXE:=/opt/kythe/tools/verifier
-# DO NOT SUBMIT -- make this more generic:
-# Note: Something happened with v0.0.31 or later that is incompatible
+# TODO: Something happened with v0.0.31 or later that is incompatible
 #       with older servers (which support the UI).
 #       See also https://github.com/TreeTide/underhood/issues/12
-# ENTRYSTREAM_EXE:=$(HOME)/Downloads/kythe-v0.0.30/tools/entrystream
-# WRITE_ENTRIES_EXE:=$(HOME)/Downloads/kythe-v0.0.30/tools/write_entries
-# WRITE_TABLES_EXE:=$(HOME)/Downloads/kythe-v0.0.30/tools/write_tables
-# HTTP_SERVER_EXE:=$(HOME)/Downloads/kythe-v0.0.30/tools/http_server
+# KYTHE_V:=kythe-v0.0.30
+# ENTRYSTREAM_EXE:=$(HOME)/Downloads/$(KYTHE_V)/tools/entrystream
+# WRITE_ENTRIES_EXE:=$(HOME)/Downloads/$(KYTHE_V)/tools/write_entries
+# WRITE_TABLES_EXE:=$(HOME)/Downloads/$(KYTHE_V)/tools/write_tables
+# HTTP_SERVER_EXE:=$(HOME)/Downloads/$(KYTHE_V)/tools/http_server
 # # TODO: remove HTTP_SERVER_RESOURCES
-# HTTP_SERVER_RESOURCES:=$(HOME)/Downloads/kythe-v0.0.30/web/ui
+# HTTP_SERVER_RESOURCES:=$(HOME)/Downloads/$(KYTHE_V)/web/ui
 # Note: The following should contain v0.0.30 (34 doesn't work properly):
 ENTRYSTREAM_EXE:=/opt/kythe/tools/entrystream
 WRITE_ENTRIES_EXE:=/opt/kythe/tools/write_entries
@@ -129,6 +127,7 @@ SUBSTDIR_PWD_REAL:=$(SUBSTDIR)$(PWD_REAL)
 KYTHEOUTDIR_PWD_REAL:=$(KYTHEOUTDIR)$(PWD_REAL)
 PYTHONPATH_DOT:=$(shell realpath --no-symlinks .. | sed 's!^/!$(SUBSTDIR)/!')
 PYTHONPATH_BUILTINS:=$(SUBSTDIR)/BUILTINS
+BUILTINS_PATH:=$(SUBSTDIR)/BUILTINS/builtins.pyi
 TESTOUT_SRCS:=$(shell $(FIND_EXE) $(TEST_DATA_DIR) -name '*.py'  | sort | \
     sed -e 's!^!$(SUBSTDIR_PWD_REAL)/!')
 TESTOUT_TARGETS:=$(shell $(FIND_EXE) $(TEST_DATA_DIR) -name '*.py' | sort | \
@@ -150,6 +149,7 @@ PYTHONPATH_OPT:=--pythonpath='$(PYTHONPATH_DOT):$(PYTHONPATH_BUILTINS):$(TYPESHE
 PYTHONPATH_OPT_NO_SUBST:=--pythonpath='$(PYTHONPATH_DOT):$(TYPESHED_REAL)/stdlib/3.7:$(TYPESHED_REAL)/stdlib/3:$(TYPESHED_REAL)/stdlib/2and3:/usr/lib/python3.7'
 PYKYTHE_OPTS0=$(VERSION_OPT) $(BATCH_OPT) \
 	--builtins_symtab=$(BUILTINS_SYMTAB_FILE) \
+	--builtins_path=$(BUILTINS_PATH) \
 	$(PYKYTHEOUT_OPT) $(PARSECMD_OPT) $(ENTRIESCMD_OPT) $(KYTHE_CORPUS_ROOT_OPT)
 PYKYTHE_OPTS=$(PYKYTHE_OPTS0) $(PYTHONPATH_OPT)
 TIME:=time
@@ -159,21 +159,21 @@ TIME:=time
 
 .PHONY: show-vars
 show-vars:
-	@echo "BATCH_ID                        $(BATCH_ID)"
-	@echo "VERSION                         $(VERSION)"
-	@echo "TESTOUTDIR                      $(TESTOUTDIR)"
-	@echo "PWD_REAL                        $(PWD_REAL)"
-	@echo "TYPESHED_REAL                   $(TYPESHED_REAL)"
-	@echo "SUBSTDIR                        $(SUBSTDIR)"
-	@echo "KYTHEOUTDIR                     $(KYTHEOUTDIR)"
-	@echo "BUILTINS_SYMTAB_FILE            $(BUILTINS_SYMTAB_FILE)"
-	@echo "TESTOUT_PYKYTHEDIR              $(TESTOUT_PYKYTHEDIR)"
-	@echo "SUBSTDIR_PWD_REAL               $(SUBSTDIR_PWD_REAL)"
-	@echo "KYTHEOUTDIR_PWD_REAL            $(KYTHEOUTDIR_PWD_REAL)"
-	@echo "PYTHONPATH_DOT                  $(PYTHONPATH_DOT)"
-	@echo "PYTHONPATH_BUILTINS             $(PYTHONPATH_BUILTINS)"
-	@# echo "TESTOUT_SRCS                  $(TESTOUT_SRCS)"
-
+	@echo "BATCH_ID                 $(BATCH_ID)"
+	@echo "VERSION                  $(VERSION)"
+	@echo "TESTOUTDIR               $(TESTOUTDIR)"
+	@echo "PWD_REAL                 $(PWD_REAL)"
+	@echo "TYPESHED_REAL            $(TYPESHED_REAL)"
+	@echo "SUBSTDIR                 $(SUBSTDIR)"
+	@echo "KYTHEOUTDIR              $(KYTHEOUTDIR)"
+	@echo "BUILTINS_SYMTAB_FILE     $(BUILTINS_SYMTAB_FILE)"
+	@echo "TESTOUT_PYKYTHEDIR       $(TESTOUT_PYKYTHEDIR)"
+	@echo "SUBSTDIR_PWD_REAL        $(SUBSTDIR_PWD_REAL)"
+	@echo "KYTHEOUTDIR_PWD_REAL     $(KYTHEOUTDIR_PWD_REAL)"
+	@echo "PYTHONPATH_DOT           $(PYTHONPATH_DOT)"
+	@echo "PYTHONPATH_BUILTINS      $(PYTHONPATH_BUILTINS)"
+	@# echo "TESTOUT_SRCS           $(TESTOUT_SRCS)"
+	@echo
 
 # $(PYKYTHE_SRCS) is a dependency because it's used to compute $(VERSION)
 $(SUBSTDIR_PWD_REAL)/pykythe/bootstrap_builtins_symtab.pl: $(PYKYTHE_SRCS)
@@ -284,7 +284,7 @@ $(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.entries: \
 	mkdir -p "$(PYTHONPATH_BUILTINS)"
 	cat $(TYPESHED_REAL)/stdlib/2and3/builtins.pyi \
 	        pykythe/builtins_extra.pyi \
-		>$(PYTHONPATH_BUILTINS)/builtins.pyi
+		>$(BUILTINS_PATH)
 	@# This bootstrap symtab file will be replaced by running gen_builtins_symtab.pl below
 	cat $(SUBSTDIR_PWD_REAL)/pykythe/bootstrap_builtins_symtab.pl \
 		>"$(BUILTINS_SYMTAB_FILE)"
@@ -364,6 +364,7 @@ test_c3_a:  # run c3_a, to ensure it behaves as expected
 .PHONY: test_data_tests
 test_data_tests:
 	@# running in parallel gains ~30%, it seems
+	@# (large files such as py3_test_grammar.py dominate)
 	$(MAKE) -j$(NPROC) -Oline $(TESTOUT_TARGETS) \
 		$(KYTHEOUTDIR)$(PWD_REAL)/pykythe/__main__.kythe.entries
 
@@ -556,8 +557,6 @@ run_src_browser run-src-browser:
 	@mkdir -p $(TESTOUTDIR)/browser/files
 	@# if .qlf doesn't exist, make an empty one, which
 	@# will cause recompilation when it's loaded
-	[ -e $(TESTOUTDIR)/browser/files/kythe_facts.pl ] || \
-	    cp --preserve=timestamps browser/examples/kythe_facts.pl $(TESTOUTDIR)/browser/files/
 	[ -e $(TESTOUTDIR)/browser/files/kythe_facts.qlf ] || \
 	    touch $(TESTOUTDIR)/browser/files/kythe_facts.qlf
 	@# TODO: remove "-g src_browser:main -l" (which are for debugging)  DO NOT SUBMIT
@@ -784,20 +783,24 @@ upgrade-mypy:
 
 upgrade-pkgs:
 	sudo apt update
-	sudo apt --with-new-pkgs upgrade
+	sudo apt autoremove
+	sudo apt --with-new-pkgs --assume-yes upgrade
 	@# And an old incantation from decades ago
 	sudo sync
 	sudo sync
 	sudo sync
 	sudo time fstrim --all -v
 
+pull-swipl:
+	cd ../swipl-devel && git pull --recurse
+
 upgrade-swipl:
 	@# See ../swipl-devel/CMAKE.md
 	cd ../swipl-devel && \
 		git pull --recurse && \
+		mkdir -p build && \
 		cd build && \
-		mkdir -p ../man/archive && \
-		cmake .. && \
+		cmake -G Ninja .. && \
 		ninja && \
 		ctest -j 8
 	@# ninja install
@@ -807,7 +810,6 @@ upgrade-swipl-full:
 		git pull --recurse && \
 		rm -rf build && \
 		mkdir build && \
-		mkdir -p ../man/archive && \
 		cd build && \
 		cmake -G Ninja .. && \
 		ninja && ctest -j 8
@@ -823,3 +825,15 @@ upgrade-emacs:
 
 rsync-backup:
 	rsync -va --delete -e ssh 192.168.1.79:src/pykythe /home/peter/src_backup/
+
+# ============== examples =================
+
+# time make  --warn-undefined-variables -C ~/src/pykythe clean etags show-vars test make-tables json-decoded-all # test_python_lib # test_single_src
+
+# find /tmp/pykythe_test -name '[ait]*' -o -name 'simple*' -delete; time make -k --warn-undefined-variables -C ~/src/pykythe BATCH_ID=bbb etags show-vars test_single_src # test  make-json make-json-pretty make-tables json-decoded-all #  # test_single_src
+
+# make -C ~/src/pykythe clean etags test test_python_lib
+# make -C ~/src/pykythe clean_lite etags test
+
+##### - to find TODOs and related:
+# find $(ls | grep -v typeshed)  -type f  ! -name '*~' -print|sort | xargs egrep -nH 'DO|NOT|SUBMIT|#- [ {]*{//|TODO|#-.*\?'

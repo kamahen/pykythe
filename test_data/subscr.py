@@ -4,6 +4,7 @@
 
 class C:
     def __init__(self):
+        #- { @x defines/binding C_x }
         self.x = 1
 
 # Repeat the definition, so that we can tell when the attributes are
@@ -39,12 +40,21 @@ def t1() -> None:
     #                src_browser:kythe_node(D, '/kythe/message', M),
     #                src_browser:kythe_node(D, '/kythe/details', Details).
 
+    #- { @e defines/binding E_=vname("${ROOT_FQN}.test_data.subscr.t1.<local>.e", _, _, "", python) }
+    #- { E_./pykythe/type "[class_type('${ROOT_FQN}.test_data.subscr.C',[])]"}
     for e in d:
+        #- { @x ref C_x }
+        #- !{ @x tagged _ }
+        print(e.x)
+
+
+def t1a(dd) -> None: # D has unknown type
+    for e in dd:
         #- { @x tagged Diagnostic? }
         #- { Diagnostic.node/kind diagnostic }
         #- { Diagnostic.message Message? }
         #- { Diagnostic.details Details? }
-        print(e.x)
+        print(d.x)
 
 
 def t2() -> None:

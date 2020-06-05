@@ -7,6 +7,8 @@ This code is for development debugging and will change a lot over time
 # TODO: remove the "import", "from" tests that exist elsewhere
 
 #- { @os_path ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
+#- { @#0path  ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
+#- { @#0os    ref/imports vname("${TYPESHED_FQN}.stdlib.3.os", _, _, "", python) }
 from os import path as os_path
 
 #- { @sep defines/binding vname("${ROOT_FQN}.test_data.simple.sep", _, _, "", python) }
@@ -23,11 +25,10 @@ from os.path import sep
 #- { @os_path_sep ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
 from os.path import sep as os_path_sep
 
-#- // Note that .xxx doesn't exist, but we get the value it would
-#- // have if it did exist (and same for foo3):
+#- // Note that .xxx doesn't exist
 #- { @"."  ref/imports vname("${ROOT_FQN}.test_data",          _, _, "", python) }
 #- { @xxx  ref/imports vname("${ROOT_FQN}.test_data.xxx",      _, _, "", python) }
-#- { @foo3 ref/imports FOO3_imports? } // vname("${ROOT_FQN}.test_data.xxx.foo3", _, _, "", python) } // DO NOT SUBMIT - incorrectly does "<unknown>.${ROOT_FQN}.test_data.xxx.foo3"
+#- { @foo3 ref/imports vname("<unknown>.${ROOT_FQN}.test_data.xxx.foo3", _, _, "", python) }
 #- { @foo3 defines/binding vname("${ROOT_FQN}.test_data.simple.foo3", _, _, "", python) }
 from .xxx import foo3
 
@@ -37,8 +38,23 @@ from .xxx import foo3
 #- { @foo2 ref/imports vname("${ROOT_FQN}.test_data.foo2", _, _, "", python) }
 from . import foo2
 
-# #- // { @None defines/binding None }
-# None = ...  # TODO: using builtin.pyi
+# TODO: See builtins_extra.pyi ...
+#       Maybe ":" is being handled incorrectly? DO NOT SUBMIT
+#- // TODO: Should this be NoneType or None? The problem is that
+#- //       mypy and other programs allow "def foo() -> None" as
+#- //       meaning "def foo() -> NoneType".
+#- { @None ref None=vname("${BUILTINS_FQN}.builtins.None", _, _, "", python) }
+None
+
+#- { @False ref vname("${BUILTINS_FQN}.builtins.False", _, _, "", python) }
+False
+
+#- { @int ref Int=vname("${BUILTINS_FQN}.builtins.int", _, _, "", python) }
+#- { @bit_length ref vname("${BUILTINS_FQN}.builtins.int.bit_length", _, _, "", python) }
+int.bit_length()
+
+#- { @bit_length ref vname("${BUILTINS_FQN}.builtins.int.bit_length", _, _, "", python) }
+(123).bit_length()
 
 
 # TODO: move the following to a separate file (see also bindings.py
@@ -70,8 +86,8 @@ dd()
 
 
 #- { @bar defines/binding Foo_bar }
-#- { @#0int ref Int? } // TODO -- should be builtins
-#- { @#1int ref Int }  // TODO
+#- { @#0int ref Int }
+#- { @#1int ref Int }
 def foo(bar: int) -> int:
     #- { @bar ref Foo_bar }
     #- { @zot defines/binding Foo_zot }
@@ -85,7 +101,7 @@ class C2:
     """A class comment for testing."""
     #- { @__init__ defines/binding _C2_init }
     #- { @self defines/binding C2_init_self }
-    #- { @None ref None? }  // TODO
+    #- { @None ref None }
     def __init__(self) -> None:
         """A function comment for testing."""
         #- { @self ref C2_init_self }
@@ -111,7 +127,7 @@ def make_C1(x: C2) -> C1: return C1(x)
 #- { @C2 ref C2 }
 #- { Global_c2.node/kind variable }
 #- { Global_c2./pykythe/type "[class_type('${ROOT_FQN}.test_data.simple.C2',[])]" }
-#- // @C2 ref C2_init // TODO
+#- // { @C2 ref C2_init } // TODO
 c2 = C2()
 
 #- { @c2 ref Global_c2 }
@@ -120,9 +136,10 @@ c2.x
 
 #- { @c1 defines/binding Global_c1 }
 #- { @C1 ref C1 }
-#- // @C1 ref C1_init // TODO
+#- // { @C1 ref C1_init } // TODO
+#- // TODO: calls C1_init (etc.)
 #- { @C2 ref C2 }
-#- // @C2 ref C2_init // TODO
+#- // { @C2 ref C2_init } // TODO
 c1 = C1(C2())
 
 #- { @c1 ref Global_c1 }

@@ -15,7 +15,6 @@
 :- use_module(library(http/json), [json_read_dict/3]).
 :- use_module(library(pairs)).
 
-%% swipl -g main -t halt extract_color.pl </tmp/pykythe_test/KYTHE/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t10.kythe.json --filesdir=/tmp/pykte_test/browser/files
 %% debugging: main('/tmp/pykythe_test/KYTHE/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t10.kythe.json').
 
 %% Kythe vname is Signature,Corpus,Root,Path,Language

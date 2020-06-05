@@ -28,7 +28,7 @@ running `add-index-pykythe` to set up the serving tables).
 [Pytype](https://github.com/google/pytype) has an experimental
 indexer, which runs at least 10x slower and crashes on some inputs.
 (Pykythe does about 100-200 files per minute on a 4 CPU workstation
-and can process the entire Python3 library without crashing.) 
+and can process the entire Python3 library without crashing.)
 Pytype also requires a system such as [Bazel](https://bazel.build)
 with associated BUILD files, or ninja, to run in parallel.
 
@@ -49,7 +49,7 @@ with associated BUILD files, or ninja, to run in parallel.
 
 ## Installation
 
-There is no installation script, because this code is pre-alpha. 
+There is no installation script, because this code is pre-alpha.
 If you run `scripts/demo.sh`, then most of the prerequisites are
 loaded (with the exception of the Kythe code).
 
@@ -96,7 +96,7 @@ loaded (with the exception of the Kythe code).
 
 
 * Install [SWI-Prolog](http://www.swi-prolog.org/Download.html). You
-  need at least version 8.1.24, so as of 2020-03-04, this means
+  need at least version 8.3.0, so as of 2020-06-01, this means
   using the "devel" download or PPA.
   For Ubuntu, Debian, and similar (following the instructions at https://www.swi-prolog.org/build/PPA.html):
   *  `sudo apt install software-properties-common`

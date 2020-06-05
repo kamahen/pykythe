@@ -3,13 +3,13 @@
 #- { @ABC defines/binding ABC }
 #- { ABC./pykythe/type "[class_type('${BUILTINS_FQN}.builtins.str',[])]" }
 ABC = " abc "
-#- { @strip ref vname("${BUILTINS_FQN}.builtins.str.strip", _, _, "", python) }
-#- { @capitalize ref vname("${BUILTINS_FQN}.builtins.str.capitalize", _, _, "", python) }
+#- { @strip ref vname("${BUILTINS_FQN}.builtins.str.strip", _, _, "", python) } // STRIP=
+#- { @encode ref vname("${BUILTINS_FQN}.builtins.str.encode", _, _, "", python) } // ENCODE=
 #- // The following two /pykythe/type items are in builtins.kythe.json
-#- // but we know that they work because strip() and capitalize() ref's are correct:
+#- // but we know that they work because strip() and encode() ref's are correct:
 #- // { STRIP./pykythe/type STRIP_type? }
-#- // { CAPITALIZE./pykythe/type CAPITALIZE_type? }
-ABC.strip().capitalize()
+#- // { ENCODE./pykythe/type ENCODE_type? }
+ABC.strip().encode()
 
 class B:
     z = 'zzz'
@@ -27,7 +27,7 @@ makeC().b().z
 
 c = makeC()
 
-#- { @x ref C_x }  // TODO: gets object.x; should get C_x
+#- { @x ref C_x }
 c.x
 
 c0 = C()
@@ -36,8 +36,9 @@ c0 = C()
 c0.x
 
 #- { @strip ref vname("${BUILTINS_FQN}.builtins.str.strip", _, _, "", python) }
-#- { @capitalize ref vname("${BUILTINS_FQN}.builtins.str.capitalize", _, _, "", python) }
-c0.x.strip().capitalize()
+#- { @encode ref vname("${BUILTINS_FQN}.builtins.str.encode", _, _, "", python) }
+#- // DO NOT SUBMIT - ensure the result isn't "guessed"
+c0.x.strip().encode()
 
 from lib2to3.pgen2 import token
 from lib2to3 import pytree

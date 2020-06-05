@@ -90,7 +90,11 @@ class ColorFile:
                 assert node.type in {token.INDENT, token.DEDENT, token.NEWLINE, token.ENDMARKER}
                 token_color = '<WHITESPACE>'
             else:
-                token_color = '<PUNCTUATION>'  # token.tok_name[node.type])
+                # TODO: special case '.' when in an "import" statement
+                #       e.g., if node.type == token.DOT: token_color = '<PUNCTUATION>' + token.tok_name[node.type]
+                #       - this is currently handled by src_browser.pl, which looks for a
+                #         semantic anchor on punctuation
+                token_color = '<PUNCTUATION>'
             yield Color(astn=astn, lineno=node.lineno, column=node.column, token_color=token_color)
 
     def _color_whitespace(self, value: str, start: int) -> Iterable[Color]:

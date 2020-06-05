@@ -116,6 +116,7 @@ body {
     border-collapse: collapse;
     font-family: "Source Code Pro";
     font-size: 9pt;
+    line-height: 1.1;
     overflow: auto;
     width: 100%;
 }
@@ -166,6 +167,7 @@ body {
 .python_newline             { }  /* for completeness; not used */
 .python_number              { color: black; }
 .python_punctuation         { color: black; font-weight: bold; }
+.python_punctuation_ref     { color: blue; font-weight: bold; }
 .python_string              { color: green; font-style: italic; }
 .python_var_binding         { color: blue; font-weight: bold; } /* text-decoration: underline; */
 .python_var_binding_global  { color: darkblue; font-weight: bold; } /* TODO: maybe aqua? */

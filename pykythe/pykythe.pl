@@ -362,7 +362,7 @@
                   %% maybe_open_read/2,
                   %% maybe_process_module_cached/5,
                   %% maybe_process_module_cached_batch/4,
-                  %% maybe_process_module_cached_impl/6,
+                  %% maybe_process_module_cached_impl/7,
                   modules_in_exprs/2,
                   modules_in_symtab/2,
                   %% pykythe_portray/1,
@@ -402,8 +402,9 @@
                   transform_kythe_fact/2,
                   transform_kythe_vname/2,
                   transform_kythe_path/2,
-                  wrap_import_ref/4
+                  wrap_import_ref/4,
                   %% symtab_lookup/4,
+                  symtab_scope_pairs/4
                   %% write_symtab/3, % Is det, but expansion confuses write_atomic_stream/2.
                   %% write_to_protobuf/4,  % Is det, but expansion confuses write_atomic_file/2.
                   %% write_kythe_facts/3  % TODO: failed to analyse
@@ -533,6 +534,7 @@ pred_info_(symtab_if_file, 1,                      [symrej,file_meta]).
 
 pred_info_(must_once_symrej, 1,                    [symrej]).
 pred_info_(symtab_lookup, 2,                       [symrej]).
+pred_info_(symtab_scope_pairs, 2,                  [symrej]).
 
 pred_info_(diagnostic_source, 2,                   [file_meta]).
 pred_info_(do_if_file, 1,                          [file_meta]).
@@ -627,6 +629,7 @@ pred_info_(exprs, 1,                               [expr]).
 
 %% Predicates that are loaded below by ensure_loaded(BuiltinsSymtabFile):
 :- dynamic
+    builtins_module/1,
     builtins_pairs/1,
     builtins_symtab/1,
     builtins_symtab_modules/1,
@@ -636,10 +639,10 @@ pred_info_(exprs, 1,                               [expr]).
 %! object_fqn(-ObjectFqn) is det.
 %% Unify with the FQN for object '${TYPESHED_FQN}.stdlib.2and3.builtins.object'.
 %% Only works after builtins symtab has been loaded (see pykythe_main2/0).
+%% TODO: 2020/05/18 - object_fqn([class_type(ObjectFqn, [])]).
 object_fqn(ObjectFqn) :-
-    builtins_symtab_primitive(object, [import_ref_type(object, _, class_type(ObjectFqn, []))]), !.
-object_fqn(ObjectFqn) :-
-    builtins_symtab_primitive(object, [class_type(ObjectFqn, [])]), !.
+    builtins_symtab_primitive(object, [ObjectType]),
+    single_type_fqn(ObjectType, ObjectFqn).
 
 pykythe_main :-
     log_if(true, 'Start'),      % TODO: delete
@@ -679,13 +682,12 @@ pykythe_main2 :-
     unload_file(Opts.builtins_symtab), % TODO: should be a module and list the predicates
     load_files([Opts.builtins_symtab],
                [silent(true),   % TODO: should be a module
-                imports([builtins_pairs/1,
+                imports([builtins_module/1,
+                         builtins_pairs/1,
                          builtins_symtab/1,
                          builtins_symtab_modules/1,
                          builtins_symtab_primitive/2,
                          builtins_version/1])]),
-    object_fqn(ObjectFqn),                      % TODO: delete
-    log_if(true, 'ObjectFqn: ~q', [ObjectFqn]), % TODO: delete
     maplist(process_src(Opts), SrcPaths).
 
 %! process_src(+Opts:list, +SrcPath:atom) is det.
@@ -716,6 +718,8 @@ pykythe_opts(SrcPaths, Opts) :-
     OptsSpec =
        [[opt(builtins_symtab), type(atom), default(''), longflags(['builtins_symtab']),
          help('File containing a builtins_symtab/1 fact')],
+        [opt(builtins_path), type(atom), default(''), longflags(['builtins_path']),
+         help('Module for builtins (corresponding file should also be in --pythonpath)')],
         [opt(entriescmd), type(atom), default('entriescmd-must-be-specified'), longflags([entriescmd]),
          help('Command for running conversion of .kythe.json to .kythe.entries')],
         [opt(kythe_corpus), type(atom), default(''), longflags(['kythe_corpus']),
@@ -748,7 +752,9 @@ pykythe_opts(SrcPaths, Opts) :-
     dict_create(Opts0, opts, OptsList),
     split_atom(Opts0.pythonpath, ':', '', PythonpathList0),
     convlist(maybe_absolute_dir, PythonpathList0, PythonpathList),
-    put_dict(pythonpath, Opts0, PythonpathList, Opts),
+    path_to_module_fqn_or_unknown(Opts0.builtins_path, BuiltinsModule),
+    put_dict([pythonpath-PythonpathList,
+              builtins_module-BuiltinsModule], Opts0, Opts),
     must_once_msg(PositionalArgs = [_|_], 'Missing positional arg (file to process)'),
     maplist(absolute_file_name_rel, PositionalArgs, SrcPaths).
 
@@ -828,16 +834,16 @@ is_assign_import(Term, module_type(Module)) :-
 %%     this can fail if the cached file isn't valid (e.g., older than the source)
 %%   [ensure that any open file is closed]
 maybe_process_module_cached(Opts, FromSrcOk, SrcPath, Symtab0, Symtab) :-
-    path_with_suffix(Opts, SrcPath, Opts.pykythesymtab_suffix, PykythesymtabPath),
+    path_with_suffix(Opts, SrcPath, Opts.pykythesymtab_suffix, PykytheSymtabPath),
     setup_call_cleanup(
-        maybe_open_read(PykythesymtabPath, PykytheSymtabInputStream),
-        maybe_process_module_cached_impl(Opts, FromSrcOk, PykytheSymtabInputStream, SrcPath, Symtab0, Symtab),
+        maybe_open_read(PykytheSymtabPath, PykytheSymtabInputStream),
+        maybe_process_module_cached_impl(Opts, FromSrcOk, PykytheSymtabInputStream, PykytheSymtabPath, SrcPath, Symtab0, Symtab),
         close(PykytheSymtabInputStream)),
-    log_if(false, 'Reused ~q for ~q', [PykythesymtabPath, SrcPath]). % msg is output by process_module_cached_impl
+    log_if(false, 'Reused ~q for ~q', [PykytheSymtabPath, SrcPath]). % msg is output by process_module_cached_impl
 
 %! maybe_process_module_cached_impl(+Opts:list, +FromSrcOk:{'from src ok','cached only'}, +PykytheSymtabInputStream, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
 %% See README.md's section on caching for an explanation.
-maybe_process_module_cached_impl(Opts, FromSrcOk, PykytheSymtabInputStream, SrcPath, Symtab0, Symtab)  :-
+maybe_process_module_cached_impl(Opts, FromSrcOk, PykytheSymtabInputStream, PykytheSymtabPath, SrcPath, Symtab0, Symtab)  :-
     (  maybe_process_module_cached_batch(Opts, SrcPath, Symtab0, Symtab)
     -> path_with_suffix(Opts, SrcPath, Opts.pykythebatch_suffix, PykytheBatchPath),
        log_if(true, 'Reused/batch(~w) ~q for ~q', [FromSrcOk, PykytheBatchPath, SrcPath]) % DO NOT SUBMIT
@@ -917,7 +923,8 @@ process_module_from_src_impl(Opts, SrcPath, SrcFqn, Symtab0, Symtab) :-
     %% DO NOT SUBMIT -- why does the following log_kythe_fact_msgs need to be
     %%                  done here? -- if it isn't done, then an empty(?)
     %%                  fact gets given to verifier
-    log_kythe_fact_msgs(KytheFactsFromNodes0, KytheFactsFromNodes),
+    % log_kythe_fact_msgs(KytheFactsFromNodes0, KytheFactsFromNodes),
+    KytheFactsFromNodes0 = KytheFactsFromNodes, % DO NOT SUBMIT -- elide
     modules_in_exprs(Exprs, ModulesInExprs),
     log_if(trace_file(SrcPath),
            'MODULES_IN_EXPRS: ~q', [[ModulesInExprs, src=SrcPath, SrcFqn]]),
@@ -1036,6 +1043,7 @@ parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes, ColorTexts) :-
     log_if(true, 'Processed AST nodes from Python parser'),
     %% Fill in dict items that were left uninstantiated in simplify_meta/2 (read_nodes/3):
     Meta.pythonpath = Opts.pythonpath,
+    Meta.builtins_module = Opts.builtins_module,
     Meta.opts = Opts,
     Meta.version = Opts.version,
     must_once(SrcPath == Meta.path),
@@ -1044,7 +1052,7 @@ parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes, ColorTexts) :-
 %! extend_symtab_with_builtins(+Symtab0, +Meta:dict, -Symtab) :-
 extend_symtab_with_builtins(Symtab0, Meta, Symtab) :-
     builtins_pairs(BuiltinsPairs),
-    builtins_symtab_extend(BuiltinsPairs, Meta.src_fqn, Symtab0, Symtab0a),
+    builtins_symtab_extend(BuiltinsPairs, Meta.src_fqn, Meta.builtins_module, Symtab0, Symtab0a),
     symtab_insert(Meta.src_fqn, Symtab0a, [module_type(module_alone(Meta.src_fqn,Meta.path))], Symtab).
 
 %! log_kythe_fact_msgs(-KytheFacts:list, +KytheFactsOut:list) is det.
@@ -1077,26 +1085,35 @@ nonredundant_pytype_fact(Symtab, Fact) :-
     ).
 nonredundant_pytype_fact(_Symtab, _Fact).
 
-%! builtins_symtab_extend(+FqnType:list(pair), +SrcFqn:atom, Symtab0:dict, +Symtab:dict) is det.
-%% Add the builtins to the symtab with the current  SrcFqn.
-builtins_symtab_extend([], _SrcFqn, Symtab, Symtab).
-builtins_symtab_extend([Name-Type|FqnTypes], SrcFqn, Symtab0, Symtab) :-
+%! builtins_symtab_extend(+FqnType:list(pair), +SrcFqn:atom, BuiltinsFqn, Symtab0:dict, +Symtab:dict) is det.
+%% Add the builtins to the symtab with the current SrcFqn.
+builtins_symtab_extend([], _SrcFqn, _BuiltinsFqn, Symtab, Symtab).
+builtins_symtab_extend([Name-Type|FqnTypes], SrcFqn, BuiltinsFqn, Symtab0, Symtab) :-
     join_fqn([SrcFqn, Name], NameExt),
-    maplist(wrap_import_ref(Name,NameExt), Type, WrappedType),
+    join_fqn([BuiltinsFqn, Name], BuiltinsName),
+    maplist(wrap_import_ref(Name,BuiltinsName), Type, WrappedType0),
+    normalize_type(WrappedType0, WrappedType),
     symtab_insert(NameExt, Symtab0, WrappedType, Symtab1),
-    builtins_symtab_extend(FqnTypes, SrcFqn, Symtab1, Symtab).
+    builtins_symtab_extend(FqnTypes, SrcFqn, BuiltinsFqn, Symtab1, Symtab).
 
 %! wrap_import_ref(+Name:atom, +Fqn:atom, +Type, -WrappedType) is det.
-wrap_import_ref(Name, _Fqn, import_ref_type(Name,Fqn,Type), import_ref_type(Name,Fqn,Type)) :- !.
-wrap_import_ref(Name, _Fqn, Type, import_ref_type(Name,TypeFqn,Type)) :-
-    single_type_fqn(Type, TypeFqn).
+wrap_import_ref(Name, Fqn, Type, import_ref_type(Name,Fqn,Type)).
 
 %! single_type_fqn(+Type, -Fqn:atom) is det.
+%% See also eval_atom_call_single//3, class_no_base/2, normalize_type2/2.
 single_type_fqn(class_type(Fqn,_), Fqn).
 single_type_fqn(module_type(Module), Fqn) :-
     full_module_part(Module, Fqn).
 single_type_fqn(function_type(Fqn,_,_), Fqn).
-single_type_fqn(import_ref_type(_,_,Type), Fqn) :- single_type_fqn(Type, Fqn).
+single_type_fqn(import_ref_type(_,Fqn,_Type), Fqn).
+
+%% See also single_type_fqn/2, eval_atom_call_single//3, normalize_type2/2.
+class_no_base(class_type(Class,_), Class) :- !.
+class_no_base(module_type(M0), M) :- !,
+    full_module_part(M0, M).
+class_no_base(import_ref_type(_Name, _Fqn, Type), TypeNoBase) :- !,
+    class_no_base(Type, TypeNoBase).
+class_no_base(X, X).
 
 %! valid_symtab(+Symtab) is det.
 validate_symtab(Symtab) :- %% TODO: remove this
@@ -1313,6 +1330,7 @@ simplify_meta(
          sha1: Sha1,
          src_fqn: _,
          pythonpath: _,
+         builtins_module: _,
          opts: _,
          version: _}) :-
     %% For debugging, might want to use contents_base64:"LS0t",
@@ -1382,12 +1400,19 @@ process_nodes_impl(Node, SrcInfo) -->>
     kyfile(SrcInfo),
     do_if_file(dump_term('NODE', Node)),
     %% TODO: return non-zero for parse failure?
+    %% TODO: limit the amount of backtrace? (process_nodes_impl dumps out base64 source text)
     (  { Node = 'ParseError'{context: Context, msg: Msg, type: Type, value: Value, srcpath: SrcPath} }
-    -> { log_if(true, 'ERROR: ~w (type=~w) value=~q context:~w file:~q', [Msg, Type, Value, Context, SrcPath]) }
+    -> { log_if(true, 'ERROR: ~w (type=~w) value=~q context:~w file:~q', [Msg, Type, Value, Context, SrcPath]) },
+       { throw(error(parse_error(Node), _)) },
+       { fail }
     ;  { Node = 'DecodeError'{encoding:Encoding, start:Start, end:End, reason:Reason, srcpath: SrcPath} }
-    -> { log_if(true, 'ERROR: bad input (decoding ~w): ~w start=~w end=~w file:~q', [Encoding, Reason, Start, End, SrcPath]) }
+    -> { log_if(true, 'ERROR: bad input (decoding ~w): ~w start=~w end=~w file:~q', [Encoding, Reason, Start, End, SrcPath]) },
+       { throw(error(decode_error(Node), _)) },
+       { fail }
     ;  { Node = 'Crash'{repr: Repr, str: Str, srcpath: SrcPath} }
-    -> { log_if(true, 'ERROR: crash: ~w repr:~w file:~q', [Str, Repr, SrcPath]) }
+    -> { log_if(true, 'ERROR: crash: ~w repr:~w file:~q', [Str, Repr, SrcPath]) },
+       { throw(error(crash(Node), _)) },
+       { fail }
     ;  kynode(Node, Expr),
        do_if_file(dump_term('NODE=>Expr', Expr))
     ).
@@ -1503,8 +1528,10 @@ kyfact_color(color{lineno:Lineno,
 kynode('AnnAssignStmt'{left_annotation: LeftAnnotation, expr: Right, left: Left},
        [stmt(annassign(Left, LeftAnnotation, Right))]) -->> !,
     %% Corresponds to `expr_stmt: testlist_star_expr annassign`.
-    expr_normalized(Right),
-    assign_normalized(Left, LeftAnnotation).
+    % TODO: combine this with 'TypedArgNode' and add test cases
+    % TODO: see also 'AssignExprStmt'
+    assign_normalized(Left, LeftAnnotation), % DO NOT SUBMIT -- should assign expr_normalized and set type to LeftAnnotation
+    assign_normalized(Left, Right).
 kynode('ArgumentNode'{name: NameAstn, arg: Arg},
        [todo_arg(Name, ArgType)]) -->> !,
     %% Corresponds to `argument: test '=' test`.  ast_raw creates
@@ -1574,6 +1601,7 @@ kynode('CompFor'{for_exprlist: ForExprlist,
        [todo_compfor(iter:CompIterType,
                      for:ForExprlistType,
                      in:InTestlistType)]) -->> !,
+    % DO NOT SUBMIT - see 'ForStmt' expansion
     kynode(ForExprlist, ForExprlistType),
     kynode(InTestlist, InTestlistType),
     kynode(CompIter, CompIterType).
@@ -1597,6 +1625,7 @@ kynode('DelStmt'{items: Items},
     maplist_kyfact_expr(expr_normalized, Items).
 kynode('DictGenListSetMakerCompFor'{value_expr: ValueExpr, comp_for: CompFor},
        [todo_dictgen(ValueExprType, CompForType)]) -->> !,
+    % DO NOT SUBMIT - see 'ForStmt' expansion
     kynode(ValueExpr, ValueExprType),
     kynode(CompFor, CompForType).
 kynode('DictKeyValue'{items: Items},
@@ -1605,6 +1634,7 @@ kynode('DictKeyValue'{items: Items},
 kynode('DictSetMakerNode'{items: Items},
        %% TODO: evaluate the items and create dictset_make of union of items' values' types
        [dictset_make(ItemsTypes)]) -->> !,
+    % DO NOT SUBMIT - see 'ForStmt' expansion
     maplist_kynode(Items, ItemsTypes).
 kynode('EllipsisNode'{},
        [ellipsis]) -->> !, [ ].
@@ -1636,9 +1666,14 @@ kynode('ForStmt'{for_exprlist: ForExprlist,
                  suite: Suite,
                  else_suite: ElseSuite},
        [stmt(for)]) -->> !,
-    kynode(ElseSuite, _),       % kynode(ElseSuite, [stmt(_)])
-    kynode(ForExprlist, _),
-    kynode(InTestlist, _),
+    % DO NOT SUBMIT - do similar for 'CompFor'
+    kynode('AssignExprStmt'{
+               expr:'AtomSubscriptNode'{atom: InTestlist,
+                                        binds: bool('False'),
+                                        subscripts: ['NumberIntNode'{}]},
+               left: ForExprlist},
+           _),
+    kynode(ElseSuite, _), % kynode(ElseSuite, [stmt(_)])
     kynode(Suite, _).
 kynode('Func'{fqn: Fqn,
               name: NameAstn,
@@ -1732,6 +1767,8 @@ kynode('NumberFloatNode'{astn: _Astn}, FloatType) -->> !,
     { builtins_symtab_primitive(float, FloatType) }.
 kynode('NumberIntNode'{astn: _Astn}, IntType) -->> !,
     { builtins_symtab_primitive(int, IntType) }.
+kynode('NumberIntNode'{}, IntType) -->> !,  % from ForStmt etc
+    { builtins_symtab_primitive(int, IntType) }.
 kynode('OmittedNode'{},
        [omitted]) -->> !, [ ].
 kynode('PassStmt'{},
@@ -1767,8 +1804,9 @@ kynode('TypedArgNode'{tname: 'TnameNode'{name: Name, type_expr: TypeExpr},
     %% TODO: is this correct? Need test cases with all variants
     %%       PROBABLY should be union of TypeExpr, Expr
     %%       but for now, just output [] (Any)
+    % TODO: see also 'AnnAssignStmt'
     assign_normalized(Name, TypeExpr),
-    expr_normalized(Expr).  %% assign_normalized(Name, Expr) would cause duplicate facts
+    assign_normalized(Name, Expr).  % Can cause duplicate facts, which are removed elsewhere
 kynode('WhileStmt'{else_suite: ElseSuite,
                    suite: Suite,
                    test: Test},
@@ -2266,7 +2304,6 @@ eval_assign_expr(assign(BindsLeft, Right)) -->> !,
     %%             => assign([var_binds('.home.peter.src.typeshed.stdlib.3.collections._S')], [call([var_ref('.home.peter.src.typeshed.stdlib.3.collections.TypeVar')],[['.home.peter.src.typeshed.stdlib.2and3.builtins.str']])])
     eval_union_type(Right, RightEval),
     eval_union_type(BindsLeft, BindsLeftEval),
-    log_if_file('ASSIGN(binds_left=~q=>~q, right=~q=>~q', [BindsLeft, BindsLeftEval, Right, RightEval]), % TODO: delete
     maplist_kyfact_symrej(eval_assign_single(RightEval, BindsLeft), BindsLeftEval).
 eval_assign_expr(expr(Right)) -->> !,
     eval_union_type(Right, _RightEval).
@@ -2491,19 +2528,21 @@ eval_single_type(var_binds_lookup(FqnScope, NameAstn), Type) -->> !,
     %% If there is a global binding, the non need for lookup.
     %% If there's no global binding, then there will be only var_ref_lookup's.
     resolve_unknown_fqn(FqnScope, NameAstn, ResolvedBindsFqn, Type),
-    log_if_file('VAR_BINDS_LOOKUP: ~q', [['FqnScope'=FqnScope, 'NameAstn'=NameAstn, 'ResolvedBindsFqn'=ResolvedBindsFqn, 'Type'=Type]]), % TODO: delete
     [ ResolvedBindsFqn-Type-_ ]:symrej,
+    % DO NOT SUBMIT -- need test case -- is it the same as VAR_REF_LOOKUP?
     (  { Type = [] }
     -> eval_single_type_import(NameAstn, ResolvedBindsFqn, '/kythe/edge/defines/binding', [])
     ;  maplist_kyfact_symrej(eval_single_type_import(NameAstn, ResolvedBindsFqn, '/kythe/edge/defines/binding'), Type)
     ).
 eval_single_type(var_ref_lookup(FqnScope, NameAstn), Type) -->> !,
-    resolve_unknown_fqn(FqnScope, NameAstn, ResolvedFqn, Type),
-    [ ResolvedFqn-Type-_ ]:symrej,
-    log_if_file('VAR_REF_LOOKUP: ~q', [['FqnScope'=FqnScope, 'NameAstn'=NameAstn, 'ResolvedFqn'=ResolvedFqn, 'Type'=Type]]), % TODO: delete
+    resolve_unknown_fqn(FqnScope, NameAstn, ResolvedRefFqn, Type),
+    % We know that there are no entries in symrej from kynode//2
+    % because if a name was resolved by the Python code, it wouldn't
+    % generate 'NameRefUnknown' (which creates var_ref_lookup).
+    [ ResolvedRefFqn-Type-_ ]:symrej,
     (  { Type = [] }
-    -> eval_single_type_import(NameAstn, ResolvedFqn, '/kythe/edge/ref', [])
-    ;  maplist_kyfact_symrej(eval_single_type_import(NameAstn, ResolvedFqn, '/kythe/edge/ref'), Type)
+    -> eval_single_type_import(NameAstn, ResolvedRefFqn, '/kythe/edge/ref', [])
+    ;  maplist_kyfact_symrej(eval_single_type_import(NameAstn, ResolvedRefFqn, '/kythe/edge/ref'), Type)
     ).
 eval_single_type(class_type(ClassName, Bases0), [class_type(ClassName, Bases)]) -->> !,
     maplist_kyfact_symrej(eval_union_type, Bases0, Bases1),
@@ -2523,11 +2562,11 @@ eval_single_type(dot_op(Atom, AttrAstn), EvalType) -->> !,
     %% TEST: bindings.py: @7579-7589<capitalize>
     %%                    @8700-8702<mx> (2nd mx)
     (  { AtomEval0 = [] }
-    -> %% Don't know what the atom is, so the best we can do is
-       %% 'object'.  But there's no need to special case 'object'
-       %% because it's in builtins (which is always imported), and
-       %% we'll also get other common types such as 'str' by looking
-       %% in there.
+    -> % Don't know what the atom is, so the best we can do is
+       % 'object'.  But there's no need to special case 'object'
+       % because it's in builtins (which is always imported), and
+       % we'll also get other common types such as 'str' by looking in
+       % there.
        { AttrAstn = astn(Start, End, AttrName) },
        %% TODO: special handling of super().__init__ (see test_data/c3_a.py)
        possible_classes_from_attr(AttrName, Classes),
@@ -2626,10 +2665,14 @@ eval_single_type(stmt(stmts), []) -->> !, [ ].
 eval_single_type(Expr, EvalType) -->> % TODO: delete this catch-all clause.
     { goal_failed(eval_single_type(Expr, EvalType)) }.
 
-eval_single_type_import(NameAstn, _ResolvedFqn, Edge, import_ref_type(_Name, ImportFqn, _Type)) -->> !, % Should always be true
-    kyanchor_node_kyedge_fqn(NameAstn, Edge, ImportFqn).
-eval_single_type_import(NameAstn, ResolvedFqn, Edge, _Type) -->>
+eval_single_type_import(NameAstn, _ResolvedFqn, Edge, import_ref_type(_Name, ImportFqn, _Type)) -->> !,
+    kyanchor_node_kyedge_fqn(NameAstn, Edge , ImportFqn).
+eval_single_type_import(NameAstn, _ResolvedFqn, Edge, class_type(ClassFqn, _)) -->> !,
+    kyanchor_node_kyedge_fqn(NameAstn, Edge, ClassFqn).
+eval_single_type_import(NameAstn, ResolvedFqn, Edge, []) -->> !,
     kyanchor_node_kyedge_fqn(NameAstn, Edge, ResolvedFqn).
+eval_single_type_import(NameAstn, ResolvedFqn, Edge, Type) -->> !,
+    { goal_failed(eval_single_type_import(NameAstn, ResolvedFqn, Edge, Type)) }.
 
 %! eval_atom_dot_single(+AttrAstn, +AtomSingleType:ordset, -EvalType:ordset)//[kyfact,symrej,file_meta] is det.
 %% Helper for single type-dot-attr.
@@ -2742,17 +2785,21 @@ maybe_resolve_mro_dot([MroBaseName|Mros], AttrAstn, EvalType) -->>
     ).
 
 %! eval_atom_call_single(+Args, +AtomSingleType, -EvalType:ordset)//[kyfact,symrej,file_meta] is det.
-%% Helper for single type-call.
+%% Helper for eval_single_type.
+%% See also single_type_fqn/2, class_no_base/2, normalize_type2/2.
 eval_atom_call_single(_Args, class_type(Fqn,Bases), EvalType) -->>  !,
     %% TODO: MRO for__init__ and output /kythe/edge/ref to it
     { EvalType = [class_type(Fqn,Bases)] }.
+eval_atom_call_single(Args, import_ref_type(_Name,_Fqn,Type), EvalType) -->> !,
+    eval_atom_call_single(Args, Type, EvalType).
 eval_atom_call_single(_Args, function_type(_,Params,Return), ReturnType) -->>  !,
     maplist_kyfact_symrej(eval_union_type, Params, _),
     eval_union_type(Return, ReturnType).
+%% TODO: look for a __call__ method
 eval_atom_call_single(_Args, _AtomSingleType, []) -->> [ ]. % Don't know how to call anything else.
 
 %! resolve_unknown_fqn(+FqnScope, +NameAstn, -ResolvedFqn, -Type)//[symrej,file_meta] is det.
-%% Do a "dynamic" lookup of a name, given its "scope" (see
+%% Dynamic lookup of a name, given its "scope" (see
 %% NameBindsGlobalUnknown in ast_cooked.py)
 resolve_unknown_fqn(FqnScope, NameAstn, ResolvedFqn, Type) -->>
     Meta/file_meta,
@@ -2770,7 +2817,7 @@ resolve_unknown_fqn(FqnScope, NameAstn, ResolvedFqn, Type) -->>
     ).
 
 %! clean_class(+ClassName:atom, +Bases:list, -BasesCleaned:list) is det.
-%% Remove cycles and [] ("Any)" types from a class' of base types.
+%% Remove cycles and [] ("Any)" types from a class' list of base types.
 clean_class(ClassName, Bases, BasesCleaned) :-
     maplist(maplist(normalize_base_class), Bases, Bases1),
     remove_class_cycles(Bases1, seen{}.put(ClassName, ''), Bases2),
@@ -2780,8 +2827,8 @@ clean_class(ClassName, Bases, BasesCleaned) :-
 normalize_base_class(import_ref_type(_Name,_Fqn,Type0), Type) :- !,
     normalize_base_class(Type0, Type).
 normalize_base_class(class_type(Fqn, Bases0), class_type(Fqn, Bases)) :- !,
-    %% TODO: the next step probably isn't needed because any
-    %%       included base classes should have already been cleaned:
+    % TODO: the next step probably isn't needed because any included
+    %       base classes should have already been cleaned:
     maplist(maplist(normalize_base_class), Bases0, Bases).
 %% ModuleType can occur if an invalid module path has been given.
 normalize_base_class(module_type(ModuleType), module_type(ModuleType)) :- !.
@@ -2835,9 +2882,13 @@ add_rej_to_symtab(Fqn-RejType, Symtab0, Symtab) :-
 %% FqnType = Key-Type-TypeSymtab.
 %% Tries to unify Key-Type with what's already in symtab; if that
 %% fails because it's not in the symtab, adds it to symtab; otherwise
-%% unions it with what's in symtab and adds it Rej. TypeSymtab is
+%% unions it with what's in symtab and adds it to Rej. TypeSymtab is
 %% unified with the result.
 %% See table of actions in the top-level documentation.
+%% (This means that the first time a symbol is added to the symtab, it
+%% doesn't go into Rej; but if a subsequent lookup gives additional
+%% type information, then it goes into Rej. This is a small
+%% optimization that can sometimes avoid one pass over the source.)
 %% Symtab0Rej0Mod0 and SymtabRejMod are sym_rej/2 functors.
 %% If Type is uninstantiated it gets set to []
 %% TODO: can we eliminate the "(Type=[]->true;true)" ?
@@ -2857,14 +2908,17 @@ symrej_accum(Fqn-Type-TypeSymtab, sym_rej(Symtab0,Rej0), sym_rej(Symtab,Rej)) :-
     ).
 
 %! symtab_lookup(+Fqn, ?Type)//[symrej] is semidet.
-%! symtab_lookup(-Fqn, ?Type)//[symrej] is nondet.
-%% Succeeds if FQN is in symtab With Type.
-%% Currently used only by resolve_unknown_fqn//5, but could be used to
-%% make symrej_accum/3 more logical (see comments there and
-%% eval_single_type//1).
+%% Succeeds if Fqn is in Symtab with Type.
+%% TODO: use this to make symrej_accum/3 more logical (see comments
+%%       there and eval_single_type//1).
 symtab_lookup(Fqn, Type) -->>
     sym_rej(Symtab,_)/symrej,
     { symtab_lookup(Fqn, Symtab, Type) }.
+
+%! symtab_scope_pairs(+FqnScope, -SymtabPairsScope) is det.
+symtab_scope_pairs(FqnScope, SymtabPairsScope) -->>
+    sym_rej(Symtab,_)/symrej,
+    { symtab_scope_pairs(FqnScope, Symtab, SymtabPairsScope) }.
 
 %! symrej_accum_found(+Fqn, +Type, +TypeSymtab, +Symtab0, -Symtab, +Rej0, -Rej).
 %% Helper for symrej_accum/3 for when Fqn is in Symtab with value
@@ -2930,13 +2984,6 @@ log_possible_classes_from_attr(BindsOrRef, astn(Start,End,AttrName), Classes) --
     log_kyfact_msg(astn(Start,End,AttrName),
                    '~w: guessed attribute classes/modules for \'~w\'', [Msg0, AttrName],
                    '~w: attr \'~w\' (~w) ~w possible modules/classes in ~q @~w-~w: ~q', [Msg0, AttrName, BindsOrRef, Len, Meta.path, Start, End, ClassesShow]).
-
-class_no_base(class_type(Class,_), Class) :- !.
-class_no_base(module_type(M0), M) :- !,
-    full_module_part(M0, M).
-class_no_base(import_ref_type(_Name, _Fqn, Type), TypeNoBase) :- !,
-    class_no_base(Type, TypeNoBase).
-class_no_base(X, X).
 
 %! log_kyfact_msg(+Astn, +FmtMessage, +ArgsMessage, +FmtDetails, +ArgsDetails)//[kyfact,file_meta] is det.
 %% Add a message to the kyfact accumulator. This is to ensure that
@@ -3006,6 +3053,7 @@ normalize_type(Type0, Type) :-
     list_to_ord_set(Type2, Type). % Probably not needed, but just in case
 
 %! normalize_type2(+Type, -NormalizedType) is det.
+%% See also class_no_base/2 etc.
 normalize_type2(Type0, Type) :-
     select(class_type(C, []), Type0, Type1),
     (  memberchk(class_type(C, _), Type1)
@@ -3090,6 +3138,8 @@ pykythe_portray(function_type(F,P,R)) :- !,
     format('function_type(~p, ~p, ~p)', [F, P, R]).
 pykythe_portray(class_type(F, R)) :- !,
     format('class_type(~p, ~p)', [F, R]).
+pykythe_portray(import_ref_type(N,F,T)) :- !,
+    format('import_ref_type(~p, ~p, ~p)', [N, F, T]).
 pykythe_portray(union(U)) :- !,
     format('union(~p)', [U]).
 pykythe_portray(astn(Start, End, String)) :- !,
@@ -3200,11 +3250,10 @@ maplist_kyfact_expr_([X|Xs], Pred, [Y|Ys]) -->>
     maplist_kyfact_expr_(Xs, Pred, Ys).
 
 trace_file(this_will_never_match).
-%% trace_file('/home/peter/src/typeshed/stdlib/3/collections/__init__.pyi'). % TODO: delete
-%% trace_file('/home/peter/src/pykythe/test_data/t6a.py'). % TODO: delete
-%% TODO: For debugging t4.pl node.children -- neeeds to understand _NL = Union[Node, Leaf]; cildren: List[_NL]
-%% trace_file('/home/peter/src/typeshed/stdlib/2and3/lib2to3/pytree.pyi'). % TODO: delete
-%% trace_file('/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/a10.py'). % TODO: delete
+% trace_file('/home/peter/src/typeshed/stdlib/3/collections/__init__.pyi'). % TODO: delete
+% TODO: For debugging t4.pl node.children -- neeeds to understand _NL = Union[Node, Leaf]; cildren: List[_NL]
+% trace_file('/home/peter/src/typeshed/stdlib/2and3/lib2to3/pytree.pyi'). % TODO: delete
+% trace_file('/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/a10.py'). % TODO: delete
 
 log_if_file(Fmt, Args) -->>
     Meta/file_meta,

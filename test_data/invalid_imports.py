@@ -1,31 +1,30 @@
 try:
-    # TODO: should this include "<unknown>"?
-    # TODO: should there be one or two "/"s?
+    # TODO: Fix extra "."s with "<unknown>"s (see module_path.pl)
     #- { @foo4 defines/binding _ }
-    #- { @foo4  ref/imports FOO4_imports1? } // vname("<unknown>/${ROOT_DIR}/test_data/imports_dir1/yyy/zot/foo4", _, _, "", python) } // DO NOT SUBMIT
-    #- { @zot   ref/imports ZOT_imports1? }  //  vname("<unknown>/${ROOT_DIR}/test_data/imports_dir1/yyy/zot",      _, _, "", python) } // DO NOT SUBMIT
-    #- { @yyy   ref/imports YYY_imports1? }  //  vname("<unknown>/${ROOT_DIR}/test_data/imports_dir1/yyy",          _, _, "", python) } // DO NOT SUBMIT
-    #- { @#1"." ref/imports DOT1_imports1? } // vname("<unknown>/${ROOT_DIR}/test_data/imports_dir1",              _, _, "", python) }  // DO NOT SUBMIT
-    #- { @#0"." ref/imports DOT0_imports1? } // vname("<unknown>/${ROOT_DIR}/test_data", _, _, "", python) }  // DO NOT SUBMIT
+    #- { @foo4  ref/imports vname("<unknown>.${ROOT_UP_FQN}.pykythe.yyy.zot.foo4", _, _, "", python) }
+    #- { @zot   ref/imports vname("<unknown>.${ROOT_UP_FQN}.pykythe.yyy.zot", _, _, "", python) }
+    #- { @yyy   ref/imports vname("<unknown>.${ROOT_UP_FQN}.pykythe.yyy", _, _, "", python) }
+    #- { @#1"." ref/imports vname("${ROOT_FQN}.test_data",  _, _, "", python) }
+    #- { @#0"." ref/imports vname("${ROOT_UP_FQN}.pykythe", _, _, "", python) }
     #- { @foo_bar5 defines/binding _ }
-    #- { @foo5     ref/imports FOO5_imports1? } //  vname("<unknown>/${ROOT_DIR}/test_data/imports_dir1/yyy/zot/foo5", _, _, "", python) } // DO NOT SUBMIT
-    #- // { @foo_bar5 ref/imports FOO_BAR5_imports1? // vname("<unknown>/${ROOT_DIR}/test_data/imports_dir1/yyy/zot/foo5", _, _, "", python) } // DO NOT SUBMIT
+    #- { @foo5  ref/imports vname("<unknown>.${ROOT_UP_FQN}.pykythe.yyy.zot.foo5", _, _, "", python) }
+    #- { @foo_bar5 ref/imports vname("<unknown>.{/${ROOT_UP_DIR}/pykythe/yyy/zot/foo5}", _, _, "", python) }
     from . . yyy .zot import foo4, foo5 as foo_bar5
 except ModuleNotFoundError as exc:
     assert exc.msg == "No module named 'pykythe.test_data.imports_dir1.yyy'", [exc]
 
 try:
-    #- { @abc  ref/imports ABC_imports2? } // vname("<unknown>/qqsv/zot/abc", _, _, "", python) } // DO NOT SUBMIT
-    #- { @zot  ref/imports ZOT_imports2? } // vname("<unknown>/qqsv/zot",     _, _, "", python) } // DO NOT SUBMIT
-    #- { @qqsv ref/imports QQSV_imports2? } //  vname("<unknown>/qqsv",         _, _, "", python) } // DO NOT SUBMIT
+    #- { @abc  ref/imports vname("<unknown>.$PYTHONPATH.qqsv.zot.abc", _, _, "", python) }
+    #- { @zot  ref/imports vname("<unknown>.$PYTHONPATH.qqsv.zot",     _, _, "", python) }
+    #- { @qqsv ref/imports vname("<unknown>.$PYTHONPATH.qqsv",         _, _, "", python) }
     from qqsv.zot import abc
 except ModuleNotFoundError as exc:
     assert exc.msg == "No module named 'qqsv'", [exc]
 
 try:
-    #- { @abc ref/imports ABC_imports3? } // vname("<unknown>/xyz/zot/abc", _, _, "", python) } // DO NOT SUBMIT
-    #- { @zot ref/imports ZOT_imports3? } // vname("<unknown>/xyz/zot",     _, _, "", python) } // DO NOT SUBMIT
-    #- { @xyz ref/imports XYZ_imports3? } //  vname("<unknown>/xyz",         _, _, "", python) } // DO NOT SUBMIT
+    #- { @abc ref/imports vname("<unknown>.$PYTHONPATH.xyz.zot.abc", _, _, "", python) }
+    #- { @zot ref/imports vname("<unknown>.$PYTHONPATH.xyz.zot",     _, _, "", python) }
+    #- { @xyz ref/imports vname("<unknown>.$PYTHONPATH.xyz",         _, _, "", python) }
     import xyz.zot.abc
 except ModuleNotFoundError as exc:
     assert exc.msg == "No module named 'xyz'", [exc]
@@ -35,15 +34,13 @@ try:
     foo4
 
     #- @foo4 ref Foo4
-    #- { @x ref Foo4X? } // =vname("<unknown>.{${ROOT_DIR}/test_data/imports_dir1/yyy/zot/foo4}.x", _, _, "", python) }
+    #- { @x ref vname("<unknown>.{/${ROOT_UP_DIR}/pykythe/yyy/zot/foo4}.x", _, _, "", python) }
     foo4.x
 
     fff = foo4
 
-    #- { @x ref Foo4X_2? }
+    #- { @x ref vname("<unknown>.{/${ROOT_UP_DIR}/pykythe/yyy/zot/foo4}.x", _, _, "", python) }
     fff.x
 
 except NameError:
     pass  # name 'foo4' is not defined
-
-# TODO: add some simple tests of the imports (e.g. foo4.bar, foo_bar5.bar)

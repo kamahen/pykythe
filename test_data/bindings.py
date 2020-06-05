@@ -3,7 +3,9 @@
 # See comment in py3_test_grammar.py about the "{...}"s.
 
 # TODO: These only test Python 3; need similar tests for Python2
-# (e.g., list comprehensions "leak" in PYthon2)
+#       (e.g., list comprehensions "leak" in Python2)
+#       However, Python2 is EOL, so this is lower priority than getting
+#       new syntax in Python3.8+ working
 
 #- { Pkg=vname("${ROOT_FQN}.test_data.bindings", "CORPUS", "ROOT", "", python).node/kind package }
 #- { File=vname("", "CORPUS", "ROOT", "${ROOT_DIR}/test_data/bindings.py", "").node/kind file }
@@ -13,14 +15,27 @@
 
 
 def false():
-    """Always returns False.
-
-    Used to defeat pykythe's if-then-else evaluations.
-    """
+    """Always returns False - used to defeat pykythe's if-then-else evaluations."""
     return False
 
 
+#- // TODO: Something like the following can be used to extract
+#- //       anchors from the source. The output in bindings.kythe.verifier:
+#- //         CC_anchor: "@1449:1451<CC>"
+#- //         CC_path: "tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/bindings.py"
+#- //         CC_start: "1449"
+#- //         CC_end: "1451"
+#- //       can be post-processed to do more interesting tests than
+#- //       what the Kythe verifier can do.
+#- { @CC=vname(CC_anchor?,"CORPUS","ROOT",CC_path?="${ROOT_DIR}/test_data/bindings.py","python").node/kind anchor }
+#- { @CC.loc/start CC_start? }
+#- { @CC.loc/end CC_end? }
+#- // No longer @CC childof File - it's implied
 class CC: pass
+
+
+def make_CC() -> CC:
+    return CC()
 
 
 def testLhsTrailer():
@@ -39,11 +54,14 @@ def testLhsTrailer():
     e[i] = CC()
     #- { @xx defines/binding vname("${ROOT_FQN}.test_data.bindings.CC.xx", _, _, "", python) }
     e[i].xx = 'xyz'
-    #- { @capitalize ref vname("${BUILTINS_FQN}.builtins.str.capitalize", _, _, "", python) }
-    e[i].xx.capitalize()
+    #- { @encode ref vname("${BUILTINS_FQN}.builtins.str.encode", _, _, "", python) }
+    e[i].xx.encode()
 
     cond = False
-    # TODO: add tests for '.', f(i).x = ...
+
+    #- { @encode ref vname("${BUILTINS_FQN}.builtins.str.encode", _, _, "", python) }
+    make_CC().xx.encode()
+
     if cond:  # Test forward global ref
         #- @testDictFor ref TestDictFor
         testDictFor()
@@ -189,7 +207,7 @@ def testNonLocal():
 
 def testAnnAssign():
     #- { @ee defines/binding TestAnnAssignEe }
-    #- { @int ref Int? } // DO NOT SUBMIT: "${ROOT_FQN}.test_data.bindings.int" =>should be "${BUILTINS_FQN}.builtins.int"
+    #- { @int ref Int=vname("${BUILTINS_FQN}.builtins.int", _, _, "", python) }
     ee: int = 0
 
     #- @ee ref TestAnnAssignEe
@@ -199,42 +217,64 @@ def testAnnAssign():
     #- { @int ref Int }
     ee2: int
 
-    #- { @str ref STR_0? }  // DO NOT SUBMIT
-    #- { @zz1 defines/binding ZZ1? }  // DO NOT SUBMIT
-    #- { ZZ1./pykythe/type ZZ1_TYPE? }  // DO NOT SUBMIT - type entry is another file
+    #- { @str ref vname("${BUILTINS_FQN}.builtins.str", _, _, "", python) }
+    #- { @zz1 defines/binding ZZ1=vname("${ROOT_FQN}.test_data.bindings.testAnnAssign.<local>.zz1", _, _, "", python) }
+    #- { ZZ1./pykythe/type "[class_type('${BUILTINS_FQN}.builtins.str',[])]" }
     zz1 = str()
-    #- { @capitalize ref vname("${BUILTINS_FQN}.builtins.str.capitalize", _, _, "", python) }
+    #- { @zz1 ref ZZ1 }
+    #-  { @capitalize ref vname("${BUILTINS_FQN}.builtins.str.capitalize", _, _, "", python) }
+    #- !{ @capitalize ref vname("${BUILTINS_FQN}.builtins.bytearray.capitalize", _, _, "", python) }
     zz1.capitalize()
 
+    #- { @capitalize ref vname("${BUILTINS_FQN}.builtins.str.capitalize", _, _, "", python) }
+    'abc'.capitalize
+
+    #- { @capitalize ref vname("${BUILTINS_FQN}.builtins.bytes.capitalize", _, _, "", python) }
+    b'abc'.capitalize
+
     #- { @int ref vname("${BUILTINS_FQN}.builtins.int", _, _, "", python) }
-    #- { @zz2 defines/binding ZZ2? }  // DO NOT SUBMIT
-    #- { ZZ2./pykythe/type ZZ2_TYPE? }   // DO NOT SUBMIT - gets "[]"????
-    zz2 = int()
+    #- { @bit_length ref vname("${BUILTINS_FQN}.builtins.int.bit_length", _, _, "", python) }
+    zz2 = int().bit_length()
 
     #- @ee2 ref TestAnnAssignEe2
     print(ee2)
 
-    # TODO: ee3  # type: int
-    # TODO: ee4 = 0  # type: int
+    # TODO: maybe type comments aren't needed because Python2 is EOL?
+    #   TODO: ee3  # type: int
+    #   TODO: ee4 = 0  # type: int
 
 
 # TODO: This is only a partial test; make a new test that is more
 #       thorough, in a separate file
 class C:
     def __init__(self):
+        #- { @f1 defines/binding C_f1=vname("${ROOT_FQN}.test_data.bindings.C.f1", _, _, "", python) }
         self.f1 = [{'a': 1, 'b': 2}, {'c': 3}]
+
+    #- { @m0 defines/binding C_m0 }
+    def m0(self):
+        #- !{ @f1 tagged _ } // not guessed
+        #- { @f1 ref C_f1 }
+        return self.f1
 
 class D(C):
     def __init__(self):
         super().__init__()
         self.f2 = 1
 
+    def m0a(self):
+        #- !{ @m0 tagged _ } // not guessed
+        #- { @m0 ref C_m0 }
+        return self.m0()
+
     #- { @m1 defines/binding D_m1 }
-    def m1(self):
+    def m1(self) -> int:
+        #- !{ @f1 tagged _ } // not guessed
+        #- { @f1 ref C_f1 }
         return self.f1
 
     #- { @mx defines/binding D_mx }
-    def mx(self):
+    def mx(self) -> D:
         return self
 
 class E:
@@ -250,10 +290,15 @@ def testTrailers():
     #- { @m1 ref D_m1 }
     d.m1()
     #- { @#0mx ref D_mx }  // because d is class D
-    #- // { @#1mx ref D_mx }  // because class D is only one with attr 'mx' DO NOT SUBMIT
-    #- // { @m1 ref D_m1 } // ditto DO NOT SUBMIT
+    #- { @#1mx ref D_mx }  // because class D is only one with attr 'mx'
+    #- { @m1 ref D_m1 } // ditto
     d.mx().mx().m1()
+
+    #- { @f1 ref C_f1 }
     d.f1[0]['a']
+    #- { @#0f1 ref C_f1 }
+    #- { @#0f1 tagged _Diagnostic_e_f1 }
+    #- { @#1f1 tagged _Diagnostic_e_f2 }
     e.f1.f1
 
 
@@ -291,3 +336,20 @@ def test_global_import():
     #- { @foo_sep2 defines/binding G_foo_sep2 }
     #- { @foo_sep2 ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
     import os.path.sep as foo_sep2
+
+    #- // TODO: should the following be 'ref' or 'defines/binding'?
+    #- { @foo_sep3 ref G_foo_sep3=vname("${ROOT_FQN}.test_data.bindings.foo_sep3", _, _, "", python) }
+    global foo_sep3
+    #- { @foo_sep3 defines/binding G_foo_sep3 }
+    #- { @foo_sep3 ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
+    import os.path.sep as foo_sep3
+
+
+#- { @foo_sep ref G_foo_sep }
+print(foo_sep)
+
+# - do not define or reference foo_sep2 here
+
+#- { @foo_sep3 defines/binding G_foo_sep3 }
+foo_sep3 = 'qqsv'
+

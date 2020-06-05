@@ -49,6 +49,14 @@ ROOT_FQN = ROOT_DIR.replace('/', '.')
 ROOT_FQN_PAT = '${ROOT_FQN}'  # followed by nothing or '.'
 ROOT_FQN_REPL = '.' + ROOT_FQN
 
+ROOT_UP_DIR = os.path.abspath(os.path.join(TO_DIR, '..', '..'))[1:]
+ROOT_UP_DIR_PAT = '${ROOT_UP_DIR}'  # followed by nothing or '/'
+ROOT_UP_DIR_REPL = ROOT_UP_DIR
+
+ROOT_UP_FQN = ROOT_UP_DIR.replace('/', '.')
+ROOT_UP_FQN_PAT = '${ROOT_UP_FQN}'  # followed by nothing or '.'
+ROOT_UP_FQN_REPL = '.' + ROOT_UP_FQN
+
 TYPESHED_DIR = os.path.abspath(TYPESHED_DIR)[1:]
 TYPESHED_DIR_PAT = '${TYPESHED_DIR}'  # followed by nothing or '/'
 TYPESHED_DIR_REPL = TYPESHED_DIR
@@ -79,6 +87,8 @@ def cp_file(path_in, path_out):
     with open(path_in, 'r') as file_in:
         contents = file_in.read()
     contents = contents.replace(VERSION_PAT, VERSION_REPL)
+    contents = contents.replace(ROOT_UP_DIR_PAT, ROOT_UP_DIR_REPL)
+    contents = contents.replace(ROOT_UP_FQN_PAT, ROOT_UP_FQN_REPL)
     contents = contents.replace(ROOT_DIR_PAT, ROOT_DIR_REPL)
     contents = contents.replace(ROOT_FQN_PAT, ROOT_FQN_REPL)
     contents = contents.replace(TYPESHED_DIR_PAT, TYPESHED_DIR_REPL)

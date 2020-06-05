@@ -4,8 +4,9 @@
 #- { X_1./pykythe/type X_1_type? } // "[class_type('${BUILTINS_FQN}.builtins.bytes',[])]" } // DO NOT SUBMIT
 x = b"def"
 
-#- { @capitalize ref vname("${BUILTINS_FQN}.builtins.bytes.capitalize", _, _, "", python) }
-x.capitalize()
+#- { @decode ref vname("${BUILTINS_FQN}.builtins.bytes.decode", _, _, "", python) }
+#- // DO NOT SUBMIT - ensure the result isn't "guessed"
+x.decode()
 
 
 class SomeClass:
@@ -19,7 +20,7 @@ def printx(*values: object, sep: Text = ..., end: Text = ..., file: Optional[_Wr
 #- // { PRINT./pykythe/type PRINT_type? } // type is in another file
 print('foo')
 
-#- { @None ref vname("${BUILTINS_FQN}.builtins.NoneType", _, _, "", python) }
+#- { @None ref vname("${BUILTINS_FQN}.builtins.None", _, _, "", python) }
 #- // { NONE_0./pykythe/type NONE_0_type? }  // type is in another file
 #- { @none defines/binding NONE_1? }
 #- { NONE_1./pykythe/type NONE_1_type? }  // type is in another file

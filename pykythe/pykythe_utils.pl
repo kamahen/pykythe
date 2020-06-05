@@ -104,8 +104,8 @@
 
 validate_prolog_version :-
     current_prolog_flag(version, PrologVersion),
-    %% Sync this with README.md:
-    must_once_msg(PrologVersion >= 80128, 'SWI-Prolog version is too old').
+    %% Sync this with README.md and demo.sh:
+    must_once_msg(PrologVersion >= 80300, 'SWI-Prolog version is too old').
 
 %! absolute_file_name_rel(+File, -Absolute) is det.
 %% For now, this is the same as absolute_file_name/2.

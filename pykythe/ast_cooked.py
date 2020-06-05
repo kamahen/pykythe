@@ -603,7 +603,7 @@ class ClassDefStmt(Base):
     name: Union['NameBindsNode', 'NameBindsGlobalNode']
     bases: Sequence[Base]
     suite: Base
-    scope_bindings: Mapping[str, None]
+    scope_bindings: Mapping[str, None]  # Set[str] (OrderedSet[str])
     __slots__ = ['name', 'bases', 'suite', 'scope_bindings']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
@@ -643,7 +643,7 @@ class CompForNode(Base):
     for_exprlist: Base
     in_testlist: Base
     comp_iter: Base
-    scope_bindings: Mapping[str, None]
+    scope_bindings: Mapping[str, None]  # Set[str] (OrderedSet[str])
     __slots__ = ['for_astn', 'for_exprlist', 'in_testlist', 'comp_iter', 'scope_bindings']
 
     def scope_ctx(self, ctx: FqnCtx) -> FqnCtx:
@@ -899,7 +899,7 @@ class FileInput(Base):
 
     path: str
     stmts: Sequence[Base]
-    scope_bindings: Mapping[str, None]
+    scope_bindings: Mapping[str, None]  # Set[str] (OrderedSet[str])
     __slots__ = ['path', 'stmts', 'scope_bindings']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
@@ -980,7 +980,7 @@ class FuncDefStmt(Base):
     parameters: Sequence[Base]
     return_type: Base
     suite: Base
-    scope_bindings: Mapping[str, None]
+    scope_bindings: Mapping[str, None]  # Set[str] (OrderedSet[str])
     __slots__ = ['name', 'parameters', 'return_type', 'suite', 'scope_bindings']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:

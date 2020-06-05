@@ -1,16 +1,21 @@
 # TODO: delete this (much of it is from other files, for debugging)
 
-#- { @int ref INT? } // TODO: should be '${BUILTINS_FQN}.builtins.int', not '${ROOT_FQN}.test_data.t0.int'
-#- { @str ref STR? } // TODO: (as above)
+#- { @int ref vname("${BUILTINS_FQN}.builtins.int", _, _, "", python) }
+#- { @str ref vname("${BUILTINS_FQN}.builtins.str", _, _, "", python) }
 foo(int, str)
 
 aaa = AAA()
 
-aaa.bbb.ccc.ddd = 999  # TODO: what should this generate (AAA is undefined)?
+#- { @bbb tagged _ }
+#- { @ccc tagged _ }
+#- // { @ddd tagged _ } // TODO: should this also get a diagnostic? - currently it gets nothing (not even an anchor)
+#- //    src_browser query (assuming debug flavour of signatures):
+#- //       Path='tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t0.py', V=vname(Sig, Corpus,Root,Path,Lang), src_browser:kythe_node(V, '/kythe/node/kind', anchor), atom_concat(_, '<ddd>', Sig).
+aaa.bbb.ccc.ddd = 999
 xxx = 1
 yyy = [2,3]
 yyy[44] = 55
-#- { @True ref TRUE? }  // TODO: should be builtins
+#- { @True ref vname("${BUILTINS_FQN}.builtins.True", _, _, "", python) }
 zzz = True
 
 xxx = 'abc'
@@ -34,12 +39,13 @@ else:
 
 #- { @Sized ref Sized }
 #- { @xxrange defines/binding Xxrange }
-#- { Xxrange./pykythe/type XXRANGE_type? } // TODO: this gets ${TYPESHED_FQN}.3.typing.Sized instead of ${TYPESHED_FQN}.typeshed.3.typing.Sized
+#- { Xxrange./pykythe/type "[class_type('${ROOT_FQN}.test_data.t0.xxrange',[])]" }
 class xxrange(Sized): pass
 
 #- { @sep defines/binding SEP }
 from os.path import sep
 
+#- { @os defines/binding OS }
 #- { @os ref/imports vname("${TYPESHED_FQN}.stdlib.3.os", _, _, "", python) }
 import os
 
@@ -49,17 +55,18 @@ pow(1, 2)
 
 #- { @print ref PRINT=vname("${BUILTINS_FQN}.builtins.print", _, _, "", python) }
 #- // { PRINT./pykythe/type PRINT_type? } // "[function_type('${BUILTINS_FQN}.builtins.print',[[],[],[],[],[]],[])]" } // TODO: should show keywords  // info is in another file
-#- { @os ref OS? }
+#- { @os ref OS }
 #- { @path ref vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
 #- { @sep ref vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
-#- // { OS_PATH_SEP./pykythe/type SEP_type? } // TODO
-#- { @strip ref OS_PATH_SEP_STRIP? } // TODO: should be str.strip, not object.strip
-#- // { @capitalize ref OS_PATH_SEP_STRIP_CAPITALIZE? } // TODO
-print(os.path.sep.strip().capitalize())
+#- // { OS_PATH_SEP./pykythe/type SEP_type? } // TODO - in other file
+#- { @strip ref vname("${BUILTINS_FQN}.builtins.bytearray.strip", _, _, "", python) }
+#- { @encode ref OS_PATH_SEP_STRIP_ENCODE? } // DO NOT SUBMIT - see also os_path_sep1.py
+print(os.path.sep.strip().encode())
 
 #- { @print ref PRINT }
 #- { @sep ref SEP }
-#- { SEP./pykythe/type SEP_type? } // TODO -- doesn't deref enough
+#- // { SEP./pykythe/type SEP_type? } // TODO -- in other file
 #- { @strip ref SEP_STRIP? }
-#- // { @capitalize ref SEP_STRIP_CAPITALIZE? }  // TODO
-print(sep.strip().capitalize())
+#- // { @encode ref SEP_STRIP_ENCODE? }  // TODO
+#- // DO NOT SUBMIT - ensure the result isn't "guessed" - see also os_path_sep1.py
+print(sep.strip().encode())

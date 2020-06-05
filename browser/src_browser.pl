@@ -244,29 +244,47 @@ read_and_assert_kythe_facts :-
                 optimise(true),
                 imports([kythe_node/7,
                          kythe_edge/11])]),
+    index_kythe_facts,
     forall(retract(kythe_node(Signature, Corpus,Root,Path,Language, '/pykythe/color', ColorTermStr)),
            assert_color_items(Signature, Corpus,Root,Path,Language, ColorTermStr)),
     thread_create(validate_kythe_facts, _, [detached(true)]).
 
 assert_color_items(Signature, Corpus,Root,Path,Language, ColorTermStr) :-
     term_string(ColorTerm, ColorTermStr),
-    dict_pairs(ColorTerm, color, ColorPairs),
+    dict_pairs(ColorTerm, color, ColorPairs0),
+    adjust_color(Corpus,Root,Path,Language, ColorPairs0, ColorPairs),
     %% TODO: There are more color items than anything else -- need to
     %%       use a more compact representation, especially as there is
     %%       no need for lookup on most of the fields.
     maplist(assert_color_item(Signature, Corpus,Root,Path,Language), ColorPairs).
+
+adjust_color(Corpus,Root,Path,Language, ColorPairs0, ColorPairs) :-
+    % NOTE: assumes that kythe_node/7 facts have already been asserted
+    % [column-0,end-3,lineno-1,start-0,token_color-'<VAR_BINDING>',value-loc]
+    (  select(token_color-'<PUNCTUATION>', ColorPairs0, ColorPairs1),
+       memberchk(start-Start, ColorPairs1),
+       memberchk(end-End, ColorPairs1),
+       AnchorPunctuation = vname(_, Corpus,Root,Path,Language),
+       AnchorSemantic = vname(_, Corpus,Root,Path,Language),
+       kythe_node(AnchorPunctuation, '/kythe/loc/start', Start),
+       kythe_node(AnchorPunctuation, '/kythe/loc/end', End),
+       ( kythe_node(AnchorSemantic, '/kythe/node/kind', 'anchor')
+       ; kythe_edge(AnchorSemantic, '/kythe/edge/tagged', _)
+       )
+    -> ColorPairs = [token_color-'<PUNCTUATION_REF>'|ColorPairs1]
+    ;  ColorPairs = ColorPairs0
+    ).
 
 assert_color_item(Signature, Corpus,Root,Path,Language, Key-Value) :-
     %% Key: lineno, column, start, end, token_color, value
     atomic_list_concat(['/pykythe/color/', Key], FactName),
     assertz(kythe_node(Signature, Corpus,Root,Path,Language, FactName, Value)).
 
-%% validate_kythe_facts/0 takes a bit of time because it builds the
+%% index_kythe_facts/0 takes a bit of time because it builds the
 %% JIT indexes; if you run it a second time, it's fast. (The indexes
 %% are used elsewhere, so no harm.)
 %% e.g.: Building the JIT indexes takes 8-10 seconds, validation takes 10 seconds
-validate_kythe_facts :-
-    statistics(cputime, T0),
+index_kythe_facts :-
     %% Without the call to index_pred (kythe_edge/11, kythe_edge/3 had no change):
     %%   Predicate                                     Indexed  Buckets Speedup Flags
     %%   ============================================================================
@@ -294,6 +312,10 @@ validate_kythe_facts :-
     statistics(cputime, T1),
     garbage_collect,
     show_jiti,
+    debug(log, 'JIT index done.', []).
+
+validate_kythe_facts :-
+    statistics(cputime, T0),
     must_fail(orphan_semantic(_AnchorVname, _SemanticVname, _Edge)),
     %% Ensure that every token anchor has an associated color anchor
     %% (the inverse isn't true).
@@ -301,13 +323,17 @@ validate_kythe_facts :-
            must_once( ground(kythe_node(Vname, Name, Value)) )),
     forall(kythe_edge(V1, Edge, V2),
            must_once( ground(kythe_edge(V1, Edge, V2)) )),
-    forall(kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
+    forall(( kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
+             Anchor=(_,Corpus,Root,Path,Language),
+             ColorAnchor=(_,Corpus,Root,Path,Language)
+           ),
            must_once(( kythe_node(Anchor, '/kythe/loc/start', Start),
                        kythe_node(Anchor, '/kythe/loc/end', End),
                        kythe_node(ColorAnchor, '/pykythe/color/start', Start),
                        kythe_node(ColorAnchor, '/pykythe/color/end', End),
-                       ( anchor_semantic(Anchor, _Semantic)
-                       ; kythe_edge(Anchor, '/kythe/edge/tagged', _) ) ))),
+                       semantic_or_tagged(Anchor)
+                     ))
+          ),
     forall(kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
            must_once( anchor_to_lineno(Anchor, _LineNo) )),
     forall(kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
@@ -324,11 +350,15 @@ validate_kythe_facts :-
     %% if we can't resolve an attr to a single item (ast_raw.py at line 267: "ch0.type")
     %%   validate_anchor_link_anchor,
     statistics(cputime, T2),
-    Tjiti is T1 - T0,
-    Tvalid is T2 - T1,
-    Ttotal is T2 - T0,
-    debug(log, 'Validation done: ~3f sec (JIT index: ~3f sec) (total: ~3f sec)', [Tvalid, Tjiti, Ttotal]),
-    debug(log, '\nServer started: to stop, enter ctrl-D or "halt." (including the ".")', []).
+    Tvalid is T2 - T0,
+    debug(log, 'Validation done: ~3f sec)', [Tvalid]),
+    debug(log, '',[]),
+    debug(log, 'Server started: to stop, enter ctrl-D or "halt." (including the ".")', []).
+
+semantic_or_tagged(Anchor) :-
+    anchor_semantic(Anchor, _Semantic).
+semantic_or_tagged(Anchor) :-
+    kythe_edge(Anchor, '/kythe/edge/tagged', _).
 
 index_pred(Goal) :-
     statistics(cputime, T0),
@@ -609,10 +639,14 @@ anchor_semantic_json(AnchorVname, SemanticJson) :-
 
 
 %% For testing check/0:  DO NOT SUBMIT
-do_not_submit(AnchorVname, SemanticJsonSet) :-
+do_not_submit0(AnchorVname, SemanticJsonSet) :-
     setof_or_empty(SemanticJson, Semantic^( anchor_semantic(AnchorVname, Semantic),
                                             link_to_dict(Semantic, SemanticJson) ),
                    SemanticJsonSet).
+do_not_submit1(AnchorVname, SemanticJsonSet) :-
+    setof(SemanticJson, Semantic^( anchor_semantic(AnchorVname, Semantic),
+                                   link_to_dict(Semantic, SemanticJson) ),
+          SemanticJsonSet).
 
 do_not_submit2(SemanticJsonSet) :-
     setof_or_empty(SemanticJson, Semantic^link_to_dict(Semantic, SemanticJson),
@@ -839,7 +873,7 @@ most_edges :-
     pykythe_utils:at_most(L, 20, L0),
     forall(member(A, L0), format('~q~n', [A])).
 
-:- meta_predicate setof_or_empty(-, 0, -).
+:- meta_predicate setof_or_empty(?, 0, ?).
 setof_or_empty(Template, Goal, Set) :-
     (   setof(Template, Goal, Set)
     *-> true

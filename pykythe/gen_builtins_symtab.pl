@@ -14,10 +14,9 @@
 %% TODO: compute fixed-point of builtins.
 
 %% TODO:
-%% This needs some "manual" adjustment.
+%% This needs some "manual" adjustment (see also builtins_extra.pyi).
 %%   True, False are missing ("keywords" in Python 3, but not in Grammar.txt
 %%               nor in builtins.pyi
-%%   None is wrong (it gets defined implicitly from builtins.pyi)
 %% Extra and missing, depending on Python version
 %% -- see https://github.com/python/typeshed/issues/2727
 %%    and https://github.com/python/typeshed/issues/2726
@@ -39,7 +38,9 @@
 :- use_module(pykythe_symtab).
 
 :- load_files([bootstrap_builtins_symtab], [silent(true), % TODO: should be a module
-                                            imports([builtins_symtab_primitive/2])]).
+                                            imports([builtins_symtab_primitive/2,
+                                                     builtins_module/1 % TODO: needed?
+                                                     ])]).
 
 :- initialization(gen_builtins_symtab_main, main).
 
@@ -90,8 +91,9 @@ gen_builtins_symtab_main :-
     list_to_symtab(BuiltinsPairs, BuiltinsSymtab),
     conv_symtab(is_module, Symtab, SymtabModules),
     log_if(true, 'Package: ~q', [Package]),
-    write_atomic_stream(gen_builtins_symtab:write_symtab_fact(
-                            Opts, Symtab, BuiltinsSymtab, BuiltinsPairs, SymtabModules),
+    builtins_module(BuiltinsModule),
+    write_atomic_stream(write_symtab_fact(
+                            Opts, BuiltinsModule, Symtab, BuiltinsSymtab, BuiltinsPairs, SymtabModules),
                         SymtabOutputPath),
     log_if(true, 'Finished gen_builtins_symtab'),
     halt.
@@ -117,8 +119,9 @@ strip_sym(PackageDot, Sym-Type, SymStripped-Type) :-
 is_module(Sym-Type, Sym-Type) :-
     memberchk(module_type(_), Type).
 
-write_symtab_fact(Opts, Symtab, BuiltinsSymtab, BuiltinsPairs, SymtabModules, Stream) :-
+write_symtab_fact(Opts, BuiltinsModule, Symtab, BuiltinsSymtab, BuiltinsPairs, SymtabModules, Stream) :-
     format(Stream, '~k.~n', [builtins_version(Opts.version)]),
+    format(Stream, '~k.~n', [builtins_module(BuiltinsModule)]), % TODO: needed?
     format(Stream, '~k.~n', [builtins_symtab(Symtab)]),
     format(Stream, '~k.~n', [builtins_pairs(BuiltinsPairs)]),
     format(Stream, '~k.~n', [builtins_symtab_modules(SymtabModules)]),
@@ -136,6 +139,7 @@ write_symtab_fact(Opts, Symtab, BuiltinsSymtab, BuiltinsPairs, SymtabModules, St
           forall(member(K-V, BuiltinsPairs), % TODO: delete
                  format('BUILTIN ~q: ~q~n', [K, V]))),
     %% TODO: 'None', 'NoneType', bool, bytes, function
+    %% TODO: Dict, Map, etc.
     forall((builtins_symtab_primitive(Primitive, _Type),
             symtab_lookup(Primitive, BuiltinsSymtab, Builtin)),
            format(Stream, '~k.~n', [builtins_symtab_primitive(Primitive, Builtin)])).
@@ -186,14 +190,9 @@ is_object_type(ObjectType, [ObjectType]) :- !.
 %% TODO: 'ellipsis' seems a bit strange (see below) ... it doesn't
 %%       appear as a builtin name, but <class 'ellipsis'> exists.
 
-%% TODO: 'None': ${TYPESHED_FQN}.stdlib.2.types.NoneType
-%%               (and what about Python 3, which doesn't have the 'types' module,
-%%               except typeshed does have stdlib/3/types.pyi
-%%               See also https://github.com/python/typeshed/issues/2
-%%       (Currently, 'None' is defined as an object, which isn't quite right
-%%       -- it should be NoneType (which has __bool__ in addition to the methods
-%%          that 'object' provides), but that's not defined anywhere.
-
+% TODO: Some of these are wrong (e.g., None should be NoneType)
+%       But right now aren't used anyway.
+:- if(false).
 missing('None', [[fqn_type('${TYPESHED_FQN}.stdlib.2and3.builtins.object')]]).
 missing('False', [[fqn_type('${TYPESHED_FQN}.stdlib.2and3.builtins.bool')]]).
 missing('True',  [[fqn_type('${TYPESHED_FQN}.stdlib.2and3.builtins.bool')]]).
@@ -205,6 +204,7 @@ missing('__loader__', []). % TODO: Function
 missing('__name__',  [[fqn_type('${TYPESHED_FQN}.stdlib.2and3.builtins.str')]]).
 missing('__package__', [[fqn_type('${TYPESHED_FQN}.stdlib.2and3.builtins.str')]]).
 missing('__spec__', []). % TODO: <class '_frozen_importlib.ModuleSpec'>
+:- endif.
 
 extra('ellipsis').  % TODO: this was generated manually
 

@@ -121,7 +121,7 @@ class Ctx(pod.PlainOldData):
     """
 
     name_ctx: NameCtx
-    scope_bindings: Dict[str, None]
+    scope_bindings: Dict[str, None]  # Set[str] (OrderedSet[str])
     global_vars: Dict[str, None]
     nonlocal_vars: Dict[str, None]
     python_version: int

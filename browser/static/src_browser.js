@@ -73,6 +73,7 @@ const token_css_color_class = {  // See src_browser.css
     '<NEWLINE>':            'python_newline', // for completeness
     '<NUMBER>':             'python_number',
     '<PUNCTUATION>':        'python_punctuation',
+    '<PUNCTUATION_REF>':    'python_punctuation_ref',
     '<STRING>':             'python_string',
     '<VAR_BINDING>':        'python_var_binding',
     '<VAR_BINDING_GLOBAL>': 'python_binding_global',
@@ -80,8 +81,8 @@ const token_css_color_class = {  // See src_browser.css
     '<WHITESPACE>':         'python_whitespace', // for completeness
 };
 
-// Map the ast_color.Color.token_color enumeration to whether it's
-// a colorable item (a "token") or not.
+// Map the ast_color.Color.token_color enumeration to whether it's a
+// a "token" or not - a "token" can have a link (hover) on it.
 const is_token_name = {
     '<ARG_KEYWORD>':        false, // TODO: multiple keyword colors?
     '<ATTR_BINDING>':       true,
@@ -92,6 +93,7 @@ const is_token_name = {
     '<NEWLINE>':            false,
     '<NUMBER>':             false,
     '<PUNCTUATION>':        false,
+    '<PUNCTUATION_REF>':    true,
     '<STRING>':             false,
     '<VAR_BINDING>':        true,
     '<VAR_BINDING_GLOBAL>': true,
@@ -363,8 +365,6 @@ function clickAnchor(target, source_item) {
 function setXref(source_item, signature, data) {
     // expected out-edges for anchor: defines, defines/binding, ref, ref/call
 
-    const origin_path = location.origin + location.pathname + '?';
-
     document.getElementById('xref').innerHTML = 'Getting Kythe links for ' + source_item.combinedFilePath() + ' anchor:' + signature + ' ...';
     var table = document.createElement('table');
     table.setAttribute('class', 'src_table');  // DO NOT SUBMIT - should we have a new CSS class for this?
@@ -407,7 +407,7 @@ function setXref(source_item, signature, data) {
                 //                 but from a query
                 const xref_title = sanitizeText('xref-title'); // DO NOT SUBMIT - addd semantic signature
                 lineno_span.title = xref_title;
-                const href = origin_path +
+                const href = location.origin + location.pathname +
                       '?corpus=' + link_line.corpus +
                       '&root=' + link_line.corpus +
                       '&path=' + link_line.path +

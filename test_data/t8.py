@@ -10,9 +10,10 @@ from pykythe.test_data.imports_dir1.i1_sub.i4 import III as III
 
 #- { @foo ref FOO? }
 #- { @__repr__ ref FOO_REPR? }
-#- { @capitalize ref FOO_CAPITALIZE? }
+#- { @encode ref FOO_ENCODE? }
 #- { FOO./pykythe/type _FOO_TYPE }
-x = foo.__repr__.capitalize()
+#- // DO NOT SUBMIT - ensure the result isn't "guessed"
+x = foo.__repr__.encode()
 
 
 # #- { @#0pykythe defines/binding vname("${ROOT_FQN}.test_data.t8.pykythe", _, _, "", python) }

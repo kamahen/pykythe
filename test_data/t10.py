@@ -37,8 +37,8 @@ print(c.x)
 c2 = C()
 c2.x = 156
 
-#- { @pow ref POW? }
-#- // { POW./pykythe/type POW_type? } // TODO: ".tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.t10.pow"./pykythe/type is set ... should it be?
+#- { @pow ref _POW=vname("${BUILTINS_FQN}.builtins.pow", _, _, "", python) }
+#- // { _POW./pykythe/type POW_type? } // TODO
 pow(1, 2)
 
 a = 'a' if ee else 'b'
@@ -46,18 +46,19 @@ a = 'a' if ee else 'b'
 b = [x for x in ee if x.isprintable()]
 
 
-#- { @printx ref/imports PRINTX_imports? }
+#- { @printx defines/binding PRINTX_var=vname("${ROOT_FQN}.test_data.t10.printx", _, _, "", python) }
+#- { @printx ref/imports vname("${ROOT_FQN}.test_data.t9.printx", _, _, "", python) }
 from .t9 import printx
 
-#- { @printx ref PRINTX_var? }
-#- { PRINTX_var./pykythe/type PRINTX_type? }
-#- { @foo defines/binding FOO? }
-#- { FOO./pykythe/type FOO_type? }
+#- { @printx ref PRINTX_var }
+#- { PRINTX_var./pykythe/type _PRINTX_var_type="[function_type('${ROOT_FQN}.test_data.t9.printx',[[],[],[],[],[]],[import_ref_type('None','${BUILTINS_FQN}.builtins.None',import_ref_type('None','${BUILTINS_FQN}.builtins.None',class_type('${BUILTINS_FQN}.builtins.NoneType',[])))])]" }
+#- { @foo defines/binding FOO }
+#- { FOO./pykythe/type _PRINTX_var_type_? }  // TODO: should be _PRINTX_var_type
 foo = printx
 
 
 from .t9 import SomeClass
 
-#- { @some_class defines/binding SOME_CLASS? }
-#- { SOME_CLASS./pykythe/type SOME_CLASS_type? }
+#- { @some_class defines/binding SOME_CLASS }
+#- { SOME_CLASS./pykythe/type "[class_type('${ROOT_FQN}.test_data.t9.SomeClass',[])]" }
 some_class = SomeClass
