@@ -29,6 +29,7 @@ raiseExceptions: bool
 logThreads: bool
 logMultiprocessing: bool
 logProcesses: bool
+_srcfile: Optional[str]
 
 def currentframe() -> FrameType: ...
 
@@ -82,6 +83,16 @@ class Logger(Filterer):
         def log(self, level: int, msg: Any, *args: Any, exc_info: _ExcInfoType = ...,
                 stack_info: bool = ..., stacklevel: int = ..., extra: Optional[Dict[str, Any]] = ...,
                 **kwargs: Any) -> None: ...
+        def _log(
+            self,
+            level: int,
+            msg: Any,
+            args: _ArgsType,
+            exc_info: Optional[_ExcInfoType] = ...,
+            extra: Optional[Dict[str, Any]] = ...,
+            stack_info: bool = ...,
+            stacklevel: int = ...,
+        ) -> None: ...  # undocumented
     elif sys.version_info >= (3,):
         def debug(self, msg: Any, *args: Any, exc_info: _ExcInfoType = ...,
                   stack_info: bool = ..., extra: Optional[Dict[str, Any]] = ...,
@@ -108,6 +119,15 @@ class Logger(Filterer):
         def exception(self, msg: Any, *args: Any, exc_info: _ExcInfoType = ...,
                       stack_info: bool = ..., extra: Optional[Dict[str, Any]] = ...,
                       **kwargs: Any) -> None: ...
+        def _log(
+            self,
+            level: int,
+            msg: Any,
+            args: _ArgsType,
+            exc_info: Optional[_ExcInfoType] = ...,
+            extra: Optional[Dict[str, Any]] = ...,
+            stack_info: bool = ...,
+        ) -> None: ...  # undocumented
     else:
         def debug(self,
                   msg: Any, *args: Any, exc_info: _ExcInfoType = ...,
@@ -132,6 +152,14 @@ class Logger(Filterer):
         def exception(self,
                       msg: Any, *args: Any, exc_info: _ExcInfoType = ...,
                       extra: Optional[Dict[str, Any]] = ..., **kwargs: Any) -> None: ...
+        def _log(
+            self,
+            level: int,
+            msg: Any,
+            args: _ArgsType,
+            exc_info: Optional[_ExcInfoType] = ...,
+            extra: Optional[Dict[str, Any]] = ...,
+        ) -> None: ...  # undocumented
     def addFilter(self, filt: _FilterType) -> None: ...
     def removeFilter(self, filt: _FilterType) -> None: ...
     def filter(self, record: LogRecord) -> bool: ...
@@ -350,7 +378,16 @@ class LoggerAdapter:
         def getEffectiveLevel(self) -> int: ...
         def setLevel(self, lvl: Union[int, str]) -> None: ...
         def hasHandlers(self) -> bool: ...
-
+    if sys.version_info >= (3, 6):
+        def _log(
+            self,
+            level: int,
+            msg: Any,
+            args: _ArgsType,
+            exc_info: Optional[_ExcInfoType] = ...,
+            extra: Optional[Dict[str, Any]] = ...,
+            stack_info: bool = ...,
+        ) -> None: ...  # undocumented
 
 if sys.version_info >= (3,):
     def getLogger(name: Optional[str] = ...) -> Logger: ...
