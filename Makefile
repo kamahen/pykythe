@@ -661,6 +661,7 @@ push_to_github:
 	-cd $(TESTGITHUB)/pykythe && git difftool --no-prompt --tool=tkdiff
 	@echo '# pushd $(TESTGITHUB)/pykythe && git commit -mCOMMIT-MSG' -a
 	@echo '# pushd $(TESTGITHUB)/pykythe && git push -u origin master'
+	@echo '# pushd $(TESTGITHUB)/pykythe && git push --tag'
 
 FORCE:
 .PHONY: FORCE
