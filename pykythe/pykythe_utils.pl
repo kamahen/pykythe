@@ -37,13 +37,13 @@
                           safe_hard_link_file_dup_ok/2,
                           split_atom/4,
                           term_to_canonical_atom/2,
-                          %% update_dict/3,
+                          % update_dict/3,
                           validate_prolog_version/0,
                           write_atomic_file/2,
                           write_atomic_stream/2
                          ]).
 :- encoding(utf8).
-%% :- set_prolog_flag(autoload, false).  % TODO: seems to break plunit, qsave
+% :- set_prolog_flag(autoload, false).  % TODO: seems to break plunit, qsave
 
 :- meta_predicate
        do_if(0, 0),
@@ -81,40 +81,40 @@
 :- style_check(+var_branches).
 :- style_check(+no_effect).
 :- style_check(+discontiguous).
-%% :- set_prolog_flag(generate_debug_info, false).
+% :- set_prolog_flag(generate_debug_info, false).
 
 
 :- if(true).  % Turning off rdet can sometimes make debugging easier.
 
 :- maplist(rdet, [
-                  %% base64_string/2, % handled by must_once
-                  %% do_if/2,    % rdet wrap interferes with meta_predicate declaration
-                  %% log_if/2,   % rdet wrap interferes with meta_predicate declaration
-                  %% log_if/3,   % rdet wrap interferes with meta_predicate declaration
+                  % base64_string/2, % handled by must_once
+                  % do_if/2,    % rdet wrap interferes with meta_predicate declaration
+                  % log_if/2,   % rdet wrap interferes with meta_predicate declaration
+                  % log_if/3,   % rdet wrap interferes with meta_predicate declaration
                   hash_hex/2,
                   json_read_dict_validate/3,
                   print_term_cleaned/3,
                   remove_suffix_star/3,
                   split_atom/4,
                   term_to_canonical_atom/2
-                  %% write_atomic_stream/2, % rdet wrap interferes with meta_predicate declaration
-                  %% write_atomic_file/2    % rdet wrap interferes with meta_predicate declaration
+                  % write_atomic_stream/2, % rdet wrap interferes with meta_predicate declaration
+                  % write_atomic_file/2    % rdet wrap interferes with meta_predicate declaration
                  ]).
 :- endif.
 
 validate_prolog_version :-
     current_prolog_flag(version, PrologVersion),
-    %% Sync this with README.md and demo.sh:
+    % Sync this with README.md and demo.sh:
     must_once_msg(PrologVersion >= 80300, 'SWI-Prolog version is too old').
 
 %! absolute_file_name_rel(+File, -Absolute) is det.
-%% For now, this is the same as absolute_file_name/2.
-%% However, it is intended that this should look up the corpus root
-%% and remove the prefix (e.g., "/").
-%% TODO: Kythe prefers to have paths without leading "/"; the code
-%%       should use (corpus,root,path) for file names and create a
-%%       filesystem name from a lookup of (corpus,root) to filesystem prefix.
-%% TODO: https://github.com/kamahen/pykythe/issues/24
+% For now, this is the same as absolute_file_name/2.  However, it is
+% intended that this should look up the corpus root and remove the
+% prefix (e.g., "/").
+% TODO: Kythe prefers to have paths without leading "/"; the code
+%       should use (corpus,root,path) for file names and create a
+%       filesystem name from a lookup of (corpus,root) to filesystem prefix.
+% TODO: https://github.com/kamahen/pykythe/issues/24
 absolute_file_name_rel(File, Absolute) :-
     absolute_file_name(File, Absolute0),
     Absolute = Absolute0.  % atom_concat('/', Absolute, Absolute0).
@@ -123,8 +123,8 @@ absolute_file_name_rel(File, Absolute, Options) :-
     Absolute = Absolute0.  % atom_concat('/', Absolute, Absolute0).
 
 %! absolute_dir(+Path0:atom, -AbsPath:atom) is det.
-%%  Apply absolute_file_name_rel to Path0, giving AbsPath, ensuring it's a
-%%  directory and appending '/' to the name.
+%  Apply absolute_file_name_rel to Path0, giving AbsPath, ensuring it's a
+%  directory and appending '/' to the name.
 absolute_dir(/, /) :- !. % Special case for root dir, which otherwise would become '//'
 absolute_dir(Path0, AbsPath) :-
     remove_suffix_star(Path0, '/', Path),
@@ -132,7 +132,7 @@ absolute_dir(Path0, AbsPath) :-
     atomic_list_concat([AbsPath0, '/'], AbsPath).
 
 %! do_if(:Cond, :Pred) is det.
-%% A handy meta-predicate for turning debug stuff on/off, according to Cond
+% A handy meta-predicate for turning debug stuff on/off, according to Cond
 do_if(Cond, Pred) :-
     (  call(Cond)
     -> call(Pred)
@@ -140,15 +140,15 @@ do_if(Cond, Pred) :-
     ).
 
 %! dump_term(+Msg:atom, +Term) is det.
-%% TODO: delete this debugging code
+% TODO: delete this debugging code
 dump_term(Msg, Term) :-
     dump_term(Msg, Term, [tab_width(0),
                           indent_arguments(2),
                           right_margin(120)]).
 
 %! dump_term(+Msg:atom, +Term, +Options:list) is det.
-%% TODO: use debug/3, etc. instead (also print_message/2).
-%% TODO: Delete this debugging code
+% TODO: use debug/3, etc. instead (also print_message/2).
+% TODO: Delete this debugging code
 dump_term(Msg, Term, Options) :-
     must_once(dump_term_impl(Msg, Term, Options)).
 
@@ -166,16 +166,16 @@ dump_term_impl(Msg, Term, Options) :-
     ).
 
 %! ensure_dict_fact(+Dict, +Attr, ?Value) is semidet.
-%% Die with an error message if Dict.Attr != Value
-%% (Can also be used to get Dict.Attr into Value).
+% Die with an error message if Dict.Attr != Value
+% (Can also be used to get Dict.Attr into Value).
 ensure_dict_fact(Dict, Attr, Value) :-
     must_once_msg(get_dict(Attr, Dict, Value),
                   'Invalid JSON, expecting ~q=~q in ~q',
                   [Attr, Value, Dict]).
 
 %! ensure_dict_fact_base64_ascii(+Dict, +Attr, ?Value) is semidet.
-%% Die with an error message if base64_ascii(Dict.Attr) != Value
-%% (Can also be used to get Dict.Attr into Value).
+% Die with an error message if base64_ascii(Dict.Attr) != Value
+% (Can also be used to get Dict.Attr into Value).
 ensure_dict_fact_base64_ascii(Dict, Attr, Value) :-
     must_once(get_dict(Attr, Dict, Value64)),
     must_once_msg(base64_ascii(Value, Value64),
@@ -183,8 +183,8 @@ ensure_dict_fact_base64_ascii(Dict, Attr, Value) :-
                   [Attr, Value, Dict]).
 
 %! ensure_dict_fact_base64_utf8(+Dict, +Attr, ?Value) is semidet.
-%% Die with an error message if base64_utf8(Dict.Attr) != Value
-%% (Can also be used to get Dict.Attr into Value).
+% Die with an error message if base64_utf8(Dict.Attr) != Value
+% (Can also be used to get Dict.Attr into Value).
 ensure_dict_fact_base64_utf8(Dict, Attr, Value) :-
     must_once(get_dict(Attr, Dict, Value64)),
     must_once_msg(base64_utf8(Value, Value64),
@@ -198,33 +198,33 @@ get_dict_default(Key, Dict, Default, Value) :-
     ).
 
 %! hash_hex(+Text, -Hex) is det.
-%% ?- hash_hex('SWI-Prolog', Hex).
-%% Hex = '3d80fc267945e555c730403bd0ab0716e2a68c68'.
-%% Can take either a string or an atom for 1st arg.
-%% Defaults to using SHA-1, which is what git uses.
-%% However, SHA-224 or SHA-384 ought to be used:
-%%          https://www.schneier.com/blog/archives/2018/12/md5_and_sha-1_s.html
-%% (SHA-1 is 20 digits (40 chars),  SHA-224 is 28 digits, SHA-384 is 48 digits.
-%% TODO: incorporate the encoding in this? (Note that
-%%       Python's hashlib.sha1 requires bytes, not text.)
+% ?- hash_hex('SWI-Prolog', Hex).
+% Hex = '3d80fc267945e555c730403bd0ab0716e2a68c68'.
+% Can take either a string or an atom for 1st arg.
+% Defaults to using SHA-1, which is what git uses.
+% However, SHA-224 or SHA-384 ought to be used:
+%          https://www.schneier.com/blog/archives/2018/12/md5_and_sha-1_s.html
+% (SHA-1 is 20 digits (40 chars),  SHA-224 is 28 digits, SHA-384 is 48 digits.
+% TODO: incorporate the encoding in this? (Note that
+%       Python's hashlib.sha1 requires bytes, not text.)
 hash_hex(Text, Hex) :-
     sha_hash(Text, Hash, []),   % Default option is algorithm(sha1)
     hash_atom(Hash, Hex).
 
 %! json_read_dict_validate(+KytheInputStream, +FactName, -Dict) is det.
-%% Read a JSON "term" from KytheInputStream, verify that fact_name
-%% is FactName and unify the entire term with Dict) - throws an error
-%% if validation fails.
+% Read a JSON "term" from KytheInputStream, verify that fact_name is
+% FactName and unify the entire term with Dict) - throws an error if
+% validation fails.
 json_read_dict_validate(KytheInputStream, FactName, Dict) :-
     pykythe_json_read_dict(KytheInputStream, Dict),
     ensure_dict_fact(Dict, fact_name, FactName).
 
 %! pykythe_json_write_dict_nl(+KytheStream:stream, +JsonAsDict:json_dict) is det.
-%% Output a single Kythe fact.
+% Output a single Kythe fact.
 pykythe_json_write_dict_nl(KytheStream, JsonAsDict) :-
-    %% The tags are ignored unless option tag(type) is specified
-    %% (which it isn't). All dicts should have the tag 'json', for
-    %% simplicity.
+    % The tags are ignored unless option tag(type) is specified
+    % (which it isn't). All dicts should have the tag 'json', for
+    % simplicity.
     json_write_dict(KytheStream, JsonAsDict,
                     [width(0),true(#(true)),false(#(false)),null(#(null))]),
     nl(KytheStream).
@@ -241,9 +241,9 @@ log_if(Cond, Fmt, Args) :-
     ).
 
 %! maybe_open_read(+Path, -InputStream) is semidet.
-%% Open Path for read or fail.
+% Open Path for read or fail.
 maybe_open_read(Path, InputStream) :-
-    %% Wrapper for debugging
+    % Wrapper for debugging
     (  maybe_open_read_impl(Path, InputStream)
     -> log_if(false, 'OPENed ~q', [Path])
     ;  log_if(false, 'OPEN-failed ~q', [Path]),
@@ -256,25 +256,25 @@ maybe_open_read_impl(Path, InputStream) :-
           fail).
 
 %! maybe_file_sha1(+SrcPath, -SrcSha1Hex) is semidet.
-%% Fails if file doesn't exist
+% Fails if file doesn't exist
 maybe_file_sha1(SrcPath, SrcSha1Hex) :-
     read_file_to_string(SrcPath, SrcText, [file_errors(fail)]),
     hash_hex(SrcText, SrcSha1Hex).
 
 %! pykythe_json_read_dict(+Stream, -Dict) is det.
-%% Wrapper on library(http/json, [json_read_dict/2]) that sets the
-%% dict tags to 'json' (json_read_dict/2 leaves the tag as an
-%% uninstantiated variable).  And gets strings as atoms. And
-%% handles true/false.
+% Wrapper on library(http/json, [json_read_dict/2]) that sets the
+% dict tags to 'json' (json_read_dict/2 leaves the tag as an
+% uninstantiated variable).  And gets strings as atoms. And
+% handles true/false.
 pykythe_json_read_dict(Stream, Dict) :-
     json_read_dict(Stream, Dict,
                    [value_string_as(atom), end_of_file(@(end)), default_tag(json),
                     true(#(true)),false(#(false)),null(#(null))]).
 
 %! print_term_cleaned(+Term, +Options, -TermStr) is det.
-%% print_term, cleaned up
+% print_term, cleaned up
 print_term_cleaned(Term, Options, TermStr) :-
-    %% print_term leaves trailing whitespace, so remove it
+    % print_term leaves trailing whitespace, so remove it
     with_output_to(
             string(TermStr0),
             (current_output(TermStream),
@@ -282,7 +282,7 @@ print_term_cleaned(Term, Options, TermStr) :-
     re_replace(" *\n"/g, "\n", TermStr0, TermStr).
 
 %! remove_suffix_star(+Full:atom, +Suffix:atom, -NoSuffix:atom) is det.
-%% Repeatedly removes suffix if present.
+% Repeatedly removes suffix if present.
 remove_suffix_star(Full, Suffix, NoSuffix) :-
     (  remove_suffix(Full, Suffix, NoSuffix0)
     -> remove_suffix_star(NoSuffix0, Suffix, NoSuffix)
@@ -290,25 +290,25 @@ remove_suffix_star(Full, Suffix, NoSuffix) :-
     ).
 
 %! safe_delete_file(?Path) is det.
-%% delete file, catching any errors.
+% delete file, catching any errors.
 safe_delete_file(Path) :-
-    %% The most common error is: error(existence_error(file, Path), _)
-    %% but other errors are possible, such as
-    %% error(instantiation_error, _).
+    % The most common error is: error(existence_error(file, Path), _)
+    % but other errors are possible, such as
+    % error(instantiation_error, _).
     catch(delete_file(Path), _Error, true).
 
 safe_hard_link_file(OldPath, NewPath) :-
-    %% TODO: DO NOT SUBMIT - there's a race condition here; need
-    %%       to retry if error thrown from link_file/3
+    % TODO: DO NOT SUBMIT - there's a race condition here; need
+    %       to retry if error thrown from link_file/3
     safe_delete_file(NewPath),
     link_file(OldPath, NewPath, hard).
 
-%% There is a possible race condition between deleting the NewPath and
-%% creating the hard link. This predicate assumes that whoever created
-%% the NewPath would have made it the same as the old one.
-%% TODO: compare OldPath, NewPath (which could also end up with
-%%       another race condition if a 3rd process was trying to
-%%       create the same output file).
+% There is a possible race condition between deleting the NewPath and
+% creating the hard link. This predicate assumes that whoever created
+% the NewPath would have made it the same as the old one.
+% TODO: compare OldPath, NewPath (which could also end up with
+%       another race condition if a 3rd process was trying to
+%       create the same output file).
 safe_hard_link_file_dup_ok(OldPath, NewPath) :-
     safe_delete_file(NewPath),
     catch(link_file(OldPath, NewPath, hard),
@@ -316,7 +316,7 @@ safe_hard_link_file_dup_ok(OldPath, NewPath) :-
           true).
 
 %! split_atom(+Atom:atom, +SepChars:atom, +PadChars:atom, -SubAtoms:list(atom)) is det.
-%% Like split_string, but result is a list of atoms.
+% Like split_string, but result is a list of atoms.
 split_atom(Atom, SepChars, PadChars, SubAtoms) :-
     split_string(Atom, SepChars, PadChars, SubStrings),
     maplist([S,A]>>atom_string(A,S), SubStrings, SubAtoms).
@@ -328,61 +328,61 @@ maybe_absolute_dir(Path0, AbsPath) :-
     ).
 
 %! term_canonical_atom(+Term, -Atom) is det.
-%% Like term_to_atom/2 if Term is instantiated, but generates
-%% an atom in canonical form (no operators).
+% Like term_to_atom/2 if Term is instantiated, but generates
+% an atom in canonical form (no operators).
 term_to_canonical_atom(Term, Atom) :-
     format(atom(Atom), '~k', [Term]).
 
 %! pykythe_tmp_file_stream(+Dir, -FileName, -Stream, +Options) is det.
-%% Like tmp_file_stream/3, but allows specifying a directory rather
-%% than using TMPDIR or similar. Also creates Dir if needed.
+% Like tmp_file_stream/3, but allows specifying a directory rather
+% than using TMPDIR or similar. Also creates Dir if needed.
 pykythe_tmp_file_stream(Dir, FileName, Stream, Options) :-
     make_directory_path(Dir),
-    %% {set,current}_prolog_flag is copied to a thread, so
-    %% no need to use a mutex.
+    % {set,current}_prolog_flag is copied to a thread, so
+    % no need to use a mutex.
     current_prolog_flag(tmp_dir, SaveTmpDir),
     set_prolog_flag(tmp_dir, Dir),
     tmp_file_stream(FileName, Stream, Options),
     set_prolog_flag(tmp_dir, SaveTmpDir).
 
 %! write_atomic_stream(:WritePred, +Path:atom) is semidet.
-%% Write to a file "atomically" -- that is, if another process is
-%% trying to write to the same file, there will be no collision (it is
-%% undetermined which process will "win"; presumably they both are
-%% trying to write the same content). If `WritePred` fails, the file
-%% isn't created (even if `WritePred` fails and write_atomic/2 fails.
-%% If needed, directories to Path are created.
-%% WritePred must take the stream as its last argument.
-%% TODO: contribute this as a SWI-Prolog package.
+% Write to a file "atomically" -- that is, if another process is
+% trying to write to the same file, there will be no collision (it is
+% undetermined which process will "win"; presumably they both are
+% trying to write the same content). If `WritePred` fails, the file
+% isn't created (even if `WritePred` fails and write_atomic/2 fails.
+% If needed, directories to Path are created.
+% WritePred must take the stream as its last argument.
+% TODO: contribute this as a SWI-Prolog package.
 write_atomic_stream(WritePred, Path) :-
-    %% TODO: See '$stage_file' in /usr/lib/swi-prolog/boot/init.pl
-    %%       and setup_call_catcher_cleanup
-    %% TODO: the tmpfile/rename trick doesn't work if the tmp file is
-    %% on a different file system. Is there a way of detecting this?
-    %% Might need to pass in an opt ... but the ideal would be to
-    %% create the tmp file with a "unique" suffix.  SWI-Prolog uses
-    %% this to create a unique name:
-    %%    Ssnprintf(temp, sizeof(temp), "%s/swipl_%s%s%d_%d%s%s",
-    %%        tmpdir, id, sep, (int) getpid(),
-    %%        MTOK_temp_counter++,
-    %%        esep, ext)
-    %% Note: current_prolog_flag(pid, Pid).
-    %%       gensym(+Base, -Unique)
-    %% so ... current_prolog_flag(pid, Pid),
-    %%        format(atom(TmpFileName0), '/foo/bar-~d-', [Pid]),
-    %%        gensym(TmpFileName0, TmpFileName).
-    %% cf: Python's tempfile.mkstemp()
-    %% Also: tmp_file and friends put entries into GD->os.tmp_files
-    %% (see swipl-devel/src/os/pl-os.c), and that doesn't happen if
-    %% we roll our own.
+    % TODO: See '$stage_file' in /usr/lib/swi-prolog/boot/init.pl
+    %       and setup_call_catcher_cleanup
+    % TODO: the tmpfile/rename trick doesn't work if the tmp file is
+    % on a different file system. Is there a way of detecting this?
+    % Might need to pass in an opt ... but the ideal would be to
+    % create the tmp file with a "unique" suffix.  SWI-Prolog uses
+    % this to create a unique name:
+    %    Ssnprintf(temp, sizeof(temp), "%s/swipl_%s%s%d_%d%s%s",
+    %        tmpdir, id, sep, (int) getpid(),
+    %        MTOK_temp_counter++,
+    %        esep, ext)
+    % Note: current_prolog_flag(pid, Pid).
+    %       gensym(+Base, -Unique)
+    % so ... current_prolog_flag(pid, Pid),
+    %        format(atom(TmpFileName0), '/foo/bar-~d-', [Pid]),
+    %        gensym(TmpFileName0, TmpFileName).
+    % cf: Python's tempfile.mkstemp()
+    % Also: tmp_file and friends put entries into GD->os.tmp_files
+    % (see swipl-devel/src/os/pl-os.c), and that doesn't happen if
+    % we roll our own.
     directory_file_path(PathDir, _, Path),
     pykythe_tmp_file_stream(PathDir, TmpPath, Stream, [encoding(utf8)]), % implies open [type(binary)]
-    %% TODO: instead of at_halt/1, use setup_call_cleanup/3
+    % TODO: instead of at_halt/1, use setup_call_cleanup/3
     at_halt(pykythe_utils:safe_delete_file(TmpPath)), % in case WritePred crashes or fails
     (  call(WritePred, Stream)
-    -> %% atomically rename file -- this prevents a race condition if
-       %% two pykythe processes are processing the same file at the
-       %% same time.
+    -> % atomically rename file -- this prevents a race condition if
+       % two pykythe processes are processing the same file at the
+       % same time.
        rename_file(TmpPath, Path),
        close(Stream)
     ;  close(Stream),
@@ -391,13 +391,13 @@ write_atomic_stream(WritePred, Path) :-
     ).
 
 %! write_atomic_file(+WritePred, +Path) is semidet.
-%% Similar to write_atomic_stream, except it passes a path to Pred
-%% instead of a stream.
-%% WritePred must take the stream as its last argument.
+% Similar to write_atomic_stream, except it passes a path to Pred
+% instead of a stream.
+% WritePred must take the stream as its last argument.
 write_atomic_file(WritePred, Path) :-
     directory_file_path(PathDir, _, Path),
     pykythe_tmp_file_stream(PathDir, TmpPath, Stream, [encoding(utf8)]), % implies open [type(binary)]
-    %% TODO: instead of setting up at_halt, use setup_call_cleanup/3
+    % TODO: instead of setting up at_halt, use setup_call_cleanup/3
     at_halt(pykythe_utils:safe_delete_file(TmpPath)), % in case WritePred crashes or fails
     (  call(WritePred, TmpPath)
     -> rename_file(TmpPath, Path),
@@ -409,10 +409,10 @@ write_atomic_file(WritePred, Path) :-
 
 %! remove_suffix(+Atom, +Suffix, -FirstPart) is semidet.
 remove_suffix(Atom, Suffix, FirstPart) :-
-    %% TODO: compare with:
-    %%       sub_atom(Atom, Before, _, 0, Suffix),
-    %%       Before0 is Before - 1,
-    %%       sub_atom(Atom, 0, Before0, _, FirstPart)
+    % TODO: compare with:
+    %       sub_atom(Atom, Before, _, 0, Suffix),
+    %       Before0 is Before - 1,
+    %       sub_atom(Atom, 0, Before0, _, FirstPart)
     atom_concat(FirstPart, Suffix, Atom).
 
 %! remove_prefix(+Atom, +Prefix, -SecondPart) is semidet.
@@ -426,15 +426,15 @@ has_suffix(Atom, Suffix) :-
 has_prefix(Atom, Prefix) :-
     sub_atom(Atom, 0, _, _, Prefix).
 
-%% Tests for atom_utf8_bytes are in pykythe.pl
+% Tests for atom_utf8_bytes are in pykythe.pl
 
 %! base64_utf8(+Atom, -BytesBase64) is det.
 %! base64_utf8(+Atom, -BytesBase64) is det.
-%% in Python: BytesBase64 = base64.b64encode(Atom.encode('utf8'))
-%%            Atom = base64.b64decode(BytesBase64).decode('utf8')
+% in Python: BytesBase64 = base64.b64encode(Atom.encode('utf8'))
+%            Atom = base64.b64decode(BytesBase64).decode('utf8')
 base64_utf8(Atom, BytesBase64) :-
-    %% TODO: use the DCG forms of library(base64), to
-    %%       avoid extra atom_codes/2 calls
+    % TODO: use the DCG forms of library(base64), to
+    %       avoid extra atom_codes/2 calls
     (  var(BytesBase64)
     -> atom_to_utf8_to_b64(Atom, BytesBase64)
     ;  b64_to_utf8_to_atom(BytesBase64, Atom)
@@ -455,8 +455,8 @@ b64_to_utf8_to_atom(BytesBase64, Atom) :-
     atom_codes(Atom, Codes).
 
 %! at_most(+List, +Length, -TruncatedList) is det.
-%% Takes the first Length items from List; if there are
-%% fewer then TruncatedList = List
+% Takes the first Length items from List; if there are
+% fewer then TruncatedList = List
 at_most([], _, []).
 at_most([X|Xs], Length, TruncatedList) :-
     (  Length > 0

@@ -12,7 +12,7 @@
                       must_fail/1,
                       fail/1]).
 :- encoding(utf8).
-%% :- set_prolog_flag(autoload, false).  % TODO: breaks qsave
+% :- set_prolog_flag(autoload, false).  % TODO: breaks qsave
 
 :- meta_predicate
        must_fail(0),
@@ -30,7 +30,7 @@
 :- style_check(+var_branches).
 :- style_check(+no_effect).
 :- style_check(+discontiguous).
-%% :- set_prolog_flag(generate_debug_info, false).
+% :- set_prolog_flag(generate_debug_info, false).
 
 % Like once/1, throws an exception on failure.
 % Also works with works with EDCGs.
@@ -52,14 +52,14 @@
 %         'foo must_once'(X, Y, Z) :- % clause 2 ...
 %       and similar for -->> clauses.
 
-%% TODO: something like this, to detect non-determinism
-%%       see https://swish.swi-prolog.org/p/RLZCwtkJ.swinb
-%% deterministic(Goal) :-
-%%    (  call_cleanup(Goal, Det=true),
-%%       ( Det == true ->  true throw(error(multi(Goal), _) )
-%%    -> true
-%%    ;  throw(error(failed(Goal), _))
-%%    ).
+% TODO: something like this, to detect non-determinism
+%       see https://swish.swi-prolog.org/p/RLZCwtkJ.swinb
+% deterministic(Goal) :-
+%    (  call_cleanup(Goal, Det=true),
+%       ( Det == true ->  true throw(error(multi(Goal), _) )
+%    -> true
+%    ;  throw(error(failed(Goal), _))
+%    ).
 
 %! must_once(:Goal) is det.
 %  Throws an error if Goal doesn't succeed.
@@ -80,10 +80,10 @@ must_once_msg(Goal, Msg, MsgArgs) :-
        throw(error(must_once_failed(Goal), context(Pred/Arity, MsgStr)))
     ).
 
-%% edcg doesn't understand the meta-pred "call", so expand -->> by
-%% hand. Arg names AccumA0, etc. are suggestive of use; in reality,
-%% these predicates work with any combination of extra params that
-%% give the appropriate arity.
+% edcg doesn't understand the meta-pred "call", so expand -->> by
+% hand. Arg names AccumA0, etc. are suggestive of use; in reality,
+% these predicates work with any combination of extra params that
+% give the appropriate arity.
 
 must_once(Goal, AccumA0, AccumA) :-
     (  call(Goal, AccumA0, AccumA)

@@ -16,8 +16,8 @@ builtins_version('${VERSION}').
 
 builtins_module('${BUILTINS_FQN}.builtins'). % TODO: needed?
 
-%% TODO: for Python 2: basestring, unicode, long, xrange, buffer (is this all?)
-%% These facts are hand-built from typeshed/stdlib/2and3/builtins.pyi
+% TODO: for Python 2: basestring, unicode, long, xrange, buffer (is this all?)
+% These facts are hand-built from typeshed/stdlib/2and3/builtins.pyi
 builtins_symtab_primitive('False',    [class_type('${BUILTINS_FQN}.builtins.bool',     [])]).
 builtins_symtab_primitive('None',     [class_type('${BUILTINS_FQN}.builtins.NoneType', [])]).
 builtins_symtab_primitive('NoneType', [class_type('${BUILTINS_FQN}.builtins.NoneType', [])]).

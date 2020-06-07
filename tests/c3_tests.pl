@@ -1,3 +1,5 @@
+% -*- mode: Prolog -*-
+
 %% Tests for c3.pl
 
 :- use_module(library(plunit)).
@@ -7,7 +9,7 @@
 :- use_module(library(apply), [maplist/3]).
 :- use_module('../pykythe/c3', [mro/2, mro/3]).
 
-%% Define bases from c3.py example
+% Define bases from c3.py example
 bases(object, []).
 bases('O', [object]).
 bases('A', ['O']).
@@ -60,6 +62,6 @@ test(object) :-
 end_tests(c3).
 
 ?- run_tests.
-%% ?- halt.
+% ?- halt.
 
 end_of_file.

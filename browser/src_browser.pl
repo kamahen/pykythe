@@ -13,7 +13,7 @@
 
 :- module(src_browser, [src_browser_main/0, src_browser_main2/0]).
 
-%% :- set_prolog_flag(autoload, false).  %% TODO: Seems to break plunit, qsave
+% :- set_prolog_flag(autoload, false).  % TODO: Seems to break plunit, qsave
 
 :- use_module(library(lists), [append/3, member/2]).
 :- use_module(library(error), [must_be/2, domain_error/2]).
@@ -27,20 +27,20 @@
                                           http_redirect/3
                                          ]).
 :- use_module(library(http/http_files), [http_reply_from_files/3]).
-%% TODO: if using daemon, then: swipl src_browser.pl --port=.... --pidfile=/var/run/src_browser.pid
-%%       and kill $(cat /var/run/src_browser.pid)
-%% TODO: Support HTTPS: https://www.swi-prolog.org/pldoc/man?section=ssl-https-server
-%%                      /usr/share/doc/openssl/HOWTO/certificates.txt.gz
-%%                          openssl genrsa -out privkey.pem
-%%                          openssl req -new -x509 -key privkey.pem -out cacert.pem -days 1095
-%%                          ? openssl req -new -key privkey.pem -out cert.csr
-%%                      https://www.openssl.org/docs/manmaster/man1/CA.pl.html
-%%       ==> See ~/src/swipl-devel/packages/ssl/mkcerts.pl.in
-%%           - look for server-key.pem etc.
-%%             https://swi-prolog.discourse.group/t/debugging-failing-ssl-test/2073
-%% :- use_module(library(http/http_unix_daemon)).
-%% :- use_module(library(http_log)).
-%% :- set_setting(http:logfile, '/tmp/httpd.log').
+% TODO: if using daemon, then: swipl src_browser.pl --port=.... --pidfile=/var/run/src_browser.pid
+%       and kill $(cat /var/run/src_browser.pid)
+% TODO: Support HTTPS: https://www.swi-prolog.org/pldoc/man?section=ssl-https-server
+%                      /usr/share/doc/openssl/HOWTO/certificates.txt.gz
+%                          openssl genrsa -out privkey.pem
+%                          openssl req -new -x509 -key privkey.pem -out cacert.pem -days 1095
+%                          ? openssl req -new -key privkey.pem -out cert.csr
+%                      https://www.openssl.org/docs/manmaster/man1/CA.pl.html
+%       ==> See ~/src/swipl-devel/packages/ssl/mkcerts.pl.in
+%           - look for server-key.pem etc.
+%             https://swi-prolog.discourse.group/t/debugging-failing-ssl-test/2073
+% :- use_module(library(http/http_unix_daemon)).
+% :- use_module(library(http_log)).
+% :- set_setting(http:logfile, '/tmp/httpd.log').
 :- use_module(library(http/http_path)).
 :- use_module(library(http/http_error)). % TODO: remove - this decorates uncaught HTTP exceptions with stack-trace
 :- use_module(library(uri)).
@@ -53,12 +53,12 @@
 :- use_module('../pykythe/must_once.pl').
 :- use_module('../pykythe/pykythe_utils.pl').
 
-%% The "base" Kythe facts, which are dynamically loaded at start-up.
+% The "base" Kythe facts, which are dynamically loaded at start-up.
 :- dynamic kythe_node/7, kythe_edge/11.
 
-%% Convenience predicates for accessing the base Kythe facts,
-%% using vname(Signature, Corpus, Root, Path, Language).
-%% We also define vname0: Corpus, Root, Path, Language
+% Convenience predicates for accessing the base Kythe facts,
+% using vname(Signature, Corpus, Root, Path, Language).
+% We also define vname0: Corpus, Root, Path, Language
 
 %! kythe_node(Source: vname, FactName:atom, FactValue:atom) is nondet.
 kythe_node(vname(Signature, Corpus, Root, Path, Language),
@@ -67,19 +67,19 @@ kythe_node(vname(Signature, Corpus, Root, Path, Language),
                FactName, FactValue).
 
 %! kythe_edge(Source: vname, EdgeKind:atom, Target:vname).
-%% Kythe facts are of one of these forms:
-%%   (source, edge, target, /, "")
-%%   (source, edge, target, /kythe/ordinal, base10string)
-%%   (source, "", "", string, _)
+% Kythe facts are of one of these forms:
+%   (source, edge, target, /, "")
+%   (source, edge, target, /kythe/ordinal, base10string)
+%   (source, "", "", string, _)
 kythe_edge(vname(Signature1, Corpus1, Root1, Path1, Language1),
            Edge,
            vname(Signature2, Corpus2, Root2, Path2, Language2)) :-
     kythe_edge(Signature1, Corpus1, Root1, Path1, Language1,
                Edge,
                Signature2, Corpus2, Root2, Path2, Language2).
-%% TODO: instead of using atom_concat/3 to create reverse edges,
-%%       initialize reverse_edge/2 from
-%%       src_browser:findall(E, kythe_edge(_,_,_,_,_,E,_,_,_,_,_), Edges0), sort(Edges0, Edges)
+% TODO: instead of using atom_concat/3 to create reverse edges,
+%       initialize reverse_edge/2 from
+%       src_browser:findall(E, kythe_edge(_,_,_,_,_,E,_,_,_,_,_), Edges0), sort(Edges0, Edges)
 kythe_edge(vname(Signature1, Corpus1, Root1, Path1, Language1),
            ReverseEdge,
            vname(Signature2, Corpus2, Root2, Path2, Language2)) :-
@@ -95,75 +95,75 @@ kythe_edge(vname(Signature1, Corpus1, Root1, Path1, Language1),
     ).
 
 :- debug(log).    % enable log messages with debug(log, '...', [...]).
-%% :- debug(redirect_log).
-%% :- debug(request_json_log).
+% :- debug(redirect_log).
+% :- debug(request_json_log).
 
-%% TODO: remove this list
-%% List of all http debug flags (grep /usr/lib/swi-prolog/library/http/):
-%% :- debug(calc).
-%% :- debug(cookie).
-%% :- debug(daemon).
-%% :- debug(daemon(socket)).
-%% :- debug(false).
-%% :- debug(html(mailman)).
-%% :- debug(html(script)).
-%% :- debug(http_authenticate).
-%% :- debug(http(authenticate)).
-%% :- debug(http(cgi)).
-%% :- debug(http(connection)).
-%% :- debug(http(cookie)).
-%% :- debug(http(error)).
-%% :- debug(http(header)).
-%% :- debug(http(hook)).
-%% :- debug(http(keep_alive)).
-%% :- debug(http(nonce)).
-%% :- debug(http(open)).
-%% :- debug(http_path).
-%% :- debug(http(proxy)).
-%% :- debug(http(redirect)).
-%% :- debug(http(request)).
-%% :- debug(http(scheduler)).
-%% :- debug(http(send_request)).
-%% :- debug(http(server)).
-%% :- debug(http_session).
-%% :- debug(http_session(gc)).
-%% :- debug(http(spawn)).
-%% :- debug(http(transfer_encoding)).
-%% :- debug(http(worker)).
-%% :- debug(hub(broadcast)).
-%% :- debug(hub(event)).
-%% :- debug(hub(gate)).
-%% :- debug(hub(ready)).
-%% :- debug(hub(wait)).
-%% :- debug(json_arg).
-%% :- debug(logrotate).
-%% :- debug(multipart(bom)).
-%% :- debug(multipart(content)).
-%% :- debug(obsolete).
-%% :- debug(openid(associate)).
-%% :- debug(openid(authenticate)).
-%% :- debug(openid(ax)).
-%% :- debug(openid(check_authentication)).
-%% :- debug(openid(crypt)).
-%% :- debug(openid(resolve)).
-%% :- debug(openid(test)).
-%% :- debug(openid(verify)).
-%% :- debug(openid(yadis)).
-%% :- debug(post).
-%% :- debug(post_request).
-%% :- debug(proxy).
-%% :- debug(sgml_plugin).
-%% :- debug(websocket).
-%% :- debug(websocket(close)).
-%% :- debug(websocket(open)).
+% TODO: remove this list
+% List of all http debug flags (grep /usr/lib/swi-prolog/library/http/):
+% :- debug(calc).
+% :- debug(cookie).
+% :- debug(daemon).
+% :- debug(daemon(socket)).
+% :- debug(false).
+% :- debug(html(mailman)).
+% :- debug(html(script)).
+% :- debug(http_authenticate).
+% :- debug(http(authenticate)).
+% :- debug(http(cgi)).
+% :- debug(http(connection)).
+% :- debug(http(cookie)).
+% :- debug(http(error)).
+% :- debug(http(header)).
+% :- debug(http(hook)).
+% :- debug(http(keep_alive)).
+% :- debug(http(nonce)).
+% :- debug(http(open)).
+% :- debug(http_path).
+% :- debug(http(proxy)).
+% :- debug(http(redirect)).
+% :- debug(http(request)).
+% :- debug(http(scheduler)).
+% :- debug(http(send_request)).
+% :- debug(http(server)).
+% :- debug(http_session).
+% :- debug(http_session(gc)).
+% :- debug(http(spawn)).
+% :- debug(http(transfer_encoding)).
+% :- debug(http(worker)).
+% :- debug(hub(broadcast)).
+% :- debug(hub(event)).
+% :- debug(hub(gate)).
+% :- debug(hub(ready)).
+% :- debug(hub(wait)).
+% :- debug(json_arg).
+% :- debug(logrotate).
+% :- debug(multipart(bom)).
+% :- debug(multipart(content)).
+% :- debug(obsolete).
+% :- debug(openid(associate)).
+% :- debug(openid(authenticate)).
+% :- debug(openid(ax)).
+% :- debug(openid(check_authentication)).
+% :- debug(openid(crypt)).
+% :- debug(openid(resolve)).
+% :- debug(openid(test)).
+% :- debug(openid(verify)).
+% :- debug(openid(yadis)).
+% :- debug(post).
+% :- debug(post_request).
+% :- debug(proxy).
+% :- debug(sgml_plugin).
+% :- debug(websocket).
+% :- debug(websocket(close)).
+% :- debug(websocket(open)).
 
-%% :- debug(http(post_request)).   % TODO: remove
+% :- debug(http(post_request)).   % TODO: remove
 :- debug(http(request)).        % TODO: remove % TODO: figure out why If-modified-since and friends don't work
-%% :- debug(http_session).         % TODO: remove
+% :- debug(http_session).         % TODO: remove
 :- debug(http(error)).          % TODO: remove
-%% :- debug(http_path).            % TODO: remove
-%% :- debug(http(header)).         % TODO: remove
-%% :- debug(http(hook)).           % TODO: remove
+% :- debug(http_path).            % TODO: remove
+% :- debug(http(header)).         % TODO: remove
+% :- debug(http(hook)).           % TODO: remove
 
 :- initialization(src_browser_main, main).  % TODO: restore this and remove from Makefile  DO NOT SUBMIT
 
@@ -173,33 +173,34 @@ kythe_edge(vname(Signature1, Corpus1, Root1, Path1, Language1),
 :- dynamic http:location/3.
 :- dynamic user:file_search_path/2.
 
-%% See https://www.swi-prolog.org/howto/http/HTTPFile.html
-%% and library(http/mimetype).
-%% e.g.: file_content_type('foo.js', text/javascript, 'text/javascript; charset=UTF-8').
-%! http:location(+Alias, -Expansion, -Options) is nondet.
-%%   The only current option is priority(...).
+% See https://www.swi-prolog.org/howto/http/HTTPFile.html
+% and library(http/mimetype).
+% e.g.: file_content_type('foo.js', text/javascript, 'text/javascript; charset=UTF-8').
 
+%! http:location(+Alias, -Expansion, -Options) is nondet.
+%   The only current option is priority(...).
 http:location(static, root(static), []).
 http:location(files, root(files), []).
-http:location(json, root(json), []). %% DO NOT SUBMIT - remove?
+http:location(json, root(json), []). % DO NOT SUBMIT - remove?
 
 src_browser_main :-
+    run_tests, % TODO: this doesn't appear to do anything
     src_browser_main2,
-    %% When started via initialization, need to handle inputs via REPL
-    %% TODO: start as daemon (see library(http/http_unix_daemon)).
-    %% See also library(main):main/0
+    % When started via initialization, need to handle inputs via REPL
+    % TODO: start as daemon (see library(http/http_unix_daemon)).
+    % See also library(main):main/0
     debug(log, 'Starting REPL ...', []),
-    prolog.  %% REPL
+    prolog.  % REPL
 
 src_browser_main2 :-
     browser_opts(Opts),
-    %% set_prolog_flag(verbose_file_search, true),
+    % set_prolog_flag(verbose_file_search, true),
     assert_server_locations(Opts),
     read_and_assert_kythe_facts,
     server(Opts).
 
-%% Not used -- a trivial REPL, in case prolog/0 or
-%% '$toplevel':'$toplevel'/0 doesn't work.
+% Not used -- a trivial REPL, in case prolog/0 or
+% '$toplevel':'$toplevel'/0 doesn't work.
 
 :- if(false).
 
@@ -226,19 +227,19 @@ assert_server_locations(Opts) :-
     asserta(user:file_search_path(files,  Opts.filesdir)),
     asserta(user:file_search_path(static, Opts.staticdir)).
 
-%% DO NOT SUBMIT:
-%% TODO: move the read/assert stuff to a separate module,
-%%       also the convenience preds (kythe_node/3, etc.)
+% DO NOT SUBMIT:
+% TODO: move the read/assert stuff to a separate module,
+%       also the convenience preds (kythe_node/3, etc.)
 read_and_assert_kythe_facts :-
-    %% DO NOT SUBMIT - verify this and report
-    %% TODO: files('kythe_facts') results in bogus
-    %%       "recompiling QLF file (incompatible with current Prolog version)"
+    % DO NOT SUBMIT - verify this and report
+    % TODO: files('kythe_facts') results in bogus
+    %       "recompiling QLF file (incompatible with current Prolog version)"
     unload_file(files('kythe_facts')),
     garbage_collect,
-    %% loading speeds for consult / read-assertz / qlf: 25 : 7 : 1
-    %%          (consult generates source locations, etc.)
-    %%       https://swi-prolog.discourse.group/t/quick-load-files/1239/2
-    %%       https://swi-prolog.discourse.group/t/quick-load-files/1239/8
+    % loading speeds for consult / read-assertz / qlf: 25 : 7 : 1
+    %          (consult generates source locations, etc.)
+    %       https://swi-prolog.discourse.group/t/quick-load-files/1239/2
+    %       https://swi-prolog.discourse.group/t/quick-load-files/1239/8
     load_files([files('kythe_facts')],
                [silent(false),
                 optimise(true),
@@ -253,9 +254,9 @@ assert_color_items(Signature, Corpus,Root,Path,Language, ColorTermStr) :-
     term_string(ColorTerm, ColorTermStr),
     dict_pairs(ColorTerm, color, ColorPairs0),
     adjust_color(Corpus,Root,Path,Language, ColorPairs0, ColorPairs),
-    %% TODO: There are more color items than anything else -- need to
-    %%       use a more compact representation, especially as there is
-    %%       no need for lookup on most of the fields.
+    % TODO: There are more color items than anything else -- need to
+    %       use a more compact representation, especially as there is
+    %       no need for lookup on most of the fields.
     maplist(assert_color_item(Signature, Corpus,Root,Path,Language), ColorPairs).
 
 adjust_color(Corpus,Root,Path,Language, ColorPairs0, ColorPairs) :-
@@ -276,40 +277,39 @@ adjust_color(Corpus,Root,Path,Language, ColorPairs0, ColorPairs) :-
     ).
 
 assert_color_item(Signature, Corpus,Root,Path,Language, Key-Value) :-
-    %% Key: lineno, column, start, end, token_color, value
+    % Key: lineno, column, start, end, token_color, value
     atomic_list_concat(['/pykythe/color/', Key], FactName),
     assertz(kythe_node(Signature, Corpus,Root,Path,Language, FactName, Value)).
 
-%% index_kythe_facts/0 takes a bit of time because it builds the
-%% JIT indexes; if you run it a second time, it's fast. (The indexes
-%% are used elsewhere, so no harm.)
-%% e.g.: Building the JIT indexes takes 8-10 seconds, validation takes 10 seconds
+% index_kythe_facts/0 takes a bit of time because it builds the
+% JIT indexes; if you run it a second time, it's fast. (The indexes
+% are used elsewhere, so no harm.)
+% e.g.: Building the JIT indexes takes 8-10 seconds, validation takes 10 seconds
 index_kythe_facts :-
-    %% Without the call to index_pred (kythe_edge/11, kythe_edge/3 had no change):
-    %%   Predicate                                     Indexed  Buckets Speedup Flags
-    %%   ============================================================================
-    %%   src_browser:kythe_node/7                        1+7   2,097,152  536399.3
-    %%                                                   1+4     524,288  299008.9
-    %%                                                   6+7     262,144    4821.3
-    %% With the call to index_pred:
-    %%   src_browser:kythe_node/7                        1+4     524,288  298977.2
-    %%                                                   6+7     262,144    4821.1
-    %%
-    %% kythe_node/7 1+7 would be generated by orphan_semantic/3,
-    %% but seems to not help anything.
+    % Without the call to index_pred (kythe_edge/11, kythe_edge/3 had no change):
+    %   Predicate                                     Indexed  Buckets Speedup Flags
+    %   ============================================================================
+    %   src_browser:kythe_node/7                        1+7   2,097,152  536399.3
+    %                                                   1+4     524,288  299008.9
+    %                                                   6+7     262,144    4821.3
+    % With the call to index_pred:
+    %   src_browser:kythe_node/7                        1+4     524,288  298977.2
+    %                                                   6+7     262,144    4821.1
+    %
+    % kythe_node/7 1+7 would be generated by orphan_semantic/3,
+    % but seems to not help anything.
     concurrent_maplist(index_pred,
-                       [kythe_node(sig,corpus,root,path,lang,_,_),           % kythe_node/7 1+4
-                        kythe_node(_,_,_,_,_,fact,value),                    % kythe_node/7 6+7
-                        %% kythe_node(sig,_,_,_,_,_,value),                  % kythe_node/7 1+7
-                        kythe_edge(sig,corpus,root,path,lang,_,_,_,_,_,_),   % kythe_edge/11 1
-                        kythe_edge(_,_,_,_,_,_,sig,corpus,root,path,lang),   % kythe_edge/11 7
-                        kythe_edge(vname(sig,corpus,root,path,lang),_,_),    % kythe_edge/3 1
-                        kythe_edge(_,_,vname(sig,corpus,root,path,lang)),    % kythe_edge/3 1
+                       [kythe_node(sig,corpus,root,path,lang,_,_),         % kythe_node/7 1+4
+                        kythe_node(_,_,_,_,_,fact,value),                  % kythe_node/7 6+7
+                        % kythe_node(sig,_,_,_,_,_,value),                 % kythe_node/7 1+7
+                        kythe_edge(sig,corpus,root,path,lang,_,_,_,_,_,_), % kythe_edge/11 1
+                        kythe_edge(_,_,_,_,_,_,sig,corpus,root,path,lang), % kythe_edge/11 7
+                        kythe_edge(vname(sig,corpus,root,path,lang),_,_),  % kythe_edge/3 1
+                        kythe_edge(_,_,vname(sig,corpus,root,path,lang)),  % kythe_edge/3 1
                         kythe_edge(vname(sig,corpus,root,path,lang),edge,_),
                         kythe_edge(_,edge,vname(sig,corpus,root,path,lang)),
                         kythe_edge(_,edge,_)
                        ]),
-    statistics(cputime, T1),
     garbage_collect,
     show_jiti,
     debug(log, 'JIT index done.', []).
@@ -317,8 +317,8 @@ index_kythe_facts :-
 validate_kythe_facts :-
     statistics(cputime, T0),
     must_fail(orphan_semantic(_AnchorVname, _SemanticVname, _Edge)),
-    %% Ensure that every token anchor has an associated color anchor
-    %% (the inverse isn't true).
+    % Ensure that every token anchor has an associated color anchor
+    % (the inverse isn't true).
     forall(kythe_node(Vname, Name, Value),
            must_once( ground(kythe_node(Vname, Name, Value)) )),
     forall(kythe_edge(V1, Edge, V2),
@@ -344,11 +344,11 @@ validate_kythe_facts :-
                         memberchk(Name, ['/kythe/node/kind',
                                          '/pykythe/type',
                                          '/pykythe/color/token_color']) ) )),
-    %% show_jiti,    % Not needed - should be the same as the first one
-    %% TODO: DO NOT SUBMIT - need to fix anchor_links/4.
-    %% Semantic links have unique signatures ... this isn't true. For example
-    %% if we can't resolve an attr to a single item (ast_raw.py at line 267: "ch0.type")
-    %%   validate_anchor_link_anchor,
+    % show_jiti,    % Not needed - should be the same as the first one
+    % TODO: DO NOT SUBMIT - need to fix anchor_links/4.
+    % Semantic links have unique signatures ... this isn't true. For example
+    % if we can't resolve an attr to a single item (ast_raw.py at line 267: "ch0.type")
+    %   validate_anchor_link_anchor,
     statistics(cputime, T2),
     Tvalid is T2 - T0,
     debug(log, 'Validation done: ~3f sec)', [Tvalid]),
@@ -367,8 +367,8 @@ index_pred(Goal) :-
     T is T1 - T0,
     debug(log, 'Indexed ~q in ~3f sec', [Goal, T]).
 
-%% For some reason jiti_list/1 didn't do what I wanted, so extracting
-%% its core logic here, but needs better formatting:
+% For some reason jiti_list/1 didn't do what I wanted, so extracting
+% its core logic here, but needs better formatting:
 show_jiti :-
     strip_module(kythe_node(_,_,_), Module, _),
     jiti_list(Module:_),
@@ -385,11 +385,11 @@ validate_anchor_link_anchor :-
                            [_]))).
 
 server(Opts) :-
-    %% See comments with "Support HTTPS" above.
+    % See comments with "Support HTTPS" above.
     http_server([port(Opts.port),
-                 %% TODO: enable ssl (https):
-                 %% ssl([certificate_file('cacert.pem'), %% or cert.csr?
-                 %%      key_file('privkey.pem')]),
+                 % TODO: enable ssl (https):
+                 % ssl([certificate_file('cacert.pem'), % or cert.csr?
+                 %      key_file('privkey.pem')]),
                  workers(5)]).
 
 browser_opts(Opts) :-
@@ -407,17 +407,17 @@ browser_opts(Opts) :-
     must_once_msg(PositionalArgs = [], 'Unknown positional arg(s)').
 
 
-%% localhost:9999/ ... redirects to /static/src_browser.html
-%%      - for debugging, 'moved' can be cleared by chrome://settings/clearBrowserData
-%%        (Cached images and files)
+% localhost:9999/ ... redirects to /static/src_browser.html
+%      - for debugging, 'moved' can be cleared by chrome://settings/clearBrowserData
+%        (Cached images and files)
 :- http_handler(root(.),
                 http_handler_redirect(
                     moved_temporary, % or moved - but that makes debugging a bit more difficult
                     static('src_browser.html')),
                 []).
 
-%% Serve localhost:9999/static/ from 'static' directory (See also facts for http:location/3)
-%% TODO: remove the cache(false) options
+% Serve localhost:9999/static/ from 'static' directory (See also facts for http:location/3)
+% TODO: remove the cache(false) options
 :- http_handler(static(.),
                 pykythe_http_reply_from_files(static(.), [cache(true)]),
                 [prefix]).
@@ -425,13 +425,13 @@ browser_opts(Opts) :-
                 pykythe_http_reply_from_files(files(.), [cache(true)]),
                 [prefix]).
 
-:- http_handler('/json',  %% json(.),     % localhost:9999/json  -- DO NOT SUBMIT - json(.) is better?
+:- http_handler('/json',  % json(.),     % localhost:9999/json  -- DO NOT SUBMIT - json(.) is better?
                 reply_with_json, [priority(0)]).
 
 pykythe_http_reply_from_files(Dir, Options, Request) :-
     (  false
-    -> %% TODO: remove the following code, for debugging file caching.
-       %%       See https://swi-prolog.discourse.group/t/how-to-debug-if-modified-since-with-http-reply-from-files/1892/3
+    -> % TODO: remove the following code, for debugging file caching.
+       %       See https://swi-prolog.discourse.group/t/how-to-debug-if-modified-since-with-http-reply-from-files/1892/3
        ( member(path_info(PathInfo), Request) -> true ; PathInfo = '' ),
        ( member(cache_control(CacheControl), Request) -> true ; CacheControl = '' ),
        http_files:locate_file(Dir, PathInfo, Path, _IsFile, Options), % TODO: fragile
@@ -455,14 +455,14 @@ http_handler_redirect(How, To, Request) :-
     http_redirect(How, NewTo, Request).
 
 reply_with_json(Request) :-
-    %% print_term_cleaned(Request, [], RequestPretty),
-    %% TODO: why doesn't thead_cputime give non-zero value?
+    % print_term_cleaned(Request, [], RequestPretty),
+    % TODO: why doesn't thead_cputime give non-zero value?
     statistics(cputime, T0),
     memberchk(method(post), Request),
-    %% Doesn't show the 302 (or 301) redirect:
-    %%    request_uri('/json'), path('/json'),
-    %%    origin('http://localhost:9999'), content_type('application/json')
-    http_handler_read_json_dict(Request, JsonIn), %% [content_type("application/json")]),
+    % Doesn't show the 302 (or 301) redirect:
+    %    request_uri('/json'), path('/json'),
+    %    origin('http://localhost:9999'), content_type('application/json')
+    http_handler_read_json_dict(Request, JsonIn), % [content_type("application/json")]),
     debug(request_json_log, 'Request(json): ~q', [JsonIn]),
     statistics(cputime, T1),
     Tdelta1 is T1 - T0,
@@ -498,8 +498,8 @@ json_response(json{anchor_xref: json{signature: Signature,
                    edge_links: EdgeLinksJson}) :-
     !,
     AnchorVname = vname(Signature, Corpus, Root, Path, Language),
-    %% TODO: probably better to use nested setof/bagof, but with
-    %%       library(solution_sequences) for ordering, grouping
+    % TODO: probably better to use nested setof/bagof, but with
+    %       library(solution_sequences) for ordering, grouping
     anchor_to_line_chunks(AnchorVname, LineNo, LineChunks),
     debug(log, 'Xref ~q lineno: ~q', [[signature: Signature, corpus=Corpus, root: Root, path: Path, language: Language], LineNo]),
     anchor_links_grouped(AnchorVname, SemanticNodeValues, EdgeLinks0),
@@ -518,11 +518,11 @@ json_response(json{src_file_tree: _}, PathTreeJson) :-
     files_to_tree(PathNames, PathTree),
     tree_to_json(PathTree, PathTreeJson).
 
-%% TODO: Can we use library(solution_sequences) group_by/4?  It has
-%%       bagof rather than setof at bottom, which is not necessarily a
-%%       bad thing, as it might show errors in the Kythe facts
-%%       (although probably not -- duplicates should have been removed
-%%       by the processing pipeline).
+% TODO: Can we use library(solution_sequences) group_by/4?  It has
+%       bagof rather than setof at bottom, which is not necessarily a
+%       bad thing, as it might show errors in the Kythe facts
+%       (although probably not -- duplicates should have been removed
+%       by the processing pipeline).
 %! anchor_links_grouped(+AnchorVname, -SemanticNodeValues, -GroupedLinks) is det.
 anchor_links_grouped(AnchorVname, SemanticNodeValues, GroupedLinks) :-
     anchor_links(AnchorVname, SemanticNodeValues, SortedLinks),
@@ -539,7 +539,7 @@ path_vname(Vname0-Signatures, Vname0-Vnames) :-
 
 %! anchor_links(+AnchorVname, -SemanticNodeValues, -SortedLinks) is det.
 anchor_links(AnchorVname, SemanticNodeValues, SortedLinks) :-
-    %% TODO: filter Edge1 by anchor_out_edge?
+    % TODO: filter Edge1 by anchor_out_edge?
     setof_or_empty(Edge2-AnchorVname2flipped,
                    anchor_link_anchor_sort_order(AnchorVname, Edge2, AnchorVname2flipped),
                    SortedLinks0),
@@ -581,7 +581,7 @@ link_to_dict(Json, Json) :-
 pair_to_json(KeyTag, ValueTag, Key-Value, Json) :-
     dict_create(Json, json, [KeyTag-Key, ValueTag-Value]).
 
-%% TODO: combine with pykythe_utils:pykythe_json_read_dict?
+% TODO: combine with pykythe_utils:pykythe_json_read_dict?
 http_handler_read_json_dict(Request, JsonIn) :-
     http_read_json_dict(Request, JsonIn,
                         [value_string_as(atom), end_of_file(@(end)), default_tag(json),
@@ -592,23 +592,23 @@ anchor_link_anchor_sort_order(AnchorVname, Edge2, AnchorVnameSort) :-
     anchor_link_anchor(AnchorVname, _Edge1, _SemanticVname, Edge2, AnchorVname2),
     vname_sort(AnchorVname2, AnchorVnameSort).
 
-%% An orphan semantic doesn't have an associated anchor
+% An orphan semantic doesn't have an associated anchor
 orphan_semantic(AnchorVname1, SemanticVname, Edge) :-
     kythe_node(AnchorVname1, '/kythe/node/kind', 'anchor'),
     kythe_edge(AnchorVname1, Edge, SemanticVname),
     \+ (kythe_edge(AnchorVname2, _Edge2, SemanticVname),
         kythe_node(AnchorVname2, '/kythe/node/kind', 'anchor')).
 
-%% TODO: orphan semantics for non-anchors
+% TODO: orphan semantics for non-anchors
 
 anchor_link_anchor(AnchorVname1, Edge1, SemanticVname, Edge2, AnchorVname2) :-
     kythe_node(AnchorVname1, '/kythe/node/kind', 'anchor'),
     node_link_node(AnchorVname1, Edge1, SemanticVname, Edge2, AnchorVname2),
     kythe_node(AnchorVname2, '/kythe/node/kind', 'anchor').
 
-%% Note that because the graph is bidirectional (e.g.,
-%% Edge1='/kythe/edge/ref', Edge2='%/kythe/edge/ref'), it is possible
-%% that Vname1 = Vname2.
+% Note that because the graph is bidirectional (e.g.,
+% Edge1='/kythe/edge/ref', Edge2='%/kythe/edge/ref'), it is possible
+% that Vname1 = Vname2.
 node_link_node(Vname1, Edge1, SemanticVname, Edge2, Vname2) :-
     kythe_edge(Vname1, Edge1, SemanticVname),
     kythe_edge(Vname2, Edge2, SemanticVname).
@@ -627,9 +627,9 @@ node_link_node_value(Vname, Edge, NodeVname, Name, Value) :-
     kythe_node(NodeVname, Name, Value).
 
 pair_vname_remove_start(Key-VnameSort, Key-Vname) :-
-    must_once(vname_sort(Vname, VnameSort)).  % DO NOT SUBMIT - remove must_once
+    must_once(vname_sort(Vname, VnameSort)). % DO NOT SUBMIT - remove must_once
 
-%% Change the ordering of items in a vname, for sorting
+% Change the ordering of items in a vname, for sorting
 vname_flip(vname(Signature, Corpus, Root, Path, Language),
            vname_flip(Corpus, Root, Path, Signature, Language)).
 
@@ -638,7 +638,7 @@ anchor_semantic_json(AnchorVname, SemanticJson) :-
     link_to_dict(Semantic, SemanticJson).
 
 
-%% For testing check/0:  DO NOT SUBMIT
+% For testing check/0:  DO NOT SUBMIT
 do_not_submit0(AnchorVname, SemanticJsonSet) :-
     setof_or_empty(SemanticJson, Semantic^( anchor_semantic(AnchorVname, Semantic),
                                             link_to_dict(Semantic, SemanticJson) ),
@@ -658,26 +658,26 @@ anchor_semantic(AnchorVname, Semantic) :-
     kythe_edge(AnchorVname, Edge, Semantic),
     semantic_edge(Edge).
 
-%% TODO: add all other appropriate edges from https://kythe.io/docs/schema/
-%% TODO: consider defining this by what is *not* a semantic edge
-%% semantic_edge/1 is for anchor->semantic edges that define semantics
-%% so, for example, a diagnostic (/kythe/edge/tagged) would not be a
-%% semantic edge.
+% TODO: add all other appropriate edges from https://kythe.io/docs/schema/
+% TODO: consider defining this by what is *not* a semantic edge
+% semantic_edge/1 is for anchor->semantic edges that define semantics
+% so, for example, a diagnostic (/kythe/edge/tagged) would not be a
+% semantic edge.
 semantic_edge('/kythe/edge/defines').
 semantic_edge('/kythe/edge/defines/binding').
 semantic_edge('/kythe/edge/ref').
 semantic_edge('/kythe/edge/ref/call').
 semantic_edge('/kythe/edge/ref/call/implicit').
-semantic_edge('/kythe/edge/ref/doc'). %% TODO: should this be a semantic edge?
+semantic_edge('/kythe/edge/ref/doc'). % TODO: should this be a semantic edge?
 semantic_edge('/kythe/edge/ref/file').
 semantic_edge('/kythe/edge/ref/implicit').
 semantic_edge('/kythe/edge/ref/imports').
 semantic_edge('/kythe/edge/ref/includes').
 semantic_edge('/kythe/edge/ref/init').
 
-%% anchor/out_edge/1 is generated manually by scanning pykythe.pl
-%%    for /kythe/edge/
-%% TODO: add all other edges from https://kythe.io/docs/schema/
+% anchor/out_edge/1 is generated manually by scanning pykythe.pl
+%    for /kythe/edge/
+% TODO: add all other edges from https://kythe.io/docs/schema/
 anchor_out_edge('/kythe/edge/childof').
 anchor_out_edge('/kythe/edge/defines').
 anchor_out_edge('/kythe/edge/defines/binding').
@@ -695,7 +695,7 @@ anchor_out_edge('%/kythe/edge/ref/file').
 anchor_out_edge('%/kythe/edge/ref/imports').
 anchor_out_edge('%/kythe/edge/tagged').
 
-%% TODO: currently unused
+% TODO: currently unused
 kythe_anchor(Vname, Start, End, Token) :-
     kythe_node(Vname, '/kythe/node/kind', anchor),
     kythe_node(Vname, '/kythe/loc/start', StartStr),
@@ -708,10 +708,10 @@ kythe_anchor(Vname, Start, End, Token) :-
     sub_string(SourceText, Start, Len, _, TokenStr),
     atom_string(Token, TokenStr).
 
-%% TODO: Escape '/' in Corpus, Root
+% TODO: Escape '/' in Corpus, Root
 file_path(CombinedPath) :-
     kythe_file(Corpus, Root, Path, _Language),
-    %% TODO: escape '/' inside Corpus, Root
+    % TODO: escape '/' inside Corpus, Root
     format(atom(CombinedPath), '~w/~w/~w', [Corpus, Root, Path]).
 
 kythe_file(Corpus, Root, Path, Language) :-
@@ -753,14 +753,15 @@ add_links(Vname0, LineNo-Items, LineNo-AppendedItems) :-
 
 add_link(Vname0, Item, ItemWithEdges) :-
     Start = Item.start,
-    %% Note the use of Signature -- it gets instantiated by a lookup
-    %% to /kythe/loc/start and then edges are found. The lookup gives
-    %% either 0 or 1 result (Item.start might not have any edges
-    %% associated with it).
+    % Note the use of Signature -- it gets instantiated by a lookup to
+    % /kythe/loc/start and then edges are found. The lookup gives
+    % either 0 or 1 result (Item.start might not have any edges
+    % associated with it).
     vname_vname0(Vname, Signature, Vname0),
     (  kythe_node(Vname, '/kythe/loc/start', Start),
-       %% There can be multiple edges with the same label (but different
-       %% targets, so leave as a list and don't combine into a dict.
+       % There can be multiple edges with the same label (but
+       % different targets, so leave as a list and don't combine into
+       % a dict.
        setof(json{edge:Edge,target:TargetJson},
              node_and_edge_json(Signature, Vname0, Edge, TargetJson),
              Edges)
@@ -780,7 +781,7 @@ node_and_edge(Signature, Vname0, Edge, Target) :-
 node_and_edge(Vname, Edge, Target) :-
     kythe_edge(Vname, Edge, Target).
 
-%% DO NOT SUBMIT - already handled by kythe_edge/3 ?
+% DO NOT SUBMIT - already handled by kythe_edge/3 ?
 % node_and_edge(Vname, Edge, Target) :-
 %     kythe_edge(Target, ReverseEdge, Vname),
 %     reverse_edge_name(ReverseEdge, Edge).
@@ -807,7 +808,7 @@ vname0_join_signature(vname0(Corpus,Root,Path,Language), Signature,
 
 vname_sort(vname(Signature, Corpus, Root, Path, Language),
            vname_sort(Corpus, Root, Path, Start, Language, Signature)) :-
-    (  var(Start)  % No need to do the lookup if nonvar
+    (  var(Start)               % No need to do the lookup if nonvar
     -> kythe_node(Signature, Corpus, Root, Path, Language, '/kythe/loc/start', Start)
     ;  true
     ).
@@ -816,10 +817,10 @@ vname_strip_signature(vname(_Signature1,Corpus,Root,Path,Language),
                       vname(_Signature2,Corpus,Root,Path,Language)).
 
 %! anchor_to_line_chunks(+AnchorVname:vname, -LineNo:int, -Chunks:list(dict)) is semidet.
-%% Given an AnchorVname, get all the color chunks (in order) for the
-%% line that anchor is in. Can fail if the anchor is invalid (and if
-%% there isn't a color anchor that matches the token anchor).
-%% TODO: refactor with color_data_one_file
+% Given an AnchorVname, get all the color chunks (in order) for the
+% line that anchor is in. Can fail if the anchor is invalid (and if
+% there isn't a color anchor that matches the token anchor).
+% TODO: refactor with color_data_one_file
 anchor_to_line_chunks(AnchorVname, LineNo, Chunks) :-
     anchor_to_lineno(AnchorVname, LineNo),
     vname_vname0(AnchorVname, Vname0),
@@ -830,8 +831,8 @@ anchor_to_lineno(AnchorVname, LineNo) :-
     kythe_node(AnchorVname, '/kythe/loc/start', Start),
     vname_strip_signature(AnchorVname, ColorVname),
     kythe_node(ColorVname, '/pykythe/color/start', Start),
-    %% There can be multiple chunks for a color anchor, but all have
-    %% the same line#.
+    % There can be multiple chunks for a color anchor, but all have
+    % the same line#.
     once(kythe_node(ColorVname, '/pykythe/color/lineno', LineNo)). % TODO: once(...)
 
 keyed_color_chunk(Vname0, LineNo, Start-Chunk) :-
@@ -845,7 +846,7 @@ line_chunk(ColorVname, LineNo, color{lineno:LineNo, column:Column,
                                      signature:Signature,
                                      semantic_signature:'***', % DO NOT SUBMIT fixme
                                      token_color:TokenColor, value:Value}) :-
-    %% DO NOT SUBMIT - needs semantic_signature (above)
+    % DO NOT SUBMIT - needs semantic_signature (above)
     kythe_node(ColorVname, '/pykythe/color/lineno',      LineNo),
     kythe_node(ColorVname, '/pykythe/color/column',      Column),
     kythe_node(ColorVname, '/pykythe/color/start',       Start),
@@ -881,21 +882,21 @@ setof_or_empty(Template, Goal, Set) :-
     ).
 
 
-%% Add a timestamp to thread messages (which are typically from the http server).
+% Add a timestamp to thread messages (which are typically from the http server).
 :- multifile prolog:message_prefix_hook/2.
 prolog:message_prefix_hook(thread, Prefix) :-
     thread_self(Me),
     Me \== main,
     thread_property(Me, id(Id)),
     get_time(NowTimeStamp),
-    %% %FT adds 2020-02-23T; %% %z adds '-0800'
+    % %FT adds 2020-02-23T; % %z adds '-0800'
     format_time(string(NowTime), '%T', NowTimeStamp),
     format(atom(Prefix), '[Thread ~w ~w] ', [Id, NowTime]).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%% Transform a list of file names to a tree for browser.
+% Transform a list of file names to a tree for browser.
 
 files_to_tree(Files, Tree) :-
     maplist(split_on_slash, Files, SplitFiles),
@@ -933,9 +934,9 @@ head_tail_pair([Hd|Tl], Hd-Tl).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%% :- use_module(library(check)).  %% DO NOT SUBMIT
-%% %% TODO: trap print_message(informational,check(pass(Message)))
-%% ?- check.                       %% DO NOT SUBMIT
+% :- use_module(library(check)).  % DO NOT SUBMIT
+% % TODO: trap print_message(informational,check(pass(Message)))
+% ?- check.                       % DO NOT SUBMIT
 
 :- use_module(library(plunit)).
 
@@ -953,7 +954,7 @@ t1(Ftree) :-
     with_output_to(atom(JsonAtom),
                    (current_output(JsonStream),
                     pykythe_json_write_dict_nl(JsonStream, FtreeJson))),
-    %% format('~w~n', [JsonAtom]),
+    % format('~w~n', [JsonAtom]),
     assertion(JsonAtom == '[ {"type":"dir", "name":"a", "path":"a", "children": [ {"type":"dir", "name":"b", "path":"a/b", "children": [ {"type":"file", "name":"x1", "path":"a/b/x1"},  {"type":"file", "name":"x2", "path":"a/b/x2"} ]},  {"type":"dir", "name":"d", "path":"a/d", "children": [ {"type":"dir", "name":"e", "path":"a/d/e", "children": [ {"type":"file", "name":"x3", "path":"a/d/e/x3"} ]} ]},  {"type":"file", "name":"c", "path":"a/c"} ]},  {"type":"file", "name":"x", "path":"x"} ]\n').
 
 test(f1, [true]) :-

@@ -23,8 +23,8 @@
 :- meta_predicate mro(2, +, -).
 
 %! mro(:Bases, +Class:atom, -Mro:list(atom)) is semidet.
-%% Failure means an inconsistent hierarchy
-%% Requres bases/2 facts, each mapping a class name to a list of base class names
+% Failure means an inconsistent hierarchy
+% Requres bases/2 facts, each mapping a class name to a list of base class names
 mro(Bases, Class, Mro) :-
     call(Bases, Class, ClassDirectBases),
     maplist(mro(Bases), ClassDirectBases, ClassMro),
@@ -32,20 +32,20 @@ mro(Bases, Class, Mro) :-
     mro_merge(ToMerge, Mro).
 
 %! mro(+Class, -Mro:list) is nondet.
-%% Like mro/3, but expects class_type(ClassName, ListOfBases), where
-%% ListOfBases are recursively a list of ordset of class_type (or [], of course).
-%% Fails if there's an inconsistency.
-%% Deterministic if all the base classes are single type (not a union);
-%% otherwise non-deterministic.
-mro([], []). %% TODO: delete this clause?
+% Like mro/3, but expects class_type(ClassName, ListOfBases), where
+% ListOfBases are recursively a list of ordset of class_type (or [], of course).
+% Fails if there's an inconsistency.
+% Deterministic if all the base classes are single type (not a union);
+% otherwise non-deterministic.
+mro([], []). % TODO: delete this clause?
 mro(class_type(Class,ClassDirectBases), Mro) :-
     maplist(select_one, ClassDirectBases, ClassDirectBasesOne),
     maplist(mro, ClassDirectBasesOne, ClassMro),
     maplist(class_only, ClassDirectBases, ClassDirectBasesNames),
     append([[[Class]], ClassMro, [ClassDirectBasesNames]], ToMerge),
     mro_merge(ToMerge, Mro).
-%% A module type can happen if an invalid module has been specified
-%% (that is, we can't resolve it), so just skip it.
+% A module type can happen if an invalid module has been specified
+% (that is, we can't resolve it), so just skip it.
 mro(module_type(_ModuleType), []).
 
 select_one(List, One) :-
@@ -59,12 +59,12 @@ mro_merge([], []) :- !.
 mro_merge([[]|Seqs], Mro) :- !,
     mro_merge(Seqs, Mro).
 mro_merge(Seqs, [Candidate|Mro2]) :-
-    %% TODO: if mro_merge_candidate fails, skip and keep going?
-    mro_merge_candidate(Seqs, Candidate),  %% can fail if inconsistent hierarchy
+    % TODO: if mro_merge_candidate fails, skip and keep going?
+    mro_merge_candidate(Seqs, Candidate), % can fail if inconsistent hierarchy
     maplist(remove_candidate(Candidate), Seqs, Seqs2),
     mro_merge(Seqs2, Mro2).
 
-%! mro_merg_candidate(+Seqs:list(list(atom)), +Candidate:atom) is semidet.
+%! mro_merge_candidate(+Seqs:list(list(atom)), +Candidate:atom) is semidet.
 mro_merge_candidate(Seqs, Candidate) :-
     Seqs = [[Candidate0|_]|SeqsTail],
     (  include(in_tail(Candidate0), Seqs, [])

@@ -5,15 +5,15 @@ pack_install(logtalk, [interactive(false), upgrade(true)]).
 use_module(library(logtalk)).
 set_logtalk_flag(optimize, on).
 cd(pykythe).
-%% [pykythe].
+% [pykythe].
 {pykythe}.
 {os(loader), hook_flows(loader)}.
 set_logtalk_flag(hook, hook_set([user,system])).
-%% set_logtalk_flag(duplicated_clauses,warning),
-%% set_logtalk_flag(unknown_predicates,silent),
-%% set_logtalk_flag(undefined_predicates,silent),
-%% set_logtalk_flag(unknown_entities,silent),
-%% set_logtalk_flag(missing_directives,silent).
+% set_logtalk_flag(duplicated_clauses,warning),
+% set_logtalk_flag(unknown_predicates,silent),
+% set_logtalk_flag(undefined_predicates,silent),
+% set_logtalk_flag(unknown_entities,silent),
+% set_logtalk_flag(missing_directives,silent).
 os::directory_files('.',
                     Files,
                     [type(regular),

@@ -187,6 +187,13 @@ Prolog code is formatted according to the recommendations in
 [plcoding.pdf](http://www.covingtoninnovations.com/mc/plcoding.pdf)
 with an extension for EDCGs that shows the accumulators.
 
+If you use Emacs, I recommend using `prolog.el` from
+https://bruda.ca/emacs/prolog_mode_for_emacs
+(https://bruda.ca/_media/emacs/prolog.el), customized with
+`prolog-align-small-comments-flag` set to `nil`
+(a copy of this is in directory `emacs`).
+See also https://www.swi-prolog.org/FAQ/GnuEmacs.html
+
 ### Type declarations
 
 The code is processed with `mypy` (using the `Makefile` rule `mypy`)
