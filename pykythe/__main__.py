@@ -17,6 +17,7 @@ from lib2to3.pgen2 import tokenize as pgen2_tokenize
 from typing import Iterable, Optional, Text, Tuple, Union
 
 from . import ast, ast_raw, ast_cooked, ast_color, pod
+from .typing_debug import cast as xcast
 
 # TODO: a bit more refactoring - look at error types, for example.
 
@@ -29,9 +30,19 @@ def main() -> int:
     parse_error: Optional['CompilationError']
     parse_tree: Optional[RawBaseType]
     with_fqns: Union['CompilationError', ast_cooked.Base]
+    pykythe_logger = logging.getLogger('pykythe')
+    pykythe_logger_hdlr = logging.StreamHandler()
+    pykythe_logger_hdlr.setFormatter(  # TODO: use something emacs *compilation* recognizes
+            logging.Formatter(
+                    'LOG %(asctime)s,%(msecs)03d-%(name)s-%(levelname)s: %(message)s',
+                    datefmt='%H:%M:%S'))
+    pykythe_logger.addHandler(pykythe_logger_hdlr)
+    pykythe_logger.setLevel(logging.WARNING)
+
     # TODO: add to ast.File: args.root, args.corpus (even though they're in Meta)
 
     args = _get_args()
+    pykythe_logger.info('Start parsing %s', args.srcpath)
     src_file, parse_error = _make_file(args)
     if src_file:
         assert not parse_error
@@ -58,26 +69,32 @@ def main() -> int:
     else:
         assert parse_error
         parse_tree = None
-        logging.error('Parse error: %s', parse_error)
+        pykythe_logger.error('pykythe.__main__.main: Parse error: %s',
+                             parse_error)  # DO NOT SUBMIT - error message form
         with_fqns = parse_error
-        meta = ast_cooked.Meta(kythe_corpus=args.kythe_corpus,
-                               kythe_root=args.kythe_root,
-                               path=args.srcpath,
-                               language='python',
-                               contents_base64=b'',
-                               contents_str='',
-                               contents_bytes=b'',
-                               sha1=hashlib.sha1(b'').hexdigest(),
-                               encoding='ascii')
+        with open(args.srcpath, 'rb') as src_f:
+            contents_bytes = xcast(bytes, src_f.read())
+        meta = ast_cooked.Meta(
+                kythe_corpus=args.kythe_corpus,
+                kythe_root=args.kythe_root,
+                path=args.srcpath,
+                language='python',
+                contents_base64=base64.b64encode(contents_bytes),
+                contents_str='',  # TODO: .decode('iso-8859-1') or
+                                  #       .decode('utf-8', 'surrogateescape')
+                contents_bytes=contents_bytes,
+                sha1=hashlib.sha1(b'').hexdigest(),
+                encoding='ascii')
 
     colored = ast_color.ColorFile(src_file, parse_tree, dict(with_fqns.name_astns())).color()
 
     with open(args.out_fqn_ast, 'w') as out_fqn_ast_file:
-        logging.debug('Output fqn= %r', out_fqn_ast_file)
+        pykythe_logger.debug('Output fqn= %r', out_fqn_ast_file)
         print(meta.as_prolog_str() + '.', file=out_fqn_ast_file)
         print(with_fqns.as_prolog_str() + '.', file=out_fqn_ast_file)
         print(ast_color.colored_list_as_prolog_str(colored) + '.', file=out_fqn_ast_file)
-    logging.debug('Finished')
+    pykythe_logger.debug('Finished')
+    pykythe_logger.info('End parsing %s', args.srcpath)
     return 0
 
 
@@ -172,7 +189,7 @@ def _process_ast(
         src_file: ast.File, parse_tree: RawBaseType, args: argparse.Namespace
 ) -> Tuple[Optional[RawBaseType], Union['Crash', 'ParseError', ast_cooked.Base],
            Optional['ParseError']]:
-    logging.debug('RAW= %r', parse_tree)
+    logging.getLogger('pykythe').debug('RAW= %r', parse_tree)
     new_parse_tree: Optional[RawBaseType]
     with_fqns: Union[ast_cooked.Base, 'ParseError', 'Crash']
     parse_error: Optional['ParseError']
@@ -190,12 +207,15 @@ def _process_ast(
         # This can happen with, e.g. function def struct unpacking
         new_parse_tree = None
         with_fqns = parse_error
-        logging.error('Parse error: %s', parse_error)
+        logging.getLogger('pykythe').error('pykythe.__main__._process_ast: Parse error: %s',
+                                           parse_error)  # DO NOT SUBMIT - error message form
     except Exception as exc:  # pylint: disable=broad-except
         # DO NOT SUBMIT: the parse_error assignment is probably incorrect
         parse_error = exc  # TODO: is this correct? we get this from an assertion check, for example
         new_parse_tree = parse_tree
-        logging.error('Caught error in cvt_parse_tree/with_fqns: %s %r', exc, exc)
+        logging.getLogger('pykythe').error(
+                'pykythe.__main__._process_ast: Caught error in cvt_parse_tree/with_fqns: %s %r',
+                exc, exc)
         traceback.print_exc()
         with_fqns = Crash(str=str(exc), repr=repr(exc), srcpath=args.srcpath)
     return new_parse_tree, with_fqns, parse_error

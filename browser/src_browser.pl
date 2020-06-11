@@ -615,7 +615,7 @@ node_link_node(Vname1, Edge1, SemanticVname, Edge2, Vname2) :-
 
 node_link_node_value(Vname, EdgeNodeKind, Value) :-
     node_link_node_value(Vname, Edge, _NodeVname, Name, Value),
-    format(atom(EdgeNodeKind), '~w(~w)', [Name, Edge]).
+    format(atom(EdgeNodeKind), '(~w)~w', [Edge, Name]).
 
 node_link_node_value(Vname, Edge, Name, Value) :-
     node_link_node_value(Vname, Edge, _NodeVname, Name, Value).

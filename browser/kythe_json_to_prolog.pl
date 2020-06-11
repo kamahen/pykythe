@@ -13,6 +13,7 @@
 %  json:json_string_codes/3 takes 15% (most of it in utf8_codes/3).
 
 :- use_module(library(http/json), [json_read_dict/3]).
+:- use_module(library(base64), [base64/2]).
 :- use_module(library(pairs)).
 
 % debugging: main('/tmp/pykythe_test/KYTHE/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t10.kythe.json').
@@ -42,12 +43,15 @@ main(InStream) :-
     prompt(_, ''),                    % really ensure no prompting
     log_if(true, 'Start'),
     extract_opts(Opts),
-    retract_kythe_facts,
-    read_lines(InStream, Files),
+    must_once(retract_kythe_facts),
+    must_once(read_lines(InStream, Files)),
+    length(Files, NumFiles),
+    log_if(true, 'Processing ~d files.', [NumFiles]),
     concurrent_maplist(get_and_assert_kythe_facts, Files),
-    do_output_stream(Opts, 'kythe_facts.pl', '', [],
-                     write_kythe_facts,
-                     '', []),
+    must_once(
+        do_output_stream(Opts, 'kythe_facts.pl', '', [],
+                         write_kythe_facts,
+                         '', [])),
     log_if(true, 'End').
 
 read_lines(InStream, Files) :-
@@ -75,13 +79,18 @@ write_kythe_facts(KytheFactsOutStream) :-
     log_if(false, 'Write_kythe_facts: kythe_edge-done').
 
 get_and_assert_kythe_facts(File) :-
+    must_once(get_and_assert_kythe_facts_(File)).
+
+get_and_assert_kythe_facts_(File) :-
+    % TODO: use setup_call_cleanup/3
     open(File, read, InStream, [encoding(utf8)]),
     read_kythe_json_facts(InStream, KytheDicts),
+    close(InStream),
     log_if(false, 'Read_kythe_json_facts-done ~q', [File]),
     % TODO: base64/2 takes most of the CPU time (from b64_to_utf8_to_atom/2)
-    % TODO: slightly more efficient if kythe_fact_pred/2 is
+    % TODO: slightly more efficient if kythe_fact_pred/3 is
     %       moved into read_kythe_json_facts/2.
-    maplist(kythe_fact_pred, KytheDicts, Preds0),
+    maplist(kythe_fact_pred(File), KytheDicts, Preds0),
     log_if(false, 'Kythe_fact_pred-done ~q', [File]),
     sort(Preds0, Preds), % remove dups, although there shouldn't be any
     % log_if(false, 'Sort preds-done ~q', [File]),
@@ -105,24 +114,38 @@ read_kythe_json_facts(InStream, KytheDicts) :-
        read_kythe_json_facts(InStream, KytheDicts2)
     ).
 
-%! kythe_fact_pred(+JsonFact:dict, -Pred) is det.
+%! kythe_fact_pred(+File: atom, +JsonFact:dict, -Pred) is det.
 % See transform_kythe_fact/3 in pykythe.pl
-kythe_fact_pred(json{source:Source0, fact_name:FactName, fact_value:FactValueB64},
-                kythe_node(Source1, FactName, FactValue)) :-
+
+kythe_fact_pred(File, JsonFact, Pred) :-
+    must_once(kythe_fact_pred_(File, JsonFact, Pred)).
+
+kythe_fact_pred_(File,
+                 json{source:Source0, fact_name:FactName, fact_value:FactValueB64},
+                 kythe_node(Source1, FactName, FactValue)) :-
     !,
     vname_fix(Source0, Source1),
     (  FactName == '/pykythe/symtab'
     -> FactValue = FactValueB64  % It's not b64-encoded for performance
-    ;  base64_utf8(FactValue0, FactValueB64),
+    ;  (  base64_utf8(FactValue0, FactValueB64)
+       -> true
+       ;  % if base64_utf8/2 fails, assume it's invalid UTF-8 encoding
+          % and leave it as-is.
+          % TODO: Look for '# -*- coding: ...' and use that (see
+          %       lib2to3/pgen2/tokenize.py detect_encoding())
+          log_if(true, 'Fact not UTF-8: ~q in ~q', [FactName, File]),
+          base64(FactValue0, FactValueB64)
+       ),
        post_process_fact(FactName, FactValue0, FactValue)
     ).
-kythe_fact_pred(json{source:Source0, fact_name:'/', edge_kind:EdgeKind, target:Target0},
-                kythe_edge(Source1, EdgeKind, Target1)) :-
+kythe_fact_pred_(_File,
+                 json{source:Source0, fact_name:'/', edge_kind:EdgeKind, target:Target0},
+                 kythe_edge(Source1, EdgeKind, Target1)) :-
     !,
     vname_fix(Source0, Source1),
     vname_fix(Target0, Target1).
-kythe_fact_pred(Fact, Fact) :-
-    domain_error(json, Fact).
+kythe_fact_pred_(File, Fact, Fact) :-
+    domain_error(json, File:Fact).
 
 post_process_fact('/kythe/loc/start', Value0, Value) :- !, atom_number(Value0, Value).
 post_process_fact('/kythe/loc/end',   Value0, Value) :- !, atom_number(Value0, Value).
@@ -194,6 +217,7 @@ kythe_edge(Signature1,vname0(Corpus1,Root1,Path1,Language1), EdgeName,
                Signature2,Corpus2,Root2,Path2,Language2).
 
 do_output_stream(Opts, FileName, Fmt1, Args1, Goal, Fmt2, Args2) :-
+    % TODO: use setup_call_cleanup/3
     open_output_stream(Opts, FileName, Fmt1, Args1, OutStream),
     call(Goal, OutStream),
     close_output_stream(OutStream, Fmt2, Args2).

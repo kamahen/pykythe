@@ -212,7 +212,9 @@ def cvt_argument(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
             name_cvt = cvt(node.children[0], ctx)
             if isinstance(name_cvt, ast_cooked.NameRefNode):
                 return ast_cooked.ArgumentNode(name=name_cvt.name, arg=cvt(node.children[2], ctx))
-            logging.warning('argument not in form name=expr: %r', node)  # pragma: no cover
+            # logger 'pykythe' is defined in __main__
+            logging.getLogger('pykythe').warning(
+                    'argument not in form name=expr: %r', node)  # pragma: no cover
             return cvt(node.children[2], ctx)  # pragma: no cover
         assert node.children[1].type == syms.comp_for, [node]  # pylint: disable=no-member
         assert len(node.children) == 2, [node]
@@ -1722,6 +1724,7 @@ def parse(src_file: ast.File, python_version: int) -> Union['Node', 'Leaf']:
     # TODO: add detect_encoding to typeshed: lib2to3/pgen2/tokenize.pyi
     # TODO: (non-ascii variable testcase) 網目錦蛇 = 1
     #       アミメニシキヘビ 《網目錦蛇》 【あみめにしきへび】 (n) (uk) reticulated python (Python reticulatus)
+    # logger 'pykythe' is defined in __main__
     lib2to3_logger = logging.getLogger('pykythe')
     grammar = pygram.python_grammar
     if python_version == 3:

@@ -310,6 +310,7 @@
                   % eval_lookup/7, % TODO: failed to analyse
                   % eval_lookup_single/7, % TODO: failed to analyse
                   eval_single_type/7,
+                  eval_single_type_error_msg/7,
                   eval_single_type_import/9,
                   eval_union_type/7,
                   expr_normalized/6,
@@ -450,6 +451,7 @@ edcg:pred_info(Name, Arity, Accs) :-
     ).
 
 pred_info_(log_kyfact_msg, 5,                      [kyfact,file_meta]).
+pred_info_(eval_single_type_error_msg, 4,          [kyfact,file_meta]).
 pred_info_(maplist_kyfact, 2,                      [kyfact,file_meta]).
 pred_info_(maplist_kyfact, 3,                      [kyfact,file_meta]).
 pred_info_(maplist_kyfact_, 2,                     [kyfact,file_meta]).
@@ -836,7 +838,7 @@ maybe_process_module_cached(Opts, FromSrcOk, SrcPath, Symtab0, Symtab) :-
         maybe_open_read(PykytheSymtabPath, PykytheSymtabInputStream),
         maybe_process_module_cached_impl(Opts, FromSrcOk, PykytheSymtabInputStream, PykytheSymtabPath, SrcPath, Symtab0, Symtab),
         close(PykytheSymtabInputStream)),
-    log_if(false, 'Reused ~q for ~q', [PykytheSymtabPath, SrcPath]). % msg is output by process_module_cached_impl
+    log_if(trace_file(SrcPath), 'Reused ~q for ~q', [PykytheSymtabPath, SrcPath]). % msg is output by process_module_cached_impl
 
 %! maybe_process_module_cached_impl(+Opts:list, +FromSrcOk:{'from src ok','cached only'}, +PykytheSymtabInputStream, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
 % See README.md's section on caching for an explanation.
@@ -917,11 +919,7 @@ process_module_from_src_impl(Opts, SrcPath, SrcFqn, Symtab0, Symtab) :-
                              src_path: Meta.path,
                              color_text:ColorTexts},
                   KytheFactsFromNodes0, Exprs, Meta),
-    % DO NOT SUBMIT -- why does the following log_kythe_fact_msgs need to be
-    %                  done here? -- if it isn't done, then an empty(?)
-    %                  fact gets given to verifier
-    % log_kythe_fact_msgs(KytheFactsFromNodes0, KytheFactsFromNodes),
-    KytheFactsFromNodes0 = KytheFactsFromNodes, % DO NOT SUBMIT -- elide
+    log_kythe_fact_msgs(KytheFactsFromNodes0, KytheFactsFromNodes),
     modules_in_exprs(Exprs, ModulesInExprs),
     log_if(trace_file(SrcPath),
            'MODULES_IN_EXPRS: ~q', [[ModulesInExprs, src=SrcPath, SrcFqn]]),
@@ -1034,8 +1032,12 @@ parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes, ColorTexts) :-
     builtins_version(BuiltinsVersion),
     must_once_msg(BuiltinsVersion == Opts.version,
                   'builtins_version(~q) should be ~q', [BuiltinsVersion, Opts.version]),
+    get_time(T0),
     run_parse_cmd(Opts, SrcPath, SrcFqn, ParsedPath),
-    log_if(true, 'Python parser: finished ~q', [ParsedPath]),
+    get_time(T1),
+    ParseTime is T1 - T0,
+    % TODO: put parser run time into Meta returned from Opts.parsecmd
+    log_if(true, 'Python parser: finished parsing/fqn (~2f sec) into ~q', [ParseTime, ParsedPath]),
     read_nodes(ParsedPath, Nodes, Meta, ColorTexts),
     log_if(true, 'Processed AST nodes from Python parser'),
     % Fill in dict items that were left uninstantiated in simplify_meta/2 (read_nodes/3):
@@ -1060,7 +1062,7 @@ extend_symtab_with_builtins(Symtab0, Meta, Symtab) :-
 %       Needs an anchor with each fact.
 log_kythe_fact_msgs([], []).
 log_kythe_fact_msgs([msg{message:MessageMsg,details:DetailsMsg,astn:Astn}|KytheFacts], KytheFactsOut) :- !,
-    log_if(true, '~w: ~w ... ~w', [Astn, MessageMsg, DetailsMsg]),
+    log_if(true, 'MESSAGE ~w: ~w ... ~w', [Astn, MessageMsg, DetailsMsg]),
     log_kythe_fact_msgs(KytheFacts, KytheFactsOut).
 log_kythe_fact_msgs([Fact|KytheFacts], [Fact|KytheFactsOut]) :-
     log_kythe_fact_msgs(KytheFacts, KytheFactsOut).
@@ -1398,22 +1400,8 @@ process_nodes_impl(Node, SrcInfo) -->>
     kyfile(SrcInfo),
     do_if_file(dump_term('NODE', Node)),
     % TODO: return non-zero for parse failure?
-    % TODO: limit the amount of backtrace? (process_nodes_impl dumps out base64 source text)
-    (  { Node = 'ParseError'{context: Context, msg: Msg, type: Type, value: Value, srcpath: SrcPath} }
-    -> { log_if(true, 'ERROR: ~w (type=~w) value=~q context:~w file:~q', [Msg, Type, Value, Context, SrcPath]) },
-       { throw(error(parse_error(Node), _)) },
-       { fail }
-    ;  { Node = 'DecodeError'{encoding:Encoding, start:Start, end:End, reason:Reason, srcpath: SrcPath} }
-    -> { log_if(true, 'ERROR: bad input (decoding ~w): ~w start=~w end=~w file:~q', [Encoding, Reason, Start, End, SrcPath]) },
-       { throw(error(decode_error(Node), _)) },
-       { fail }
-    ;  { Node = 'Crash'{repr: Repr, str: Str, srcpath: SrcPath} }
-    -> { log_if(true, 'ERROR: crash: ~w repr:~w file:~q', [Str, Repr, SrcPath]) },
-       { throw(error(crash(Node), _)) },
-       { fail }
-    ;  kynode(Node, Expr),
-       do_if_file(dump_term('NODE=>Expr', Expr))
-    ).
+    kynode(Node, Expr),
+    do_if_file(dump_term('NODE=>Expr', Expr)).
 
 %! kyfile(+SrcInfo)//[kyfact,file_meta] is det.
 % Generate the KytheFacts at the file level.
@@ -1824,7 +1812,21 @@ kynode('WithStmt'{items: Items, suite: Suite},
        [stmt(with)]) -->> !,
     maplist_kynode(Items, _),   % handled by WithItemNode
     kynode(Suite, _).
-kynode(X, Ty) -->>              % TODO: delete this catch-all clause
+% The following are error results:
+kynode('ParseError'{context: Context, msg: Msg, type: Type, value: Value, srcpath: SrcPath},
+       [parse_error(Node)]) -->> !,
+    { Node = 'ParseError'{context: Context, msg: Msg, type: Type, value: Value, srcpath: SrcPath} },
+    [ parse_error(Node) ]:expr.
+kynode('DecodeError'{encoding:Encoding, start:Start, end:End, reason:Reason, srcpath: SrcPath},
+       [decode_error(Node)]) -->> !,
+    { Node = 'DecodeError'{encoding:Encoding, start:Start, end:End, reason:Reason, srcpath: SrcPath} },
+    [ decode_error(Node) ]:expr.
+kynode('Crash'{repr: Repr, str: Str, srcpath: SrcPath},
+       [crash(Node)]) -->> !,
+    { Node = 'Crash'{repr: Repr, str: Str, srcpath: SrcPath} },
+    [ crash(Node) ]:expr.
+% And a catch-all - TODO: delete this?
+kynode(X, Ty) -->>
     { goal_failed(kynode(X,Ty)) }.
 
 %! kynode_add_items(Items:list)//[kyfact,expr,file_meta] is det.
@@ -2660,14 +2662,42 @@ eval_single_type(exprlist(ItemsTypes), [list_of_type(Union)]) -->> !,
     maplist_kyfact_symrej_union(eval_union_type, ItemsTypes, Union).
 eval_single_type(exprlist_binds(ItemsTypes), [list_of_type_binds(Union)]) -->> !,
     maplist_kyfact_symrej_union(eval_union_type, ItemsTypes, Union).
-eval_single_type(stmt(stmts), []) -->> !, [ ].
+eval_single_type(stmt(stmts), []) -->> !, [ ]. % TODO: how can stmt(stmts) get here? DO NOT SUBMIT
+eval_single_type(parse_error(Node), []) -->> !,
+    { Node = 'ParseError'{context: Context, msg: Msg, type: Type, value: Value, srcpath: SrcPath} },
+    eval_single_type_error_msg('Parse error', [],
+                               '~w (type=~w) value=~q context:~w file:~q',
+                               [Msg, Type, Value, Context, SrcPath]).
+eval_single_type(decode_error(Node), []) -->> !,
+    { Node = 'DecodeError'{encoding:Encoding, start:Start, end:End, reason:Reason, srcpath: SrcPath} },
+    eval_single_type_error_msg('Decode error', [],
+                               'Bad input (decoding ~w): ~w start=~w end=~w file:~q',
+                               [Encoding, Reason, Start, End, SrcPath]).
+eval_single_type(crash(Node), []) -->> !,
+    { Node = 'Crash'{repr: Repr, str: Str, srcpath: SrcPath} },
+    eval_single_type_error_msg('Crash wile processing file', [],
+                               'Crash: ~w repr:~w file:~q',
+                               [Str, Repr, SrcPath]).
 eval_single_type(Expr, EvalType) -->> % TODO: delete this catch-all clause.
     { goal_failed(eval_single_type(Expr, EvalType)) }.
+
+eval_single_type_error_msg(FmtMessage, ArgsMessage, FmtDetails, ArgsDetails) -->>
+    Meta/file_meta,
+    { string_length(Meta.contents_bytes, AstnEnd) },
+    { Astn = astn(0, AstnEnd, '-msg-') },
+    kyanchor(0, AstnEnd, '-msg-', _AnchorSource),
+    kyfact_color(color{lineno:1, column:0, start:0, end:AstnEnd,
+                       token_color:'<PUNCTUATION_REF>', % TODO: special value for this?
+                       value:Meta.contents_bytes}),
+    log_kyfact_msg(Astn, FmtMessage, ArgsMessage, FmtDetails, ArgsDetails).
 
 eval_single_type_import(NameAstn, _ResolvedFqn, Edge, import_ref_type(_Name, ImportFqn, _Type)) -->> !,
     kyanchor_node_kyedge_fqn(NameAstn, Edge , ImportFqn).
 eval_single_type_import(NameAstn, _ResolvedFqn, Edge, class_type(ClassFqn, _)) -->> !,
     kyanchor_node_kyedge_fqn(NameAstn, Edge, ClassFqn).
+eval_single_type_import(NameAstn, _ResolvedFqn, Edge, module_type(Module)) -->> !,
+    { module_part(Module, ImportFqn) },
+    kyanchor_node_kyedge_fqn(NameAstn, Edge, ImportFqn).
 eval_single_type_import(NameAstn, ResolvedFqn, Edge, []) -->> !,
     kyanchor_node_kyedge_fqn(NameAstn, Edge, ResolvedFqn).
 eval_single_type_import(NameAstn, ResolvedFqn, Edge, Type) -->> !,

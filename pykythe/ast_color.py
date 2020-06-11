@@ -132,6 +132,7 @@ class ColorFile:
         # TODO: can this be combined with _color_whitespace?
         astn_value_pieces = astn.value.splitlines(keepends=True)
         start = astn.start
+        assert self.src_file
         for piece in astn_value_pieces:
             without_newline, = piece.splitlines(keepends=False)
             newline = piece[len(without_newline):]
