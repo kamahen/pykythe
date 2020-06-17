@@ -12,19 +12,24 @@ from typing import (
 from abc import ABCMeta
 from ast import mod, AST
 from io import (
-    _OpenBinaryMode, _OpenTextMode, _OpenBinaryModeUpdating, _OpenBinaryModeWriting, _OpenBinaryModeReading,
     TextIOWrapper, FileIO, BufferedRandom, BufferedReader, BufferedWriter
 )
 from types import TracebackType, CodeType
+from _typeshed import AnyPath, OpenBinaryMode, OpenTextMode, OpenBinaryModeUpdating, OpenBinaryModeWriting, OpenBinaryModeReading, SupportsWrite
+from typing_extensions import Literal
 import sys
 
 if sys.version_info >= (3,):
     from typing import SupportsBytes, SupportsRound
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+if sys.version_info >= (3, 9):
+    from types import GenericAlias
+
+class _SupportsIndex(Protocol):
+    def __index__(self) -> int: ...
+
+class _SupportsLessThan(Protocol):
+    def __lt__(self, other: Any) -> bool: ...
 
 _T = TypeVar('_T')
 _T_co = TypeVar('_T_co', covariant=True)
@@ -37,9 +42,7 @@ _T3 = TypeVar('_T3')
 _T4 = TypeVar('_T4')
 _T5 = TypeVar('_T5')
 _TT = TypeVar('_TT', bound='type')
-
-class _SupportsIndex(Protocol):
-    def __index__(self) -> int: ...
+_LT = TypeVar('_LT', bound=_SupportsLessThan)
 
 class object:
     __doc__: Optional[str]
@@ -124,6 +127,8 @@ class type(object):
     if sys.version_info >= (3,):
         @classmethod
         def __prepare__(metacls, __name: str, __bases: Tuple[type, ...], **kwds: Any) -> Mapping[str, Any]: ...
+    if sys.version_info >= (3, 9):
+        def __class_getitem__(cls, item: Any) -> GenericAlias: ...
 
 class super(object):
     if sys.version_info >= (3,):
@@ -916,6 +921,8 @@ class tuple(Sequence[_T_co], Generic[_T_co]):
         def index(self, __value: Any, __start: int = ..., __stop: int = ...) -> int: ...
     else:
         def index(self, __value: Any) -> int: ...
+    if sys.version_info >= (3, 9):
+        def __class_getitem__(cls, item: Any) -> GenericAlias: ...
 
 class function:
     # TODO not defined in builtins!
@@ -943,7 +950,10 @@ class list(MutableSequence[_T], Generic[_T]):
     def remove(self, __value: _T) -> None: ...
     def reverse(self) -> None: ...
     if sys.version_info >= (3,):
-        def sort(self, *, key: Optional[Callable[[_T], Any]] = ..., reverse: bool = ...) -> None: ...
+        @overload
+        def sort(self: List[_LT], *, key: None = ..., reverse: bool = ...) -> None: ...
+        @overload
+        def sort(self, *, key: Callable[[_T], _SupportsLessThan], reverse: bool = ...) -> None: ...
     else:
         def sort(self, cmp: Callable[[_T, _T], Any] = ..., key: Callable[[_T], Any] = ..., reverse: bool = ...) -> None: ...
 
@@ -976,6 +986,8 @@ class list(MutableSequence[_T], Generic[_T]):
     def __ge__(self, x: List[_T]) -> bool: ...
     def __lt__(self, x: List[_T]) -> bool: ...
     def __le__(self, x: List[_T]) -> bool: ...
+    if sys.version_info >= (3, 9):
+        def __class_getitem__(cls, item: Any) -> GenericAlias: ...
 
 class dict(MutableMapping[_KT, _VT], Generic[_KT, _VT]):
     # NOTE: Keyword arguments are special. If they are used, _KT must include
@@ -1027,6 +1039,8 @@ class dict(MutableMapping[_KT, _VT], Generic[_KT, _VT]):
         def __reversed__(self) -> Iterator[_KT]: ...
     def __str__(self) -> str: ...
     __hash__: None  # type: ignore
+    if sys.version_info >= (3, 9):
+        def __class_getitem__(cls, item: Any) -> GenericAlias: ...
 
 class set(MutableSet[_T], Generic[_T]):
     def __init__(self, iterable: Iterable[_T] = ...) -> None: ...
@@ -1064,6 +1078,8 @@ class set(MutableSet[_T], Generic[_T]):
     def __ge__(self, s: AbstractSet[object]) -> bool: ...
     def __gt__(self, s: AbstractSet[object]) -> bool: ...
     __hash__: None  # type: ignore
+    if sys.version_info >= (3, 9):
+        def __class_getitem__(cls, item: Any) -> GenericAlias: ...
 
 class frozenset(AbstractSet[_T_co], Generic[_T_co]):
     def __init__(self, iterable: Iterable[_T_co] = ...) -> None: ...
@@ -1087,6 +1103,8 @@ class frozenset(AbstractSet[_T_co], Generic[_T_co]):
     def __lt__(self, s: AbstractSet[object]) -> bool: ...
     def __ge__(self, s: AbstractSet[object]) -> bool: ...
     def __gt__(self, s: AbstractSet[object]) -> bool: ...
+    if sys.version_info >= (3, 9):
+        def __class_getitem__(cls, item: Any) -> GenericAlias: ...
 
 class enumerate(Iterator[Tuple[int, _T]], Generic[_T]):
     def __init__(self, iterable: Iterable[_T], start: int = ...) -> None: ...
@@ -1145,7 +1163,12 @@ class property(object):
 if sys.version_info < (3,):
     long = int
 
-NotImplemented: Any
+class _NotImplementedType(Any):  # type: ignore
+    # A little weird, but typing the __call__ as NotImplemented makes the error message
+    # for NotImplemented() much better
+    __call__: NotImplemented  # type: ignore
+
+NotImplemented: _NotImplementedType
 
 def abs(__x: SupportsAbs[_T]) -> _T: ...
 def all(__iterable: Iterable[object]) -> bool: ...
@@ -1362,18 +1385,14 @@ def next(__i: Iterator[_T], default: _VT) -> Union[_T, _VT]: ...
 def oct(__number: Union[int, _SupportsIndex]) -> str: ...
 
 if sys.version_info >= (3,):
-    if sys.version_info >= (3, 6):
-        # Changed in version 3.6: Support added to accept objects implementing os.PathLike.
-        _OpenFile = Union[str, bytes, int, _PathLike[Any]]
-    else:
-        _OpenFile = Union[str, bytes, int]
+    _OpenFile = Union[AnyPath, int]
     _Opener = Callable[[str, int], int]
 
     # Text mode: always returns a TextIOWrapper
     @overload
     def open(
         file: _OpenFile,
-        mode: _OpenTextMode = ...,
+        mode: OpenTextMode = ...,
         buffering: int = ...,
         encoding: Optional[str] = ...,
         errors: Optional[str] = ...,
@@ -1386,7 +1405,7 @@ if sys.version_info >= (3,):
     @overload
     def open(
         file: _OpenFile,
-        mode: _OpenBinaryMode,
+        mode: OpenBinaryMode,
         buffering: Literal[0],
         encoding: None = ...,
         errors: None = ...,
@@ -1399,7 +1418,7 @@ if sys.version_info >= (3,):
     @overload
     def open(
         file: _OpenFile,
-        mode: _OpenBinaryModeUpdating,
+        mode: OpenBinaryModeUpdating,
         buffering: Literal[-1, 1] = ...,
         encoding: None = ...,
         errors: None = ...,
@@ -1410,7 +1429,7 @@ if sys.version_info >= (3,):
     @overload
     def open(
         file: _OpenFile,
-        mode: _OpenBinaryModeWriting,
+        mode: OpenBinaryModeWriting,
         buffering: Literal[-1, 1] = ...,
         encoding: None = ...,
         errors: None = ...,
@@ -1421,7 +1440,7 @@ if sys.version_info >= (3,):
     @overload
     def open(
         file: _OpenFile,
-        mode: _OpenBinaryModeReading,
+        mode: OpenBinaryModeReading,
         buffering: Literal[-1, 1] = ...,
         encoding: None = ...,
         errors: None = ...,
@@ -1434,7 +1453,7 @@ if sys.version_info >= (3,):
     @overload
     def open(
         file: _OpenFile,
-        mode: _OpenBinaryMode,
+        mode: OpenBinaryMode,
         buffering: int,
         encoding: None = ...,
         errors: None = ...,
@@ -1461,17 +1480,13 @@ else:
 
 def ord(__c: Union[Text, bytes]) -> int: ...
 if sys.version_info >= (3,):
-    class _Writer(Protocol):
-        def write(self, __s: str) -> Any: ...
     def print(
-        *values: object, sep: Optional[Text] = ..., end: Optional[Text] = ..., file: Optional[_Writer] = ..., flush: bool = ...
+        *values: object, sep: Optional[Text] = ..., end: Optional[Text] = ..., file: Optional[SupportsWrite[str]] = ..., flush: bool = ...
     ) -> None: ...
 
 else:
-    class _Writer(Protocol):
-        def write(self, __s: Any) -> Any: ...
     # This is only available after from __future__ import print_function.
-    def print(*values: object, sep: Optional[Text] = ..., end: Optional[Text] = ..., file: Optional[_Writer] = ...) -> None: ...
+    def print(*values: object, sep: Optional[Text] = ..., end: Optional[Text] = ..., file: Optional[SupportsWrite[Any]] = ...) -> None: ...
 
 _E = TypeVar("_E", contravariant=True)
 _M = TypeVar("_M", contravariant=True)
@@ -1539,8 +1554,13 @@ else:
     def round(number: SupportsFloat, ndigits: int) -> float: ...
 def setattr(__obj: Any, __name: Text, __value: Any) -> None: ...
 if sys.version_info >= (3,):
+    @overload
+    def sorted(__iterable: Iterable[_LT], *,
+               key: None = ...,
+               reverse: bool = ...) -> List[_LT]: ...
+    @overload
     def sorted(__iterable: Iterable[_T], *,
-               key: Optional[Callable[[_T], Any]] = ...,
+               key: Callable[[_T], _SupportsLessThan],
                reverse: bool = ...) -> List[_T]: ...
 else:
     def sorted(__iterable: Iterable[_T], *,

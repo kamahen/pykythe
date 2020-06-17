@@ -1202,9 +1202,8 @@ transform_and_write_kythe_fact(KytheOutStream, KytheFact) :-
 
 %! write_to_protobuf(+EntriesCmd, +SrcPath, +KytheJsonPath, +KytheEntriesPath) is det.
 write_to_protobuf(EntriesCmd, SrcPath, KytheJsonPath, KytheEntriesPath) :-
-    atomic_list_concat(
-        [% "set -o pipefail; ",  % TODO: use bash
-         EntriesCmd,
+    atomic_list_concat( % TODO: use process_create/3 instead of shell/2
+        [EntriesCmd,
          " --read_format=json",
          " <", KytheJsonPath,
          " >", KytheEntriesPath],
@@ -1225,7 +1224,7 @@ run_parse_cmd(Opts, SrcPath, SrcFqn, OutPath) :-
                        OutPathStream, [encoding(binary), extension('fqn-ast.pl')]),
     do_if(trace_file(SrcPath), link_src_file(SrcPath, OutPath)), % TODO: delete
     close(OutPathStream),
-    atomic_list_concat(
+    atomic_list_concat(  % TODO: use process_create/3 instead of shell/2
         [Opts.parsecmd,
          " --kythe_corpus='", Opts.kythe_corpus, "'",
          " --kythe_root='", Opts.kythe_root, "'",
