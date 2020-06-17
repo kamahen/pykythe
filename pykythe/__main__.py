@@ -33,9 +33,8 @@ def main() -> int:
     pykythe_logger = logging.getLogger('pykythe')
     pykythe_logger_hdlr = logging.StreamHandler()
     pykythe_logger_hdlr.setFormatter(  # TODO: use something emacs *compilation* recognizes
-            logging.Formatter(
-                    'LOG %(asctime)s,%(msecs)03d-%(name)s-%(levelname)s: %(message)s',
-                    datefmt='%H:%M:%S'))
+            logging.Formatter('LOG %(asctime)s,%(msecs)03d-%(name)s-%(levelname)s: %(message)s',
+                              datefmt='%H:%M:%S'))
     pykythe_logger.addHandler(pykythe_logger_hdlr)
     pykythe_logger.setLevel(logging.WARNING)
 
@@ -80,8 +79,7 @@ def main() -> int:
                 path=args.srcpath,
                 language='python',
                 contents_base64=base64.b64encode(contents_bytes),
-                contents_str='',  # TODO: .decode('iso-8859-1') or
-                                  #       .decode('utf-8', 'surrogateescape')
+                contents_str='',  # TODO: .decode('iso-8859-1') or .decode('utf-8', 'surrogateescape')
                 contents_bytes=contents_bytes,
                 sha1=hashlib.sha1(b'').hexdigest(),
                 encoding='ascii')
@@ -192,7 +190,7 @@ def _process_ast(
     logging.getLogger('pykythe').debug('RAW= %r', parse_tree)
     new_parse_tree: Optional[RawBaseType]
     with_fqns: Union[ast_cooked.Base, 'ParseError', 'Crash']
-    parse_error: Optional['ParseError']
+    parse_error: Optional[Union['ParseError', Exception]]
     try:
         cooked_nodes = ast_raw.cvt_parse_tree(parse_tree, args.python_version, src_file)
         with_fqns = ast_cooked.add_fqns(cooked_nodes, args.module, args.python_version)

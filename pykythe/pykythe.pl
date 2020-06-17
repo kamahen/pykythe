@@ -644,7 +644,6 @@ object_fqn(ObjectFqn) :-
     single_type_fqn(ObjectType, ObjectFqn).
 
 pykythe_main :-
-    log_if(true, 'Start'),      % TODO: delete
     % TODO: change ast_raw._EXPR_NODES to reduce the number of expr nodes
     % The stack limit depends on some cuts that are marked '% "cut" for memory usage'
     %     (especially the ones marked '*** THIS ONE IS IMPORTANT ***').
@@ -677,6 +676,7 @@ pykythe_main2 :-
     set_prolog_flag(color_term, false), % TODO: delete (move to ~/.swiplrc)
 
     pykythe_opts(SrcPaths, Opts),
+    log_if(true, 'Start ~w', [SrcPaths]), % TODO: delete
     % BuiltinsSymtabFile is created by gen_builtins_symtab.pl
     unload_file(Opts.builtins_symtab), % TODO: should be a module and list the predicates
     load_files([Opts.builtins_symtab],
@@ -687,11 +687,15 @@ pykythe_main2 :-
                          builtins_symtab_modules/1,
                          builtins_symtab_primitive/2,
                          builtins_version/1])]),
-    maplist(process_src(Opts), SrcPaths).
+    % debug, % TODO: remove - this "debug" gives a better traceback, at
+             %       the cost of significant slow-down and memory usage.
+    maplist(process_src(Opts), SrcPaths),
+    log_if(true, 'End ~w', [SrcPaths]).        % TODO: delete
 
 %! process_src(+Opts:list, +SrcPath:atom) is det.
 % Process a single source file
 process_src(Opts, SrcPath) :-
+    log_if(true, 'Start ~w', [SrcPath]),
     path_to_module_fqn_or_unknown(SrcPath, SrcFqn),
     builtins_symtab(Symtab0),
     must_once(
@@ -1400,8 +1404,7 @@ process_nodes_impl(Node, SrcInfo) -->>
     kyfile(SrcInfo),
     do_if_file(dump_term('NODE', Node)),
     % TODO: return non-zero for parse failure?
-    kynode(Node, Expr),
-    do_if_file(dump_term('NODE=>Expr', Expr)).
+    kynode(Node, _Expr).  % _Expr is only used by assignment statements
 
 %! kyfile(+SrcInfo)//[kyfact,file_meta] is det.
 % Generate the KytheFacts at the file level.
@@ -1467,16 +1470,18 @@ kyfact_color(color{lineno:Lineno,
 % Extract anchors (with FQNs) from the the AST nodes.  The anchors go
 % into accumulator 'kyfact' and the expressions (for further
 % processing) go into accumulator 'expr'. The predicate returns a
-% "type", which is used to populate the right-hand-sides of assign/2
-% terms in the 'expr' accumulator.
+% "type", which is used to populate the right- and left-hand sides of
+% assign/2 terms in the 'expr' accumulator (see, e.g.
+% 'AssignExprStmt', which calls assign_normalized//2, which uses
+% assign_normalized//2.
 
 % (The "type" is in a list, corresponding to a union of types.)
 
-% For nodes that can't appear on the right-hand side of an
-% assignment, the "type" is stmt(...) or unused_XXX(...). These
-% values aren't used anywhere; they're simply to help with debugging
-% and will cause an error in eval_assign_expr//2 if they appear on
-% the r.h.s. of an assignment.
+% For nodes that can't appear on the right-hand side of an assignment,
+% the "type" is stmt(...) or unused_XXX(...). These values aren't used
+% anywhere; they're simply to help with debugging and will cause an
+% error in eval_assign_expr//2 if they appear on the r.h.s. of an
+% assignment.
 
 % For descriptions of the various types of Node, and how they relate
 % to the raw AST, see ast_cooked.py.
@@ -1488,8 +1493,8 @@ kyfact_color(color{lineno:Lineno,
 %   str(_) is used by 'Class', 'Func', etc.)
 
 % assign/2 facts are made up of a left-hand-side (assigned-to) and a
-% right-hand-side (expression). These correspond to the LHS and RHS
-% of an expression, and have a few variants (not that var_ref(...) on
+% right-hand-side (expression). These correspond to the LHS and RHS of
+% an expression, and have a few variants (note that var_ref(...) on
 % the RHS will typically be reduced to a type by evaluation):
 %   assign([var_binds(a)], [var_ref(b)]) corresponds to the statement `a = b`
 %   assign([var_binds(a)], []) corresponds to the definition of a
@@ -1665,7 +1670,8 @@ kynode('Func'{fqn: Fqn,
               name: NameAstn,
               parameters: Params,
               return_type: Return},
-       [function_type(Fqn,ParamsTypes,ReturnType)]) -->> !,
+       [stmt(function(Fqn,ParamsTypes,ReturnType))]) -->> !,
+    % Similar to 'Method'{...}
     kyanchor_node_kyedge_fqn(NameAstn, '/kythe/edge/defines/binding', Fqn),
     kyfact_signature_node(Fqn, '/kythe/node/kind', 'function'),
     maplist_kynode(Params, ParamsTypes),
@@ -1717,6 +1723,22 @@ kynode('ListMakerNode'{items: Items, binds: bool('False')},
 kynode('ListMakerNode'{items: Items, binds: bool('True')},
        [list_make_binds(ItemsTypes)]) -->> !,
     maplist_kynode(Items, ItemsTypes).
+kynode('Method'{fqn: Fqn,
+                name: NameAstn,
+                parameters: Params,
+                return_type: Return},
+       [stmt(method(Fqn,ParamsTypes,ReturnType))]) -->> !,
+    % Similar to 'Func'{...}
+    kyanchor_node_kyedge_fqn(NameAstn, '/kythe/edge/defines/binding', Fqn),
+    kyfact_signature_node(Fqn, '/kythe/node/kind', 'function'),
+    (  { node_astn(NameAstn, _, _, Name) },
+       ( { Name = '__init__' ; Name = '__new__' ; Name = '__post_init__' } )
+    -> kyfact_signature_node(Fqn, '/kythe/subkind', 'constructor')
+    ;  kyfact_signature_node(Fqn, '/kythe/subkind', 'method') % TODO: add to Kythe schema
+    ),
+    maplist_kynode(Params, ParamsTypes),
+    kynode(Return, ReturnType),
+    [ method_type(Fqn,ParamsTypes,ReturnType) ]:expr.
 % 'NameBindsFqn' is only for 'AssignExprStmt' -- for import statements,
 % it's handled separately.
 % TODO: special case this within processing of AssignExprStmt?
@@ -1728,11 +1750,8 @@ kynode('NameBindsGlobalFqn'{fqn: Fqn, name: NameAstn},
        [var_binds(Fqn)]) -->> !,  % result is same as NameRefFqn
     kyanchor_node_kyedge_fqn(NameAstn, '/kythe/edge/defines/binding', Fqn), % only difference from NameRef
     kyfact_signature_node(Fqn, '/kythe/node/kind', 'variable').
-kynode('NameBindsGlobalUnknown'{fqn_scope: FqnScope, name: NameAstn},
-       [var_binds_lookup(FqnScope, NameAstn)]) -->> !,
-    [ ].  % /kythe/edge/defines/binding edge will be added in eval_single_type//2.
-kynode('NameBindsUnknown'{fqn_scope: FqnScope, name: NameAstn},
-       [var_binds_lookup(FqnScope, NameAstn)]) -->> !,
+kynode('NameBindsUnknown'{fqn_stack: FqnStack, name: NameAstn},
+       [var_binds_lookup(FqnStack, NameAstn)]) -->> !,
     [ ].  % /kythe/edge/ref edge will be added in eval_single_type//2.
 kynode('NameRefFqn'{fqn: Fqn, name: NameAstn},
        [var_ref(Fqn)]) -->> !,  % result is same as NameBinds
@@ -1741,8 +1760,8 @@ kynode('NameRefGenerated'{fqn: Fqn},
        [var_ref(Fqn)]) -->> !,  % result is same as NameBinds
     % TODO: This occurs inside TypedArgNode, which needs to be implemented.
     [ ].  % E.g., the implicit type for `self`.
-kynode('NameRefUnknown'{fqn_scope: FqnScope, name: NameAstn},
-       [var_ref_lookup(FqnScope, NameAstn)]) -->> !,
+kynode('NameRefUnknown'{fqn_stack: FqnStack, name: NameAstn},
+       [var_ref_lookup(FqnStack, NameAstn)]) -->> !,
     [ ].  % The /kythe/edge/ref edge will be added in eval_single_type//2.
 kynode('NonLocalStmt'{items: Items},
        [stmt(nonlocal)]) -->> !,
@@ -1919,11 +1938,11 @@ kyImportDottedAsNamesFqn('ImportDottedAsNameFqn'{
                                 DottedNameItems, BindsFqn, BindsNameAstn).
 kyImportDottedAsNamesFqn('ImportDottedAsNameFqn'{
                              dotted_name: 'DottedNameNode'{items: DottedNameItems},
-                             as_name: 'NameBindsUnknown'{fqn_scope: FqnScope, name: BindsNameAstn}},
-                         unused_import('ImportDottedAsNameFqn',BindsNameAstn:FqnScope)) -->>
+                             as_name: 'NameBindsUnknown'{fqn_stack: FqnStack, name: BindsNameAstn}},
+                         unused_import('ImportDottedAsNameFqn',BindsNameAstn:FqnStack)) -->>
     % From "global baz; import foo as baz" or "global baz; import foo.bar as baz"
     kyImportDottedAsNamesFqn_as_unknown([], % FromDots
-                                        DottedNameItems, FqnScope, BindsNameAstn).
+                                        DottedNameItems, FqnStack, BindsNameAstn).
 
 %! kyImportFromStmt(+FromDots:list, +FromName, +AsNameNode, +ImportPart)//[kyfact,expr,file_meta] is det.
 % Corresponds to a single item of `import_from`: "from ... import ..."
@@ -1954,12 +1973,12 @@ kyImportFromStmt(FromDots,
 kyImportFromStmt(FromDots,
                  'DottedNameNode'{items:DottedNameItems},
                  'AsNameNode'{name:BareNameAstn, % 'NameBareNode'{name:NameAstn},
-                              as_name:'NameBindsUnknown'{fqn_scope: FqnScope, name: AsNameAstn}},
+                              as_name:'NameBindsUnknown'{fqn_stack: FqnStack, name: AsNameAstn}},
                  unused_import('AsNameNode',AsNameAstn)) -->>
     % From "global zot; from foo import baz as zot" and many variations
     { append(DottedNameItems, [BareNameAstn], DottedNameItemsComb) -> true ; fail, DottedNameItemsComb = '***' },
     kyImportDottedAsNamesFqn_as_unknown(FromDots,
-                                        DottedNameItemsComb, FqnScope, AsNameAstn).
+                                        DottedNameItemsComb, FqnStack, AsNameAstn).
 
 %! kyImportDottedAsNamesFqn_top(+DottedNameItems:list, +BindsFqn:atom, +BindsNameAstn:astn)//[kyfact,expr,file_meta] is det.
 kyImportDottedAsNamesFqn_top(DottedNameItems, BindsFqn, BindsNameAstn) -->>
@@ -1997,8 +2016,8 @@ kyImportDottedAsNamesFqn_as(FromDots, DottedNameItems, BindsFqn, BindsNameAstn) 
     kyanchor_node_kyedge_fqn(BindsNameAstn, '/kythe/edge/defines/binding', BindsFqn),
     [ AssignImport ]:expr.
 
-%! kyImportDottedAsNamesFqn_as_unknown(+FromDots, +DottedNameItems:list, +FqnScope:atom, +BindsNameAstn:astn)//[kyfact,expr,file_meta] is det.
-kyImportDottedAsNamesFqn_as_unknown(FromDots, DottedNameItems, FqnScope, BindsNameAstn) -->>
+%! kyImportDottedAsNamesFqn_as_unknown(+FromDots, +DottedNameItems:list, +FqnStack:list(atom), +BindsNameAstn:astn)//[kyfact,expr,file_meta] is det.
+kyImportDottedAsNamesFqn_as_unknown(FromDots, DottedNameItems, FqnStack, BindsNameAstn) -->>
     % TODO: this is cut&paste from kyImportDottedAsNamesFqn_as//4 - refactor
     %       the common part
     kyImportDottedAsNamesFqn_from_part(DottedNameItems, FromDots, ModulesAndMaybeTokenToImport),
@@ -2006,7 +2025,7 @@ kyImportDottedAsNamesFqn_as_unknown(FromDots, DottedNameItems, FqnScope, BindsNa
     { last(ModulesAndMaybeTokenToImport, FMP) },
     { full_module_part(FMP, FMPname) },
     kyanchor_kyedge_fqn(Start, End, Token, '/kythe/edge/ref/imports', FMPname),
-    { AssignImport = assign_import_unknown{fqn_scope: FqnScope,
+    { AssignImport = assign_import_unknown{fqn_stack: FqnStack,
                                            binds_astn: BindsNameAstn,
                                            module_and_maybe_token: FMP,
                                            modules_to_import: ModulesAndMaybeTokenToImport
@@ -2312,7 +2331,11 @@ eval_assign_expr(class_type(BindsFqn, Bases)) -->> !,
     maplist_kyfact_symrej(eval_union_type, Bases, BasesEvals0),
     { clean_class(BindsFqn, BasesEvals0, BasesEvals) },
     [ BindsFqn-[class_type(BindsFqn, BasesEvals)]-_ ]:symrej.
-eval_assign_expr(function_type(BindsFqn,Params,Return)) -->> !,
+eval_assign_expr(function_type(BindsFqn,Params,Return)) -->> !, % Similar ot method_type(...)
+    eval_union_type(Return, ReturnEval),
+    maplist_kyfact_symrej(eval_union_type, Params, ParamsEvals),
+    [ BindsFqn-[function_type(BindsFqn,ParamsEvals,ReturnEval)]-_ ]:symrej.
+eval_assign_expr(method_type(BindsFqn,Params,Return)) -->> !,  % Similar to func_type(...)
     eval_union_type(Return, ReturnEval),
     maplist_kyfact_symrej(eval_union_type, Params, ParamsEvals),
     [ BindsFqn-[function_type(BindsFqn,ParamsEvals,ReturnEval)]-_ ]:symrej.
@@ -2336,14 +2359,14 @@ eval_assign_expr(assign_import{binds_fqn: BindsFqn,
     % foldl_process_module_cached_or_from_src/5 in
     % maybe_process_module_cached_impl/7).
     maplist_kyfact_symrej(eval_assign_import, ModulesAndMaybeToken).
-eval_assign_expr(assign_import_unknown{fqn_scope: FqnScope,
+eval_assign_expr(assign_import_unknown{fqn_stack: FqnStack,
                                        binds_astn: BindsNameAstn,
                                        module_and_maybe_token: _ModuleAndMaybeToken,
                                        modules_to_import: ModulesAndMaybeToken
                                       }) -->>
     !,
     maplist_kyfact_symrej(eval_assign_import, ModulesAndMaybeToken),
-    resolve_unknown_fqn(FqnScope, BindsNameAstn, ResolvedBindsFqn, _Type),
+    resolve_unknown_fqn(FqnStack, BindsNameAstn, ResolvedBindsFqn, _Type),
     kyanchor_node_kyedge_fqn(BindsNameAstn, '/kythe/edge/defines/binding', ResolvedBindsFqn).
 eval_assign_expr(Expr) -->> !,  % catch-all
     eval_single_type(Expr, _).
@@ -2523,20 +2546,20 @@ eval_single_type(var_ref(Fqn), Type) -->> !,
 eval_single_type(var_binds(BindsFqn), [var_binds(BindsFqn)]) -->> !,
     % /kythe/edge/defines/binding edge was created by kynode//2.
     [ ].
-eval_single_type(var_binds_lookup(FqnScope, NameAstn), Type) -->> !,
+eval_single_type(var_binds_lookup(FqnStack, NameAstn), Type) -->> !,
     % TODO: remove? This probably doesn't happen.
     % TODO: check "global", "local" test cases
     % If there is a global binding, the non need for lookup.
     % If there's no global binding, then there will be only var_ref_lookup's.
-    resolve_unknown_fqn(FqnScope, NameAstn, ResolvedBindsFqn, Type),
+    resolve_unknown_fqn(FqnStack, NameAstn, ResolvedBindsFqn, Type),
     [ ResolvedBindsFqn-Type-_ ]:symrej,
     % DO NOT SUBMIT -- need test case -- is it the same as VAR_REF_LOOKUP?
     (  { Type = [] }
     -> eval_single_type_import(NameAstn, ResolvedBindsFqn, '/kythe/edge/defines/binding', [])
     ;  maplist_kyfact_symrej(eval_single_type_import(NameAstn, ResolvedBindsFqn, '/kythe/edge/defines/binding'), Type)
     ).
-eval_single_type(var_ref_lookup(FqnScope, NameAstn), Type) -->> !,
-    resolve_unknown_fqn(FqnScope, NameAstn, ResolvedRefFqn, Type),
+eval_single_type(var_ref_lookup(FqnStack, NameAstn), Type) -->> !,
+    resolve_unknown_fqn(FqnStack, NameAstn, ResolvedRefFqn, Type),
     % We know that there are no entries in symrej from kynode//2
     % because if a name was resolved by the Python code, it wouldn't
     % generate 'NameRefUnknown' (which creates var_ref_lookup).
@@ -2557,10 +2580,7 @@ eval_single_type(import_ref_type(_Name, _Fqn, Type), EvalType) -->> !,
     eval_single_type(Type, EvalType).
 eval_single_type(dot_op(Atom, AttrAstn), EvalType) -->> !,
     eval_union_type(Atom, AtomEval0),
-    % DO NOT SUBMIT --
-    %     maplist Classes -> lookup(Class)
-    %     if =< 3 use this, otherwise object ([]).
-    % TEST: bindings.py: @7579-7589<capitalize>
+    % TODO: bindings.py: @7579-7589<capitalize>
     %                    @8700-8702<mx> (2nd mx)
     (  { AtomEval0 = [] }
     -> % Don't know what the atom is, so the best we can do is
@@ -2827,22 +2847,20 @@ eval_atom_call_single(_Args, function_type(_,Params,Return), ReturnType) -->>  !
 % TODO: look for a __call__ method
 eval_atom_call_single(_Args, _AtomSingleType, []) -->> [ ]. % Don't know how to call anything else.
 
-%! resolve_unknown_fqn(+FqnScope, +NameAstn, -ResolvedFqn, -Type)//[symrej,file_meta] is det.
+%! resolve_unknown_fqn(+FqnStack:list[atom], +NameAstn, -ResolvedFqn, -Type)//[symrej,file_meta] is det.
 % Dynamic lookup of a name, given its "scope" (see
 % NameBindsGlobalUnknown in ast_cooked.py)
-resolve_unknown_fqn(FqnScope, NameAstn, ResolvedFqn, Type) -->>
+resolve_unknown_fqn([], NameAstn, ResolvedFqn, Type) -->>
     Meta/file_meta,
     { node_astn(NameAstn, _, _, Name) },
-    { join_fqn([FqnScope, Name], Fqn) },
-    (  symtab_lookup(Fqn, Type)
-    -> { ResolvedFqn = Fqn }
-    ;  { FqnScope = Meta.src_fqn }
-    -> [ Fqn-Type-_ ]:symrej, % Not found, so add it at module scope
-       { ResolvedFqn = Fqn }
-    ;  { split_fqn(FqnScope, FqnScope0) },
-       { append(FqnScope1, [_], FqnScope0) -> true ; fail, FqnScope1 = '***' },
-       { join_fqn(FqnScope1, FqnScope2) },
-       resolve_unknown_fqn(FqnScope2, NameAstn, ResolvedFqn, Type)
+    { join_fqn([Meta.src_fqn, Name], ResolvedFqn) },
+    [ ResolvedFqn-Type-_ ]: symrej. % Not found, so add it at module scope
+resolve_unknown_fqn([Fqn|Fqns], NameAstn, ResolvedFqn, Type) -->>
+    { node_astn(NameAstn, _, _, Name) },
+    { join_fqn([Fqn, Name], MaybeResolvedFqn) },
+    (  symtab_lookup(MaybeResolvedFqn, Type)
+    -> { ResolvedFqn = MaybeResolvedFqn }
+    ;  resolve_unknown_fqn(Fqns, NameAstn, ResolvedFqn, Type)
     ).
 
 %! clean_class(+ClassName:atom, +Bases:list, -BasesCleaned:list) is det.
@@ -2944,10 +2962,10 @@ symtab_lookup(Fqn, Type) -->>
     sym_rej(Symtab,_)/symrej,
     { symtab_lookup(Fqn, Symtab, Type) }.
 
-%! symtab_scope_pairs(+FqnScope, -SymtabPairsScope) is det.
-symtab_scope_pairs(FqnScope, SymtabPairsScope) -->>
+%! symtab_scope_pairs(+FqnStack, -SymtabPairsScope) is det.
+symtab_scope_pairs(FqnStack, SymtabPairsScope) -->>
     sym_rej(Symtab,_)/symrej,
-    { symtab_scope_pairs(FqnScope, Symtab, SymtabPairsScope) }.
+    { symtab_scope_pairs(FqnStack, Symtab, SymtabPairsScope) }.
 
 %! symrej_accum_found(+Fqn, +Type, +TypeSymtab, +Symtab0, -Symtab, +Rej0, -Rej).
 % Helper for symrej_accum/3 for when Fqn is in Symtab with value

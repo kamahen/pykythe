@@ -21,7 +21,7 @@ import os
 import stat
 import sys
 
-VERSION = sys.argv[1]
+VERSION = sys.argv[1].encode('ascii')
 FROM_DIR, TO_DIR, TYPESHED_DIR, BUILTINS_DIR, FROM_FILE, TO_FILE = map(
         os.path.abspath, sys.argv[2:])
 
@@ -32,7 +32,7 @@ FROM_DIR, TO_DIR, TYPESHED_DIR, BUILTINS_DIR, FROM_FILE, TO_FILE = map(
 # (e.g., 'vname("<unknown>.{${ROOT_DIR}...", ...)', so this slight bit
 # of extra safety has been removed.
 
-VERSION_PAT = '${VERSION}'
+VERSION_PAT = b'${VERSION}'
 VERSION_REPL = VERSION
 
 # In the following, the [1:] is to remove the leading "/".
@@ -41,40 +41,45 @@ VERSION_REPL = VERSION
 # TODO: align xxx_DIR, xxx_FQN so that there's no leading '.' in xxx_FQN
 # TODO: Issue #24
 
-ROOT_DIR = os.path.abspath(os.path.join(TO_DIR, '..'))[1:]
-ROOT_DIR_PAT = '${ROOT_DIR}'  # followed by nothing or '/'
+# The .encode('ascii') stuff is for handling, e.g., iso-8859-1
+# encoding ... we assume that the substitution patterns are ASCII and
+# do all I/O in binary. This avoids having to figure out the encoding
+# of the file.
+
+ROOT_DIR = os.path.abspath(os.path.join(TO_DIR, '..'))[1:].encode('ascii')
+ROOT_DIR_PAT = b'${ROOT_DIR}'  # followed by nothing or '/'
 ROOT_DIR_REPL = ROOT_DIR
 
-ROOT_FQN = ROOT_DIR.replace('/', '.')
-ROOT_FQN_PAT = '${ROOT_FQN}'  # followed by nothing or '.'
-ROOT_FQN_REPL = '.' + ROOT_FQN
+ROOT_FQN = ROOT_DIR.replace(b'/', b'.')
+ROOT_FQN_PAT = b'${ROOT_FQN}'  # followed by nothing or '.'
+ROOT_FQN_REPL = b'.' + ROOT_FQN
 
-ROOT_UP_DIR = os.path.abspath(os.path.join(TO_DIR, '..', '..'))[1:]
-ROOT_UP_DIR_PAT = '${ROOT_UP_DIR}'  # followed by nothing or '/'
+ROOT_UP_DIR = os.path.abspath(os.path.join(TO_DIR, '..', '..'))[1:].encode('ascii')
+ROOT_UP_DIR_PAT = b'${ROOT_UP_DIR}'  # followed by nothing or '/'
 ROOT_UP_DIR_REPL = ROOT_UP_DIR
 
-ROOT_UP_FQN = ROOT_UP_DIR.replace('/', '.')
-ROOT_UP_FQN_PAT = '${ROOT_UP_FQN}'  # followed by nothing or '.'
-ROOT_UP_FQN_REPL = '.' + ROOT_UP_FQN
+ROOT_UP_FQN = ROOT_UP_DIR.replace(b'/', b'.')
+ROOT_UP_FQN_PAT = b'${ROOT_UP_FQN}'  # followed by nothing or '.'
+ROOT_UP_FQN_REPL = b'.' + ROOT_UP_FQN
 
-TYPESHED_DIR = os.path.abspath(TYPESHED_DIR)[1:]
-TYPESHED_DIR_PAT = '${TYPESHED_DIR}'  # followed by nothing or '/'
+TYPESHED_DIR = os.path.abspath(TYPESHED_DIR)[1:].encode('ascii')
+TYPESHED_DIR_PAT = b'${TYPESHED_DIR}'  # followed by nothing or '/'
 TYPESHED_DIR_REPL = TYPESHED_DIR
 
-TYPESHED_FQN = TYPESHED_DIR.replace('/', '.')
-TYPESHED_FQN_PAT = '${TYPESHED_FQN}'  # followed by nothing or '.'
-TYPESHED_FQN_REPL = '.' + TYPESHED_FQN
+TYPESHED_FQN = TYPESHED_DIR.replace(b'/', b'.')
+TYPESHED_FQN_PAT = b'${TYPESHED_FQN}'  # followed by nothing or '.'
+TYPESHED_FQN_REPL = b'.' + TYPESHED_FQN
 
-BUILTINS_DIR = os.path.abspath(BUILTINS_DIR)[1:]
-BUILTINS_DIR_PAT = '${BUILTINS_DIR}'  # followed by nothing or '/'
+BUILTINS_DIR = os.path.abspath(BUILTINS_DIR)[1:].encode('ascii')
+BUILTINS_DIR_PAT = b'${BUILTINS_DIR}'  # followed by nothing or '/'
 BUILTINS_DIR_REPL = BUILTINS_DIR
 
-BUILTINS_FQN = BUILTINS_DIR.replace('/', '.')
-BUILTINS_FQN_PAT = '${BUILTINS_FQN}'  # followed by nothing or '.'
-BUILTINS_FQN_REPL = '.' + BUILTINS_FQN
+BUILTINS_FQN = BUILTINS_DIR.replace(b'/', b'.')
+BUILTINS_FQN_PAT = b'${BUILTINS_FQN}'  # followed by nothing or '.'
+BUILTINS_FQN_REPL = b'.' + BUILTINS_FQN
 
-assert not FROM_DIR.endswith('/')
-assert not TO_DIR.endswith('/')
+assert FROM_DIR[-1] != b'/'
+assert TO_DIR[-1] != b'/'
 
 
 def cp_file(path_in, path_out):
@@ -84,7 +89,7 @@ def cp_file(path_in, path_out):
         os.makedirs(dir_out)
     except FileExistsError:
         pass
-    with open(path_in, 'r') as file_in:
+    with open(path_in, 'rb') as file_in:
         contents = file_in.read()
     contents = contents.replace(VERSION_PAT, VERSION_REPL)
     contents = contents.replace(ROOT_UP_DIR_PAT, ROOT_UP_DIR_REPL)
@@ -96,7 +101,7 @@ def cp_file(path_in, path_out):
     contents = contents.replace(BUILTINS_DIR_PAT, BUILTINS_DIR_REPL)
     contents = contents.replace(BUILTINS_FQN_PAT, BUILTINS_FQN_REPL)
     try:
-        with open(path_out, 'r') as file_orig:
+        with open(path_out, 'rb') as file_orig:
             contents_orig = file_orig.read()
             contents_same = (contents_orig == contents)
     except FileNotFoundError:
@@ -106,7 +111,7 @@ def cp_file(path_in, path_out):
             os.remove(path_out)
         except FileNotFoundError:
             pass
-        with open(path_out, 'w') as file_out:
+        with open(path_out, 'wb') as file_out:
             file_out.write(contents)
             os.chmod(path_out,
                      os.stat(path_out).st_mode & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))

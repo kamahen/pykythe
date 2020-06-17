@@ -48,7 +48,8 @@ PYTHON3_EXE:=$(shell type -p python3.7)  # /usr/bin/python3.7 TODO: python3.8
 FIND_EXE:=$(shell type -p find)          # /usr/bin/find
 SWIPL_EXE:=$(shell type -p swipl)        # /usr/bin/swipl
 # SWIPL_EXE:=$(realpath ../swipl-devel/build/src/swipl)  # From github
-COVERAGE:=$(shell type -p coverage)      # /usr/local/bin/coverage
+# SWIPL_EXE:=$(realpath ../swipl-devel/build.sanitize/src/swipl)  # From github, cmake -DCMAKE_BUILD_TYPE=Sanitize
+COVERAGE=$(shell type -p coverage)      # /usr/local/bin/coverage
 # For running parallel(1) - by experiment this works (2x the number of CPUs)
 # (larger numbers smooth things out for processing large/small source files):
 # TODO: parallel(1) can specify -j +3, for example
@@ -810,11 +811,21 @@ upgrade-swipl-full:
 	cd ../swipl-devel && \
 		git pull --recurse && \
 		rm -rf build && \
-		mkdir build && \
-		cd build && \
+		mkdir  build && \
+		cd     build && \
 		cmake -G Ninja .. && \
 		ninja && ctest -j 8
 	@# ninja install
+
+swipl-sanitize:
+	@# in cmake/BUildType.cmake:
+	@# add -DALLOC_DEBUG=1 to set(CMAKE_C_FLAGS_SANITIZE ... )
+	cd ../swipl-devel && \
+		rm -rf build.sanitize && \
+		mkdir  build.sanitize && \
+		cd     build.sanitize && \
+		cmake -DCMAKE_BUILD_TYPE=Sanitize -G Ninja .. && \
+		ninja && ctest -j 8
 
 upgrade-emacs:
 	@# https://www.emacswiki.org/emacs/EmacsSnapshotAndDebian
