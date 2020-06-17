@@ -26,8 +26,8 @@
 # it with the Kythe browser:
 # - download the latest Kythe build from https://github.com/kythe/kythe/releases
 # - unpack it and link it into ~/kythe (e.g., so that ~/kythe/tools/http_server exists)
-# - make -C ~/src/pykythe add-index-pykythe run-server
-#   (if you use Emacs, you can't do "make run-server" in the *compilation*
+# - make -C ~/src/pykythe add-index-pykythe run-kythe-server
+#   (if you use Emacs, you can't do "make run-kythe-server" in the *compilation*
 #    window because Emacs will kill the process; instead, run it in a shell)
 # Because of some pre-processing, $HOME/src/pykythe/* files show in
 # /tmp/pykythe_test/SUBST/$HOME/src/pykythe/pykythe/ast_raw.py
@@ -545,6 +545,8 @@ make-json:
 	@# kythe_facts.pl is 114MB, so don't copy it.
 	@# cp --preserve=timestamps $(TESTOUTDIR)/browser/files/kythe_facts.pl browser/examples/
 
+# This is obsolete (from when the JSON files were pre-generated)
+# but shows how to pretty-print a JSON file.
 .PHONY: make-json-pretty
 make-json-pretty:
 	find $(TESTOUTDIR)/browser/files -name '*.json' | \
@@ -568,16 +570,16 @@ run_src_browser run-src-browser:
 		--staticdir=$(realpath ./browser/static)
 
 # TODO: pre-req:  prep_server
-.PHONY: run_server run-server
+.PHONY: run_kythe_server run-kythe-server
 # -public_resources=$(HTTP_SERVER_RESOURCES)
-run_server run-server: # web_ui  # TODO: uncomment web_ui
+run_kythe_server run-kythe-server: # web_ui  # TODO: uncomment web_ui
 	@# This is wrong: -listen=localhost:$(BROWSE_PORT_PYKYTHE)
 	$(HTTP_SERVER_EXE) -serving_table=$(TESTOUTDIR)/tables \
 	  -listen=:$(BROWSE_PORT_PYKYTHE)
 	@# To view items with server running:
 	@ $(KYTHE_EXE) -api http://localhost:$(BROWSE_PORT_PYKYTHE) nodes -max_fact_size=200 'kythe://CORPUS?lang=python?root=ROOT#tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.t8.III'
 
-run-server-pytype:
+run-kythe-server-pytype:
 	$(HTTP_SERVER_EXE) -serving_table=/tmp/pytype-tables -listen=:$(BROWSE_PORT_PYKYTHE)
 
 .PHONY: kythe-kythe
@@ -702,7 +704,7 @@ pytype:
 	    $(ENTRYSTREAM_EXE) --read_format=json | \
 	    $(WRITE_ENTRIES_EXE) -graphstore /tmp/pytype-graphstore
 	$(WRITE_TABLES_EXE) -graphstore=/tmp/pytype-graphstore -out=/tmp/pytype-tables
-	# $(MAKE) run-server-pytype
+	# $(MAKE) run-kythe-server-pytype
 
 
 run-pytype-server:
@@ -760,14 +762,14 @@ run-underhood-all:
 	@# http://localhost:9000 (see run-underhood-frontend)
 	@echo Suggest running the following commands in separate terminals, for easier cleanup.
 	@echo $(MAKE) add-index-pykythe
-	@echo $(MAKE) run-server
+	@echo $(MAKE) run-kythe-server
 	@echo $(MAKE) run-underhood-frontend
 	@echo $(MAKE) run-underhood-ui
 	@exit 1
 	@# Or you can do the following, which also finds the PIDs so
 	@# that you can kill them.
 	$(MAKE) add-index-pykythe
-	$(MAKE) run-server &
+	$(MAKE) run-kythe-server &
 	$(MAKE) run-underhood-frontend &
 	sleep 5
 	$(MAKE) run-underhood-ui &
@@ -786,7 +788,7 @@ upgrade-mypy:
 upgrade-pkgs:
 	sudo apt update
 	sudo apt autoremove
-	sudo apt --with-new-pkgs --assume-yes upgrade
+	sudo apt --with-new-pkgs upgrade # --assume-yes upgrade
 	@# And an old incantation from decades ago
 	sudo sync
 	sudo sync

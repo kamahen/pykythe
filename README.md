@@ -18,10 +18,34 @@ code, so if you want to work on it, please contact
 
 ## Browsing
 
+### Experimental source browser
+
+The `browser` directory contains code for browsing the source with
+hyperlinks. (See below under "Run the Kythe browser")
+
+The code in `ast_color.py` creates "color" facts that have colorization
+information for the source (e.g., token, string, whitespace, comment).
+The Kythe schema is augmented by `/pykythe/color/...` facts.
+
+A simple server loads the Kythe facts and makes them available to the
+front-end using Javascript `fetch`.
+
+You can process the test files and run the browser by
+`make SRC_BROWSER_PORT=9999 test make-json run-src-browser`
+
+### Browsing with underhood
+
 Pykythe works with [underhood](https://github.com/TreeTide/underhood)
 to allow source code browsing. A rough outline of how to set up the
 servers in the Makefile rule `run-underhood-all` (after
-running `add-index-pykythe` to set up the serving tables).
+running `add-index-pykythe` or `make-tables` to set up the serving tables).
+
+### Browsing with the Kythe browser
+
+The Kythe browser is obsolete and unsupported by the Kythe team.
+The "underhood" browser uses the Kyth server (which is still supported)
+with a new front-end.
+Alternatively, an experimental source browser is included in `pykythe`.
 
 ## Competition
 
@@ -147,21 +171,16 @@ loaded (with the exception of the Kythe code).
   * http://localhost:9999 to browse the Kythe facts created by the `test` rule and
   which were processed into a database for the browser by `make-json`.
 
-* <strike>If you wish to do a quick look at the source browser with
-  already defined data (in `browser/examples/kythe_facts.pl`):</strike>
-  (Removed because the file became over 100MB.)
-
-  * <strike>`mkdir /tmp/pykythe_test`</strike>
-  * <strike>`make -C <pkgdir> SRC_BROWSER_PORT=9999 run-src-browser`</strike>
-  * <strike>http://localhost:9999 as above</strike>
+  The test files are in
+  `/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data`.
 
 * Run the Kythe browser by:
 
-* `make -C <pkgdir> add-index-pykythe
+* `make -C <pkgdir> make-tables`
   This creates `/tmp/pykythe_test/tables`, which can be used by
-  the Kythe browser:
+  the Kythe browser. Alternatively, `make -C <pkgdir> add-index-pykythe`.
 
-  `make -C <pkgdir> run-server`
+  `make -C <pkgdir> run-kythe-server`
 
   You can look run the browser: http://localhost:8080
 
