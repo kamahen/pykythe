@@ -645,14 +645,17 @@ push_to_github_setup:
 	cd $(TESTGITHUB) && git clone https://github.com/kamahen/pykythe.git
 	@# The following is not needed ("git clone" sets this up):
 	@#   git remote add origin https://github.com/kamahen/pykythe.git
+	@# git submodule add --depth 1 https://github.com/SWI-Prolog/swipl-devel.git
+	@# git submodule add --depth 1 https://github.com/python/typeshed.git
 
 .PHONY: push_to_github
 push_to_github:
 	@# TODO: remove ./typeshed from following:
 	-grep SUBMIT $$(find tests pykythe scripts ./typeshed $(TEST_DATA_DIR) tests -type f); if [ $$? -eq 0 ]; then exit 1; fi  # DO NOT SUBMIT - enable this test
 	cd $(TESTGITHUB)/pykythe && git pull
-	rsync -aAHX --delete --exclude .git \
+	rsync -aAHX --delete --exclude /.git --exclude /typeshed --exclude /swipl-devel \
 		--exclude .coverage --exclude htmlcov --exclude __pykythe__ \
+		--exclude .pytype --exclude .mypy_cache --exclude __pycache__ \
 		--exclude snippets.py --exclude typescript.gz \
 		./ $(TESTGITHUB)/pykythe/
 	rsync -aAHX --delete ../kythe $(TESTGITHUB)/

@@ -83,10 +83,13 @@ loaded (with the exception of the Kythe code).
 
 * `git clone --recursive https://github.com/google/kythe.git`
 
-* `git submodule update --init --recursive`
+* `git submodule update --init --recursive --depth 1`
   * You should do this each time you do `git pull` on the `pykythe`
-    respository. (You can make this automatic by:
-    `git config --global alias.update '!git pull && git submodule update --init --recursive'`)
+    respository.
+  * You may wish to do these commands:
+   * `git submodule -q foreach 'echo $name' | xargs -L1 -I{} git config -f .gitmodules submodule.{}.shallow true`
+   * `git submodule -q foreach 'echo $name' | xargs -L1 -I{} git config -f .gitmodules submodule.{}.fetchRecurseSubmodules true`
+   * Repeat the above inside directory `swipl-devel`.
 
 * Follow the instructions at [Kythe - getting
   started](https://github.com/google/kythe#getting-started ) to

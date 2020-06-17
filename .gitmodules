@@ -1,3 +1,10 @@
 [submodule "typeshed"]
 	path = typeshed
 	url = https://github.com/python/typeshed.git
+	shallow = true
+	fetchRecurseSubmodules = true
+[submodule "swipl-devel"]
+	path = swipl-devel
+	url = https://github.com/SWI-Prolog/swipl-devel.git
+	shallow = true
+	fetchRecurseSubmodules = true
