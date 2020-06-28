@@ -165,7 +165,7 @@ kythe_edge(vname(Signature1, Corpus1, Root1, Path1, Language1),
 % :- debug(http(header)).         % TODO: remove
 % :- debug(http(hook)).           % TODO: remove
 
-:- initialization(src_browser_main, main).  % TODO: restore this and remove from Makefile  DO NOT SUBMIT
+:- initialization(src_browser_main, main).
 
 :- multifile http:location/3.
 :- multifile user:file_search_path/2.
@@ -181,10 +181,10 @@ kythe_edge(vname(Signature1, Corpus1, Root1, Path1, Language1),
 %   The only current option is priority(...).
 http:location(static, root(static), []).
 http:location(files, root(files), []).
-http:location(json, root(json), []). % DO NOT SUBMIT - remove?
+http:location(json, root(json), []). % TODO: remove?
 
 src_browser_main :-
-    run_tests, % TODO: this doesn't appear to do anything
+    run_tests, % TODO: remove
     src_browser_main2,
     % When started via initialization, need to handle inputs via REPL
     % TODO: start as daemon (see library(http/http_unix_daemon)).
@@ -231,9 +231,11 @@ assert_server_locations(Opts) :-
 % TODO: move the read/assert stuff to a separate module,
 %       also the convenience preds (kythe_node/3, etc.)
 read_and_assert_kythe_facts :-
-    % DO NOT SUBMIT - verify this and report
-    % TODO: files('kythe_facts') results in bogus
+    % TODO: open an issue about this (need to have an empty .qlf file to force
+    %       saving the compiled facts)
+    % TODO: files('kythe_facts') results in message:
     %       "recompiling QLF file (incompatible with current Prolog version)"
+    %       even if silent(true) is specified.
     unload_file(files('kythe_facts')),
     garbage_collect,
     % loading speeds for consult / read-assertz / qlf: 25 : 7 : 1
@@ -345,10 +347,7 @@ validate_kythe_facts :-
                                          '/pykythe/type',
                                          '/pykythe/color/token_color']) ) )),
     % show_jiti,    % Not needed - should be the same as the first one
-    % TODO: DO NOT SUBMIT - need to fix anchor_links/4.
-    % Semantic links have unique signatures ... this isn't true. For example
-    % if we can't resolve an attr to a single item (ast_raw.py at line 267: "ch0.type")
-    %   validate_anchor_link_anchor,
+    % validate_anchor_link_anchor, % DO NOT SUBMIT: fix this test, which is also slow
     statistics(cputime, T2),
     Tvalid is T2 - T0,
     debug(log, 'Validation done: ~3f sec)', [Tvalid]),
@@ -378,6 +377,9 @@ show_jiti :-
     length(SigsSorted, LenSigsSorted),
     debug(log, 'kythe_node(Signature): ~d entries, ~d unique.', [LenSigs, LenSigsSorted]).
 
+% TODO: validate_anchor_link_anchor is incorrect:
+% Semantic links have unique signatures ... this isn't true. For example
+% if we can't resolve an attr to a single item (ast_raw.py at line 267: "ch0.type")
 validate_anchor_link_anchor :-
     forall(anchor_link_anchor(AnchorVname1, Edge1, _SemanticVname, Edge2, AnchorVname2),
            must_once(setof(anchor_link_anchor(AnchorVname1, Edge1, SemanticVname2, Edge2, AnchorVname2),
@@ -627,7 +629,7 @@ node_link_node_value(Vname, Edge, NodeVname, Name, Value) :-
     kythe_node(NodeVname, Name, Value).
 
 pair_vname_remove_start(Key-VnameSort, Key-Vname) :-
-    must_once(vname_sort(Vname, VnameSort)). % DO NOT SUBMIT - remove must_once
+    vname_sort(Vname, VnameSort).
 
 % Change the ordering of items in a vname, for sorting
 vname_flip(vname(Signature, Corpus, Root, Path, Language),
@@ -780,13 +782,6 @@ node_and_edge(Signature, Vname0, Edge, Target) :-
 
 node_and_edge(Vname, Edge, Target) :-
     kythe_edge(Vname, Edge, Target).
-
-% DO NOT SUBMIT - already handled by kythe_edge/3 ?
-% node_and_edge(Vname, Edge, Target) :-
-%     kythe_edge(Target, ReverseEdge, Vname),
-%     reverse_edge_name(ReverseEdge, Edge).
-% reverse_edge_name(Edge, ReverseEdge) :-
-%     atom_concat('%', Edge, ReverseEdge).
 
 vname_json(vname(Signature,Corpus,Root,Path,Language),
            json{signature:Signature,corpus:Corpus,root:Root,path:Path,language:Language}).

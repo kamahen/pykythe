@@ -10,7 +10,7 @@
 
 :- encoding(utf8).
 
-:- set_prolog_flag(autoload, false).
+% :- set_prolog_flag(autoload, false). % DO NOT SUBMIT: Restore this: https://github.com/SWI-Prolog/swipl-devel/issues/622
 
 builtins_version('${VERSION}').
 

@@ -58,8 +58,10 @@ symtab_insert(Key, Symtab0, Value, Symtab) :-
     rb_insert(Symtab0, Key, Value, Symtab).
 
 symtab_lookup(Key, Symtab, Value) :-
-    must_once(ground(Key)),  % DO NOT SUBMIT
-    rb_lookup(Key, Value, Symtab).
+    (   ground(Key)
+    ->  rb_lookup(Key, Value, Symtab)
+    ;   instantiation_error(Key)
+    ).
 
 symtab_pairs(Symtab, Pairs) :-
     rb_visit(Symtab, Pairs).
@@ -119,7 +121,7 @@ maybe_read_symtab_from_cache(OptsVersion, PykytheSymtabInputStream, SrcPath, Sym
     ),
     % TODO - DO NOT SUBMIT
     % The JSON read is slow (1.6 sec) and probably the write is
-    % also slow ... ue fast_read/2, fast_write/2.
+    % also slow ... use fast_read/2, fast_write/2.
     % term_string->term: 155ms (27K entries in 7.2MB)
     % term_string->str:  105ms
     % fast_term->term:    25ms
@@ -135,10 +137,14 @@ foldl_rb_insert([K-V|KVs], Rb0, Rb) :-
 % The following is a cut-down version of maybe_read_symtab_from_cache/6
 % used by gen_builtins_symtab.pl
 read_symtab_from_cache_no_check(PykytheSymtabInputPath, Symtab) :-
-    open(PykytheSymtabInputPath, read, PykytheSymtabInputStream, [type(binary)]),
-    read_term(PykytheSymtabInputStream, _Version, []),
-    read_term(PykytheSymtabInputStream, _Sha1, []),
-    read_term(PykytheSymtabInputStream, SymtabKVs, []),
+    setup_call_cleanup(
+        open(PykytheSymtabInputPath, read, PykytheSymtabInputStream, [type(binary)]),
+        (   read_term(PykytheSymtabInputStream, _Version, []),
+            read_term(PykytheSymtabInputStream, _Sha1, []),
+            read_term(PykytheSymtabInputStream, SymtabKVs, [])
+        ),
+        close(PykytheSymtabInputStream)
+    ),
     must_once(ground(SymtabKVs)),
     ord_list_to_rbtree(SymtabKVs, Symtab).
 

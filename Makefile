@@ -45,10 +45,14 @@ TESTOUTDIR:=$(abspath /tmp/pykythe_test)
 SHELL:=/bin/bash
 # Assume that type -p returns an abspath ...
 PYTHON3_EXE:=$(shell type -p python3.7)  # /usr/bin/python3.7 TODO: python3.8
-FIND_EXE:=$(shell type -p find)          # /usr/bin/find
-SWIPL_EXE:=$(shell type -p swipl)        # /usr/bin/swipl
-# SWIPL_EXE:=$(realpath ../swipl-devel/build/src/swipl)  # From github
-# SWIPL_EXE:=$(realpath ../swipl-devel/build.sanitize/src/swipl)  # From github, cmake -DCMAKE_BUILD_TYPE=Sanitize
+FIND_EXE:=$(shell type -p find)          # /usr/bin/find The following
+# SWIPL_EXE requires having run build-swpl or build-swpl-full, or else
+# you'll get a weird error message about "--version: command not found"
+# SWIPL_EXE:=$(shell type -p $(SWIPL_EXE_DEVEL))
+# SWIPL_EXE:=$(shell type -p swipl)        # /usr/bin/swipl
+# From github:
+SWIPL_EXE_DEVEL:=../swipl-devel/build/src/swipl
+SWIPL_EXE:=$(realpath $(SWIPL_EXE_DEVEL))
 COVERAGE=$(shell type -p coverage)      # /usr/local/bin/coverage
 # For running parallel(1) - by experiment this works (2x the number of CPUs)
 # (larger numbers smooth things out for processing large/small source files):
@@ -107,6 +111,10 @@ VERSION:=$(shell ($(SWIPL_EXE) --version; $(PYTHON3_EXE) --version; head -999999
 # -$(shell $(PYTHON3_EXE) -c 'import os, base64; print(base64.urlsafe_b64encode(os.urandom(9)).decode("ascii"))')
 BATCH_ID:=$(shell date --utc --iso-8601=ns | sed -e 's/\+00:00//' -e 's/,/./')
 
+TRACEDIR=/tmp
+TRACEFILE=strace
+# PYKYTHE_STRACE=strace -o $(TRACEDIR)/$(TRACEFILE)-$$(date '+%Y%m%d-%H%M%S.%N')
+PYKYTHE_STRACE=
 PYKYTHE_EXE=$(TESTOUTDIR)/pykythe.qlf
 TEST_DATA_DIR:=test_data
 #  TEST_GRAMMAR_FILE:=py3_test_grammar.py  # TODO: check all places this is used
@@ -173,6 +181,8 @@ show-vars:
 	@echo "KYTHEOUTDIR_PWD_REAL     $(KYTHEOUTDIR_PWD_REAL)"
 	@echo "PYTHONPATH_DOT           $(PYTHONPATH_DOT)"
 	@echo "PYTHONPATH_BUILTINS      $(PYTHONPATH_BUILTINS)"
+	@echo "SWIPL_EXE                $(SWIPL_EXE)"
+	@echo "SWIPL_EXE_DEVEL          $(SWIPL_EXE_DEVEL)"
 	@# echo "TESTOUT_SRCS           $(TESTOUT_SRCS)"
 	@echo
 
@@ -223,12 +233,17 @@ pykythe_test: # $(TESTOUTDIR)/KYTHE/builtins_symtab.pl tests/c3_tests.pl
 	mkdir -p $(PYTHONPATH_DOT) "$(PYTHONPATH_BUILTINS)"
 	@# "test_data/imports1.py" is used in the test suite and must be a real file
 	@# because absolute_file resolution uses the existence of the file.
-	$(SWIPL_EXE) -g 'plunit:load_test_files([])' -g plunit:pykythe_run_tests -t halt -l pykythe/pykythe.pl \
-		-- $(PYTHONPATH_OPT) test_data/dummy_dir/dummy_file.py
+	$(SWIPL_EXE) --version
+	$(SWIPL_EXE) </dev/null
+	@# DO NOT SUBMIT --threads=yes
 	$(SWIPL_EXE) -g run_tests -t halt tests/c3_tests.pl
+	$(SWIPL_EXE) --threads=no -g 'plunit:load_test_files([])' -g plunit:pykythe_run_tests -t halt -l pykythe/pykythe.pl \
+		-- $(PYTHONPATH_OPT) test_data/dummy_dir/dummy_file.py
+	$(SWIPL_EXE) --threads=yes -g 'plunit:load_test_files([])' -g plunit:pykythe_run_tests -t halt -l pykythe/pykythe.pl -- $(PYTHONPATH_OPT) test_data/dummy_dir/dummy_file.py
 
-$(PYKYTHE_EXE): pykythe/*.pl pykythe_test
+$(PYKYTHE_EXE): pykythe/*.pl pykythe_test $(SWIPL_EXE)
 	mkdir -p $(dir $@)
+	$(SWIPL_EXE) --version
 	$(SWIPL_EXE) --stand_alone=true --undefined=error --verbose=false \
 	    --foreign=save \
 	    -o $@ -c pykythe/pykythe.pl
@@ -253,7 +268,9 @@ $(KYTHEOUTDIR)%.kythe.entries: \
 	@#       maybe?: set_prolog_flag(generate_debug_info, false)
 	@# Note that -O changes the order of some directives (see the comment in
 	@# pykythe/pykythe.pl with the last `set_prolog_flag(autoload, false)`.
-	$(TIME) $(PYKYTHE_EXE) \
+	PYKYTHE_STRACE_EXE="$(PYKYTHE_STRACE)" && \
+	  echo $$PYKYTHE_STRACE_EXE && \
+	  $(TIME) $$PYKYTHE_STRACE_EXE $(PYKYTHE_EXE) \
 	    $(PYKYTHE_OPTS) \
 	    "$<"
 
@@ -289,7 +306,9 @@ $(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.entries: \
 	@# This bootstrap symtab file will be replaced by running gen_builtins_symtab.pl below
 	cat $(SUBSTDIR_PWD_REAL)/pykythe/bootstrap_builtins_symtab.pl \
 		>"$(BUILTINS_SYMTAB_FILE)"
-	$(TIME) $(PYKYTHE_EXE) \
+	PYKYTHE_STRACE_EXE="$(PYKYTHE_STRACE)" && \
+	  echo $$PYKYTHE_STRACE_EXE && \
+	  $(TIME) $$PYKYTHE_STRACE_EXE $(PYKYTHE_EXE) \
 	    $(PYKYTHE_OPTS) \
 	    "$(SUBSTDIR_PWD_REAL)/pykythe/bootstrap_builtins.py"
 	@# instead of input from "$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.json"
@@ -564,7 +583,9 @@ run_src_browser run-src-browser:
 	    touch $(TESTOUTDIR)/browser/files/kythe_facts.qlf
 	@# TODO: remove "-g src_browser:main -l" (which are for debugging)  DO NOT SUBMIT
 	@# TODO: compile src_browser.pl and use src_browser.qlf
-	$(SWIPL_EXE) --no-tty -g src_browser:src_browser_main2 -l browser/src_browser.pl -- \
+	@# -- for debugging, change "browser/src_browser.pl" to
+	@#                       to "-g src_browser:src_browser_main2 -l browser/src_browser.pl"
+	$(SWIPL_EXE) --no-tty browser/src_browser.pl -- \
 		--port=$(SRC_BROWSER_PORT) \
 		--filesdir=$(TESTOUTDIR)/browser/files \
 		--staticdir=$(realpath ./browser/static)
@@ -782,6 +803,23 @@ run-underhood-all:
 lint-logtalk:
 	cat scripts/lint_logtalk.pl | swipl
 
+$(SWIPL_EXE_DEVEL): build-swipl
+build-swipl:
+	cd swipl-devel && \
+		mkdir -p build && \
+		cd build && \
+		cmake -G Ninja .. && \
+		ninja
+
+build-swipl-full:
+	cd swipl-devel && \
+		rm -rf build && \
+		mkdir -p build && \
+		cd build && \
+		cmake -G Ninja .. && \
+		ninja && \
+		ctest -j 8
+
 unused-predicates:
 	cd pykythe && echo 'xref_source(pykythe, [silent(true)]). xref_defined(_, Goal, _), \+ xref_called(_, Goal, _), writeln(Goal), fail ; true.' | $(SWIPL_EXE)
 
@@ -791,7 +829,7 @@ upgrade-mypy:
 upgrade-pkgs:
 	sudo apt update
 	sudo apt autoremove
-	sudo apt --with-new-pkgs upgrade # --assume-yes upgrade
+	sudo apt --with-new-pkgs --assume-yes upgrade
 	@# And an old incantation from decades ago
 	sudo sync
 	sudo sync

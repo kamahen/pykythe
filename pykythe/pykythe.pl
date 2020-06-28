@@ -199,7 +199,6 @@
 :- use_module(library(debug), [assertion/1, debug/3]).
 :- use_module(library(edcg)).   % requires: ?- pack_install(edcg).
 :- use_module(library(error), [must_be/2, domain_error/2]).
-:- use_module(library(filesex), [directory_file_path/3, link_file/3]).
 :- use_module(library(gensym), [gensym/2]).
 :- use_module(library(lists), [append/2, append/3, list_to_set/2, last/2, member/2, nth0/3, reverse/2, select/3]).
 :- use_module(library(optparse), [opt_arguments/3]).
@@ -626,7 +625,7 @@ pred_info_(exprs, 1,                               [expr]).
 %          json_read_dict/2               34%
 %      $garbage_collect/1             29%      (mostly from put_dict/4)
 
-% Predicates that are loaded below by ensure_loaded(BuiltinsSymtabFile):
+% Predicates that are loaded below by load_files(opts.builtins_symtab):
 :- dynamic
     builtins_module/1,
     builtins_pairs/1,
@@ -666,9 +665,6 @@ pykythe_main2 :-
     on_signal(int, _, throw),  % TODO: delete?
     on_signal(term, _, throw),  % TODO: delete?
     % on_signal(int, _, interrupt),  % TODO: reinstate if don't need traceback
-    % TODO: delete {debugger,print}_write_options
-    set_prolog_flag(debugger_write_options, [quoted(true), portray(true), max_depth(10), attributes(portray), spacing(next_argument)]),
-    set_prolog_flag(print_write_options, [quoted(true), portray(true), max_depth(10), attributes(portray), spacing(next_argument)]),
     set_prolog_flag(backtrace_goal_depth, 30), % see library(prolog_stack)
     % Play nice with emacs *compilation* buffer -- might not be needed
     % with latest version of SWI-Prolog that uses TERM to decide
@@ -678,9 +674,9 @@ pykythe_main2 :-
     pykythe_opts(SrcPaths, Opts),
     log_if(true, 'Start ~w', [SrcPaths]), % TODO: delete
     % BuiltinsSymtabFile is created by gen_builtins_symtab.pl
-    unload_file(Opts.builtins_symtab), % TODO: should be a module and list the predicates
-    load_files([Opts.builtins_symtab],
-               [silent(true),   % TODO: should be a module
+    unload_file(Opts.builtins_symtab),
+    load_files([Opts.builtins_symtab], % TODO: should be a module that lists its exported predicates
+               [silent(true),
                 imports([builtins_module/1,
                          builtins_pairs/1,
                          builtins_symtab/1,
@@ -849,7 +845,7 @@ maybe_process_module_cached(Opts, FromSrcOk, SrcPath, Symtab0, Symtab) :-
 maybe_process_module_cached_impl(Opts, FromSrcOk, PykytheSymtabInputStream, PykytheSymtabPath, SrcPath, Symtab0, Symtab)  :-
     (  maybe_process_module_cached_batch(Opts, SrcPath, Symtab0, Symtab)
     -> path_with_suffix(Opts, SrcPath, Opts.pykythebatch_suffix, PykytheBatchPath),
-       log_if(true, 'Reused/batch(~w) ~q for ~q', [FromSrcOk, PykytheBatchPath, SrcPath]) % DO NOT SUBMIT
+       log_if(true, 'Reused/batch(~w) ~q for ~q', [FromSrcOk, PykytheBatchPath, SrcPath])
     ;  % The following validation depends on what kyfile//1 generates.
        maybe_read_symtab_from_cache(
            Opts.version, PykytheSymtabInputStream, SrcPath, Symtab0, Symtab1,
@@ -1220,10 +1216,14 @@ write_to_protobuf(EntriesCmd, SrcPath, KytheJsonPath, KytheEntriesPath) :-
 run_parse_cmd(Opts, SrcPath, SrcFqn, OutPath) :-
     must_once_msg(ground(Opts), 'Invalid command line options'),
     must_once_msg(memberchk(Opts.python_version, [2, 3]), 'Invalid Python version: ~q', [Opts.python_version]),
-    pykythe_tmp_file_stream(Opts.kytheout, OutPath, % TODO: mkdir separate subdir for these
-                       OutPathStream, [encoding(binary), extension('fqn-ast.pl')]),
-    do_if(trace_file(SrcPath), link_src_file(SrcPath, OutPath)), % TODO: delete
-    close(OutPathStream),
+    setup_call_cleanup(
+        true,
+        ( pykythe_tmp_file_stream(Opts.kytheout, OutPath, % TODO: mkdir separate subdir for these
+                                  OutPathStream, [encoding(binary), extension('fqn-ast.pl')]),
+          do_if(trace_file(SrcPath), link_src_file(SrcPath, OutPath)) % TODO: delete
+        ),
+        close(OutPathStream)
+    ),
     atomic_list_concat(  % TODO: use process_create/3 instead of shell/2
         [Opts.parsecmd,
          " --kythe_corpus='", Opts.kythe_corpus, "'",
@@ -1293,10 +1293,14 @@ add_kyfact_types(Prefix, Fqn-Type) -->>
 %! read_nodes(+FqnExprPath:atom, -Nodes, -Meta:dict, -ColorTexts:list(dict)) is det.
 % Read the JSON node tree (with FQNs) into Nodes and file meta-data into Meta.
 read_nodes(FqnExprPath, Nodes, Meta, ColorTexts) :-
-    open(FqnExprPath, read, FqnExprStream, [type(binary)]),
-    read_term(FqnExprStream, MetaJson, []),
-    read_term(FqnExprStream, NodesJson, []),
-    read_term(FqnExprStream, ColorTextsJson, []),
+    setup_call_cleanup(
+        open(FqnExprPath, read, FqnExprStream, [type(binary)]),
+        (   read_term(FqnExprStream, MetaJson, []),
+            read_term(FqnExprStream, NodesJson, []),
+            read_term(FqnExprStream, ColorTextsJson, [])
+        ),
+        close(FqnExprStream)
+    ),
     % sanity check that capitalized strings were quoted:
     must_once(ground(MetaJson)),
     must_once(ground(NodesJson)),
@@ -2167,7 +2171,7 @@ kyanchor(Start, End, Token, Source) -->>
     kyfact(Source, '/kythe/loc/end', End).
 
 anchor_signature_str(Start, End, Token, Signature) :-
-    format(atom(Signature), '@~d:~d<~w>', [Start, End, Token]).  % DO NOT SUBMIT (this form is for debugging)
+    format(atom(Signature), '@~d:~d<~w>', [Start, End, Token]).  % DO NOT SUBMIT (this format is for debugging)
     % format(atom(Signature), '@~d', [Start]).
 
 anchor_signature_str('Astn'{start:Start, end:End, value:Token}, Signature) :-

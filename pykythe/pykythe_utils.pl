@@ -62,7 +62,7 @@
 :- use_module(library(error)).
 :- use_module(library(base64), [base64/2 as base64_ascii]).
 :- use_module(library(utf8), [utf8_codes//1]).
-:- use_module(library(filesex), [make_directory_path/1, directory_file_path/3]).
+:- use_module(library(filesex), [make_directory_path/1, directory_file_path/3, link_file/3]).
 :- use_module(library(pprint), [print_term/2]).
 :- use_module(library(rbtrees), [ord_list_to_rbtree/2, rb_insert/4, rb_visit/2] ).
 :- use_module(library(readutil), [read_file_to_string/3]).

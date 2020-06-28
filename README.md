@@ -91,6 +91,9 @@ loaded (with the exception of the Kythe code).
    * `git submodule -q foreach 'echo $name' | xargs -L1 -I{} git config -f .gitmodules submodule.{}.fetchRecurseSubmodules true`
    * Repeat the above inside directory `swipl-devel`.
 
+* From time to time:
+  * `git submodule foreach git pull --recurse`
+
 * Follow the instructions at [Kythe - getting
   started](https://github.com/google/kythe#getting-started ) to
   download the latest tarball from the [Kythe
