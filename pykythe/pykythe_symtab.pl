@@ -89,15 +89,15 @@ rb_conv_pairs(t(_,T), Pred, Lf) :-
 
 rb_conv_pairs_(black('',_,_,_), _Pred, L, L) :- !.
 rb_conv_pairs_(red(L,K,V,R), Pred, L0, Lf) :-
-    (  call(Pred, K-V, K2V2)
-    -> rb_conv_pairs_(L, Pred, [K2V2|L1], Lf)
-    ;  rb_conv_pairs_(L, Pred, L1, Lf)
+    (   call(Pred, K-V, K2V2)
+    ->  rb_conv_pairs_(L, Pred, [K2V2|L1], Lf)
+    ;   rb_conv_pairs_(L, Pred, L1, Lf)
     ),
     rb_conv_pairs_(R, Pred, L0, L1).
 rb_conv_pairs_(black(L,K,V,R), Pred, L0, Lf) :-
-    (  call(Pred, K-V, K2V2)
-    -> rb_conv_pairs_(L, Pred, [K2V2|L1], Lf)
-    ;  rb_conv_pairs_(L, Pred, L1, Lf)
+    (   call(Pred, K-V, K2V2)
+    ->  rb_conv_pairs_(L, Pred, [K2V2|L1], Lf)
+    ;   rb_conv_pairs_(L, Pred, L1, Lf)
     ),
     rb_conv_pairs_(R, Pred, L0, L1).
 
@@ -107,17 +107,17 @@ maybe_read_symtab_from_cache(OptsVersion, PykytheSymtabInputStream, SrcPath, Sym
     % See write_batch/2 for how these were output.
     read_term(PykytheSymtabInputStream, CacheVersion, []),
     % short-circuit other tests if version mismatch
-    (  CacheVersion == OptsVersion
-    -> true
-    ;  call(IfCacheFail),
-       fail
+    (   CacheVersion == OptsVersion
+    ->  true
+    ;   call(IfCacheFail),
+        fail
     ),
     read_term(PykytheSymtabInputStream, Sha1Hex, []),
-    (  maybe_file_sha1(SrcPath, SrcSha1Hex),
-       SrcSha1Hex == Sha1Hex    % succeed if SHA1 is expected value.
-    -> true
-    ;  call(IfSha1Fail),
-       fail
+    (   maybe_file_sha1(SrcPath, SrcSha1Hex),
+        SrcSha1Hex == Sha1Hex   % succeed if SHA1 is expected value.
+    ->  true
+    ;   call(IfSha1Fail),
+        fail
     ),
     % TODO - DO NOT SUBMIT
     % The JSON read is slow (1.6 sec) and probably the write is

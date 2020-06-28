@@ -64,20 +64,20 @@
 %! must_once(:Goal) is det.
 %  Throws an error if Goal doesn't succeed.
 must_once(Goal) :-
-    (  call(Goal)
-    -> true
-    ;  throw(error(must_once_failed(Goal), _))
+    (   call(Goal)
+    ->  true
+    ;   throw(error(must_once_failed(Goal), _))
     ).
 
 must_once_msg(Goal, Msg) :-
     must_once_msg(Goal, Msg,  []).
 
 must_once_msg(Goal, Msg, MsgArgs) :-
-    (  call(Goal)
-    -> true
-     ; functor(Goal, Pred, Arity),
-       format(string(MsgStr), Msg, MsgArgs),
-       throw(error(must_once_failed(Goal), context(Pred/Arity, MsgStr)))
+    (   call(Goal)
+    ->  true
+    ;   functor(Goal, Pred, Arity),
+        format(string(MsgStr), Msg, MsgArgs),
+        throw(error(must_once_failed(Goal), context(Pred/Arity, MsgStr)))
     ).
 
 % edcg doesn't understand the meta-pred "call", so expand -->> by
@@ -86,45 +86,45 @@ must_once_msg(Goal, Msg, MsgArgs) :-
 % give the appropriate arity.
 
 must_once(Goal, AccumA0, AccumA) :-
-    (  call(Goal, AccumA0, AccumA)
-    -> true
-    ;  throw(error(must_once_failed(Goal), _))
+    (   call(Goal, AccumA0, AccumA)
+    ->  true
+    ;   throw(error(must_once_failed(Goal), _))
     ).
 
 must_once(Goal, AccumA0, AccumA, PassA) :-
-    (  call(Goal, AccumA0, AccumA, PassA)
-    -> true
-    ;  throw(error(must_once_failed(Goal), _))
+    (   call(Goal, AccumA0, AccumA, PassA)
+    ->  true
+    ;   throw(error(must_once_failed(Goal), _))
     ).
 
 must_once(Goal, AccumA0, AccumA, AccumB0, AccumB) :-
-    (  call(Goal, AccumA0, AccumA, AccumB0, AccumB)
-    -> true
-    ;  throw(error(must_once_failed(Goal), _))
+    (   call(Goal, AccumA0, AccumA, AccumB0, AccumB)
+    ->  true
+    ;   throw(error(must_once_failed(Goal), _))
     ).
 
 must_once(Goal, AccumA0, AccumA, AccumB0, AccumB, PassA) :-
-    (  call(Goal, AccumA0, AccumA, AccumB0, AccumB, PassA)
-    -> true
-    ;  throw(error(must_once_failed(Goal), _))
+    (   call(Goal, AccumA0, AccumA, AccumB0, AccumB, PassA)
+    ->  true
+    ;   throw(error(must_once_failed(Goal), _))
     ).
 
 must_once(Goal, AccumA0, AccumA, AccumB0, AccumB, Accum0, AccumC) :-
-    (  call(Goal, AccumA0, AccumA, AccumB0, AccumB, Accum0, AccumC)
-    -> true
-    ;  throw(error(must_once_failed(Goal), _))
+    (   call(Goal, AccumA0, AccumA, AccumB0, AccumB, Accum0, AccumC)
+    ->  true
+    ;   throw(error(must_once_failed(Goal), _))
     ).
 
 must_once(Goal, AccumA0, AccumA, AccumB0, AccumB, AccumC0, AccumC, PassA) :-
-    (  call(Goal, AccumA0, AccumA, AccumB0, AccumB, AccumC0, AccumC, PassA)
-    -> true
-    ;  throw(error(must_once_failed(Goal), _))
+    (   call(Goal, AccumA0, AccumA, AccumB0, AccumB, AccumC0, AccumC, PassA)
+    ->  true
+    ;   throw(error(must_once_failed(Goal), _))
     ).
 
 must_fail(Goal) :-
-    (  call(Goal)
-    -> throw(error(must_fail(Goal), _))
-    ;  true
+    (   call(Goal)
+    ->  throw(error(must_fail(Goal), _))
+    ;   true
     ).
 
 fail(_) :-

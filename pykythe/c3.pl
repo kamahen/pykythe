@@ -67,9 +67,9 @@ mro_merge(Seqs, [Candidate|Mro2]) :-
 %! mro_merge_candidate(+Seqs:list(list(atom)), +Candidate:atom) is semidet.
 mro_merge_candidate(Seqs, Candidate) :-
     Seqs = [[Candidate0|_]|SeqsTail],
-    (  include(in_tail(Candidate0), Seqs, [])
-    -> Candidate = Candidate0
-    ;  mro_merge_candidate(SeqsTail, Candidate)
+    (   include(in_tail(Candidate0), Seqs, [])
+    ->  Candidate = Candidate0
+    ;   mro_merge_candidate(SeqsTail, Candidate)
     ).
 
 %! in_tail(+X, List:list) is semidet.

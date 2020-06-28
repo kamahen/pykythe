@@ -88,20 +88,20 @@ full_path([_|Dots], Path, _Pythonpaths, CurrModulePath, ModuleAndMaybeToken, Mod
     directory_file_path(CurrModulePathDir, _, CurrModulePath),
     add_up_dots(Dots, [Path], DotsPath),
     join_path([CurrModulePathDir|DotsPath], FromImportPath2),
-    (  path_expand(FromImportPath2, ModuleFqn, ModuleAndMaybeToken)
-    -> path_part_to_python_module_or_unknown(ModuleAndMaybeToken, ModuleFqn)
-    ;  % File doesn't exist, e.g. '/home/fred/foo/bar/src/../../xyz',
-       % path_to_module_fqn_or_unknown/2 would give
-       % '<unknown>.home.fred.foo.bar.src.......xyz'.
-       % TODO: AbsFromImportPath2 starts with '.', so this ends up
-       %       with '<unknown>..' at the beginning; but fixing needs
-       %       to deal with other code that converts to/from list.
-       absolute_file_name_rel(FromImportPath2, AbsFromImportPath2),
-       % The '{...}' in the following is because there could be
-       % a ".<id>" following, which would be confused with an extension
-       % in a file path.
-       format(atom(ModuleFqn), '<unknown>.{~w}', [AbsFromImportPath2]),
-       ModuleAndMaybeToken = module_alone(ModuleFqn, FromImportPath2)
+    (   path_expand(FromImportPath2, ModuleFqn, ModuleAndMaybeToken)
+    ->  path_part_to_python_module_or_unknown(ModuleAndMaybeToken, ModuleFqn)
+    ;   % File doesn't exist, e.g. '/home/fred/foo/bar/src/../../xyz',
+        % path_to_module_fqn_or_unknown/2 would give
+        % '<unknown>.home.fred.foo.bar.src.......xyz'.
+        % TODO: AbsFromImportPath2 starts with '.', so this ends up
+        %       with '<unknown>..' at the beginning; but fixing needs
+        %       to deal with other code that converts to/from list.
+        absolute_file_name_rel(FromImportPath2, AbsFromImportPath2),
+        % The '{...}' in the following is because there could be
+        % a ".<id>" following, which would be confused with an extension
+        % in a file path.
+        format(atom(ModuleFqn), '<unknown>.{~w}', [AbsFromImportPath2]),
+        ModuleAndMaybeToken = module_alone(ModuleFqn, FromImportPath2)
     ),
     full_module_pieces(ModuleAndMaybeToken, ModulePieces).
 
@@ -117,11 +117,11 @@ add_up_dots([_|Dots], Path, DotsPath) :-
 % ModuleFqn and Path must be instantiated.
 % TODO: harmonize this with path_to_module_fqn / path_to_module_fqn_or_unknown.
 module_fqn_path(ModuleFqn, Path) :-
-    (  var(ModuleFqn)
-    -> py_ext(Path0, Path2),
-       simple_path_module_fqn(Path0, ModuleFqn)
-    ;  simple_path_module_fqn(Path0, ModuleFqn),
-       py_ext(Path0, Path2)
+    (   var(ModuleFqn)
+    ->  py_ext(Path0, Path2),
+        simple_path_module_fqn(Path0, ModuleFqn)
+    ;   simple_path_module_fqn(Path0, ModuleFqn),
+        py_ext(Path0, Path2)
     ),
     canonical_path(Path2, Path).
 
@@ -129,11 +129,11 @@ module_fqn_path(ModuleFqn, Path) :-
 %! simple_path_module_fqn(-Path:atom, +ModuleFqn:atom) is det.
 % TODO: use library(pcre) re_replace?
 simple_path_module_fqn(Path, ModuleFqn) :-
-    (  var(ModuleFqn)
-    -> split_path_to_module_parts(Path, ModuleFqnParts),
-       join_fqn(ModuleFqnParts, ModuleFqn)
-    ;  split_module_atom(ModuleFqn, ModuleFqnParts),
-       join_path(ModuleFqnParts, Path)
+    (   var(ModuleFqn)
+    ->  split_path_to_module_parts(Path, ModuleFqnParts),
+        join_fqn(ModuleFqnParts, ModuleFqn)
+    ;   split_module_atom(ModuleFqn, ModuleFqnParts),
+        join_path(ModuleFqnParts, Path)
     ).
 
 split_path_to_module_parts(Path, ModuleFqnParts) :-
@@ -153,15 +153,15 @@ unfix_dot(In, Out) :-
 % a '<unknown>...' atom.
 % TODO: harmonize with path_module_fqn/2.
 path_to_module_fqn_or_unknown(Path, ModuleFqn) :-
-    (  path_to_module_fqn(Path, ModuleFqn)
-    -> true
-    ;  % Make sure the result conforms with FQN dotted name, so that
-       % match_reversed_module_and_dotted_names/3 works properly
-       split_path_to_module_parts(Path, PathParts),
-       (  PathParts = [''|PathParts2]  % root ('/') -- DO NOT SUBMIT - absolute_file_name
-       -> join_fqn(['<unknown>'|PathParts2], ModuleFqn)
-       ;  join_fqn(['<unknown>'|PathParts], ModuleFqn)
-       )
+    (   path_to_module_fqn(Path, ModuleFqn)
+    ->  true
+    ;   % Make sure the result conforms with FQN dotted name, so that
+        % match_reversed_module_and_dotted_names/3 works properly
+        split_path_to_module_parts(Path, PathParts),
+        (   PathParts = [''|PathParts2] % root ('/') -- DO NOT SUBMIT - absolute_file_name
+        ->  join_fqn(['<unknown>'|PathParts2], ModuleFqn)
+        ;   join_fqn(['<unknown>'|PathParts], ModuleFqn)
+        )
     ).
 
 %! path_to_module_fqn(+Path:atom, -ModuleFqn:atom) is semidet.
@@ -169,14 +169,14 @@ path_to_module_fqn_or_unknown(Path, ModuleFqn) :-
 %  TODO: harmonize with module_fqn_path/2
 %  TODO: use directory_file_path/3 instead of concat, to allow removing trailing '/'.
 path_to_module_fqn(Path, ModuleFqn) :-
-    (  canonical_path(Path, CanonicalPath),
-       py_ext(CanonicalPath0, CanonicalPath)
-    -> true
-    ;  absolute_dir(Path, CanonicalPath),
-       (  atom_concat(CanonicalPath0, '/', CanonicalPath) % DO NOT SUBMIT - sub_atom/5
-       -> true
-       ;  CanonicalPath0 = CanonicalPath
-       )
+    (   canonical_path(Path, CanonicalPath),
+        py_ext(CanonicalPath0, CanonicalPath)
+    ->  true
+    ;   absolute_dir(Path, CanonicalPath),
+        (   atom_concat(CanonicalPath0, '/', CanonicalPath) % DO NOT SUBMIT - sub_atom/5
+        ->  true
+        ;   CanonicalPath0 = CanonicalPath
+        )
     ),
     simple_path_module_fqn(CanonicalPath0, ModuleFqn).
 
@@ -184,10 +184,10 @@ path_to_module_fqn(Path, ModuleFqn) :-
 % Get a Path (file or directory) into a canonical (absolute) form.
 % Fails if the file or directory doesn't exist.
 canonical_path(Path, CanonicalPath) :-
-    (  absolute_file_name_rel(Path, AbsPath, [access(read), file_errors(fail)])
-    -> true
+    (   absolute_file_name_rel(Path, AbsPath, [access(read), file_errors(fail)])
+    ->  true
     % DO NOT SUBUMIT - delete the following?
-    ;  absolute_file_name_rel(Path, AbsPath, [access(read), file_type(directory), file_errors(fail)])
+    ;   absolute_file_name_rel(Path, AbsPath, [access(read), file_type(directory), file_errors(fail)])
     ),
     atom_string(CanonicalPath, AbsPath).
 
@@ -195,14 +195,14 @@ canonical_path(Path, CanonicalPath) :-
 % ModuleAndMaybeToken is either module_alone or module_and_token functor.
 %  TODO: use directory_file_path/3 instead of concat, to allow removing trailing '/'.
 full_path_prefixed(DeprefixedPath, Pythonpaths, ModuleAndMaybeToken) :-
-    (  member(Prefix, Pythonpaths),
-       atom_concat(Prefix, DeprefixedPath, Path0),
-       path_expand(Path0, ModuleFqn, ModuleAndMaybeToken)
-    -> true
-    ;  Prefix = '$PYTHONPATH/',
-       % Can't path_expand because we don't know what prefix to use.
-       atom_concat('$PYTHONPATH/', DeprefixedPath, UnknownPath),
-       ModuleAndMaybeToken = module_alone(ModuleFqn, UnknownPath)
+    (   member(Prefix, Pythonpaths),
+        atom_concat(Prefix, DeprefixedPath, Path0),
+        path_expand(Path0, ModuleFqn, ModuleAndMaybeToken)
+    ->  true
+    ;   Prefix = '$PYTHONPATH/',
+        % Can't path_expand because we don't know what prefix to use.
+        atom_concat('$PYTHONPATH/', DeprefixedPath, UnknownPath),
+        ModuleAndMaybeToken = module_alone(ModuleFqn, UnknownPath)
     ),
     path_part(ModuleAndMaybeToken, PathPart),
     must_once(atom_concat(Prefix, _, PathPart)), % Prefix must be first part of PathPart
@@ -222,23 +222,23 @@ path_pieces_expand(PathPieces, ModuleAndMaybeToken) :-
 % functor. ModuleFqn can be a logical variable that gets filled in
 % later.
 path_expand(Path0, ModuleFqn, ModuleAndMaybeToken) :-
-    (  Path1 = Path0,
-       ModuleAndMaybeToken = module_alone(ModuleFqn, Expanded)
-    ;  remove_last_component(Path0, Path1, Token),
-       ModuleAndMaybeToken = module_and_token(ModuleFqn, Expanded, Token)
+    (   Path1 = Path0,
+        ModuleAndMaybeToken = module_alone(ModuleFqn, Expanded)
+    ;   remove_last_component(Path0, Path1, Token),
+        ModuleAndMaybeToken = module_and_token(ModuleFqn, Expanded, Token)
     ),
-    (  py_ext(Path1, Path),
-       canonical_path(Path, Expanded)
-    -> true % 'foo.bar' can produce
-            %    module_alone('foo.bar', 'foo/bar.py' and
-            %    module_and_token('foo.bar', 'foo/__init__.py', 'bar')
-            % so prevent the 2nd one if the first one succeeds
-            % (canonical_path/2 checks the validity of files but
-            % there's nothing for checking whether a token exists
-            % within a file).
-    ;  Path1 = Path0  % module_alone and not module_and_token
-    -> absolute_dir(Path1, Expanded)
-    ;  fail
+    (   py_ext(Path1, Path),
+        canonical_path(Path, Expanded)
+    ->  true % 'foo.bar' can produce
+             %    module_alone('foo.bar', 'foo/bar.py' and
+             %    module_and_token('foo.bar', 'foo/__init__.py', 'bar')
+             % so prevent the 2nd one if the first one succeeds
+             % (canonical_path/2 checks the validity of files but
+             % there's nothing for checking whether a token exists
+              % within a file).
+    ;   Path1 = Path0          % module_alone and not module_and_token
+    ->  absolute_dir(Path1, Expanded)
+    ;   fail
     ).
 
 %! remove_last_component(+Path, -AllButLast, -Last) is semidet.
@@ -248,9 +248,9 @@ path_expand(Path0, ModuleFqn, ModuleAndMaybeToken) :-
 remove_last_component(Path, AllButLast, Last) :-
     split_path(Path, Split),
     Split = [_,_|_],            % at least two components
-    (  append(FirstPathPieces, [Last], Split)
-    -> join_path(FirstPathPieces, AllButLast)
-    ;  fail
+    (   append(FirstPathPieces, [Last], Split)
+    ->  join_path(FirstPathPieces, AllButLast)
+    ;   fail
     ).
 
 %! path_part(+ModuleAndMaybeToken, -Path) is det.
@@ -305,17 +305,17 @@ module_to_module_alone(ModuleAndMaybeToken, module_alone(ModuleFqn, Path), Modul
 %! split_module_atom(+ModuleFqn:atom, -ModulePieces:list(atom) is det.
 % Split module into pieces on '.', with special handling for '<unknown>'
 split_module_atom(ModuleFqn, ModulePiecesFixed) :-
-    (  re_matchsub('<unknown>\\.{([^}]*)}$', ModuleFqn, Sub, [anchored(true)])
-    -> % filename is in absolute form, so the first part of the result
-       % is ''. If we want to get rid of that, then the following
-       % should have [''|ModulePieces0] as the last arg:
-       split_path(Sub.1, ModulePieces0),
-       ModulePieces = ['<unknown>'|ModulePieces0]
-    ;  re_matchsub('(<unknown>\\.{[^}]*})\\.(.*)$', ModuleFqn, Sub, [anchored(true)])
-    -> % TODO: does this situation ever arise?
-       split_fqn(Sub.2, ModulePieces2),
-       ModulePieces = [Sub.1|ModulePieces2]
-    ;  split_atom(ModuleFqn, '.', '', ModulePieces)
+    (   re_matchsub('<unknown>\\.{([^}]*)}$', ModuleFqn, Sub, [anchored(true)])
+    ->  % filename is in absolute form, so the first part of the result
+        % is ''. If we want to get rid of that, then the following
+        % should have [''|ModulePieces0] as the last arg:
+        split_path(Sub.1, ModulePieces0),
+        ModulePieces = ['<unknown>'|ModulePieces0]
+    ;   re_matchsub('(<unknown>\\.{[^}]*})\\.(.*)$', ModuleFqn, Sub, [anchored(true)])
+    ->  % TODO: does this situation ever arise?
+        split_fqn(Sub.2, ModulePieces2),
+        ModulePieces = [Sub.1|ModulePieces2]
+    ;   split_atom(ModuleFqn, '.', '', ModulePieces)
     ),
     maplist(unfix_dot, ModulePieces, ModulePiecesFixed).
 
@@ -345,13 +345,13 @@ py_ext_ext('/__init__.pyi').
 %! src_base(+SrcPath: atom, -SrcPathBase) is det.
 % Remove extension (.py, .pyi, /__init__.{py,pyi}) from a source path.
 src_base(SrcPath, SrcPathBase) :-
-    (  py_ext_ext(Ext),
-       atom_concat(SrcPathBase, Ext, SrcPath)
-    -> true
-    ;  SrcPathBase = SrcPath
-       % Can't do the following because '<unknown>.foo.bar' will
-       % trigger it:
-       % type_error(file_name_not_ending_in_py_or_pyi, SrcPath)
+    (   py_ext_ext(Ext),
+        atom_concat(SrcPathBase, Ext, SrcPath)
+    ->  true
+    ;   SrcPathBase = SrcPath
+        % Can't do the following because '<unknown>.foo.bar' will
+        % trigger it:
+        % type_error(file_name_not_ending_in_py_or_pyi, SrcPath)
     ).
 
 %! path_part_to_python_module_or_unknown(+ModuleAndMaybeToken, -ModuleFqn:atom) is det.

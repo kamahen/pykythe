@@ -146,21 +146,21 @@ write_symtab_fact(Opts, BuiltinsModule, Symtab, BuiltinsSymtab, BuiltinsPairs, S
 
 read_package_from_cache(KytheJsonInputStream, Package) :-
     pykythe_json_read_dict(KytheJsonInputStream, JsonDict),
-    (  JsonDict.fact_name == '/kythe/node/kind',
-       base64_utf8(package, JsonDict.fact_value)
-    -> Package = JsonDict.source.signature,
-       ensure_no_more_package_facts(KytheJsonInputStream, Package)
-    ;  read_package_from_cache(KytheJsonInputStream, Package)
+    (   JsonDict.fact_name == '/kythe/node/kind',
+        base64_utf8(package, JsonDict.fact_value)
+    ->  Package = JsonDict.source.signature,
+        ensure_no_more_package_facts(KytheJsonInputStream, Package)
+    ;   read_package_from_cache(KytheJsonInputStream, Package)
     ).
 
 ensure_no_more_package_facts(KytheInputStream, Package) :-
     pykythe_json_read_dict(KytheInputStream, JsonDict),
-    (  JsonDict == @(end)
-    -> true
-    ;  JsonDict.fact_name == '/kythe/node/kind',
-       base64_ascii(package, JsonDict.fact_value)
-    -> throw(error(multiple_package(Package, JsonDict.source.signature), _))
-    ;  ensure_no_more_package_facts(KytheInputStream, Package)
+    (   JsonDict == @(end)
+    ->  true
+    ;   JsonDict.fact_name == '/kythe/node/kind',
+        base64_ascii(package, JsonDict.fact_value)
+    ->  throw(error(multiple_package(Package, JsonDict.source.signature), _))
+    ;   ensure_no_more_package_facts(KytheInputStream, Package)
     ).
 
 clean_symtab_pair(ObjectType, Name-Type, Name-CleanedType) :-

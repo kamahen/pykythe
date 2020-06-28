@@ -134,9 +134,9 @@ absolute_dir(Path0, AbsPath) :-
 %! do_if(:Cond, :Pred) is det.
 % A handy meta-predicate for turning debug stuff on/off, according to Cond
 do_if(Cond, Pred) :-
-    (  call(Cond)
-    -> call(Pred)
-    ;  true
+    (   call(Cond)
+    ->  call(Pred)
+    ;   true
     ).
 
 %! dump_term(+Msg:atom, +Term) is det.
@@ -154,15 +154,15 @@ dump_term(Msg, Term, Options) :-
 
 %! dump_term_impl(+Msg:atom, +Term, +Options:list) is det.
 dump_term_impl(Msg, Term, Options) :-
-    (  Msg = ''
-    -> true
-    ;  log_if(true, '% === ~w ===~n', [Msg])
+    (   Msg = ''
+    ->  true
+    ;   log_if(true, '% === ~w ===~n', [Msg])
     ),
     print_term_cleaned(Term, Options, TermStr),
-    (  Msg = ''
-    -> log_if(true, '~s.', [TermStr])
-    ;  log_if(true, '~s.~n', [TermStr]),
-       log_if(true, '% === end ~w ===~n', [Msg])
+    (   Msg = ''
+    ->  log_if(true, '~s.', [TermStr])
+    ;   log_if(true, '~s.~n', [TermStr]),
+        log_if(true, '% === end ~w ===~n', [Msg])
     ).
 
 %! ensure_dict_fact(+Dict, +Attr, ?Value) is semidet.
@@ -192,9 +192,9 @@ ensure_dict_fact_base64_utf8(Dict, Attr, Value) :-
                   [Attr, Value, Dict]).
 
 get_dict_default(Key, Dict, Default, Value) :-
-    (  get_dict(Key, Dict, Value)
-    -> true
-    ;  Value = Default
+    (   get_dict(Key, Dict, Value)
+    ->  true
+    ;   Value = Default
     ).
 
 %! hash_hex(+Text, -Hex) is det.
@@ -233,21 +233,21 @@ log_if(Cond, Fmt) :- log_if(Cond, Fmt, []).
 
 %! log_if(Cond:atom, Fmt:atom, Args:list) is det.
 log_if(Cond, Fmt, Args) :-
-    (  call(Cond)
-    -> atomic_list_concat(['~` t~3f~8|: ', Fmt, '~n'], '', Fmt2),
-       statistics(process_cputime, Time),
-       format(user_error, Fmt2, [Time|Args])
-    ;  true
+    (   call(Cond)
+    ->  atomic_list_concat(['~` t~3f~8|: ', Fmt, '~n'], '', Fmt2),
+        statistics(process_cputime, Time),
+        format(user_error, Fmt2, [Time|Args])
+    ;   true
     ).
 
 %! maybe_open_read(+Path, -InputStream) is semidet.
 % Open Path for read or fail.
 maybe_open_read(Path, InputStream) :-
     % Wrapper for debugging
-    (  maybe_open_read_impl(Path, InputStream)
-    -> log_if(false, 'OPENed ~q', [Path])
-    ;  log_if(false, 'OPEN-failed ~q', [Path]),
-       fail
+    (   maybe_open_read_impl(Path, InputStream)
+    ->  log_if(false, 'OPENed ~q', [Path])
+    ;   log_if(false, 'OPEN-failed ~q', [Path]),
+        fail
     ).
 
 maybe_open_read_impl(Path, InputStream) :-
@@ -284,9 +284,9 @@ print_term_cleaned(Term, Options, TermStr) :-
 %! remove_suffix_star(+Full:atom, +Suffix:atom, -NoSuffix:atom) is det.
 % Repeatedly removes suffix if present.
 remove_suffix_star(Full, Suffix, NoSuffix) :-
-    (  remove_suffix(Full, Suffix, NoSuffix0)
-    -> remove_suffix_star(NoSuffix0, Suffix, NoSuffix)
-    ;  NoSuffix = Full
+    (   remove_suffix(Full, Suffix, NoSuffix0)
+    ->  remove_suffix_star(NoSuffix0, Suffix, NoSuffix)
+    ;   NoSuffix = Full
     ).
 
 %! safe_delete_file(?Path) is det.
@@ -322,9 +322,9 @@ split_atom(Atom, SepChars, PadChars, SubAtoms) :-
     maplist([S,A]>>atom_string(A,S), SubStrings, SubAtoms).
 
 maybe_absolute_dir(Path0, AbsPath) :-
-    (  absolute_dir(Path0, AbsPath)
-    -> true
-    ;  log_if(true, 'WARNING: no such directory: ~q', [Path0])
+    (   absolute_dir(Path0, AbsPath)
+    ->  true
+    ;   log_if(true, 'WARNING: no such directory: ~q', [Path0])
     ).
 
 %! term_canonical_atom(+Term, -Atom) is det.
@@ -379,15 +379,15 @@ write_atomic_stream(WritePred, Path) :-
     pykythe_tmp_file_stream(PathDir, TmpPath, Stream, [encoding(utf8)]), % implies open [type(binary)]
     % TODO: instead of at_halt/1, use setup_call_cleanup/3
     at_halt(pykythe_utils:safe_delete_file(TmpPath)), % in case WritePred crashes or fails
-    (  call(WritePred, Stream)
-    -> % atomically rename file -- this prevents a race condition if
-       % two pykythe processes are processing the same file at the
-       % same time.
-       rename_file(TmpPath, Path),
-       close(Stream)
-    ;  close(Stream),
-       pykythe_utils:safe_delete_file(TmpPath),
-       fail
+    (   call(WritePred, Stream)
+    ->  % atomically rename file -- this prevents a race condition if
+        % two pykythe processes are processing the same file at the
+        % same time.
+        rename_file(TmpPath, Path),
+        close(Stream)
+    ;   close(Stream),
+        pykythe_utils:safe_delete_file(TmpPath),
+        fail
     ).
 
 %! write_atomic_file(+WritePred, +Path) is semidet.
@@ -399,12 +399,12 @@ write_atomic_file(WritePred, Path) :-
     pykythe_tmp_file_stream(PathDir, TmpPath, Stream, [encoding(utf8)]), % implies open [type(binary)]
     % TODO: instead of setting up at_halt, use setup_call_cleanup/3
     at_halt(pykythe_utils:safe_delete_file(TmpPath)), % in case WritePred crashes or fails
-    (  call(WritePred, TmpPath)
-    -> rename_file(TmpPath, Path),
-       close(Stream)
-    ;  close(Stream),
-       pykythe_utils:safe_delete_file(TmpPath),
-       fail
+    (   call(WritePred, TmpPath)
+    ->  rename_file(TmpPath, Path),
+        close(Stream)
+    ;   close(Stream),
+        pykythe_utils:safe_delete_file(TmpPath),
+        fail
     ).
 
 %! remove_suffix(+Atom, +Suffix, -FirstPart) is semidet.
@@ -435,9 +435,9 @@ has_prefix(Atom, Prefix) :-
 base64_utf8(Atom, BytesBase64) :-
     % TODO: use the DCG forms of library(base64), to
     %       avoid extra atom_codes/2 calls
-    (  var(BytesBase64)
-    -> atom_to_utf8_to_b64(Atom, BytesBase64)
-    ;  b64_to_utf8_to_atom(BytesBase64, Atom)
+    (   var(BytesBase64)
+    ->  atom_to_utf8_to_b64(Atom, BytesBase64)
+    ;   b64_to_utf8_to_atom(BytesBase64, Atom)
     ).
 
 %! atom_to_utf8_to_b64(+Atom, -BytesBase64) is det.
@@ -459,9 +459,9 @@ b64_to_utf8_to_atom(BytesBase64, Atom) :-
 % fewer then TruncatedList = List
 at_most([], _, []).
 at_most([X|Xs], Length, TruncatedList) :-
-    (  Length > 0
-    -> TruncatedList = [X|Ys],
-       Length2 is Length - 1,
-       at_most(Xs, Length2, Ys)
-    ;  TruncatedList = []
+    (   Length > 0
+    ->  TruncatedList = [X|Ys],
+        Length2 is Length - 1,
+        at_most(Xs, Length2, Ys)
+    ;   TruncatedList = []
     ).
