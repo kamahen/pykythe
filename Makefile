@@ -46,13 +46,13 @@ SHELL:=/bin/bash
 # Assume that type -p returns an abspath ...
 PYTHON3_EXE:=$(shell type -p python3.7)  # /usr/bin/python3.7 TODO: python3.8
 FIND_EXE:=$(shell type -p find)          # /usr/bin/find The following
+# From github:
+SWIPL_EXE_DEVEL:=../swipl-devel/build/src/swipl
+# SWIPL_EXE:=$(realpath $(SWIPL_EXE_DEVEL))
 # SWIPL_EXE requires having run build-swpl or build-swpl-full, or else
 # you'll get a weird error message about "--version: command not found"
 # SWIPL_EXE:=$(shell type -p $(SWIPL_EXE_DEVEL))
-# SWIPL_EXE:=$(shell type -p swipl)        # /usr/bin/swipl
-# From github:
-SWIPL_EXE_DEVEL:=../swipl-devel/build/src/swipl
-SWIPL_EXE:=$(realpath $(SWIPL_EXE_DEVEL))
+SWIPL_EXE:=$(shell type -p swipl)        # /usr/bin/swipl
 COVERAGE=$(shell type -p coverage)      # /usr/local/bin/coverage
 # For running parallel(1) - by experiment this works (2x the number of CPUs)
 # (larger numbers smooth things out for processing large/small source files):
