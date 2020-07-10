@@ -82,6 +82,11 @@ loaded (with the exception of the Kythe code).
   `kythe` and `typeshed`).
 
 * `git clone --recursive https://github.com/google/kythe.git`
+  * This requires git 2.23 or newer (`sudo add-apt-repository
+    ppa:git-core/ppa`). Otherwise: `git clone --recursive`, and if you
+    have something older, you also need `git submodule update --init
+    --recursive --depth 1` (you will also need to do this each time
+    you do `git pull` on the `pykythe` respository).
 
 * `git submodule update --init --recursive --depth 1`
   * You should do this each time you do `git pull` on the `pykythe`
