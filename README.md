@@ -77,6 +77,10 @@ There is no installation script, because this code is pre-alpha.
 If you run `scripts/demo.sh`, then most of the prerequisites are
 loaded (with the exception of the Kythe code).
 
+The following probably has some wrong information about git and
+submodules. Finding accurate up-to-date documentation is nearly
+impossible and I really don't feel like becoming a git guru.
+
 * `cd` to your top-level source directory (pykythe assumes that all
   sources are in this, including those from other projects such as
   `kythe` and `typeshed`).
@@ -88,13 +92,15 @@ loaded (with the exception of the Kythe code).
     --recursive --depth 1` (you will also need to do this each time
     you do `git pull` on the `pykythe` respository).
 
-* `git submodule update --init --recursive --depth 1`
+* `git submodule update --remote --merge`
   * You should do this each time you do `git pull` on the `pykythe`
     respository.
-  * You may wish to do these commands:
+  * For older versions of git, this might do what you want:
+    `git submodule update --init --recursive --depth 1`
+  * You may wish to do these commands, but the might also cause problems
+    with `git push` (I tried them at one point but reverted):
    * `git submodule -q foreach 'echo $name' | xargs -L1 -I{} git config -f .gitmodules submodule.{}.shallow true`
    * `git submodule -q foreach 'echo $name' | xargs -L1 -I{} git config -f .gitmodules submodule.{}.fetchRecurseSubmodules true`
-   * Repeat the above inside directory `swipl-devel`.
 
 * From time to time:
   * `git submodule foreach git pull --recurse`
@@ -131,7 +137,7 @@ loaded (with the exception of the Kythe code).
 
 
 * Install [SWI-Prolog](http://www.swi-prolog.org/Download.html). You
-  need at least version 8.3.0, so as of 2020-06-01, this means
+  need at least version 8.3.3, so as of 2020-06-10, this means
   using the "devel" download or PPA.
   For Ubuntu, Debian, and similar (following the instructions at https://www.swi-prolog.org/build/PPA.html):
   *  `sudo apt install software-properties-common`

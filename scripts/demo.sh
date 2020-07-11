@@ -14,18 +14,28 @@ set -o pipefail
 SRCDIR=$HOME/src             # Change as needed
 DOWNLOADDIR=$HOME/Downloads  # Change as needed
 KYTHE_VERSION=v0.0.37        # Change as needed
-NEED_SWIPL_VERSION="8.3.0"   # Change as needed
+NEED_SWIPL_VERSION="8.3.3"   # Change as needed
 
 # The following are needed only if you don't have Python3.7 already:
 # sudo add-apt-repository ppa:deadsnakes/ppa
 # sudo apt install python3.7
 
+# TODO: probably don't need to install swipl
 if [ ! type swipl ]
 then
     sudo apt install software-properties-common
     sudo apt-add-repository ppa:swi-prolog/devel
     sudo apt update
     sudo apt install swi-prolog
+fi
+
+if [ ! type cmake ]
+then
+    sudo apt install cmake
+fi
+if [ ! type ninja ]
+then
+    sudo apt install ninja-build
 fi
 
 SWIPL_VERSION=$(swipl --version | cut -d' ' -f 3)

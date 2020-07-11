@@ -46,13 +46,15 @@ SHELL:=/bin/bash
 # Assume that type -p returns an abspath ...
 PYTHON3_EXE:=$(shell type -p python3.7)  # /usr/bin/python3.7 TODO: python3.8
 FIND_EXE:=$(shell type -p find)          # /usr/bin/find The following
+# /usr/bin/swipl:
+# SWIPL_EXE_GLBL:=$(shell type -p swipl)
+SWIPL_SRC:=swipl-devel/src
+SWIPL_EXE_DEVEL:=$(abspath swipl-devel/build/src/swipl)
+SWIPL_EXE:=$(abspath $(SWIPL_EXE_DEVEL))
 # From github:
-SWIPL_EXE_DEVEL:=../swipl-devel/build/src/swipl
-# SWIPL_EXE:=$(realpath $(SWIPL_EXE_DEVEL))
 # SWIPL_EXE requires having run build-swpl or build-swpl-full, or else
 # you'll get a weird error message about "--version: command not found"
-# SWIPL_EXE:=$(shell type -p $(SWIPL_EXE_DEVEL))
-SWIPL_EXE:=$(shell type -p swipl)        # /usr/bin/swipl
+# SWIPL_EXE:=$(realpath $(SWIPL_EXE_DEVEL))
 COVERAGE=$(shell type -p coverage)      # /usr/local/bin/coverage
 # For running parallel(1) - by experiment this works (2x the number of CPUs)
 # (larger numbers smooth things out for processing large/small source files):
@@ -105,7 +107,8 @@ KYTHE_EXE:=$(KYTHE_BIN)/kythe/go/serving/tools/kythe/kythe
 
 PYKYTHE_SRCS:=$(shell ls pykythe/*.{py,pl} | sort)
 # TODO: see also https://docs.python.org/3/library/uuid.html
-VERSION:=$(shell ($(SWIPL_EXE) --version; $(PYTHON3_EXE) --version; head -999999 $(PYKYTHE_SRCS)) | sha1sum | cut -f1 -d' ')
+#       $(shell $(SWIPL_EXE_GLBL) --version) is better, but requires having SWIPL_EXE already built
+VERSION:=$(shell (cat swipl-devel/VERSION; $(PYTHON3_EXE) --version; head -999999 $(PYKYTHE_SRCS)) | sha1sum | cut -f1 -d' ')
 # To add a random piece: $$RANDOM
 # or with more randomness:
 # -$(shell $(PYTHON3_EXE) -c 'import os, base64; print(base64.urlsafe_b64encode(os.urandom(9)).decode("ascii"))')
@@ -166,6 +169,8 @@ TIME:=time
 # .PRECIOUS: %.kythe.entries %.json-decoded %.json
 .SECONDARY:  # Do not delete any intermediate files
 
+.PHONY: FORCE
+
 .PHONY: show-vars
 show-vars:
 	@echo "BATCH_ID                 $(BATCH_ID)"
@@ -182,6 +187,7 @@ show-vars:
 	@echo "PYTHONPATH_DOT           $(PYTHONPATH_DOT)"
 	@echo "PYTHONPATH_BUILTINS      $(PYTHONPATH_BUILTINS)"
 	@echo "SWIPL_EXE                $(SWIPL_EXE)"
+	@# echo "SWIPL_EXE_GLBL ..."
 	@echo "SWIPL_EXE_DEVEL          $(SWIPL_EXE_DEVEL)"
 	@# echo "TESTOUT_SRCS           $(TESTOUT_SRCS)"
 	@echo
@@ -229,7 +235,7 @@ importlab:
 	../importlab/bin/importlab --tree --trim -P.. .
 
 .PHONY: pykythe_test
-pykythe_test: # $(TESTOUTDIR)/KYTHE/builtins_symtab.pl tests/c3_tests.pl
+pykythe_test: $(SWIPL_EXE) FORCE # $(TESTOUTDIR)/KYTHE/builtins_symtab.pl tests/c3_tests.pl
 	mkdir -p $(PYTHONPATH_DOT) "$(PYTHONPATH_BUILTINS)"
 	@# "test_data/imports1.py" is used in the test suite and must be a real file
 	@# because absolute_file resolution uses the existence of the file.
@@ -511,8 +517,8 @@ clean-batch clean_batch:
 
 .PHONY: tkdiff
 tkdiff:
-	git difftool --no-prompt --tool=tkdiff \
-		$$(git diff --name-only | fgrep -v browser/examples/kythe_facts.pl)
+	git difftool --no-prompt --tool=tkdiff
+	@# $$(git diff --name-only | fgrep -v browser/examples/kythe_facts.pl)	
 
 # .nq.gz files are for Cayley
 
@@ -803,8 +809,10 @@ run-underhood-all:
 lint-logtalk:
 	cat scripts/lint_logtalk.pl | swipl
 
-$(SWIPL_EXE_DEVEL): build-swipl
-build-swipl:
+.PHONY: build-swipl
+build-swipl: $(SWIPL_EXE_DEVEL)
+$(SWIPL_EXE_DEVEL): $(SWIPL_SRC)/*.[ch]
+	@# TODO: need a more complete set of source files
 	cd swipl-devel && \
 		mkdir -p build && \
 		cd build && \
