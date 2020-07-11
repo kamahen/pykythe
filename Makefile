@@ -664,38 +664,6 @@ snapshot:
 #@#@# ls_decor:
 #@#@# 	$(KYTHE_EXE) -api $(TESTOUTDIR)/tables decor kythe://CORPUS?path=$(TEST_DATA_DIR)/$(TEST_GRAMMAR_FILE).py
 
-.PHONY: push_to_github_setup
-push_to_github_setup:
-	@# The following are for the initial setup only:
-	mkdir -p $(TESTGITHUB)
-	@# rm -rf $(TESTGITHUB)/pykythe
-	cd $(TESTGITHUB) && git clone https://github.com/kamahen/pykythe.git
-	@# The following is not needed ("git clone" sets this up):
-	@#   git remote add origin https://github.com/kamahen/pykythe.git
-	@# git submodule add --depth 1 https://github.com/SWI-Prolog/swipl-devel.git
-	@# git submodule add --depth 1 https://github.com/python/typeshed.git
-
-.PHONY: push_to_github
-push_to_github:
-	@# TODO: remove ./typeshed from following:
-	-grep SUBMIT $$(find tests pykythe scripts ./typeshed $(TEST_DATA_DIR) tests -type f); if [ $$? -eq 0 ]; then exit 1; fi  # DO NOT SUBMIT - enable this test
-	cd $(TESTGITHUB)/pykythe && git pull
-	rsync -aAHX --delete --exclude /.git --exclude /typeshed --exclude /swipl-devel \
-		--exclude .coverage --exclude htmlcov --exclude __pykythe__ \
-		--exclude .pytype --exclude .mypy_cache --exclude __pycache__ \
-		--exclude snippets.py --exclude typescript.gz \
-		./ $(TESTGITHUB)/pykythe/
-	rsync -aAHX --delete ../kythe $(TESTGITHUB)/
-	@# ensure "make make-json" has been done - keep the .pl file
-	@# but delete the .qlf file, which might be incompatible
-	@# with whatever is installed
-	-cd $(TESTGITHUB)/pykythe && git status
-	@# $$(git diff --name-only | fgrep -v browser/examples/kythe_facts.pl)
-	-cd $(TESTGITHUB)/pykythe && git difftool --no-prompt --tool=tkdiff
-	@echo '# pushd $(TESTGITHUB)/pykythe && git commit -mCOMMIT-MSG' -a
-	@echo '# pushd $(TESTGITHUB)/pykythe && git push -u origin master'
-	@echo '# pushd $(TESTGITHUB)/pykythe && git push --tag'
-
 FORCE:
 .PHONY: FORCE
 
@@ -809,7 +777,7 @@ run-underhood-all:
 lint-logtalk:
 	cat scripts/lint_logtalk.pl | swipl
 
-.PHONY: build-swipl
+.PHONY: build-swipl build-swipl-full
 build-swipl: $(SWIPL_EXE_DEVEL)
 $(SWIPL_EXE_DEVEL): $(SWIPL_SRC)/*.[ch]
 	@# TODO: need a more complete set of source files
@@ -851,6 +819,7 @@ upgrade-swipl:
 	@# See ../swipl-devel/CMAKE.md
 	cd ../swipl-devel && \
 		git pull --recurse && \
+		git submodule update && \
 		mkdir -p build && \
 		cd build && \
 		cmake -G Ninja .. && \
@@ -861,6 +830,7 @@ upgrade-swipl:
 upgrade-swipl-full:
 	cd ../swipl-devel && \
 		git pull --recurse && \
+		git submodule update && \
 		rm -rf build && \
 		mkdir  build && \
 		cd     build && \
