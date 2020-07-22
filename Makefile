@@ -44,13 +44,16 @@
 TESTOUTDIR:=$(abspath /tmp/pykythe_test)
 SHELL:=/bin/bash
 # Assume that type -p returns an abspath ...
-PYTHON3_EXE:=$(shell type -p python3.7)  # /usr/bin/python3.7 TODO: python3.8
+PYTHON3_EXE:=$(shell type -p python3.7)  # TODO: 3.9 doesn't have lib2to3
 FIND_EXE:=$(shell type -p find)          # /usr/bin/find The following
 # /usr/bin/swipl:
-# SWIPL_EXE_GLBL:=$(shell type -p swipl)
+SWIPL_EXE_GLBL:=$(shell type -p swipl)
 SWIPL_SRC:=swipl-devel/src
 SWIPL_EXE_DEVEL:=$(abspath swipl-devel/build/src/swipl)
-SWIPL_EXE:=$(abspath $(SWIPL_EXE_DEVEL))
+SWIPL_EXE_GITHUB:=$(abspath ../swipl-devel/build/src/swipl)
+# SWIPL_EXE:=$(abspath $(SWIPL_EXE_DEVEL))
+SWIPL_EXE:=$(abspath $(SWIPL_EXE_GITHUB))
+# SWIPL_EXE:=$(abspath $(SWIPL_EXE_GLBL))
 # From github:
 # SWIPL_EXE requires having run build-swpl or build-swpl-full, or else
 # you'll get a weird error message about "--version: command not found"
@@ -107,8 +110,9 @@ KYTHE_EXE:=$(KYTHE_BIN)/kythe/go/serving/tools/kythe/kythe
 
 PYKYTHE_SRCS:=$(shell ls pykythe/*.{py,pl} | sort)
 # TODO: see also https://docs.python.org/3/library/uuid.html
-#       $(shell $(SWIPL_EXE_GLBL) --version) is better, but requires having SWIPL_EXE already built
-VERSION:=$(shell (cat swipl-devel/VERSION; $(PYTHON3_EXE) --version; head -999999 $(PYKYTHE_SRCS)) | sha1sum | cut -f1 -d' ')
+#	cat swipl-devel/VERSION -- if SWIPL_EXE (SWIPL_EXE_DEVEL) hasn't been built
+VERSION:=$(shell ($(SWIPL_EXE_GLBL) --version; \
+	$(PYTHON3_EXE) --version; head -999999 $(PYKYTHE_SRCS)) | sha1sum | cut -f1 -d' ')
 # To add a random piece: $$RANDOM
 # or with more randomness:
 # -$(shell $(PYTHON3_EXE) -c 'import os, base64; print(base64.urlsafe_b64encode(os.urandom(9)).decode("ascii"))')
@@ -777,6 +781,8 @@ run-underhood-all:
 lint-logtalk:
 	cat scripts/lint_logtalk.pl | swipl
 
+# See https://github.com/SWI-Prolog/swipl/blob/master/CMAKE.md
+#     https://www.swi-prolog.org/build/guidelines.html
 .PHONY: build-swipl build-swipl-full
 build-swipl: $(SWIPL_EXE_DEVEL)
 $(SWIPL_EXE_DEVEL): $(SWIPL_SRC)/*.[ch]
@@ -785,6 +791,7 @@ $(SWIPL_EXE_DEVEL): $(SWIPL_SRC)/*.[ch]
 		mkdir -p build && \
 		cd build && \
 		cmake -G Ninja .. && \
+		../script/pgo-compile.sh \
 		ninja
 
 build-swipl-full:
@@ -793,6 +800,7 @@ build-swipl-full:
 		mkdir -p build && \
 		cd build && \
 		cmake -G Ninja .. && \
+		../script/pgo-compile.sh \
 		ninja && \
 		ctest -j 8
 
