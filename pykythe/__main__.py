@@ -86,13 +86,16 @@ def main() -> int:
 
     colored = ast_color.ColorFile(src_file, parse_tree, dict(with_fqns.name_astns())).color()
 
+    meta_str = meta.as_prolog_str() + '.'
+    with_fqns_str = with_fqns.as_prolog_str() + '.'
+    ast_color_str = ast_color.colored_list_as_prolog_str(colored) + '.'
     with open(args.out_fqn_ast, 'w') as out_fqn_ast_file:
         pykythe_logger.debug('Output fqn= %r', out_fqn_ast_file)
-        print(meta.as_prolog_str() + '.', file=out_fqn_ast_file)
-        print(with_fqns.as_prolog_str() + '.', file=out_fqn_ast_file)
-        print(ast_color.colored_list_as_prolog_str(colored) + '.', file=out_fqn_ast_file)
-    pykythe_logger.debug('Finished')
-    pykythe_logger.info('End parsing %s', args.srcpath)
+        print(meta_str, file=out_fqn_ast_file)
+        print(with_fqns_str, file=out_fqn_ast_file)
+        print(ast_color_str, file=out_fqn_ast_file)
+    pykythe_logger.info('End parsing %s / meta:%d fqns:%d color:%d', args.srcpath,
+                        len(meta_str), len(with_fqns_str), len(ast_color_str))
     return 0
 
 
