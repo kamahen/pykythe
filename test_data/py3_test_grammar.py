@@ -1,8 +1,8 @@
 """Exercise all the syntactic structures in Python.
 
-This is derived from
-Python-3.7.3.rc1/Lib/lib2to3/tests/data/py3_test_grammar.py with some
-Kythe verifier rules added.
+This is derived from Python3.9
+   Lib/lib2to3/tests/data/py3_test_grammar.py
+with some Kythe verifier rules added.
 
 TODO: needs tests for at least the following (extended iterable unpacking):
       PEP 3132 (Python 3.0)
@@ -530,15 +530,27 @@ class GrammarTests(unittest.TestCase):
         test_inner()
 
     def testReturn(self):
-        # 'return' [testlist]
+        # 'return' [testlist_star_expr]
         def g1(): return
         def g2(): return 1
+        return_list = [2, 3]
+        # def g3(): return 1, *return_list  # TODO: Needs Python3.8 grammar
         g1()
         x = g2()
+        x3 = g3()
         check_syntax_error(self, "class foo:return 1")
 
     def testYield(self):
+        # 'yield' [yield_arg]
+        def g1(): yield 1
+        yield_list = [2, 3]
+        # def g2(): yield 1, *yield_list  # TODO: Needs Python3.8 grammar
+        def g3(): yield from iter(yield_list)
+        x1 = g1()
+        x2 = g2()
+        x3 = g3()
         check_syntax_error(self, "class foo:yield 1")
+        check_syntax_error(self, "def g4(): yield from *a")
 
     def testRaise(self):
         # 'raise' test [',' test]
