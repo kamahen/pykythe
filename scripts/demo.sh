@@ -29,14 +29,21 @@ then
     sudo apt install swi-prolog
 fi
 
-if [ ! type cmake ]
+# TODO: add other compilation requirements for SWI-Prolog
+# if [ ! type cmake ]
+# then
+#     sudo apt install cmake
+# fi
+# if [ ! type ninja ]
+# then
+#     sudo apt install ninja-build
+# fi
+
+if [ ! type python3.7 ]
 then
-    sudo apt install cmake
+    sudo apt install python3.7
 fi
-if [ ! type ninja ]
-then
-    sudo apt install ninja-build
-fi
+python3.7 -m pip install mypy_extensions
 
 SWIPL_VERSION=$(swipl --version | cut -d' ' -f 3)
 if [[ "$SWIPL_VERSION" < "$NEED_SWIPL_VERSION" ]]
