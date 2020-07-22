@@ -1456,12 +1456,9 @@ kyfact_color(color{lineno:Lineno,
     %           kyfact(Source, '/pykythe/color/value', Value),
     % TODO: flatten this to a simple CSV?
     { format(atom(ColorFactText), '~q',
-             [color{lineno:Lineno,
-                    column:Column,
-                    start:Start,
-                    end:End,
-                    token_color:TokenColor,
-                    value:Value}]) },
+             [color{lineno:Lineno, column:Column,
+                    start:Start, end:End,
+                    token_color:TokenColor, value:Value}]) },
     kyfact(Source, '/pykythe/color', ColorFactText).
 
 %! kynode(+Node:json_dict, -Type)//[kyfact,expr,file_meta] is det.

@@ -249,6 +249,7 @@ function displayNewSrcFile(source_item) {
 function displaySrcContents(source_item, color_data) {
     file_nav_element().lastChild.innerHTML =
         'Rendering file ' + source_item.combinedFilePath() + '...';
+    // console.log('DISPLAY_SRC: ' + JSON.stringify(color_data));  // DO NOT SUBMIT
     var table = document.createElement('table');
     table.setAttribute('class', 'src_table');
     for (var line_key = 1; line_key <= color_data.lines.length; line_key++) {
@@ -344,6 +345,9 @@ function mouseoverAnchor(target, class_action, class_id) {
                 // TODO: this doesn't seem to happen consistently:
                 // DO NOT SUBMIT - shouldn't happen - do we need to filter
                 //                 for same source path?
+                // *** can make it happen with test_data/c3a.py __bases__
+                // *** but if click on builtins.py __bases__, doesn't happen
+                // *** but then go to another file, it does happen
                 console.log('No edge for ' + target.id + ' ' + t_a_edge.signature);
             }
         }

@@ -325,27 +325,29 @@ validate_kythe_facts :-
            must_once( ground(kythe_node(Vname, Name, Value)) )),
     forall(kythe_edge(V1, Edge, V2),
            must_once( ground(kythe_edge(V1, Edge, V2)) )),
-    forall(( kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
-             Anchor=(_,Corpus,Root,Path,Language),
-             ColorAnchor=(_,Corpus,Root,Path,Language)
-           ),
-           must_once(( kythe_node(Anchor, '/kythe/loc/start', Start),
-                       kythe_node(Anchor, '/kythe/loc/end', End),
-                       kythe_node(ColorAnchor, '/pykythe/color/start', Start),
-                       kythe_node(ColorAnchor, '/pykythe/color/end', End),
-                       semantic_or_tagged(Anchor)
-                     ))
-          ),
+    % DO NOT SUBMIT - the commented area is temporary while we produce
+    %                 a more compact color representation
+    % forall(( kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
+    %          Anchor=(_,Corpus,Root,Path,Language),
+    %          ColorAnchor=(_,Corpus,Root,Path,Language)
+    %        ),
+    %        must_once(( kythe_node(Anchor, '/kythe/loc/start', Start),
+    %                    kythe_node(Anchor, '/kythe/loc/end', End),
+    %                    kythe_node(ColorAnchor, '/pykythe/color/start', Start),
+    %                    kythe_node(ColorAnchor, '/pykythe/color/end', End),
+    %                    semantic_or_tagged(Anchor)
+    %                  ))
+    %       ),
+    % forall(kythe_node(Vname, _, _),
+    %        must_once( ( kythe_node(Vname, Name , _),
+    %                     memberchk(Name, ['/kythe/node/kind',
+    %                                      '/pykythe/type',
+    %                                      '/pykythe/color/token_color']) ) )),
     forall(kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
            must_once( anchor_to_lineno(Anchor, _LineNo) )),
     forall(kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
            must_once(( anchor_to_line_chunks(Anchor, _, Chunks),
                        Chunks \== [] ))),
-    forall(kythe_node(Vname, _, _),
-           must_once( ( kythe_node(Vname, Name , _),
-                        memberchk(Name, ['/kythe/node/kind',
-                                         '/pykythe/type',
-                                         '/pykythe/color/token_color']) ) )),
     % show_jiti,    % Not needed - should be the same as the first one
     % validate_anchor_link_anchor, % DO NOT SUBMIT: fix this test, which is also slow
     statistics(cputime, T2),
@@ -616,17 +618,11 @@ node_link_node(Vname1, Edge1, SemanticVname, Edge2, Vname2) :-
     kythe_edge(Vname2, Edge2, SemanticVname).
 
 node_link_node_value(Vname, EdgeNodeKind, Value) :-
-    node_link_node_value(Vname, Edge, _NodeVname, Name, Value),
-    format(atom(EdgeNodeKind), '(~w)~w', [Edge, Name]).
-
-node_link_node_value(Vname, Edge, Name, Value) :-
-    node_link_node_value(Vname, Edge, _NodeVname, Name, Value).
-
-node_link_node_value(Vname, Edge, NodeVname, Name, Value) :-
     kythe_edge(Vname, Edge, NodeVname),
     \+ kythe_node(NodeVname, '/kythe/node/kind', 'anchor'),
     \+ kythe_node(NodeVname, '/pykythe/color/token_color', _),
-    kythe_node(NodeVname, Name, Value).
+    kythe_node(NodeVname, Name, Value),
+    format(atom(EdgeNodeKind), '(~w)~w', [Edge, Name]).
 
 pair_vname_remove_start(Key-VnameSort, Key-Vname) :-
     vname_sort(Vname, VnameSort).
