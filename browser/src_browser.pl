@@ -319,12 +319,12 @@ index_kythe_facts :-
 validate_kythe_facts :-
     statistics(cputime, T0),
     must_fail(orphan_semantic(_AnchorVname, _SemanticVname, _Edge)),
-    % Ensure that every token anchor has an associated color anchor
-    % (the inverse isn't true).
     forall(kythe_node(Vname, Name, Value),
            must_once( ground(kythe_node(Vname, Name, Value)) )),
     forall(kythe_edge(V1, Edge, V2),
            must_once( ground(kythe_edge(V1, Edge, V2)) )),
+    % Ensure that every token anchor has an associated color anchor
+    % (the inverse isn't true).
     % DO NOT SUBMIT - the commented area is temporary while we produce
     %                 a more compact color representation
     % forall(( kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
@@ -740,7 +740,9 @@ color_data_one_file(Corpus, Root, Path,
     pairs_values(LineNoAndChunks0, LineNoAndChunks),
     group_pairs_by_key(LineNoAndChunks, ColorTextLines0),
     maplist(add_links(Vname0), ColorTextLines0, ColorTextLines1), % concurrent gives slight slow-down
-    pairs_values(ColorTextLines1, ColorTextLines).
+    pairs_values(ColorTextLines1, ColorTextLines),
+    % debug(log, 'COLOR: ~q', [ColorTextLines]).  % DO NOT SUBMIT
+    print_term(ColorTextLines, []).
 
 keyed_color_fact(Corpus, Root, Path, Language, Start-(LineNo-ColorChunk)) :-
     line_chunk(vname(_ColorAnchor, Corpus,Root,Path,Language), LineNo, ColorChunk),
