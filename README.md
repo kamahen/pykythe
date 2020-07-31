@@ -147,14 +147,15 @@ impossible and I really don't feel like becoming a git guru.
 
   After installing, add the packages
   [edcg](https://github.com/mndrix/edcg) and
-  [rdet](https://github.com/rla/rdet) by these commands:
+  <!-- [rdet](https://github.com/rla/rdet) -->
+  by these commands:
 
   `echo 'pack_install(edcg, [interactive(false), upgrade(true)]).' | swipl`<br>
-  `echo 'pack_install(rdet, [interactive(false), upgrade(true)]).' | swipl`
+  <!-- `echo 'pack_install(rdet, [interactive(false), upgrade(true)]).' | swipl` -->
 
   Check that you have the correct versions (`echo 'forall(pack_property(N, version(V)), writeln(N:V)).' | swipl`):
-  * rdet 1.0.0
   * edcg 0.9.0
+  <!--  * rdet 1.0.3 -->
 
 * Optional (htis is now a submodule of `ptype`):
   `git clone https://github.com/python/typeshed.git`

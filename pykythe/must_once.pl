@@ -131,7 +131,7 @@ fail(_) :-
     fail.
 
 
-% TODO: (taken from library(rdet))
+% TODO: (taken from rdet2)
 %   % TODO: message_hook instead of prolog:message?
 %   :- multifile(prolog:message//1).
 %   prolog:message(error(must_once_failed(Goal), _)) -->

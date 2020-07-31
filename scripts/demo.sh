@@ -62,8 +62,8 @@ fi
 
 cd $SRC
 
-(echo 'pack_install(edcg, [interactive(false), upgrade(true)]).' ; \
- echo 'pack_install(rdet, [interactive(false), upgrade(true)]).') | swipl
+echo 'pack_install(edcg, [interactive(false), upgrade(true)]).' | swipl
+#  echo 'pack_install(rdet, [interactive(false), upgrade(true)]).'
 
 make --warn-undefined-variables -C $HOME/src/pykythe \
      ENTRYSTREAM_EXE=$DOWNLOADDIR/kythe-$KYTHE_VERSION/tools/entrystream \

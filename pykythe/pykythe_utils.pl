@@ -57,7 +57,7 @@
 :- style_check(+no_effect).
 :- style_check(+discontiguous).
 
-:- use_module(library(rdet), [rdet/1]).
+:- use_module(rdet2, [rdet/1]).
 :- use_module(library(apply), [maplist/2, maplist/3]).
 :- use_module(library(error)).
 :- use_module(library(base64), [base64/2 as base64_ascii]).
