@@ -5,18 +5,21 @@
 %% a version that throw an exception if there are choicepoints left.
 
 %% TODO: merge into https://github.com/kamahen/rdet.git
+%% TODO: add test cases.
 
 :- module(rdet2, [
-    rdet/1,     % +PredicateIndicator
-    rdet_bt/1,  % +PredicateIndicator
-    rdet_det/1  % +PredicateIndicator
+    rdet/1,         % +PredicateIndicator
+    rdet_bt/1,      % +PredicateIndicator
+    rdet_semidet/1, % +PredicateIndicator
+    rdet_det/1      % +PredicateIndicator
 ]).
 
 :- use_module(library(error)).
 :- use_module(library(debug), [debug/3]).
 :- use_module(library(prolog_code), [pi_head/2]).
 :- use_module(library(prolog_wrap), [wrap_predicate/4]).
-:- meta_predicate(rdet(:)).
+
+:- meta_predicate rdet(:), rdet_bt(:), rdet_semidet(:), rdet_det(:).
 
 %! rdet(:PredicateIndicator) is det.
 % Mark PredicateIndicator as "must succeed once".
@@ -31,22 +34,23 @@ rdet(PredicateIndicator) :-
 rdet_bt(PredicateIndicator) :-
     rdet_head(PredicateIndicator, Head),
     debug(rdet, 'rdet_bt: adding goal: ~w', [PredicateIndicator]),
-    wrap_predicate(Head, rdet_wrapper, Closure,
+    wrap_predicate(Head, rdet_bt_wrapper, Closure,
                    (Closure *-> true ; throw(error(goal_failed(PredicateIndicator), _)))).
 
-%! rdet_det(:PredicateIndicator) is det.
-% Mark PredicateIndicator as "must succeed once" and throw exception if not deterministic.
-rdet_det(PredicateIndicator) :-
+%! rdet_semidet(:PredicateIndicator) is det.
+% Mark PredicateIndicator as semidet (throw exception if choicepoint)
+rdet_semidet(PredicateIndicator) :-
     rdet_head(PredicateIndicator, Head),
-    debug(rdet, 'rdet_det: adding goal: ~w', [PredicateIndicator]),
-    wrap_predicate(Head, rdet_wrapper, Closure,
-                   (setup_call_cleanup(true, Closure, Det=yes)
-                    -> (  Det==yes
-                       -> true
-                       ;  throw(error(goal_not_det(PredicateIndicator), _))
-                       )
-                    ;  throw(error(goal_failed(PredicateIndicator), _))
-                    )).
+    debug(rdet, 'rdet_semidet: adding goal: ~w', [PredicateIndicator]),
+    wrap_predicate(Head, rdet_semidet_wrapper, Closure,
+                   (setup_call_cleanup(true, Closure, Det=yes),
+                    (Det==yes -> true ;  throw(error(goal_not_det(PredicateIndicator), _))))).
+
+%! rdet_det(:PredicateIndicator) is det.
+% Mark PredicateIndicator as det (throw exception if choicepoint or failure)
+rdet_det(PredicateIndicator) :-
+    rdet_semidet(PredicateIndicator),
+    rdet_bt(PredicateIndicator).
 
 rdet_head(PredicateIndicator, Head) :-
     must_be(ground, PredicateIndicator),
