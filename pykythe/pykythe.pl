@@ -240,7 +240,7 @@
 
 % :- set_prolog_flag(generate_debug_info, false).
 
-:- use_module(library(rdet), [rdet/1]).
+:- use_module(rdet2, [rdet/1]).
 
 % TODO: there are too many rdet declarations, and they seem to
 %       have negligible effect on performance.
@@ -658,14 +658,18 @@ pykythe_main :-
     halt(0).
 
 pykythe_main2 :-
-    retractall(rdet:det(_)), % TODO: delete this crude work-around a weird bug with backtrace and rdet.
+    % the stack traces are controlled by 4 Prolog flags defined in library(prolog_stack):
+    % :- create_prolog_flag(backtrace,            true, [type(boolean), keep(true)]).
+    % :- create_prolog_flag(backtrace_depth,      20,   [type(integer), keep(true)]).
+    % :- create_prolog_flag(backtrace_goal_depth, 3,    [type(integer), keep(true)]).
+    % :- create_prolog_flag(backtrace_show_lines, true, [type(boolean), keep(true)]).
+    set_prolog_flag(backtrace_goal_depth, 30), % see library(prolog_stack)
     % set_prolog_flag(gc, true),  % TODO: tune GC for performance
     % set_prolog_flag(agc_margin, 0),  % TODO: tune GC for performance
     % set_prolog_flag(trace_gc, true),  % TODO: delete
     on_signal(int, _, throw),  % TODO: delete?
     on_signal(term, _, throw),  % TODO: delete?
     % on_signal(int, _, interrupt),  % TODO: reinstate if don't need traceback
-    set_prolog_flag(backtrace_goal_depth, 30), % see library(prolog_stack)
     % Play nice with emacs *compilation* buffer -- might not be needed
     % with latest version of SWI-Prolog that uses TERM to decide
     % whether colorization should be done:

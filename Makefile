@@ -268,8 +268,8 @@ $(KYTHEOUTDIR)%.kythe.entries: \
 		$(PYKYTHE_SRCS) \
 		$(BUILTINS_SYMTAB_FILE) \
 	 	$(PYKYTHE_EXE) \
-		pykythe/pykythe.pl $(wildcard pykythe/*.pl) \
-		pykythe/__main__.py $(wildcard pykythe/*.py)
+		pykythe/pykythe.pl pykythe/*.pl \
+		pykythe/__main__.py pykythe/*.py
 	@# TODO: make this into a script (with a saved state - qsave_program/2 stand_alone).
 	@#       maybe?: set_prolog_flag(generate_debug_info, false)
 	@# Note that -O changes the order of some directives (see the comment in
@@ -301,8 +301,8 @@ $(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.entries: \
 	 	$(PYKYTHE_EXE) \
 		$(TYPESHED_REAL)/stdlib/2and3/builtins.pyi pykythe/builtins_extra.pyi \
 		pykythe/gen_builtins_symtab.pl \
-		pykythe/pykythe.pl $(wildcard pykythe/*.pl) \
-		pykythe/__main__.py $(wildcard pykythe/*.py)
+		pykythe/pykythe.pl pykythe/*.pl \
+		pykythe/__main__.py pykythe/*.py
 	mkdir -p "$(dir $(BUILTINS_SYMTAB_FILE))"
 	@# Override the builtins:
 	mkdir -p "$(PYTHONPATH_BUILTINS)"
@@ -880,10 +880,11 @@ swipl-sanitize:
 
 upgrade-emacs:
 	@# https://www.emacswiki.org/emacs/EmacsSnapshotAndDebian
+	@# The "git clean -dxf" probably isn't needed, but it's safe
 	cd ../emacs && \
 		git clean -dxf && \
 		./autogen.sh && \
-		./configure --prefix=/home/peter/emacs-2019-12-17 && \
+		./configure --prefix=$$HOME/.local && \
 		make bootstrap install
 
 rsync-backup:
