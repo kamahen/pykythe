@@ -858,10 +858,11 @@ swipl-sanitize:
 
 upgrade-emacs:
 	@# https://www.emacswiki.org/emacs/EmacsSnapshotAndDebian
+	@# The "git clean -dxf" probably isn't needed, but it's safe
 	cd ../emacs && \
 		git clean -dxf && \
 		./autogen.sh && \
-		./configure --prefix=/home/peter/emacs-2019-12-17 && \
+		./configure --prefix=$$HOME/.local && \
 		make bootstrap install
 
 rsync-backup:
