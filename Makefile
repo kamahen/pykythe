@@ -51,6 +51,7 @@ SWIPL_EXE_GLBL:=$(shell type -p swipl)
 SWIPL_SRC:=swipl-devel/src
 SWIPL_EXE_DEVEL:=$(abspath swipl-devel/build/src/swipl)
 SWIPL_EXE_GITHUB:=$(abspath ../swipl-devel/build/src/swipl)
+# SWIPL_EXE_GITHUB:=$(abspath ../swipl-devel/build.nlr/src/swipl)
 # SWIPL_EXE:=$(abspath $(SWIPL_EXE_DEVEL))
 SWIPL_EXE:=$(abspath $(SWIPL_EXE_GITHUB))
 # SWIPL_EXE:=$(abspath $(SWIPL_EXE_GLBL))
@@ -123,6 +124,9 @@ TRACEFILE=strace
 # PYKYTHE_STRACE=strace -o $(TRACEDIR)/$(TRACEFILE)-$$(date '+%Y%m%d-%H%M%S.%N')
 PYKYTHE_STRACE=
 PYKYTHE_EXE=$(TESTOUTDIR)/pykythe.qlf
+# PYKYTHE_EXE_ is used for, e.g. "swipl pykythe/pykythe.pl --"
+PYKYTHE_EXE_=$(PYKYTHE_EXE)
+# PYKYTHE_EXE_=$(SWIPL_EXE) pykythe/pykythe.pl --
 TEST_DATA_DIR:=test_data
 #  TEST_GRAMMAR_FILE:=py3_test_grammar.py  # TODO: check all places this is used
 TESTGITHUB:=$(HOME)/tmp/test-github
@@ -280,7 +284,7 @@ $(KYTHEOUTDIR)%.kythe.entries: \
 	@# pykythe/pykythe.pl with the last `set_prolog_flag(autoload, false)`.
 	PYKYTHE_STRACE_EXE="$(PYKYTHE_STRACE)" && \
 	  echo $$PYKYTHE_STRACE_EXE && \
-	  $(TIME) $$PYKYTHE_STRACE_EXE $(PYKYTHE_EXE) \
+	  $(TIME) $$PYKYTHE_STRACE_EXE $(PYKYTHE_EXE_) \
 	    $(PYKYTHE_OPTS) \
 	    "$<"
 
@@ -318,7 +322,7 @@ $(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.entries: \
 		>"$(BUILTINS_SYMTAB_FILE)"
 	PYKYTHE_STRACE_EXE="$(PYKYTHE_STRACE)" && \
 	  echo $$PYKYTHE_STRACE_EXE && \
-	  $(TIME) $$PYKYTHE_STRACE_EXE $(PYKYTHE_EXE) \
+	  $(TIME) $$PYKYTHE_STRACE_EXE $(PYKYTHE_EXE_) \
 	    $(PYKYTHE_OPTS) \
 	    "$(SUBSTDIR_PWD_REAL)/pykythe/bootstrap_builtins.py"
 	@# instead of input from "$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.json"
@@ -402,7 +406,7 @@ test_data_tests:
 test_python_lib: # Also does some other source files I have lying around
 	$(MAKE) $(PYKYTHE_EXE) $(BUILTINS_SYMTAB_FILE)
 	@# TODO: too many args causes "out of file resources":
-	@#     $(TIME) $(PYKYTHE_EXE) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) $$(find /usr/lib/python3.7 -name '*.py' | sort)
+	@#     $(TIME) $(PYKYTHE_EXE_) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) $$(find /usr/lib/python3.7 -name '*.py' | sort)
 	@# "sort" in the following is to make results more reproducible
 	@# "--group" probably slows things down a bit - there's a noticable dip
 	@#           in the CPU history every so often, which presumably is when
@@ -425,7 +429,7 @@ test_python_lib: # Also does some other source files I have lying around
 	  parallel -v --will-cite --keep-order --group -L80 -j$(NPROC) \
 	  --joblog=$(TESTOUTDIR)/joblog-$$(date +%Y-%m-%d-%H-%M) \
 	  '/usr/bin/time -f "\t%E real\t%U user\t%S sys\t%I-%O file" \
-	    $(PYKYTHE_EXE) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) {}'
+	    $(PYKYTHE_EXE_) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) {}'
 
 .PHONY: test_single_src
 # This is an example of running on a single source
@@ -433,8 +437,8 @@ SINGLE_SRC=/usr/lib/python3.7/multiprocessing/connection.py
 SINGLE_SRC=/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/a10.py
 test_single_src:
 	$(MAKE) $(SINGLE_SRC)
-	$(MAKE) $(PYKYTHE_EXE) $(BUILTINS_SYMTAB_FILE)
-	$(TIME) $(PYKYTHE_EXE) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) $(SINGLE_SRC)
+	$(MAKE) $(PYKYTHE_EXE_) $(BUILTINS_SYMTAB_FILE)
+	$(TIME) $(PYKYTHE_EXE_) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) $(SINGLE_SRC)
 
 # Reformat all the source code (uses .style.yapf)
 .PHONY: pyformat
