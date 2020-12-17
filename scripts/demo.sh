@@ -14,7 +14,7 @@ set -o pipefail
 SRCDIR=$HOME/src             # Change as needed
 DOWNLOADDIR=$HOME/Downloads  # Change as needed
 KYTHE_VERSION=v0.0.37        # Change as needed
-NEED_SWIPL_VERSION="8.3.3"   # Change as needed
+NEED_SWIPL_VERSION="8.3.15"  # Change as needed
 
 # The following are needed only if you don't have Python3.7 already:
 # sudo add-apt-repository ppa:deadsnakes/ppa

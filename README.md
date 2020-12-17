@@ -137,7 +137,7 @@ impossible and I really don't feel like becoming a git guru.
 
 
 * Install [SWI-Prolog](http://www.swi-prolog.org/Download.html). You
-  need at least version 8.3.3, so as of 2020-06-10, this means
+  need at least version 8.3.15, so as of 2020-12-17, this means
   using the "devel" download or PPA.
   For Ubuntu, Debian, and similar (following the instructions at https://www.swi-prolog.org/build/PPA.html):
   *  `sudo apt install software-properties-common`
@@ -408,7 +408,9 @@ Multiple pykythe processes can run at the same time; all output is
 "atomic", as long as it's all on the same file system. (That is, if
 the same file is being processed by two processes at the same time,
 their outputs won't interfere with each other, because they should
-both have the same content and they are written atomically.)
+both have the same content and they are written atomically; that is if
+the same thing is done multiple times, it doesn't matter because the
+actions are "idempotent".)
 
 (A detail: to allow for read-only source trees, the cache files are in
 a separate directory, as specified by `--kytheout`. This could in
