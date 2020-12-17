@@ -13,6 +13,8 @@ from . import ast, pod
 class Color(pod.PlainOldDataExtended):
     """Created with ColorFile._make_color."""
 
+    # TODO: Add as_prolog_str() method, and remove pykythe.pl' simplify_color/2.
+
     astn: ast.Astn
     lineno: int
     column: int
@@ -31,7 +33,7 @@ class ColorFile:
 
     src_file: Optional[ast.File]
     parse_tree: Optional[pytree.Base]
-    # name_astns from ast_cooked.add_fqns(...).name_astns() - maps name to '<VAR_REF' etc.
+    # name_astns from ast_cooked.add_fqns(...).name_astns() - maps name to '<VAR_REF>' etc.
     name_astns: Dict[ast.Astn, str]
 
     def color(self) -> List[Color]:
