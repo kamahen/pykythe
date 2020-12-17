@@ -34,7 +34,7 @@ favicon shamelessly taken from https://lsc.saillouisville.org/cropped-favicon-pn
 
 ## Tables vs div
 
-Probably this could have been done with <div>s and suitable use of CSS
+Probably this could have been done with &lt;div&gt;s and suitable use of CSS
 `position`, `float`, etc. But trusty old HTML tables still are
 supported, so using them.
 
