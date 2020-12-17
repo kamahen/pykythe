@@ -2,6 +2,8 @@
 
 // Implementation of annotated source browser, using nodes defined by
 // src_browser.html.
+// For the overall structure of this, see
+// https://github.com/kamahen/swipl-server-js-client/blob/master/static/simple_client.js
 
 // http://localhost:9999?corpus=CORPUS&root=ROOT&path=tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/a11.py&#L11
 // http://localhost:9999?corpus=CORPUS&root=ROOT&path=home/peter/src/pykythe/pykythe/ast_raw.py#L81
@@ -14,6 +16,9 @@
 //       separate items or combined into 'corpus/root/path'.
 //       Scan for newFromCombined.
 
+// SourceItem class encapsulates corpus/root/path/lineno into
+// a single object (lineno is optional and defaults to 1),
+// with some convenience methods and constructors.
 class SourceItem {
     constructor(corpus, root, path, lineno) {
         // TODO: escape '/' in corpus, root
@@ -54,8 +59,8 @@ class SourceItem {
 
 
 // global 'g_anchor_edges' gets
-//    {signature:str, edge:str, target:{corpus,root,path,language,signature}
-// items (see color_data.lines[*].edges)
+//    {signature:str, edge:str, target:{corpus:_,root:_,path:_,language:_,signature:_}}
+//    items (see color_data.lines[*].edges)
 var g_anchor_edges = [];
 
 // tree of dir/file entries - set by dynamic load from server
@@ -107,24 +112,20 @@ const path_type_to_class = {
     'file': 'file_nav_sel_file',
 };
 
-// Callback from <body onload="render_page();">
-function renderPage() {
+// Callback from <body onload="renderPage();">
+async function renderPage() {
     // https://developers.google.com/web/updates/2016/01/urlsearchparams
     const params = new URLSearchParams(location.search);
-    var lineno;
-    if (location.hash) {
-        lineno = id_lineno(location.hash);
-    } else {
-        lineno = 1;
-    }
-    fetchFromServer({src_file_tree: ''},
-                    file_tree_from_server => setFileTree(
-                        file_tree_from_server,
-                        new SourceItem(
-                            params.get('corpus'),
-                            params.get('root'),
-                            params.get('path'),
-                            lineno)));
+    const lineno = location.hash ? id_lineno(location.hash) : 1;
+    await fetchFromServer(
+        {src_file_tree: ''},
+        file_tree_from_server => setFileTree(
+            file_tree_from_server,
+            new SourceItem(
+                params.get('corpus'),
+                params.get('root'),
+                params.get('path'),
+                lineno)));
 }
 
 // Callback from fetchFromServer({src_file_tree: ''}),
@@ -135,19 +136,19 @@ function setFileTree(file_tree_from_server, source_item) {
 }
 
 // Display file tree (id='file_nav')
-function displayFileTree(source_item) {
+async function displayFileTree(source_item) {
     const path_items = source_item.pathItems();
     var tree = file_nav_element();
     while (tree.firstChild) {
         tree.firstChild.remove();
     }
-    displayFileTreeItems(0, path_items, g_file_tree, source_item.lineno);
+    await displayFileTreeItems(0, path_items, g_file_tree, source_item.lineno);
 }
 
 // Recursive function for displaying the remaining file tree
 // navigation items, starting from item_i (0-indexed).
 // The path_items are used to "pre-select" items in the drop-downs.
-function displayFileTreeItems(item_i, path_items, file_tree_nodes, lineno) {
+async function displayFileTreeItems(item_i, path_items, file_tree_nodes, lineno) {
     // file_tree_nodes is a list of 'file' or 'dir' items
     // TODO: for now, corpus and root are treated as path items
 
@@ -168,9 +169,8 @@ function displayFileTreeItems(item_i, path_items, file_tree_nodes, lineno) {
         dropdown.selectedIndex = 0;
     } else {
         dropdown = createDropdown(item_i, 'dir');
-        for (var i = 0; i < file_tree_nodes.length; i++) {
+        for (const [i, tree_item] of file_tree_nodes.entries()) {
             // TODO: make directories display differently
-            const tree_item = file_tree_nodes[i];
             addDropdownOption(dropdown, tree_item.name, tree_item.type,
                               'nav_sel-' + tree_item.path);
             if (tree_item.name == path_items[0]) {
@@ -183,18 +183,18 @@ function displayFileTreeItems(item_i, path_items, file_tree_nodes, lineno) {
 
     if (path_items.length > 0) {
         if (selected_node.type == 'dir') {
-            displayFileTreeItems(item_i + 1, path_items.slice(1),
-                                 selected_node.children, lineno);
+            await displayFileTreeItems(item_i + 1, path_items.slice(1),
+                                       selected_node.children, lineno);
         } else if (selected_node.type == 'file') {
-            displayNewSrcFile(SourceItem.newFromCombined(selected_node.path, lineno));
+            await displayNewSrcFile(SourceItem.newFromCombined(selected_node.path, lineno));
         } else {
             return alert('Bad file_tree_nodes.type: ' + selected_node[0].type);
         }
     } else if (file_tree_nodes.length == 1) {
         if (file_tree_nodes[0].type == 'dir') {
-            displayFileTreeItems(item_i + 1, [], file_tree_nodes[0].children, lineno);
+            await displayFileTreeItems(item_i + 1, [], file_tree_nodes[0].children, lineno);
         } else if (file_tree_nodes[0].type == 'file') {
-            displayNewSrcFile(SourceItem.newFromCombined(selected_node.path, lineno));
+            await displayNewSrcFile(SourceItem.newFromCombined(selected_node.path, lineno));
         } else {
             return alert('Bad file_tree_nodes.type: ' + file_tree_nodes[0].type);
         }
@@ -206,7 +206,7 @@ function createDropdown(i, type) {
     var dropdown = document.createElement('select');
     dropdown.setAttribute('class', path_type_to_class[type]);
     // dropdown.id = 'path-' + i;
-    dropdown.onclick = function(e) {
+    dropdown.onclick = async function(e) {
         const  t = e.currentTarget;
         const  t_selected = t[t.selectedIndex];
         if (t_selected.id.startsWith('nav_sel-')) {
@@ -232,13 +232,13 @@ function addDropdownOption(dropdown, text, type, id) {
 
 // Callback from file tree navigation click, to load a file into the
 // file_nav_element() via displaySrcContents.
-function displayNewSrcFile(source_item) {
+async function displayNewSrcFile(source_item) {
     var progress = document.createElement('span');
     progress.innerHTML = '&nbsp;&nbsp;&nbsp;Fetching file ' +
         sanitizeText(source_item.combinedFilePath()) + ' ...';
     file_nav_element().appendChild(progress);
     // TODO: alert if fetch fails
-    fetchFromServer(
+    await fetchFromServer(
         {src_browser_file: {corpus: source_item.corpus,
                             root: source_item.root,
                             path: source_item.path}},
@@ -246,14 +246,23 @@ function displayNewSrcFile(source_item) {
 }
 
 // Callback from server fetch of a single source file (from displayNewSrcFile)
+// source_item: SourceItem
+// color_data is a map with corpus, language, path, root, lines;
+// lines is an array of arrays: each item having
+//    lineno,column,start,end,signature,token_color,value,edges
+//  each in edges having edge,target{corpus,language,path,root,signature}
+// TODO: remove the duplication of information (the result of refactoring)
 function displaySrcContents(source_item, color_data) {
+    console.assert(source_item.corpus === color_data.corpus &&
+                   source_item.root === color_data.root &&
+                   source_item.path === color_data.path,
+                   "Mismatch source-item, color_data");
     file_nav_element().lastChild.innerHTML =
         'Rendering file ' + source_item.combinedFilePath() + '...';
     // console.log('DISPLAY_SRC: ' + JSON.stringify(color_data));  // DO NOT SUBMIT
     var table = document.createElement('table');
     table.setAttribute('class', 'src_table');
-    for (var line_key = 1; line_key <= color_data.lines.length; line_key++) {
-        const line_parts = color_data.lines[line_key - 1];
+    for (const [line_key, line_parts] of color_data.lines.entries()) {
         var row = table.insertRow();
         var td1 = row.insertCell();
         td1.setAttribute('class', 'src_lineno');
@@ -283,9 +292,6 @@ function displaySrcContents(source_item, color_data) {
 
 // Simplified source display (no active links)
 function srcLineTextSimple(txt_span, parts, highlight_semantic) {
-    // DO NOT SUBMIT -- highlight_semantic_signature is FQN but
-    //                  part.signature is anchor signature.
-    //                  See src_browser.pl link_chunk/2.
     for (const part of parts) {
         var span = document.createElement('span');
         span.setAttribute('class', token_css_color_class[part.token_color]);
@@ -299,33 +305,33 @@ function srcLineTextSimple(txt_span, parts, highlight_semantic) {
     }
 }
 
-// Display a single part of a source display
+// Display a single line of a source display
 function srcLineText(parts, txt_span, source_item) {
     for (const part of parts) {
         var span = document.createElement('span');
         span.setAttribute('class', token_css_color_class[part.token_color]);
         span.innerHTML = sanitizeText(part.value);
-        if (is_token_name[part.token_color]) {
+        if (is_token_name[part.token_color]) {  // and part.signature !== '') {
             for (const p_edge of part.edges) {
                 g_anchor_edges.push({signature: part.signature,
                                      edge: p_edge.edge,
                                      target: p_edge.target});
             }
             span.id = part.signature;  // DO NOT SUBMIT -- should have a known prefix on the id
-            span.onmouseover = function(e) { // e is MouseEvent
+            span.onmouseover = async function(e) { // e is MouseEvent
                 mouseoverAnchor(e.currentTarget, 'add', 'src_hover');
                 e.preventDefault();
             };
-            span.onmouseleave = function(e) { // e is MouseEvent
+            span.onmouseleave = async function(e) { // e is MouseEvent
                 mouseoverAnchor(e.currentTarget, 'remove', 'src_hover');
                 e.preventDefault();
             };
-            span.onclick = function(e) { // e is MouseEvent
-                clickAnchor(e.currentTarget, source_item);
+            span.onclick = async function(e) { // e is MouseEvent
+                await clickAnchor(e.currentTarget, source_item);
                 e.preventDefault();
             };
             // TODO: handle right-click
-            // span.oncontextmenu = function(e) { // e is MouseEvent
+            // span.oncontextmenu = async function(e) { // e is MouseEvent
             //     e.preventDefault();
             // };
         }
@@ -355,14 +361,15 @@ function mouseoverAnchor(target, class_action, class_id) {
 }
 
 // Callback for a click on a token (anchor) in the source display
-function clickAnchor(target, source_item) {
+async function clickAnchor(target, source_item) {
     console.log('CLICK ' + target.id + ' in ' + source_item.combinedFilePath());
-    fetchFromServer({anchor_xref: {signature: target.id,
-                                   corpus: source_item.corpus,
-                                   root: source_item.root,
-                                   path: source_item.path,
-                                   language: 'python'}},  // DO NOT SUBMIT - don't hard-code language
-                    data => setXref(source_item, target.id, data));
+    await fetchFromServer(
+        {anchor_xref: {signature: target.id,
+                       corpus: source_item.corpus,
+                       root: source_item.root,
+                       path: source_item.path,
+                       language: 'python'}},  // DO NOT SUBMIT - don't hard-code language
+        data => setXref(source_item, target.id, data));
 }
 
 // Callback from getting Kythe facts for a token (anchor) click
@@ -377,9 +384,8 @@ function setXref(source_item, signature, data) {
     if (data.semantics.length == 0) {
         row_cell.appendChild(document.createElement('span')).innerHTML + '<i>(no semantics)</i>';
     } else {
-        row_cell.appendChild(document.createElement('span'))
-            .innerHTML = data.semantics.map(
-                s => '<i>' + sanitizeText(s.signature) + '</i>').join('<br/>');
+        row_cell.appendChild(document.createElement('span')).innerHTML = data.semantics.map(
+            s => '<i>' + sanitizeText(s.signature) + '</i>').join('<br/>');
     }
     for (const nv of data.semantic_node_values) {
         // TODO: use class attributes:
@@ -407,8 +413,6 @@ function setXref(source_item, signature, data) {
             for (const link_line of path_link.lines) {
                 row_cell = tableInsertRowCell(table);
                 const lineno_span = row_cell.appendChild(document.createElement('a'));
-                // DO NOT SUBMIT - semantic signature is *not* from link_line.line[*].semantic_signature
-                //                 but from a query
                 const xref_title = sanitizeText('xref-title'); // DO NOT SUBMIT - addd semantic signature
                 lineno_span.title = xref_title;
                 const href = location.origin + location.pathname +
@@ -466,25 +470,25 @@ function sanitizeText(raw_str) {
 }
 
 // Send a request to the server and schedule a callback.
-function fetchFromServer(request, callback) {
+async function fetchFromServer(request, callback) {
     // callback should take a single arg, the response from the server,
     // e.g.: json_data => set_corpus_root_path_filename(json_data))
-    fetch('/json',
-          {method: 'POST',
-           headers: {'Content-Type': 'application/json'},
-           body: JSON.stringify(request),
-           mode: 'cors',                  // Don't need?
-           cache: 'no-cache',             // Don't need?
-           credentials: 'same-origin',    // Don't need?
-           redirect: 'follow',            // Don't need?
-           referrerPolicy: 'no-referrer', // Don't need?
-          })
-        .then(response => response.json())
-        .then(callback)
-        // .catch(err => {  // TODO: move this to before the callback?
-        //     console.log('fetch ' + request + ': ' + err)
-        // })
-    ;
+    try {
+        const response = await fetch(
+            '/json',
+            {method: 'POST',
+             headers: {'Content-Type': 'application/json'},
+             body: JSON.stringify(request),
+             mode: 'cors',                  // Don't need?
+             cache: 'no-cache',             // Don't need?
+             credentials: 'same-origin',    // Don't need?
+             redirect: 'follow',            // Don't need?
+             referrerPolicy: 'no-referrer', // Don't need?
+            });
+        callback(await response.json());
+    } catch(err) {
+        console.log('fetch ' + JSON.stringify(request) + ': ' + err);
+    }
 }
 
 function jq(id) {
