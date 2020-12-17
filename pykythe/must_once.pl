@@ -36,8 +36,6 @@
 % Also works with works with EDCGs.
 % You must add edcg:pred_info(must_once, 1, ...) facts in the using module.
 
-% TODO: throw(error(must_once_failed(Goal))) without the extra "_" arg?
-
 % TODO: write a user:term_expansion that transforms
 %         :- det_pred(foo/_).
 %         foo(X, Y, Z) :- % clause 1 ...
@@ -55,10 +53,10 @@
 % TODO: something like this, to detect non-determinism
 %       see https://swish.swi-prolog.org/p/RLZCwtkJ.swinb
 % deterministic(Goal) :-
-%    (  call_cleanup(Goal, Det=true),
-%       ( Det == true ->  true throw(error(multi(Goal), _) )
-%    -> true
-%    ;  throw(error(failed(Goal), _))
+%   (    call_cleanup(Goal, Det=true),
+%        ( Det == true ->  true ; throw(error(multi(Goal), _)) )
+%    *-> true
+%    ;   throw(error(failed(Goal), _))
 %    ).
 
 %! must_once(:Goal) is det.
@@ -77,7 +75,7 @@ must_once_msg(Goal, Msg, MsgArgs) :-
     ->  true
     ;   functor(Goal, Pred, Arity),
         format(string(MsgStr), Msg, MsgArgs),
-        throw(error(must_once_failed(Goal), context(Pred/Arity, MsgStr)))
+        throw(error(must_once_failed(Pred/Arity:MsgStr, Goal), _))
     ).
 
 % edcg doesn't understand the meta-pred "call", so expand -->> by

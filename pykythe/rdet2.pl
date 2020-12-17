@@ -19,7 +19,7 @@
 :- use_module(library(prolog_code), [pi_head/2]).
 :- use_module(library(prolog_wrap), [wrap_predicate/4]).
 
-:- meta_predicate rdet(:), rdet_bt(:), rdet_semidet(:), rdet_det(:).
+:- meta_predicate rdet(0), rdet_bt(0), rdet_semidet(0), rdet_det(0).
 
 %! rdet(:PredicateIndicator) is det.
 % Mark PredicateIndicator as "must succeed once".
@@ -27,7 +27,7 @@ rdet(PredicateIndicator) :-
     rdet_head(PredicateIndicator, Head),
     debug(rdet, 'rdet: adding goal: ~w', [PredicateIndicator]),
     wrap_predicate(Head, rdet_wrapper, Closure,
-                   (Closure -> true ; throw(error(goal_failed(PredicateIndicator), _)))).
+                   (Closure -> true ; throw(error(goal_failed, context(_, PredicateIndicator))))).
 
 %! rdet_bt(:PredicateIndicator) is det.
 % Mark PredicateIndicator as "must succeed at least once (can backtrack)".
@@ -35,7 +35,7 @@ rdet_bt(PredicateIndicator) :-
     rdet_head(PredicateIndicator, Head),
     debug(rdet, 'rdet_bt: adding goal: ~w', [PredicateIndicator]),
     wrap_predicate(Head, rdet_bt_wrapper, Closure,
-                   (Closure *-> true ; throw(error(goal_failed(PredicateIndicator), _)))).
+                   (Closure *-> true ; throw(error(goal_failed, context(_, PredicateIndicator))))).
 
 %! rdet_semidet(:PredicateIndicator) is det.
 % Mark PredicateIndicator as semidet (throw exception if choicepoint)
@@ -44,7 +44,7 @@ rdet_semidet(PredicateIndicator) :-
     debug(rdet, 'rdet_semidet: adding goal: ~w', [PredicateIndicator]),
     wrap_predicate(Head, rdet_semidet_wrapper, Closure,
                    (setup_call_cleanup(true, Closure, Det=yes),
-                    (Det==yes -> true ;  throw(error(goal_not_det(PredicateIndicator), _))))).
+                    (Det==yes -> true ;  throw(error(goal_not_det, context(_, PredicateIndicator)))))).
 
 %! rdet_det(:PredicateIndicator) is det.
 % Mark PredicateIndicator as det (throw exception if choicepoint or failure)
@@ -59,7 +59,7 @@ rdet_head(PredicateIndicator, Head) :-
     ->  must_be(atom, Module),
         must_be(atom, Name),
         must_be(integer, Arity)
-    ;   throw(error(invalid_rdet_pi(PredicateIndicator), _))
+    ;   throw(error(invalid_rdet_pi, context(_, PredicateIndicator)))
     ),
     pi_head(PredicateIndicator, Head).
 
