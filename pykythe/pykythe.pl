@@ -335,6 +335,7 @@
                   kyfact/6,
                   kyfact_attr/6,
                   kyfact_color/4,
+                  kyfact_color_text_as_single_fact/4,
                   kyfact_signature_node/6,
                   kyfacts/5,
                   kyfacts_signature_node/5,
@@ -467,6 +468,7 @@ pred_info_(kyedge_fqn, 3,                          [kyfact,file_meta]).
 pred_info_(kyfact, 3,                              [kyfact,file_meta]).
 pred_info_(kyfact_attr, 3,                         [kyfact,file_meta]).
 pred_info_(kyfact_color, 1,                        [kyfact,file_meta]).
+pred_info_(kyfact_color_text_as_single_fact, 1,    [kyfact,file_meta]).
 pred_info_(kyfact_signature_node, 3,               [kyfact,file_meta]).
 pred_info_(kyfacts, 2,                             [kyfact,file_meta]).
 pred_info_(kyfacts_signature_node, 2,              [kyfact,file_meta]).
@@ -735,8 +737,8 @@ pykythe_opts(SrcPaths, Opts) :-
          help('Command for running parser than generates fqn.kythe.json file')],
         [opt(python_version), type(integer), default(3), longflags(python_version),
          help('Python major version')],
-        [opt(pythonpath), type(atom), default(''), longflags(['pythonpath']),
                                 % TODO: python_version should be a triple: see ast_raw.FAKE_SYS
+        [opt(pythonpath), type(atom), default(''), longflags(['pythonpath']),
          help('Similar to $PYTHONPATH for resolving imports (":"-separated paths)')],
         [opt(version), type(atom), default(''), longflags(['version']),
          help('Pykythe version, used to validate cache entries')],
@@ -1378,6 +1380,11 @@ simplify_ast_slot_pair(Key-Value, Key-Value2) :-
     simplify_ast(Value, Value2).
 
 %! simplify_color(+ColorDictJson:dict, -Color:dict) is det.
+% The format from parsecmd is a bit baroque, because it's created
+% using a straightforward transformation from the Python (ast_color.Color).
+% simplify_color/2 simplifies the data.
+% TODO: Generate the simplified form in the Python parser, by adding
+%       a suitable as_prolog_str() method to ast_color.Color (and maybe to ast.Astn).
 simplify_color(json{ kind:'Color',
                      slots:json{ astn:json{ kind:'Astn',
                                             slots:json{end:End,start:Start,value:Value}
@@ -1425,20 +1432,47 @@ kyfile(SrcInfo) -->>
     kyfact(Source, '/kythe/language', python),
     kyfact(Source, '/kythe/text', Meta.contents_base64),  % Special case - see transform_kythe_fact/2
     maplist_kyfact(kyfact_color, SrcInfo.color_text),
+    kyfact_color_text_as_single_fact(SrcInfo.color_text),
     kyedge_fqn(Source, '/kythe/edge/childof', SrcInfo.src_fqn),
     % Kythe's "package" is the equivalent of Python's "module".
     % (There is no equivalent of Python's "package" ... we just use
     % /kythe/edge/ref/imports on the import statements.)
     kyfact_signature_node(SrcInfo.src_fqn, '/kythe/node/kind', 'package').
 
+%! kyfact_color_text_as_single_fact(ColorText)//[kyfact,file_meta] is det.
+% See src_browser.js for the final form that's used; basically it's a
+% list of lines, each line containing a list of items. An item can
+% contain edges.
+kyfact_color_text_as_single_fact(ColorText) -->>
+    % log_if_file('COLOR_TEXT: ~q', [ColorText]), % DO NOT SUBMIT
+    % ColorText is list of: color{column:0,end:14,lineno:1,start:0,token_color:'<COMMENT>',value:'# TODO: delete'}
+    { maplist(key_color, ColorText, KeyedColorText) },
+    { format(atom(ColorFactText), '~q', [KeyedColorText]) },
+    Meta/file_meta,
+    kyfact(json{path: Meta.path, language: Meta.language},
+           '/pykythe/color_all', ColorFactText).
+
+key_color(color{column:Column, end:End, lineno:Lineno, start:Start, token_color:TokenColor, value:Value},
+          Lineno-color{column:Column, end:End, lineno:Lineno, start:Start, token_color:TokenColor, value:Value, signature:Signature}) :-
+    (   var_token(TokenColor)
+    ->  anchor_signature_str(Start, End, Value, Signature)
+    ;   Signature = ''
+    ).
+
+var_token('<VAR_REF>').
+var_token('<VAR_BINDING>').
+var_token('<VAR_BINDING_GLOBAL>').
+var_token('<PUNCTUATION>').   % TODO: if exists semantic
+var_token('<PUNCTUATION_REF>'). % This is generated in src_browser.pl
+var_token('<ATTR_BINDING>').
+var_token('<ATTR_REF>').
+% TODO: '<ARG_KEYWORD>'
+% TODO: '<BARE>'
+
 %! kyfact_color(+ColorItem)//[kyfact,file_meta] is det.
 % Output flattened color facts for one token
-kyfact_color(color{lineno:Lineno,
-                   column:Column,
-                   start:StartAtom,
-                   end:EndAtom,
-                   token_color:TokenColor,
-                   value:Value
+kyfact_color(color{lineno:Lineno, column:Column, start:StartAtom, end:EndAtom,
+                   token_color:TokenColor, value:Value
                   }) -->>
     % See anchor_signature_str/4:
     { term_to_atom(Start, StartAtom) },
@@ -1459,9 +1493,12 @@ kyfact_color(color{lineno:Lineno,
     %           kyfact(Source, '/pykythe/color/color', TokenColor),
     %           kyfact(Source, '/pykythe/color/value', Value),
     % TODO: flatten this to a simple CSV?
+    % TODO: put all node information into a single fact's dict
+    %       (see also similar comment in src_browser.pl)
     { format(atom(ColorFactText), '~q',
              [color{lineno:Lineno, column:Column,
-                    start:Start, end:End,
+                    start:Start, end
+:End,
                     token_color:TokenColor, value:Value}]) },
     kyfact(Source, '/pykythe/color', ColorFactText).
 
