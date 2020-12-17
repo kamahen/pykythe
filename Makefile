@@ -53,8 +53,8 @@ SWIPL_EXE_DEVEL:=$(abspath swipl-devel/build/src/swipl)
 SWIPL_EXE_GITHUB:=$(abspath ../swipl-devel/build/src/swipl)
 # SWIPL_EXE_GITHUB:=$(abspath ../swipl-devel/build.nlr/src/swipl)
 # SWIPL_EXE:=$(abspath $(SWIPL_EXE_DEVEL))
-SWIPL_EXE:=$(abspath $(SWIPL_EXE_GITHUB))
-# SWIPL_EXE:=$(abspath $(SWIPL_EXE_GLBL))
+# SWIPL_EXE:=$(abspath $(SWIPL_EXE_GITHUB))
+SWIPL_EXE:=$(abspath $(SWIPL_EXE_GLBL))
 # From github:
 # SWIPL_EXE requires having run build-swpl or build-swpl-full, or else
 # you'll get a weird error message about "--version: command not found"
@@ -258,9 +258,9 @@ pykythe_test: $(SWIPL_EXE) FORCE # $(TESTOUTDIR)/KYTHE/builtins_symtab.pl tests/
 $(PYKYTHE_EXE): pykythe/*.pl pykythe_test $(SWIPL_EXE)
 	mkdir -p $(dir $@)
 	$(SWIPL_EXE) --version
-	$(SWIPL_EXE) --stand_alone=true --undefined=error --verbose=false \
-	    --foreign=save \
-	    -o $@ -c pykythe/pykythe.pl
+	@# The following line was used for debugging https://github.com/SWI-Prolog/swipl-devel/commit/0a0d9800134b361eb2344f29cece8b0a4b571666
+	@# echo "['pykythe/pykythe.pl']. qsave_program('$@', [stand_alone(true), undefined(error), foreign(save)])." | $(SWIPL_EXE)
+	$(SWIPL_EXE) --stand_alone=true --undefined=error --verbose=false --foreign=save -o $@ -c pykythe/pykythe.pl
 	@# To find the .so files and packages:
 	@# ldd $@ | grep '=>' | cut -f3 -d' ' | sort | xargs -L1 dpkg-query -S | grep -v libc6:amd64
 
@@ -401,6 +401,11 @@ test_data_tests:
 	@# (large files such as py3_test_grammar.py dominate)
 	$(MAKE) -j$(NPROC) -Oline $(TESTOUT_TARGETS) \
 		$(KYTHEOUTDIR)$(PWD_REAL)/pykythe/__main__.kythe.entries
+
+.PHONY: test_leo
+test_leo:
+	$(MAKE) $(PYKYTHE_EXE) $(BUILTINS_SYMTAB_FILE)
+	$(PYKYTHE_EXE_) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) ../leo-editor/leo/core/leoAst.py
 
 .PHONY: test_python_lib
 test_python_lib: # Also does some other source files I have lying around
@@ -660,8 +665,10 @@ snapshot:
 		--exclude=.pytype \
 		--exclude=.lgt_tmp \
 		--exclude=typescript --exclude=typescript.gz \
-		--gzip --file \
-		$(HOME)/Downloads/pykythe_$$(date +%Y-%m-%d-%H-%M).tgz pykythe
+		--exclude=typeshed \
+		--exclude=swipl-devel \
+		--bzip2 --file \
+		$(HOME)/Downloads/pykythe_$$(date +%Y-%m-%d-%H-%M).tjz pykythe
 	@# ls -lh $(HOME)/Downloads/pykythe_*.tgz
 
 #@#@# PHONY: ls_uris
@@ -818,11 +825,12 @@ upgrade-pkgs:
 	sudo apt update
 	sudo apt autoremove
 	sudo apt --with-new-pkgs --assume-yes upgrade
+	sudo apt --assume-yes full-upgrade
 	@# And an old incantation from decades ago
 	sudo sync
 	sudo sync
 	sudo sync
-	sudo time fstrim --all -v
+	echo sudo time fstrim --all -v
 
 pull-swipl:
 	cd ../swipl-devel && git pull --recurse
@@ -867,7 +875,8 @@ upgrade-emacs:
 		git clean -dxf && \
 		./autogen.sh && \
 		./configure --prefix=$$HOME/.local && \
-		make bootstrap install
+		make -j 4 bootstrap && \
+		make install
 
 rsync-backup:
 	rsync -va --delete -e ssh 192.168.1.79:src/pykythe /home/peter/src_backup/
