@@ -332,6 +332,14 @@ function srcLineText(parts, txt_span, source_item) {
             // span.oncontextmenu = async function(e) { // e is MouseEvent
             //     e.preventDefault();
             // };
+        } else if (is_token_name[part.token_color]) {
+            console.assert(part.signature,
+                           'SIGNATURE SHOULD NOT BE EMPTY',
+                           part.token_color, part.signature);
+        } else {
+            console.assert(! part.signature,
+                           'SIGNATURE SHOULD BE EMPTY',
+                           part.token_color, part.signature);
         }
         txt_span.appendChild(span);
     }
@@ -485,7 +493,7 @@ async function fetchFromServer(request, callback) {
             });
         callback(await response.json());
     } catch(err) {
-        console.log('fetch ' + JSON.stringify(request) + ': ' + err);
+        alert('fetch ' + JSON.stringify(request) + ': ' + err);
     }
 }
 

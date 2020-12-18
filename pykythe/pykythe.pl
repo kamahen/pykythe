@@ -1459,7 +1459,7 @@ kyfact_color_text_as_single_fact(ColorText) -->>
            '/pykythe/color_all', ColorFactText).
 
 key_color(color{column:Column, end:End, lineno:Lineno, start:Start, token_color:TokenColor, value:Value},
-          Lineno-color{column:Column, end:End, lineno:Lineno, start:Start, token_color:TokenColor, value:Value, signature:Signature}) :-
+          color{column:Column, end:End, lineno:Lineno, start:Start, token_color:TokenColor, value:Value, signature:Signature}) :-
     (   var_token(TokenColor)
     ->  anchor_signature_str(Start, End, Value, Signature)
     ;   Signature = ''
