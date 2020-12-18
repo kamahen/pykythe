@@ -295,10 +295,8 @@ function srcLineTextSimple(txt_span, parts, highlight_semantic) {
     for (const part of parts) {
         var span = document.createElement('span');
         span.setAttribute('class', token_css_color_class[part.token_color]);
-        if (is_token_name[part.token_color]) {
-            if (part.signature == highlight_semantic) {
-                span.classList.add('src_hover');
-            }
+        if (is_token_name[part.token_color] && part.signature == highlight_semantic) {
+            span.classList.add('src_hover');
         }
         span.innerHTML = sanitizeText(part.value);
         txt_span.appendChild(span)
@@ -311,7 +309,7 @@ function srcLineText(parts, txt_span, source_item) {
         var span = document.createElement('span');
         span.setAttribute('class', token_css_color_class[part.token_color]);
         span.innerHTML = sanitizeText(part.value);
-        if (is_token_name[part.token_color]) {  // and part.signature !== '') {
+        if (is_token_name[part.token_color] && part.signature) {
             for (const p_edge of part.edges) {
                 g_anchor_edges.push({signature: part.signature,
                                      edge: p_edge.edge,
