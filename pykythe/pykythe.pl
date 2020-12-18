@@ -978,7 +978,11 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
     ;   % write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheBatchPath)
         % Assume that if a race condition occurs while linking, the
         % other process would have generated the same file contents.
-        safe_hard_link_file_dup_ok(PykytheSymtabPath, PykytheBatchPath)
+        % TODO: should re-process this file in case the race condition
+        %       resulted in deleting the output file.
+        catch(safe_hard_link_file_dup_ok(PykytheSymtabPath, PykytheBatchPath),
+              error(existence_error(file, _), _),  % context(_, 'No such file or directory')
+              log_if(true, 'Failed to hard-link (file does not exist) ~q to ~q', [PykytheSymtabPath, PykytheBatchPath]))
     ),
     log_if(true, 'Converting to Kythe protobuf'),
     path_with_suffix(Opts, SrcPath, Opts.kytheentries_suffix, KytheEntriesPath),
@@ -1263,7 +1267,9 @@ run_parse_cmd(Opts, SrcPath, SrcFqn, OutPath) :-
 link_src_file(SrcPath, OutPath) :- % TODO: delete
     re_replace("/"/g, "@", SrcPath, SrcPathSubs),
     atomic_list_concat(['/tmp/pykythe-parser-output--', SrcPathSubs], TmpParserOutput),
-    safe_hard_link_file(OutPath, TmpParserOutput).
+    catch(safe_hard_link_file(OutPath, TmpParserOutput),
+          Error,
+          log_if(true, 'Failed (~q) to link src file ~q to ~q', [Error, SrcPath, OutPath])).
 
 %! version_as_kyfact(+Version, +Meta, -KytheFactsAsJsonDict) is det.
 % Convert the version into a Kythe fact.

@@ -313,7 +313,7 @@ safe_hard_link_file_dup_ok(OldPath, NewPath) :-
     safe_delete_file(NewPath),
     catch(link_file(OldPath, NewPath, hard),
           error(system_error, context(_, 'File exists')),
-          true).
+          log_if(true, 'Failed to hard-link (file exists) ~q to ~q', [OldPath, NewPath])).
 
 %! split_atom(+Atom:atom, +SepChars:atom, +PadChars:atom, -SubAtoms:list(atom)) is det.
 % Like split_string, but result is a list of atoms.
