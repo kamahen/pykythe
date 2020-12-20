@@ -295,8 +295,8 @@ adjust_color(Corpus,Root,Path,Language, ColorPairs0, ColorPairs) :-
        ( kythe_node(AnchorPunctuation,  '/kythe/node/kind', 'anchor')
        ; kythe_edge(AnchorPunctuation, '/kythe/edge/tagged', _)
        )
-    -> ColorPairs = [token_color-'<PUNCTUATION_REF>'|ColorPairs1],
-       debug(log, 'ADJUST_COLOR: ~q', [ColorPairs]) % DO NOT SUBMIT
+    -> ColorPairs = [token_color-'<PUNCTUATION_REF>'|ColorPairs1]
+       % debug(log, 'ADJUST_COLOR: ~q', [ColorPairs]) % DO NOT SUBMIT
     ;  ColorPairs = ColorPairs0
     ).
 
@@ -543,10 +543,15 @@ json_response(json{anchor_xref: json{signature: Signature,
     anchor_to_line_chunks(AnchorVname, LineNo, LineChunks),
     debug(log, 'Xref ~q lineno: ~q', [[signature: Signature, corpus=Corpus, root: Root, path: Path, language: Language], LineNo]),
     anchor_links_grouped(AnchorVname, SemanticNodeValues, EdgeLinks0),
-    maplist(expand_edge_link, EdgeLinks0, EdgeLinks),
+    maplist([Edge-PathAnchors, Edge-PathLines]>>
+                maplist(path_anchors_to_line_chunks, PathAnchors, PathLines),
+            EdgeLinks0, EdgeLinks),
     setof_or_empty(S, anchor_semantic_json(AnchorVname, S), SemanticVnamesJson),
-    maplist(pair_to_json(kind, value), SemanticNodeValues, SemanticNodeValuesJson),
-    maplist(edge_links_group_to_dict, EdgeLinks, EdgeLinksJson).
+    maplist([Key-Value, json{kind:Key, value:Value}]>>true,
+            SemanticNodeValues, SemanticNodeValuesJson),
+    maplist([Edge-Links, json{edge: Edge, links: LinksJson}]>>
+                maplist(link_to_dict, Links, LinksJson),
+            EdgeLinks, EdgeLinksJson).
 json_response(json{src_browser_file:
                   json{corpus:Corpus, root:Root, path:Path}},
               Contents) :-
@@ -587,9 +592,6 @@ anchor_links(AnchorVname, SemanticNodeValues, SortedLinks) :-
     setof_or_empty(NodeKind-NodeValue,
                    node_link_node_value(AnchorVname, NodeKind, NodeValue), SemanticNodeValues).
 
-expand_edge_link(Edge-PathAnchors, Edge-PathLines) :-
-    maplist(path_anchors_to_line_chunks, PathAnchors, PathLines).
-
 path_anchors_to_line_chunks(vname0(Corpus, Root, Path, Language)-Anchors,
                             path{corpus:Corpus, root:Root, path:Path, language:Language,
                                  lines:Lines}) :-
@@ -603,9 +605,6 @@ zip_lines(vname(Signature, Corpus, Root, Path, Language),
                corpus: Corpus, root: Root,
                path: Path, language: Language}).
 
-edge_links_group_to_dict(Edge-Links, json{edge: Edge, links: LinksJson}) :-
-    maplist(link_to_dict, Links, LinksJson).
-
 link_to_dict(vname(Signature, Corpus, Root, Path, Language),
              json{signature: Signature,
                   corpus: Corpus, root: Root,
@@ -617,9 +616,6 @@ link_to_dict(vname_flip(Corpus, Root, Path, Signature, Language),
 link_to_dict(Json, Json) :-
     must_once((is_dict(Json, Tag), (Tag == line; Tag == path))).
 
-
-pair_to_json(KeyTag, ValueTag, Key-Value, Json) :-
-    dict_create(Json, json, [KeyTag-Key, ValueTag-Value]).
 
 % TODO: combine with pykythe_utils:pykythe_json_read_dict?
 http_handler_read_json_dict(Request, JsonIn) :-
@@ -771,7 +767,11 @@ color_data_one_file(Corpus, Root, Path,
                          lines:ColorTextLines}) :-
     kythe_file(Corpus,Root,Path,Language),
     kythe_node(vname('',Corpus,Root,Path,Language), '/pykythe/color_all', ColorAllText),
-    term_string(_ColorAll, ColorAllText), % TODO
+    term_string(ColorAll0, ColorAllText),
+    verify_color_items(ColorAll0), % TODO: delete
+    maplist(add_color_edges_and_key(Corpus,Root,Path,Language), ColorAll0, ColorAll),
+    group_pairs_by_key(ColorAll, ColorAllChunkPairs),
+    pairs_values(ColorAllChunkPairs, ColorAllChunks),
     Vname0 = vname0(Corpus,Root,Path,Language),
     setof(KeyedColorText, keyed_color_fact(Corpus, Root, Path, Language, KeyedColorText),
           LineNoAndChunks0),
@@ -779,11 +779,52 @@ color_data_one_file(Corpus, Root, Path,
     group_pairs_by_key(LineNoAndChunks, ColorTextLines0),
     maplist(add_links(Vname0), ColorTextLines0, ColorTextLines1), % concurrent gives slight slow-down
     pairs_values(ColorTextLines1, ColorTextLines),
-    % debug(log, 'COLOR_ALL: ~q', [ColorAll]),         % DO NOT SUBMIT
-    % debug(log, 'COLOR:     ~q', [LineNoAndChunks]),  % DO NOT SUBMIT
-    %%debug(log, 'COLOR_GRP: ~q', [ColorTextLines0]),  % DO NOT SUBMIT
+    % debug(log, 'COLOR_ALL: ~q', [ColorAllChunks]), % DO NOT SUBMIT
     % debug(log, 'COLOR:     ~q', [ColorTextLines]),   % DO NOT SUBMIT
     true.  % print_term('COLOR':ColorTextLines, []).   % DO NOT SUBMIT
+
+verify_color_items(ColorItems) :-
+    % TODO: delete this validation
+    maplist([Item, Key-Item]>>get_dict(start, Item, Key), ColorItems, KeyedColorItems),
+    keysort(KeyedColorItems, KeyedColorItemSorted),
+    must_once(KeyedColorItems == KeyedColorItemSorted).
+
+add_color_edges_and_key(Corpus,Root,Path,Language, ColorAll0, ColorAll0.lineno-ColorAll) :-
+    (   ColorAll0.token_color == '<PUNCTUATION>'
+    ->  (   kythe_node_punctuation_linkable(ColorAll0.signature,
+                                            Corpus, Root, Path, Language,
+                                            ColorAll0.start, ColorAll0.end)
+        ->  % TODO: assert exactly one AchorPunctuation
+            %       setof(_, ...linkable(...), [AnchorPunctuation])
+            put_dict(token_color, ColorAll0, '<PUNCTUATION_REF>', ColorAll1)
+        ;   put_dict(signature, ColorAll0, '', ColorAll1)
+        )
+    ;   ColorAll1 = ColorAll0
+    ),
+    get_link_edges(Corpus, Root, Path, Language, ColorAll1, ColorAll).
+
+kythe_node_punctuation_linkable(Signature, Corpus,Root,Path,Language, Start, End) :-
+    Signature \== '',
+    AnchorPunctuation = vname(Signature, Corpus,Root,Path,Language),
+    kythe_node(AnchorPunctuation, '/kythe/loc/start', Start),
+    kythe_node(AnchorPunctuation, '/kythe/loc/end', End),
+    (   kythe_node(AnchorPunctuation, '/kythe/node/kind', 'anchor')
+    ;   kythe_edge(AnchorPunctuation, '/kythe/edge/tagged', _)
+    ).
+
+get_link_edges(Corpus, Root, Path, Language, ColorAll1, ColorAll) :-
+    % We ignore ColorAll1.signature  % TODO: if ''?  e.g., '<BARE>'
+    (   Vname = vname(Signature, Corpus, Root, Path, Language),
+        kythe_node(Vname, '/kythe/loc/start', ColorAll1.start),
+        kythe_node(Vname, '/kythe/loc/end', ColorAll1.end),
+        vname_vname0(Vname, Signature, Vname0),
+        setof(json{edge:Edge,target:TargetJson},
+              node_and_edge_json(Signature, Vname0, Edge, TargetJson),
+              Edges)
+    ->  put_dict(edges, ColorAll1, Edges, ColorAll2),
+        put_dict(signature, ColorAll2, Signature, ColorAll)
+    ;   put_dict(edges, ColorAll1, [], ColorAll)
+    ).
 
 
 color_example(                  % DO NOT SUBMIT
