@@ -23,7 +23,7 @@
 :- use_module(library(pairs), [group_pairs_by_key/2, pairs_values/2]).
 :- use_module(library(prolog_jiti), [jiti_list/1]).
 :- use_module(library(apply), [maplist/2, maplist/3, maplist/4, maplist/5]).
-:- use_module(library(thread), [concurrent_maplist/2]).
+:- use_module(library(thread), [concurrent_maplist/2, concurrent_forall/2]).
 :- use_module(library(http/http_server), [http_server/1,
                                           http_read_json_dict/3,
                                           reply_json_dict/2, % TODO: Options=[status(201)]
@@ -58,6 +58,7 @@
 
 % The "base" Kythe facts, which are dynamically loaded at start-up.
 :- dynamic kythe_node/7, kythe_edge/11.
+:- dynamic kythe_color_all/5.
 
 % Convenience predicates for accessing the base Kythe facts,
 % using vname(Signature, Corpus, Root, Path, Language).
@@ -262,6 +263,10 @@ read_and_assert_kythe_facts :-
     % concurrent_forall gets about 2x speedup with 4 cpus
     concurrent_forall(retract(kythe_node(Signature, Corpus,Root,Path,Language, '/pykythe/color', ColorTermStr)),
                       assert_color_items(Signature, Corpus,Root,Path,Language, ColorTermStr)),
+    % TODO: check speed-up for this concurrent_forall:
+    debug(log, 'Starting assert_color_all ...', []),
+    concurrent_forall(retract(kythe_node('', Corpus,Root,Path,Language, '/pykythe/color_all', ColorTermStr)),
+                      assert_color_all(Corpus,Root,Path,Language, ColorTermStr)),
     statistics(walltime, [T2_ms_color,_]),
     statistics(process_cputime, T2_color),
     T_color is T2_color - T1_color,
@@ -279,6 +284,10 @@ assert_color_items(Signature, Corpus,Root,Path,Language, ColorTermStr) :-
     %       no need for lookup on most of the fields.
     maplist(assert_color_item(Signature, Corpus,Root,Path,Language), ColorPairs).
 
+assert_color_all(Corpus,Root,Path,Language, ColorTermStr) :-
+    term_string(ColorTerm, ColorTermStr),
+    assertz(kythe_color_all(Corpus, Root, Path, Language, ColorTerm)).
+
 %! adjust_color(+Corpus,+Root,+Path,+Language, +ColorPairs0, -ColorPairs) is det.
 % Change token_color-'<PUNCTUATION>' to token_color-'<PUNCTUATION_REF>' in ColorPairs0
 % if it's an anchor or tagged. (e.g., for clickable ".")
@@ -286,6 +295,8 @@ adjust_color(Corpus,Root,Path,Language, ColorPairs0, ColorPairs) :-
     % NOTE: assumes that kythe_node/7 facts have already been asserted
     % ColorPairs0 is of form:
     %    [column-0,end-3,lineno-1,start-0,token_color-'<VAR_BINDING>',value-loc] % signature: '@0:3<loc>'
+    % TODO: This doesn't seem to fully fix the facts - see the patch-up code
+    %       in anchor_to_lineno/2.
     (  select(token_color-'<PUNCTUATION>', ColorPairs0, ColorPairs1),
        memberchk(start-Start, ColorPairs1),
        memberchk(end-End, ColorPairs1),
@@ -363,8 +374,7 @@ validate_kythe_facts :-
            ),
            must_once(( kythe_node(Anchor, '/kythe/loc/start', Start),
                        kythe_node(Anchor, '/kythe/loc/end', End),
-                       kythe_node(ColorAnchor, '/pykythe/color/start', Start),
-                       kythe_node(ColorAnchor, '/pykythe/color/end', End),
+                       kythe_node_color_start(ColorAnchor, Start, End),
                        semantic_or_tagged(Anchor)
                      ))
           ),
@@ -388,6 +398,29 @@ validate_kythe_facts :-
     debug(log, 'Validation done: ~3f sec. (real: ~3f sec.).', [Tvalid, T_ms_valid]),
     debug(log, '', []),
     debug(log, 'Server started: to stop, enter ctrl-D or "halt." (including the ".")', []).
+
+% Predicates for accessing colors:
+
+kythe_node_color_start(ColorAnchor, Start) :-
+    kythe_node(ColorAnchor, '/pykythe/color/start', Start).
+
+kythe_node_color_start(ColorAnchor, Start, End) :-
+    kythe_node(ColorAnchor, '/pykythe/color/start', Start),
+    kythe_node(ColorAnchor, '/pykythe/color/end', End).
+
+kythe_node_color_token_color(NodeVname, Color) :-
+    kythe_node(NodeVname, '/pykythe/color/token_color', Color).
+
+kythe_node_color_lineno(NodeVname, LineNo) :-
+    kythe_node(NodeVname, '/pykythe/color/lineno', LineNo).
+
+kythe_node_color_values(ColorVname, LineNo, Column, Start, End, TokenColor, Value) :-
+    kythe_node(ColorVname, '/pykythe/color/lineno',      LineNo),
+    kythe_node(ColorVname, '/pykythe/color/column',      Column),
+    kythe_node(ColorVname, '/pykythe/color/start',       Start),
+    kythe_node(ColorVname, '/pykythe/color/end',         End),
+    kythe_node(ColorVname, '/pykythe/color/token_color', TokenColor),
+    kythe_node(ColorVname, '/pykythe/color/value',       Value).
 
 semantic_or_tagged(Anchor) :-
     anchor_semantic(Anchor, _Semantic).
@@ -652,7 +685,7 @@ node_link_node(Vname1, Edge1, SemanticVname, Edge2, Vname2) :-
 node_link_node_value(Vname, EdgeNodeKind, Value) :-
     kythe_edge(Vname, Edge, NodeVname),
     \+ kythe_node(NodeVname, '/kythe/node/kind', 'anchor'),
-    \+ kythe_node(NodeVname, '/pykythe/color/token_color', _),
+    \+ kythe_node_color_token_color(NodeVname, _),
     kythe_node(NodeVname, Name, Value),
     format(atom(EdgeNodeKind), '(~w)~w', [Edge, Name]).
 
@@ -766,22 +799,11 @@ color_data_one_file(Corpus, Root, Path,
                     json{corpus:Corpus, root:Root, path:Path, language:Language,
                          lines:ColorTextLines}) :-
     kythe_file(Corpus,Root,Path,Language),
-    kythe_node(vname('',Corpus,Root,Path,Language), '/pykythe/color_all', ColorAllText),
-    term_string(ColorAll0, ColorAllText),
+    kythe_color_all(Corpus,Root,Path,Language, ColorAll0),
     verify_color_items(ColorAll0), % TODO: delete
     maplist(add_color_edges_and_key(Corpus,Root,Path,Language), ColorAll0, ColorAll),
     group_pairs_by_key(ColorAll, ColorAllChunkPairs),
-    pairs_values(ColorAllChunkPairs, ColorAllChunks),
-    Vname0 = vname0(Corpus,Root,Path,Language),
-    setof(KeyedColorText, keyed_color_fact(Corpus, Root, Path, Language, KeyedColorText),
-          LineNoAndChunks0),
-    pairs_values(LineNoAndChunks0, LineNoAndChunks),
-    group_pairs_by_key(LineNoAndChunks, ColorTextLines0),
-    maplist(add_links(Vname0), ColorTextLines0, ColorTextLines1), % concurrent gives slight slow-down
-    pairs_values(ColorTextLines1, ColorTextLines),
-    % debug(log, 'COLOR_ALL: ~q', [ColorAllChunks]), % DO NOT SUBMIT
-    % debug(log, 'COLOR:     ~q', [ColorTextLines]),   % DO NOT SUBMIT
-    true.  % print_term('COLOR':ColorTextLines, []).   % DO NOT SUBMIT
+    pairs_values(ColorAllChunkPairs, ColorTextLines).
 
 verify_color_items(ColorItems) :-
     % TODO: delete this validation
@@ -794,7 +816,7 @@ add_color_edges_and_key(Corpus,Root,Path,Language, ColorAll0, ColorAll0.lineno-C
     ->  (   kythe_node_punctuation_linkable(ColorAll0.signature,
                                             Corpus, Root, Path, Language,
                                             ColorAll0.start, ColorAll0.end)
-        ->  % TODO: assert exactly one AchorPunctuation
+        ->  % TODO: assert exactly one AnchorPunctuation
             %       setof(_, ...linkable(...), [AnchorPunctuation])
             put_dict(token_color, ColorAll0, '<PUNCTUATION_REF>', ColorAll1)
         ;   put_dict(signature, ColorAll0, '', ColorAll1)
@@ -813,11 +835,18 @@ kythe_node_punctuation_linkable(Signature, Corpus,Root,Path,Language, Start, End
     ).
 
 get_link_edges(Corpus, Root, Path, Language, ColorAll1, ColorAll) :-
-    % We ignore ColorAll1.signature  % TODO: if ''?  e.g., '<BARE>'
+    % We ignore ColorAll1.signature - it's '' for '<BARE>'
+    % Note the use of Signature -- it gets instantiated by a lookup to
+    % /kythe/loc/start and then edges are found. The lookup gives
+    % either 0 or 1 restuls (Item.start might not have any edges
+    % associated with it).
     (   Vname = vname(Signature, Corpus, Root, Path, Language),
         kythe_node(Vname, '/kythe/loc/start', ColorAll1.start),
-        kythe_node(Vname, '/kythe/loc/end', ColorAll1.end),
+        kythe_node(Vname, '/kythe/loc/end', ColorAll1.end),  % TODO: not needed?
         vname_vname0(Vname, Signature, Vname0),
+        % There can be multiple edges with the same label (but
+        % different targets), so leave as a list and don't combine
+        % into a dict.
         setof(json{edge:Edge,target:TargetJson},
               node_and_edge_json(Signature, Vname0, Edge, TargetJson),
               Edges)
@@ -825,44 +854,6 @@ get_link_edges(Corpus, Root, Path, Language, ColorAll1, ColorAll) :-
         put_dict(signature, ColorAll2, Signature, ColorAll)
     ;   put_dict(edges, ColorAll1, [], ColorAll)
     ).
-
-
-color_example(                  % DO NOT SUBMIT
-  [
-     [ color{ column:0,              end:14,              start:0,              lineno:1,
-              edges:[],
-              signature:'',
-              token_color:'<COMMENT>',
-              value:'# TODO: delete'
-            },
-       color{ column:3,              end:20,              start:19,              lineno:3,
-              edges:[],
-              signature:'',
-              token_color:'<WHITESPACE>',
-              value:' '
-            }
-     ],
-     [  color{ column:4,              end:23,              start:20,              lineno:3,
-              edges:[ json{ edge:'/kythe/edge/defines/binding',
-                            target:json{ corpus:'CORPUS',
-                                         language:python,
-                                         path:'',
-                                         root:'ROOT',
-                                         signature:'.tmp.pykythe_test.SUBST.home.peter.src.pykythe.test_data.a10.foo'
-                                       }
-                          }
-                    ],
-              signature:'@20:23<foo>',
-              token_color:'<VAR_BINDING>',
-              value:foo
-            },
-       color{ column:7,              end:24,              start:23,              lineno:3,
-              edges:[],
-              signature:'',
-              token_color:'<PUNCTUATION>',
-              value:'('
-            }]]).  % end DO NOT SUBMIT
-
 
 keyed_color_fact(Corpus, Root, Path, Language, Start-(LineNo-ColorChunk)) :-
     line_chunk(vname(_ColorAnchor, Corpus,Root,Path,Language), LineNo, ColorChunk),
@@ -941,16 +932,31 @@ anchor_to_line_chunks(AnchorVname, LineNo, Chunks) :-
     pairs_values(KeyedChunks, Chunks).
 
 anchor_to_lineno(AnchorVname, LineNo) :-
-    kythe_node(AnchorVname, '/kythe/loc/start', Start),
-    vname_strip_signature(AnchorVname, ColorVname),
-    kythe_node(ColorVname, '/pykythe/color/start', Start),
-    % There can be multiple chunks for a color anchor, but all have
-    % the same line#.
-    once(kythe_node(ColorVname, '/pykythe/color/lineno', LineNo)). % TODO: once(...)
+    % Some tokens don't have a signature in the color data (see also
+    % add_color_edges_and_key/6).
+    % Fix kythe_color_all facts to contain signatures for bare tokens.
+    AnchorVname = vname(_Signature,Corpus,Root,Path,Language),
+    must_once(kythe_node(AnchorVname, '/kythe/loc/start', Start)),
+    kythe_color_all(Corpus, Root, Path, Language, ColorAllTerm),
+    (   member(Color, ColorAllTerm),
+        % Color.signature == _Signature
+        Color.start == Start 
+    ->  LineNo = Color.lineno
+    ;   fail
+    ).
+
+% DO NOT SUBMIT - delete
+% anchor_to_lineno(AnchorVname, LineNo) :-
+%     kythe_node(AnchorVname, '/kythe/loc/start', Start),
+%     vname_strip_signature(AnchorVname, ColorVname),
+%     kythe_node_color_start(ColorVname, Start),
+%     % There can be multiple chunks for a color anchor, but all have
+%     % the same line#.
+%     once(kythe_node_color_lineno(ColorVname, LineNo)). % TODO: once(...)
 
 keyed_color_chunk(Vname0, LineNo, Start-Chunk) :-
     vname_vname0(ColorVname, Vname0),
-    kythe_node(ColorVname, '/pykythe/color/lineno', LineNo),
+    kythe_node_color_lineno(ColorVname, LineNo),
     line_chunk(ColorVname, LineNo, Chunk),
     Start = Chunk.start.
 
@@ -958,12 +964,7 @@ line_chunk(ColorVname, LineNo, color{lineno:LineNo, column:Column,
                                      start:Start, end:End,
                                      signature:Signature,
                                      token_color:TokenColor, value:Value}) :-
-    kythe_node(ColorVname, '/pykythe/color/lineno',      LineNo),
-    kythe_node(ColorVname, '/pykythe/color/column',      Column),
-    kythe_node(ColorVname, '/pykythe/color/start',       Start),
-    kythe_node(ColorVname, '/pykythe/color/end',         End),
-    kythe_node(ColorVname, '/pykythe/color/token_color', TokenColor),
-    kythe_node(ColorVname, '/pykythe/color/value',       Value),
+    kythe_node_color_values(ColorVname, LineNo, Column, Start, End, TokenColor, Value),
     vname_vname0(ColorVname, Vname0),
     vname_vname0(AnchorVname, Signature, Vname0),
     (  kythe_node(AnchorVname, '/kythe/loc/start', Start)
