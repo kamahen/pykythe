@@ -798,20 +798,23 @@ lint-logtalk:
 build-swipl: $(SWIPL_EXE_DEVEL)
 $(SWIPL_EXE_DEVEL): $(SWIPL_SRC)/*.[ch]
 	@# TODO: need a more complete set of source files
+	@#   before ninja:
+	@#       ../script/pgo-compile.sh
 	cd swipl-devel && \
 		mkdir -p build && \
 		cd build && \
 		cmake -G Ninja .. && \
-		../script/pgo-compile.sh \
 		ninja
 
 build-swipl-full:
+	@# cd swipl-devel && git pull --recurse
+	@# TODO: before ninja:
+	@#   ../script/pgo-compile.sh
 	cd swipl-devel && \
 		rm -rf build && \
 		mkdir -p build && \
 		cd build && \
 		cmake -G Ninja .. && \
-		../script/pgo-compile.sh \
 		ninja && \
 		ctest -j 8
 
@@ -873,6 +876,7 @@ upgrade-emacs:
 	@# The "git clean -dxf" probably isn't needed, but it's safe
 	cd ../emacs && \
 		git clean -dxf && \
+		git pull --recurse && \
 		./autogen.sh && \
 		./configure --prefix=$$HOME/.local && \
 		make -j 4 bootstrap && \
