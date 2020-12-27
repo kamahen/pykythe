@@ -235,7 +235,6 @@ assert_server_locations(Opts) :-
     asserta(user:file_search_path(files,  Opts.filesdir)),
     asserta(user:file_search_path(static, Opts.staticdir)).
 
-% DO NOT SUBMIT:
 % TODO: move the read/assert stuff to a separate module,
 %       also the convenience preds (kythe_node/3, etc.)
 read_and_assert_kythe_facts :-
@@ -256,36 +255,18 @@ read_and_assert_kythe_facts :-
                 imports([kythe_node/7,
                          kythe_edge/11])]),
     index_kythe_facts,
-    debug(log, 'Starting assert_color_items ...', []),
+    debug(log, 'Starting assert_color_all ...', []),
     statistics(process_cputime, T1_color),
     statistics(walltime, [T1_ms_color,_]),
-    % Signature in the forall below is *color* signature (e.g. '#999')
-    % concurrent_forall gets about 2x speedup with 4 CPUs
-    % TODO: delete:
-    % concurrent_forall(retract(kythe_node(Signature, Corpus,Root,Path,Language, '/pykythe/color', ColorTermStr)),
-    %                   assert_color_items(Signature, Corpus,Root,Path,Language, ColorTermStr)),
-    retractall(kythe_node(_Signature, _Corpus,_Root,_Path,_Language, '/pykythe/color', _ColorTermStr)),
     % TODO: check speed-up for this concurrent_forall:
-    debug(log, 'Starting assert_color_all ...', []),
     concurrent_forall(retract(kythe_node('', Corpus,Root,Path,Language, '/pykythe/color_all', ColorTermStr)),
                       assert_color_all(Corpus,Root,Path,Language, ColorTermStr)),
     statistics(walltime, [T2_ms_color,_]),
     statistics(process_cputime, T2_color),
     T_color is T2_color - T1_color,
     T_ms_color is (T2_ms_color - T1_ms_color) * 0.001,
-    debug(log, 'Done assert_color_items: ~3f sec. (real: ~3f sec.).', [T_color, T_ms_color]),
+    debug(log, 'Done assert_colorall: ~3f sec. (real: ~3f sec.).', [T_color, T_ms_color]),
     thread_create(validate_kythe_facts, _, [detached(true)]).
-
-% TODO: delete
-% Signature is a *color* signature, e.g. '#999'
-% assert_color_items(Signature, Corpus,Root,Path,Language, ColorTermStr) :-
-%     term_string(ColorTerm, ColorTermStr),
-%     dict_pairs(ColorTerm, color, ColorPairs0),
-%     adjust_color(Corpus,Root,Path,Language, ColorPairs0, ColorPairs),
-%     % TODO: There are more color items than anything else -- need to
-%     %       use a more compact representation, especially as there is
-%     %       no need for lookup on most of the fields.
-%     maplist(assert_color_item(Signature, Corpus,Root,Path,Language), ColorPairs).
 
 assert_color_all(Corpus,Root,Path,Language, ColorTermStr) :-
     term_string(ColorTerm, ColorTermStr),
@@ -313,12 +294,6 @@ adjust_color(Corpus,Root,Path,Language, ColorPairs0, ColorPairs) :-
        % debug(log, 'ADJUST_COLOR: ~q', [ColorPairs]) % DO NOT SUBMIT
     ;  ColorPairs = ColorPairs0
     ).
-
-% TODO: delete
-% assert_color_item(Signature, Corpus,Root,Path,Language, Key-Value) :-
-%     % Key: lineno, column, start, end, token_color, value
-%     atomic_list_concat(['/pykythe/color/', Key], FactName),
-%     assertz(kythe_node(Signature, Corpus,Root,Path,Language, FactName, Value)).
 
 % index_kythe_facts/0 takes a bit of time because it builds the
 % JIT indexes; if you run it a second time, it's fast. (The indexes
@@ -365,31 +340,13 @@ validate_kythe_facts :-
            must_once( ground(kythe_node(Vname, Name, Value)) )),
     forall(kythe_edge(V1, Edge, V2),
            must_once( ground(kythe_edge(V1, Edge, V2)) )),
-    % Ensure that every token anchor has an associated color anchor
-    % (the inverse isn't true).
-    % DO NOT SUBMIT - the commented area is temporary while we produce
-    %                 a more compact color representationx
-    (   true
-    ->  true
-    ;   % DO NOT SUBMIT
-    concurrent_forall(( kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
-             Anchor=(_,Corpus,Root,Path,Language),
-             ColorAnchor=(_,Corpus,Root,Path,Language)
-           ),
-           must_once(( kythe_node(Anchor, '/kythe/loc/start', Start),
-                       kythe_node(Anchor, '/kythe/loc/end', End),
-                       kythe_node_color_start(ColorAnchor, Start, End),
-                       semantic_or_tagged(Anchor)
-                     ))
-          ),
     concurrent_forall(kythe_node(Vname, _, _),
            must_once( ( kythe_node(Vname, Name , _),
                         memberchk(Name, ['/kythe/node/kind',
                                          '/pykythe/type',
                                          '/pykythe/color/token_color']) ) )),
     concurrent_forall(kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
-           must_once( anchor_to_lineno(Anchor, _LineNo) ))
-    ), % end DO NOT SUBMIT
+           must_once( anchor_to_lineno(Anchor, _LineNo) )),
     concurrent_forall(kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
            must_once(( anchor_to_line_chunks(Anchor, _, Chunks),
                        Chunks \== [] ))),
@@ -402,32 +359,6 @@ validate_kythe_facts :-
     debug(log, 'Validation done: ~3f sec. (real: ~3f sec.).', [Tvalid, T_ms_valid]),
     debug(log, '', []),
     debug(log, 'Server started: to stop, enter ctrl-D or "halt." (including the ".")', []).
-
-% Predicates for accessing colors:
-
-% DO NOT SUBMIT - delete
-% kythe_node_color_start(ColorAnchor, Start) :-
-%     kythe_node(ColorAnchor, '/pykythe/color/start', Start).
-
-% kythe_node_color_start(ColorAnchor, Start, End) :-
-%     kythe_node(ColorAnchor, '/pykythe/color/start', Start),
-%     kythe_node(ColorAnchor, '/pykythe/color/end', End).
-
-% kythe_node_color_token_color(NodeVname, Color) :-
-%     kythe_node(NodeVname, '/pykythe/color/token_color', Color).
-
-% TODO: delete
-% kythe_node_color_lineno(NodeVname, LineNo) :-
-%     kythe_node(NodeVname, '/pykythe/color/lineno', LineNo).
-
-% TODO: delete
-% kythe_node_color_values(ColorVname, LineNo, Column, Start, End, TokenColor, Value) :-
-%     kythe_node(ColorVname, '/pykythe/color/lineno',      LineNo),
-%     kythe_node(ColorVname, '/pykythe/color/column',      Column),
-%     kythe_node(ColorVname, '/pykythe/color/start',       Start),
-%     kythe_node(ColorVname, '/pykythe/color/end',         End),
-%     kythe_node(ColorVname, '/pykythe/color/token_color', TokenColor),
-%     kythe_node(ColorVname, '/pykythe/color/value',       Value).
 
 semantic_or_tagged(Anchor) :-
     anchor_semantic(Anchor, _Semantic).
@@ -861,11 +792,6 @@ get_link_edges(Corpus, Root, Path, Language, ColorAll1, ColorAll) :-
     ;   put_dict(edges, ColorAll1, [], ColorAll)
     ).
 
-% TODO: delete
-% keyed_color_fact(Corpus, Root, Path, Language, Start-(LineNo-ColorChunk)) :-
-%     line_chunk(vname(_ColorAnchor, Corpus,Root,Path,Language), LineNo, ColorChunk),
-%     Start = ColorChunk.start.
-
 add_links(Vname0, LineNo-Items, LineNo-AppendedItems) :-
     maplist(add_link(Vname0), Items, AppendedItems).
 
@@ -924,9 +850,6 @@ vname_sort(vname(Signature, Corpus, Root, Path, Language),
     ;  true
     ).
 
-vname_strip_signature(vname(_Signature1,Corpus,Root,Path,Language),
-                      vname(_Signature2,Corpus,Root,Path,Language)).
-
 %! anchor_to_line_chunks(+AnchorVname:vname, -LineNo:int, -Chunks:list(dict)) is semidet.
 % Given an AnchorVname, get all the color chunks (in order) for the
 % line that anchor is in. Can fail if the anchor is invalid (and if
@@ -944,29 +867,16 @@ anchor_to_lineno(AnchorVname, LineNo) :-
     % Fix kythe_color_all facts to contain signatures for bare tokens.
     AnchorVname = vname(_Signature,Corpus,Root,Path,Language),
     must_once(kythe_node(AnchorVname, '/kythe/loc/start', Start)),
-    kythe_color_all(Corpus, Root, Path, Language, ColorAllTerm),
-    memberchk(color{start:Start, end:_,
-                    lineno:LineNo, column:_,
-                    signature:_, % _Signature
-                    token_color:_, value:_},
-              ColorAllTerm).
-
-% DO NOT SUBMIT - delete
-% anchor_to_lineno(AnchorVname, LineNo) :-
-%     kythe_node(AnchorVname, '/kythe/loc/start', Start),
-%     vname_strip_signature(AnchorVname, ColorVname),
-%     kythe_node_color_start(ColorVname, Start),
-%     % There can be multiple chunks for a color anchor, but all have
-%     % the same line#.
-%     once(kythe_node_color_lineno(ColorVname, LineNo)). % TODO: once(...)
-
-% TODO: delete - DO NOT SUBMIT
-% keyed_color_chunk(Vname0, LineNo, Start-Chunk) :-
-%     vname_vname0(ColorVname, Vname0),
-%     kythe_node_color_lineno(ColorVname, LineNo),
-%     line_chunk(ColorVname, LineNo, Chunk),
-%     Start = Chunk.start,
-%     !.
+    must_once(kythe_color_all(Corpus, Root, Path, Language, ColorAllTerm)),
+    (   memberchk(color{start:Start, end:_,
+                        lineno:LineNo, column:_,
+                        signature:_,
+                        token_color:_, value:_},
+                  ColorAllTerm)
+    ->  true
+    ;   LineNo = 1,
+        debug(log, 'No color for ~q', [AnchorVname])
+    ).
 
 keyed_color_chunk(Vname0, LineNo, Start-color{start:Start, end:End,
                                               lineno:LineNo, column:Column,
@@ -977,32 +887,21 @@ keyed_color_chunk(Vname0, LineNo, Start-color{start:Start, end:End,
     must_once(Vname0 = vname0(Corpus,Root,Path,Language)),
     kythe_color_all(Corpus, Root, Path, Language, ColorAllTerm),
     % backtracks to get all the chunks in a line
-    member(color{start:Start, end:End,
-                 lineno:LineNo, column:Column,
-                 signature:Signature,
-                 token_color:TokenColor, value:Value},
-           ColorAllTerm).
-
-% TODO: delete
-% line_chunk(ColorVname, LineNo, color{lineno:LineNo, column:Column,
-%                                      start:Start, end:End,
-%                                      signature:Signature,
-%                                      token_color:TokenColor, value:Value}) :-
-%     must_once(ground(LineNo)),
-%     % TODO: This can be simplified DO NOT SUBMIT
-%     must_once(Vname0 = vname0(Corpus,Root,Path,Language)),
-%     kythe_color_all(Corpus, Root, Path, Language, ColorAllTerm),
-%     memberchk(color{start:Start, end:End,
-%                     lineno:LineNo, column:Column,
-%                     signature:Signature,
-%                     token_color:TokenColor, value:Value},
-%               ColorAllTerm),
-%     vname_vname0(ColorVname, Vname0),
-%     vname_vname0(AnchorVname, Signature, Vname0),
-%     (  kythe_node(AnchorVname, '/kythe/loc/start', Start)
-%     -> true
-%     ;  Signature = ''
-%     ).
+    (   member(color{start:Start, end:End,
+                     lineno:LineNo, column:Column,
+                     signature:Signature,
+                     token_color:TokenColor, value:Value},
+               ColorAllTerm)
+    *-> true
+    ;   % TODO: this code doesn't get executed? - FIXME(34)
+        vname_vname0(AnchorVname, Signature, Vname0),
+        kythe_node(AnchorVname, '/kythe/loc/start', Start),
+        kythe_node(AnchorVname, '/kythe/loc/end', End),
+        Column = 0,
+        TokenColor = '<BARE>',  % DO NOT SUBMIT
+        Value = 'xxxxxx', % DO NOT SUBMIT
+        debug(log, 'No color for ~q (~q:~q)', [AnchorVname, Start, End])
+    ).
 
 vname_neg_num_edges(Vname, MinNumEdges, NegNumEdges) :-
     setof(Edge-Vname2, kythe_edge(Vname, Edge, Vname2), Edges),

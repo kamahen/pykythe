@@ -334,7 +334,6 @@
                   kyedge_fqn/6,
                   kyfact/6,
                   kyfact_attr/6,
-                  kyfact_color/4,
                   kyfact_color_text_as_single_fact/4,
                   kyfact_signature_node/6,
                   kyfacts/5,
@@ -467,7 +466,6 @@ pred_info_(kyedge, 3,                              [kyfact,file_meta]).
 pred_info_(kyedge_fqn, 3,                          [kyfact,file_meta]).
 pred_info_(kyfact, 3,                              [kyfact,file_meta]).
 pred_info_(kyfact_attr, 3,                         [kyfact,file_meta]).
-pred_info_(kyfact_color, 1,                        [kyfact,file_meta]).
 pred_info_(kyfact_color_text_as_single_fact, 1,    [kyfact,file_meta]).
 pred_info_(kyfact_signature_node, 3,               [kyfact,file_meta]).
 pred_info_(kyfacts, 2,                             [kyfact,file_meta]).
@@ -1437,7 +1435,6 @@ kyfile(SrcInfo) -->>
     kyfact(Source, '/kythe/text/encoding', Meta.encoding),
     kyfact(Source, '/kythe/language', python),
     kyfact(Source, '/kythe/text', Meta.contents_base64),  % Special case - see transform_kythe_fact/2
-    maplist_kyfact(kyfact_color, SrcInfo.color_text),
     kyfact_color_text_as_single_fact(SrcInfo.color_text),
     kyedge_fqn(Source, '/kythe/edge/childof', SrcInfo.src_fqn),
     % Kythe's "package" is the equivalent of Python's "module".
@@ -1449,9 +1446,10 @@ kyfile(SrcInfo) -->>
 % See src_browser.js for the final form that's used; basically it's a
 % list of lines, each line containing a list of items. An item can
 % contain edges.
+% TODO: KeyedColorText as JSON
 kyfact_color_text_as_single_fact(ColorText) -->>
     % log_if_file('COLOR_TEXT: ~q', [ColorText]), % DO NOT SUBMIT
-    % ColorText is list of: color{column:0,end:14,lineno:1,start:0,token_color:'<COMMENT>',value:'# TODO: delete'}
+    % ColorText is list of: color{column:0,end:14,lineno:1,start:0,token_color:'<COMMENT>',value:'# a comment'}
     { maplist(key_color, ColorText, KeyedColorText) },
     { format(atom(ColorFactText), '~q', [KeyedColorText]) },
     Meta/file_meta,
@@ -1474,41 +1472,6 @@ var_token('<ATTR_BINDING>').
 var_token('<ATTR_REF>').
 % TODO: '<ARG_KEYWORD>'
 % TODO: '<BARE>'
-
-%! kyfact_color(+ColorItem)//[kyfact,file_meta] is det.
-% Output flattened color facts for one token
-% TODO: delete  DO NOT SUBMIT
-kyfact_color(color{lineno:Lineno, column:Column, start:StartAtom, end:EndAtom,
-                   token_color:TokenColor, value:Value
-                  }) -->>
-    % See anchor_signature_str/4:
-    { term_to_atom(Start, StartAtom) },
-    { term_to_atom(End, EndAtom) },
-    { format(atom(ColorSignature), '#~d', [Start]) },
-    signature_source(ColorSignature, Source),
-    % TODO: The following /pykythe/color/... facts are too verbose, but
-    %      they fit with Kythe style - outputting the color info also
-    %      increases processing time by ~50% vs no color info.
-    %         Not outputting any color info:              13MB
-    %         Outputting all color info as single string: 19MB
-    %         Outputting one fact per token:              26MB
-    %         Outputting details per token:               62MB
-    %           kyfact(Source, '/pykythe/color/lineno', Lineno),
-    %           kyfact(Source, '/pykythe/color/column', Column),
-    %           kyfact(Source, '/pykythe/color/start', Start),
-    %           kyfact(Source, '/pykythe/color/end', End),
-    %           kyfact(Source, '/pykythe/color/color', TokenColor),
-    %           kyfact(Source, '/pykythe/color/value', Value),
-    % TODO: flatten this to a simple CSV?
-    % TODO: put all node information into a single fact's dict
-    %       (see also similar comment in src_browser.pl)
-    % TODO: delete the following: DO NOT SUBMIT
-    %     { format(atom(ColorFactText), '~q',
-    %              [color{lineno:Lineno, column:Column,
-    %                     start:Start, end:End,
-    %                     token_color:TokenColor, value:Value}]) },
-    %     kyfact(Source, '/pykythe/color', ColorFactText).
-    { true }.
 
 %! kynode(+Node:json_dict, -Type)//[kyfact,expr,file_meta] is det.
 % Extract anchors (with FQNs) from the the AST nodes.  The anchors go
@@ -2750,9 +2713,6 @@ eval_single_type_error_msg(FmtMessage, ArgsMessage, FmtDetails, ArgsDetails) -->
     { string_length(Meta.contents_bytes, AstnEnd) },
     { Astn = astn(0, AstnEnd, '-msg-') },
     kyanchor(0, AstnEnd, '-msg-', _AnchorSource),
-    kyfact_color(color{lineno:1, column:0, start:0, end:AstnEnd,
-                       token_color:'<PUNCTUATION_REF>', % TODO: special value for this?
-                       value:Meta.contents_bytes}),
     log_kyfact_msg(Astn, FmtMessage, ArgsMessage, FmtDetails, ArgsDetails).
 
 eval_single_type_import(NameAstn, _ResolvedFqn, Edge, import_ref_type(_Name, ImportFqn, _Type)) -->> !,
