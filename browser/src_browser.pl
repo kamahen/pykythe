@@ -976,11 +976,12 @@ keyed_color_chunk(Vname0, LineNo, Start-color{start:Start, end:End,
     % TODO: This can be simplified DO NOT SUBMIT
     must_once(Vname0 = vname0(Corpus,Root,Path,Language)),
     kythe_color_all(Corpus, Root, Path, Language, ColorAllTerm),
-    memberchk(color{start:Start, end:End,
-                    lineno:LineNo, column:Column,
-                    signature:Signature,
-                    token_color:TokenColor, value:Value},
-              ColorAllTerm).
+    % backtracks to get all the chunks in a line
+    member(color{start:Start, end:End,
+                 lineno:LineNo, column:Column,
+                 signature:Signature,
+                 token_color:TokenColor, value:Value},
+           ColorAllTerm).
 
 % TODO: delete
 % line_chunk(ColorVname, LineNo, color{lineno:LineNo, column:Column,
