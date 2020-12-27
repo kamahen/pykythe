@@ -1477,6 +1477,7 @@ var_token('<ATTR_REF>').
 
 %! kyfact_color(+ColorItem)//[kyfact,file_meta] is det.
 % Output flattened color facts for one token
+% TODO: delete  DO NOT SUBMIT
 kyfact_color(color{lineno:Lineno, column:Column, start:StartAtom, end:EndAtom,
                    token_color:TokenColor, value:Value
                   }) -->>
@@ -1501,12 +1502,13 @@ kyfact_color(color{lineno:Lineno, column:Column, start:StartAtom, end:EndAtom,
     % TODO: flatten this to a simple CSV?
     % TODO: put all node information into a single fact's dict
     %       (see also similar comment in src_browser.pl)
-    { format(atom(ColorFactText), '~q',
-             [color{lineno:Lineno, column:Column,
-                    start:Start, end
-:End,
-                    token_color:TokenColor, value:Value}]) },
-    kyfact(Source, '/pykythe/color', ColorFactText).
+    % TODO: delete the following: DO NOT SUBMIT
+    %     { format(atom(ColorFactText), '~q',
+    %              [color{lineno:Lineno, column:Column,
+    %                     start:Start, end:End,
+    %                     token_color:TokenColor, value:Value}]) },
+    %     kyfact(Source, '/pykythe/color', ColorFactText).
+    { true }.
 
 %! kynode(+Node:json_dict, -Type)//[kyfact,expr,file_meta] is det.
 % Extract anchors (with FQNs) from the the AST nodes.  The anchors go

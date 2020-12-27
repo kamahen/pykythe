@@ -260,9 +260,11 @@ read_and_assert_kythe_facts :-
     statistics(process_cputime, T1_color),
     statistics(walltime, [T1_ms_color,_]),
     % Signature in the forall below is *color* signature (e.g. '#999')
-    % concurrent_forall gets about 2x speedup with 4 cpus
-    concurrent_forall(retract(kythe_node(Signature, Corpus,Root,Path,Language, '/pykythe/color', ColorTermStr)),
-                      assert_color_items(Signature, Corpus,Root,Path,Language, ColorTermStr)),
+    % concurrent_forall gets about 2x speedup with 4 CPUs
+    % TODO: delete:
+    % concurrent_forall(retract(kythe_node(Signature, Corpus,Root,Path,Language, '/pykythe/color', ColorTermStr)),
+    %                   assert_color_items(Signature, Corpus,Root,Path,Language, ColorTermStr)),
+    retractall(kythe_node(_Signature, _Corpus,_Root,_Path,_Language, '/pykythe/color', _ColorTermStr)),
     % TODO: check speed-up for this concurrent_forall:
     debug(log, 'Starting assert_color_all ...', []),
     concurrent_forall(retract(kythe_node('', Corpus,Root,Path,Language, '/pykythe/color_all', ColorTermStr)),
@@ -274,15 +276,16 @@ read_and_assert_kythe_facts :-
     debug(log, 'Done assert_color_items: ~3f sec. (real: ~3f sec.).', [T_color, T_ms_color]),
     thread_create(validate_kythe_facts, _, [detached(true)]).
 
+% TODO: delete
 % Signature is a *color* signature, e.g. '#999'
-assert_color_items(Signature, Corpus,Root,Path,Language, ColorTermStr) :-
-    term_string(ColorTerm, ColorTermStr),
-    dict_pairs(ColorTerm, color, ColorPairs0),
-    adjust_color(Corpus,Root,Path,Language, ColorPairs0, ColorPairs),
-    % TODO: There are more color items than anything else -- need to
-    %       use a more compact representation, especially as there is
-    %       no need for lookup on most of the fields.
-    maplist(assert_color_item(Signature, Corpus,Root,Path,Language), ColorPairs).
+% assert_color_items(Signature, Corpus,Root,Path,Language, ColorTermStr) :-
+%     term_string(ColorTerm, ColorTermStr),
+%     dict_pairs(ColorTerm, color, ColorPairs0),
+%     adjust_color(Corpus,Root,Path,Language, ColorPairs0, ColorPairs),
+%     % TODO: There are more color items than anything else -- need to
+%     %       use a more compact representation, especially as there is
+%     %       no need for lookup on most of the fields.
+%     maplist(assert_color_item(Signature, Corpus,Root,Path,Language), ColorPairs).
 
 assert_color_all(Corpus,Root,Path,Language, ColorTermStr) :-
     term_string(ColorTerm, ColorTermStr),
@@ -311,10 +314,11 @@ adjust_color(Corpus,Root,Path,Language, ColorPairs0, ColorPairs) :-
     ;  ColorPairs = ColorPairs0
     ).
 
-assert_color_item(Signature, Corpus,Root,Path,Language, Key-Value) :-
-    % Key: lineno, column, start, end, token_color, value
-    atomic_list_concat(['/pykythe/color/', Key], FactName),
-    assertz(kythe_node(Signature, Corpus,Root,Path,Language, FactName, Value)).
+% TODO: delete
+% assert_color_item(Signature, Corpus,Root,Path,Language, Key-Value) :-
+%     % Key: lineno, column, start, end, token_color, value
+%     atomic_list_concat(['/pykythe/color/', Key], FactName),
+%     assertz(kythe_node(Signature, Corpus,Root,Path,Language, FactName, Value)).
 
 % index_kythe_facts/0 takes a bit of time because it builds the
 % JIT indexes; if you run it a second time, it's fast. (The indexes
