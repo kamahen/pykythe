@@ -382,10 +382,10 @@ validate_kythe_facts :-
            must_once( ( kythe_node(Vname, Name , _),
                         memberchk(Name, ['/kythe/node/kind',
                                          '/pykythe/type',
-                                         '/pykythe/color/token_color']) ) ))
-    ), % end DO NOT SUBMIT
+                                         '/pykythe/color/token_color']) ) )),
     concurrent_forall(kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
-           must_once( anchor_to_lineno(Anchor, _LineNo) )),
+           must_once( anchor_to_lineno(Anchor, _LineNo) ))
+    ), % end DO NOT SUBMIT
     concurrent_forall(kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
            must_once(( anchor_to_line_chunks(Anchor, _, Chunks),
                        Chunks \== [] ))),
@@ -401,26 +401,29 @@ validate_kythe_facts :-
 
 % Predicates for accessing colors:
 
-kythe_node_color_start(ColorAnchor, Start) :-
-    kythe_node(ColorAnchor, '/pykythe/color/start', Start).
+% DO NOT SUBMIT - delete
+% kythe_node_color_start(ColorAnchor, Start) :-
+%     kythe_node(ColorAnchor, '/pykythe/color/start', Start).
 
-kythe_node_color_start(ColorAnchor, Start, End) :-
-    kythe_node(ColorAnchor, '/pykythe/color/start', Start),
-    kythe_node(ColorAnchor, '/pykythe/color/end', End).
+% kythe_node_color_start(ColorAnchor, Start, End) :-
+%     kythe_node(ColorAnchor, '/pykythe/color/start', Start),
+%     kythe_node(ColorAnchor, '/pykythe/color/end', End).
 
-kythe_node_color_token_color(NodeVname, Color) :-
-    kythe_node(NodeVname, '/pykythe/color/token_color', Color).
+% kythe_node_color_token_color(NodeVname, Color) :-
+%     kythe_node(NodeVname, '/pykythe/color/token_color', Color).
 
-kythe_node_color_lineno(NodeVname, LineNo) :-
-    kythe_node(NodeVname, '/pykythe/color/lineno', LineNo).
+% TODO: delete
+% kythe_node_color_lineno(NodeVname, LineNo) :-
+%     kythe_node(NodeVname, '/pykythe/color/lineno', LineNo).
 
-kythe_node_color_values(ColorVname, LineNo, Column, Start, End, TokenColor, Value) :-
-    kythe_node(ColorVname, '/pykythe/color/lineno',      LineNo),
-    kythe_node(ColorVname, '/pykythe/color/column',      Column),
-    kythe_node(ColorVname, '/pykythe/color/start',       Start),
-    kythe_node(ColorVname, '/pykythe/color/end',         End),
-    kythe_node(ColorVname, '/pykythe/color/token_color', TokenColor),
-    kythe_node(ColorVname, '/pykythe/color/value',       Value).
+% TODO: delete
+% kythe_node_color_values(ColorVname, LineNo, Column, Start, End, TokenColor, Value) :-
+%     kythe_node(ColorVname, '/pykythe/color/lineno',      LineNo),
+%     kythe_node(ColorVname, '/pykythe/color/column',      Column),
+%     kythe_node(ColorVname, '/pykythe/color/start',       Start),
+%     kythe_node(ColorVname, '/pykythe/color/end',         End),
+%     kythe_node(ColorVname, '/pykythe/color/token_color', TokenColor),
+%     kythe_node(ColorVname, '/pykythe/color/value',       Value).
 
 semantic_or_tagged(Anchor) :-
     anchor_semantic(Anchor, _Semantic).
@@ -685,7 +688,6 @@ node_link_node(Vname1, Edge1, SemanticVname, Edge2, Vname2) :-
 node_link_node_value(Vname, EdgeNodeKind, Value) :-
     kythe_edge(Vname, Edge, NodeVname),
     \+ kythe_node(NodeVname, '/kythe/node/kind', 'anchor'),
-    \+ kythe_node_color_token_color(NodeVname, _),
     kythe_node(NodeVname, Name, Value),
     format(atom(EdgeNodeKind), '(~w)~w', [Edge, Name]).
 
@@ -855,9 +857,10 @@ get_link_edges(Corpus, Root, Path, Language, ColorAll1, ColorAll) :-
     ;   put_dict(edges, ColorAll1, [], ColorAll)
     ).
 
-keyed_color_fact(Corpus, Root, Path, Language, Start-(LineNo-ColorChunk)) :-
-    line_chunk(vname(_ColorAnchor, Corpus,Root,Path,Language), LineNo, ColorChunk),
-    Start = ColorChunk.start.
+% TODO: delete
+% keyed_color_fact(Corpus, Root, Path, Language, Start-(LineNo-ColorChunk)) :-
+%     line_chunk(vname(_ColorAnchor, Corpus,Root,Path,Language), LineNo, ColorChunk),
+%     Start = ColorChunk.start.
 
 add_links(Vname0, LineNo-Items, LineNo-AppendedItems) :-
     maplist(add_link(Vname0), Items, AppendedItems).
@@ -938,12 +941,11 @@ anchor_to_lineno(AnchorVname, LineNo) :-
     AnchorVname = vname(_Signature,Corpus,Root,Path,Language),
     must_once(kythe_node(AnchorVname, '/kythe/loc/start', Start)),
     kythe_color_all(Corpus, Root, Path, Language, ColorAllTerm),
-    (   member(Color, ColorAllTerm),
-        % Color.signature == _Signature
-        Color.start == Start 
-    ->  LineNo = Color.lineno
-    ;   fail
-    ).
+    memberchk(color{start:Start, end:_,
+                    lineno:LineNo, column:_,
+                    signature:_, % _Signature
+                    token_color:_, value:_},
+              ColorAllTerm).
 
 % DO NOT SUBMIT - delete
 % anchor_to_lineno(AnchorVname, LineNo) :-
@@ -954,23 +956,48 @@ anchor_to_lineno(AnchorVname, LineNo) :-
 %     % the same line#.
 %     once(kythe_node_color_lineno(ColorVname, LineNo)). % TODO: once(...)
 
-keyed_color_chunk(Vname0, LineNo, Start-Chunk) :-
-    vname_vname0(ColorVname, Vname0),
-    kythe_node_color_lineno(ColorVname, LineNo),
-    line_chunk(ColorVname, LineNo, Chunk),
-    Start = Chunk.start.
+% TODO: delete - DO NOT SUBMIT
+% keyed_color_chunk(Vname0, LineNo, Start-Chunk) :-
+%     vname_vname0(ColorVname, Vname0),
+%     kythe_node_color_lineno(ColorVname, LineNo),
+%     line_chunk(ColorVname, LineNo, Chunk),
+%     Start = Chunk.start,
+%     !.
 
-line_chunk(ColorVname, LineNo, color{lineno:LineNo, column:Column,
-                                     start:Start, end:End,
-                                     signature:Signature,
-                                     token_color:TokenColor, value:Value}) :-
-    kythe_node_color_values(ColorVname, LineNo, Column, Start, End, TokenColor, Value),
-    vname_vname0(ColorVname, Vname0),
-    vname_vname0(AnchorVname, Signature, Vname0),
-    (  kythe_node(AnchorVname, '/kythe/loc/start', Start)
-    -> true
-    ;  Signature = ''
-    ).
+keyed_color_chunk(Vname0, LineNo, Start-color{start:Start, end:End,
+                                              lineno:LineNo, column:Column,
+                                              signature:Signature,
+                                              token_color:TokenColor, value:Value}) :-
+    must_once(ground(LineNo)),
+    % TODO: This can be simplified DO NOT SUBMIT
+    must_once(Vname0 = vname0(Corpus,Root,Path,Language)),
+    kythe_color_all(Corpus, Root, Path, Language, ColorAllTerm),
+    memberchk(color{start:Start, end:End,
+                    lineno:LineNo, column:Column,
+                    signature:Signature,
+                    token_color:TokenColor, value:Value},
+              ColorAllTerm).
+
+% TODO: delete
+% line_chunk(ColorVname, LineNo, color{lineno:LineNo, column:Column,
+%                                      start:Start, end:End,
+%                                      signature:Signature,
+%                                      token_color:TokenColor, value:Value}) :-
+%     must_once(ground(LineNo)),
+%     % TODO: This can be simplified DO NOT SUBMIT
+%     must_once(Vname0 = vname0(Corpus,Root,Path,Language)),
+%     kythe_color_all(Corpus, Root, Path, Language, ColorAllTerm),
+%     memberchk(color{start:Start, end:End,
+%                     lineno:LineNo, column:Column,
+%                     signature:Signature,
+%                     token_color:TokenColor, value:Value},
+%               ColorAllTerm),
+%     vname_vname0(ColorVname, Vname0),
+%     vname_vname0(AnchorVname, Signature, Vname0),
+%     (  kythe_node(AnchorVname, '/kythe/loc/start', Start)
+%     -> true
+%     ;  Signature = ''
+%     ).
 
 vname_neg_num_edges(Vname, MinNumEdges, NegNumEdges) :-
     setof(Edge-Vname2, kythe_edge(Vname, Edge, Vname2), Edges),
