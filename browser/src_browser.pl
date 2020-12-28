@@ -345,11 +345,15 @@ validate_kythe_facts :-
                         memberchk(Name, ['/kythe/node/kind',
                                          '/pykythe/type',
                                          '/pykythe/color/token_color']) ) )),
-    concurrent_forall(kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
-           must_once( anchor_to_lineno(Anchor, _LineNo) )),
-    concurrent_forall(kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
-           must_once(( anchor_to_line_chunks(Anchor, _, Chunks),
-                       Chunks \== [] ))),
+    % TODO: The following tests (anchor_to_lineno, anchor_to_line_chunks)
+    %       aren't very useful because both of these predicates have
+    %       fallback code (for situations where the source didn't parse).
+    %       Need better tests.
+    % concurrent_forall(kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
+    %        must_once( anchor_to_lineno(Anchor, _LineNo) )),
+    % concurrent_forall(kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
+    %        must_once(( anchor_to_line_chunks(Anchor, _, Chunks),
+    %                    Chunks \== [] ))),
     % show_jiti,    % Not needed - should be the same as the first one
     % validate_anchor_link_anchor, % DO NOT SUBMIT: fix this test, which is also slow
     statistics(walltime, [T2_ms_valid, _]),
