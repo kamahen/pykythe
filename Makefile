@@ -307,14 +307,14 @@ $(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.entries: \
 		$(SUBSTDIR_PWD_REAL)/pykythe/bootstrap_builtins_symtab.pl \
 		$(PYKYTHE_SRCS) \
 	 	$(PYKYTHE_EXE) \
-		$(TYPESHED_REAL)/stdlib/2and3/builtins.pyi pykythe/builtins_extra.pyi \
+		$(TYPESHED_REAL)/stdlib/3/builtins.pyi pykythe/builtins_extra.pyi \
 		pykythe/gen_builtins_symtab.pl \
 		pykythe/pykythe.pl pykythe/*.pl \
 		pykythe/__main__.py pykythe/*.py
 	mkdir -p "$(dir $(BUILTINS_SYMTAB_FILE))"
 	@# Override the builtins:
 	mkdir -p "$(PYTHONPATH_BUILTINS)"
-	cat $(TYPESHED_REAL)/stdlib/2and3/builtins.pyi \
+	cat $(TYPESHED_REAL)/stdlib/3/builtins.pyi \
 	        pykythe/builtins_extra.pyi \
 		>$(BUILTINS_PATH)
 	@# This bootstrap symtab file will be replaced by running gen_builtins_symtab.pl below
