@@ -147,10 +147,17 @@ SUBSTDIR_PWD_REAL:=$(SUBSTDIR)$(PWD_REAL)
 KYTHEOUTDIR_PWD_REAL:=$(KYTHEOUTDIR)$(PWD_REAL)
 PYTHONPATH_DOT:=$(shell realpath --no-symlinks .. | sed 's!^/!$(SUBSTDIR)/!')
 PYTHONPATH_BUILTINS:=$(SUBSTDIR)/BUILTINS
+# TODO: add typeshed/stdlib/3/_sitebuiltins.pyi
 BUILTINS_PATH:=$(SUBSTDIR)/BUILTINS/builtins.pyi
-TESTOUT_SRCS:=$(shell $(FIND_EXE) $(TEST_DATA_DIR) -name '*.py'  | sort | \
+TESTOUT_SRCS:=$(shell $(FIND_EXE) $(TEST_DATA_DIR) -name '*.py' | xargs ls -S | \
     sed -e 's!^!$(SUBSTDIR_PWD_REAL)/!')
-TESTOUT_TARGETS:=$(shell $(FIND_EXE) $(TEST_DATA_DIR) -name '*.py' | sort | \
+# "ls -S" sorts by size ... this won't work if there are embedded blanks
+#   (it helps a certain amount; but py3_test_grammar.py dominates)
+# Alternative: just do regular "sort", to get things in deterministic order
+# Note that the outputs are in order of *completion*, so even though
+# py3_test_grammar.py starts first (you can check this by the timestamps)
+# it's output last.
+TESTOUT_TARGETS:=$(shell $(FIND_EXE) $(TEST_DATA_DIR) -name '*.py' | xargs ls -S | \
     sed -e 's!^!$(KYTHEOUTDIR)$(SUBSTDIR_PWD_REAL)/!' -e 's!\.py$$!.kythe.verifier!')
 TESTOUT_TYPESHED:=$(KYTHEOUTDIR)$(TYPESHED_REAL)
 # Note: kythe_corpus would normally be '' or '/'; it is set to
@@ -248,11 +255,7 @@ pykythe_test: $(SWIPL_EXE) FORCE # $(TESTOUTDIR)/KYTHE/builtins_symtab.pl tests/
 	@# "test_data/imports1.py" is used in the test suite and must be a real file
 	@# because absolute_file resolution uses the existence of the file.
 	$(SWIPL_EXE) --version
-	$(SWIPL_EXE) </dev/null
-	@# DO NOT SUBMIT --threads=yes
 	$(SWIPL_EXE) -g run_tests -t halt tests/c3_tests.pl
-	$(SWIPL_EXE) --threads=no -g 'plunit:load_test_files([])' -g plunit:pykythe_run_tests -t halt -l pykythe/pykythe.pl \
-		-- $(PYTHONPATH_OPT) test_data/dummy_dir/dummy_file.py
 	$(SWIPL_EXE) --threads=yes -g 'plunit:load_test_files([])' -g plunit:pykythe_run_tests -t halt -l pykythe/pykythe.pl -- $(PYTHONPATH_OPT) test_data/dummy_dir/dummy_file.py
 
 $(PYKYTHE_EXE): pykythe/*.pl pykythe_test $(SWIPL_EXE)
@@ -282,7 +285,10 @@ $(KYTHEOUTDIR)%.kythe.entries: \
 	@#       maybe?: set_prolog_flag(generate_debug_info, false)
 	@# Note that -O changes the order of some directives (see the comment in
 	@# pykythe/pykythe.pl with the last `set_prolog_flag(autoload, false)`.
+	@# The timestamp is output so that we can confirm that the largest
+	@# files are started first (their output is in the order that they finish).
 	PYKYTHE_STRACE_EXE="$(PYKYTHE_STRACE)" && \
+	  date -Ins && \
 	  echo $$PYKYTHE_STRACE_EXE && \
 	  $(TIME) $$PYKYTHE_STRACE_EXE $(PYKYTHE_EXE_) \
 	    $(PYKYTHE_OPTS) \
@@ -295,14 +301,14 @@ $(KYTHEOUTDIR)%.kythe.entries: \
 #            TODO: split into two rules and have a builtins_symtab_bootstrap.pl
 
 # TODO: This uses /tmp/pykythe_test/SUBST/home/peter/src/pykythe/pykythe/bootstrap_builtins.py
-#       This is the same as make $(mumble)/src/typeshed/stdlib/2and3/builtins.kythe.json
+#       This is the same as make $(mumble)/src/typeshed/stdlib/3/builtins.kythe.json
 #       followed by gen_builtins_symtab.
 # $(PYKYTHE_SRCS) is a dependency because it's used to compute $(VERSION)
 
 $(BUILTINS_SYMTAB_FILE) \
-$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.pykythe.symtab \
-$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.json \
-$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.entries: \
+$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/3/builtins.pykythe.symtab \
+$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/3/builtins.kythe.json \
+$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/3/builtins.kythe.entries: \
 		$(SUBSTDIR_PWD_REAL)/pykythe/bootstrap_builtins.py \
 		$(SUBSTDIR_PWD_REAL)/pykythe/bootstrap_builtins_symtab.pl \
 		$(PYKYTHE_SRCS) \
@@ -325,7 +331,7 @@ $(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.entries: \
 	  $(TIME) $$PYKYTHE_STRACE_EXE $(PYKYTHE_EXE_) \
 	    $(PYKYTHE_OPTS) \
 	    "$(SUBSTDIR_PWD_REAL)/pykythe/bootstrap_builtins.py"
-	@# instead of input from "$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/2and3/builtins.kythe.json"
+	@# instead of input from "$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/3/builtins.kythe.json"
 	@# use "$(KYTHEOUTDIR)$(PYTHONPATH_BUILTINS)/builtins.kythe.json":
 	$(SWIPL_EXE) pykythe/gen_builtins_symtab.pl \
 	    -- $(VERSION_OPT) $(PYTHONPATH_OPT) \
@@ -399,7 +405,7 @@ test_c3_a:  # run c3_a, to ensure it behaves as expected
 test_data_tests:
 	@# running in parallel gains ~30%, it seems
 	@# (large files such as py3_test_grammar.py dominate)
-	$(MAKE) -j$(NPROC) -Oline $(TESTOUT_TARGETS) \
+	$(MAKE) -j$(NPROC) --output-sync=line $(TESTOUT_TARGETS) \
 		$(KYTHEOUTDIR)$(PWD_REAL)/pykythe/__main__.kythe.entries
 
 .PHONY: test_leo
@@ -816,7 +822,7 @@ build-swipl-full:
 		cd build && \
 		cmake -G Ninja .. && \
 		ninja && \
-		ctest -j 8
+		ctest -j $(NPROC)
 
 unused-predicates:
 	cd pykythe && echo 'xref_source(pykythe, [silent(true)]). xref_defined(_, Goal, _), \+ xref_called(_, Goal, _), writeln(Goal), fail ; true.' | $(SWIPL_EXE)
@@ -847,7 +853,7 @@ upgrade-swipl:
 		cd build && \
 		cmake -G Ninja .. && \
 		ninja && \
-		ctest -j 8
+		ctest -j $(NPROC)
 	@# ninja install
 
 upgrade-swipl-full:
@@ -858,7 +864,7 @@ upgrade-swipl-full:
 		mkdir  build && \
 		cd     build && \
 		cmake -G Ninja .. && \
-		ninja && ctest -j 8
+		ninja && ctest -j $(NPROC)
 	@# ninja install
 
 swipl-sanitize:
@@ -869,7 +875,7 @@ swipl-sanitize:
 		mkdir  build.sanitize && \
 		cd     build.sanitize && \
 		cmake -DCMAKE_BUILD_TYPE=Sanitize -G Ninja .. && \
-		ninja && ctest -j 8
+		ninja && ctest -j $(NPROC)
 
 upgrade-emacs:
 	@# https://www.emacswiki.org/emacs/EmacsSnapshotAndDebian
@@ -879,7 +885,7 @@ upgrade-emacs:
 		git pull --recurse && \
 		./autogen.sh && \
 		./configure --prefix=$$HOME/.local && \
-		make -j 4 bootstrap && \
+		make -j $(NPROC_BAZEL) bootstrap && \
 		make install
 
 rsync-backup:
