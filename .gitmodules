@@ -5,10 +5,3 @@
 	fetchRecurseSubmodules = true
         update = rebase
         branch = .
-[submodule "swipl-devel"]
-	path = swipl-devel
-	url = https://github.com/SWI-Prolog/swipl-devel.git
-	shallow = true
-	fetchRecurseSubmodules = true
-	update = rebase
-	branch = .
