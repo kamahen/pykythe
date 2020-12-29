@@ -140,6 +140,9 @@ PWD_REAL:=$(abspath .)
 TYPESHED_REAL:=$(abspath ./typeshed)
 SUBSTDIR:=$(TESTOUTDIR)/SUBST
 KYTHEOUTDIR:=$(TESTOUTDIR)/KYTHE
+KYTHE_FACTS_DIR:=$(TESTOUTDIR)/browser/files
+KYTHE_FACTS_PL:=$(KYTHE_FACTS_DIR)/kythe_facts.pl
+KYTHE_FACTS_QLF:=$(KYTHE_FACTS_DIR)/kythe_facts.qlf
 BUILTINS_SYMTAB_FILE:=$(TESTOUTDIR)/KYTHE/builtins_symtab.pl
 TESTOUT_PYKYTHEDIR:=$(KYTHEOUTDIR)/pykythe
 # $(PWD_REAL) starts with "/", so we're just appending:
@@ -537,7 +540,6 @@ clean-batch clean_batch:
 .PHONY: tkdiff
 tkdiff:
 	git difftool --no-prompt --tool=tkdiff
-	@# $$(git diff --name-only | fgrep -v browser/examples/kythe_facts.pl)	
 
 # .nq.gz files are for Cayley
 
@@ -575,25 +577,26 @@ make-tables: # add-index-pykythe
 	@ # https://kythe.io/docs/kythes-command-line-tool.html
 
 .PHONY: make-json
-make-json:
+make-json: browser/kythe_json_to_prolog.pl FORCE
 	$(RM) -r $(TESTOUTDIR)/browser
-	mkdir -p $(TESTOUTDIR)/browser/files
+	mkdir -p $(KYTHE_FACTS_DIR)
 	@# in following: - 99 files in typeshed, 43 in test_data, 10 in pykythe
+	@# The following creates $(KYTHE_FACTS_PL)
 	set -o pipefail; \
 	    find $(KYTHEOUTDIR) -name '*.kythe.json' | \
 	    time $(SWIPL_EXE) -g main -t halt \
 		browser/kythe_json_to_prolog.pl -- \
-		--filesdir=$(TESTOUTDIR)/browser/files
+		--filesdir=$(KYTHE_FACTS_DIR)
 	@# see run-src-browser, which forces a compile on first load
-	@# time $(SWIPL_EXE) -g "qcompile('$(TESTOUTDIR)/browser/files/kythe_facts.pl')" -t halt
+	@# time $(SWIPL_EXE) -g "qcompile('$(KYTHE_FACTS_PL)')" -t halt
 	@# kythe_facts.pl is 114MB, so don't copy it.
-	@# cp --preserve=timestamps $(TESTOUTDIR)/browser/files/kythe_facts.pl browser/examples/
+	@# cp --preserve=timestamps $(KYTHE_FACTS_PL) browser/examples/
 
 # This is obsolete (from when the JSON files were pre-generated)
 # but shows how to pretty-print a JSON file.
 .PHONY: make-json-pretty
 make-json-pretty:
-	find $(TESTOUTDIR)/browser/files -name '*.json' | \
+	find $(KYTHE_FACTS_DIR) -name '*.json' | \
 		parallel --will-cite -L1 -j$(NPROC) \
 		'$(PYTHON3_EXE) -m json.tool <{} >{}-pretty'
 
@@ -601,18 +604,17 @@ make-json-pretty:
 # To prepare this: make-json
 # http://localhost:$(SRC_BROWSER_PORT)/static/src_browser.html
 run_src_browser run-src-browser:
-	@mkdir -p $(TESTOUTDIR)/browser/files
+	@mkdir -p $(KYTHE_FACTS_DIR)
 	@# if .qlf doesn't exist, make an empty one, which
 	@# will cause recompilation when it's loaded
-	[ -e $(TESTOUTDIR)/browser/files/kythe_facts.qlf ] || \
-	    touch $(TESTOUTDIR)/browser/files/kythe_facts.qlf
+	[ -e $(KYTHE_FACTS_QLF) ] || touch $(KYTHE_FACTS_QLF)
 	@# TODO: remove "-g src_browser:main -l" (which are for debugging)  DO NOT SUBMIT
 	@# TODO: compile src_browser.pl and use src_browser.qlf
 	@# -- for debugging, change "browser/src_browser.pl" to
 	@#                       to "-g src_browser:src_browser_main2 -l browser/src_browser.pl"
 	$(SWIPL_EXE) --no-tty browser/src_browser.pl -- \
 		--port=$(SRC_BROWSER_PORT) \
-		--filesdir=$(TESTOUTDIR)/browser/files \
+		--filesdir=$(KYTHE_FACTS_DIR) \
 		--staticdir=$(realpath ./browser/static)
 
 # TODO: pre-req:  prep_server
