@@ -38,9 +38,6 @@ main :-
     main(user_input).
 
 main(InStream) :-
-    % TODO: remove with swipl 8.1.21
-    set_stream(InStream, tty(false)), % try to ensure no prompting
-    prompt(_, ''),                    % really ensure no prompting
     log_if(true, 'Start'),
     extract_opts(Opts),
     must_once(retract_kythe_facts),
@@ -82,10 +79,12 @@ get_and_assert_kythe_facts(File) :-
     must_once(get_and_assert_kythe_facts_(File)).
 
 get_and_assert_kythe_facts_(File) :-
-    % TODO: use setup_call_cleanup/3
-    open(File, read, InStream, [encoding(utf8)]),
-    read_kythe_json_facts(InStream, KytheDicts),
-    close(InStream),
+    setup_call_cleanup(open(File, read, InStream, [encoding(utf8)]),
+                       read_kythe_json_facts(InStream, KytheDicts),
+                       close(InStream)),
+    get_and_assert_kythe_facts_2(KytheDicts).
+
+get_and_assert_kythe_facts_2(KytheDicts) :-
     log_if(false, 'Read_kythe_json_facts-done ~q', [File]),
     % TODO: base64/2 takes most of the CPU time (from b64_to_utf8_to_atom/2)
     % TODO: slightly more efficient if kythe_fact_pred/3 is
@@ -217,24 +216,15 @@ kythe_edge(Signature1,vname0(Corpus1,Root1,Path1,Language1), EdgeName,
                Signature2,Corpus2,Root2,Path2,Language2).
 
 do_output_stream(Opts, FileName, Fmt1, Args1, Goal, Fmt2, Args2) :-
-    % TODO: use setup_call_cleanup/3
-    open_output_stream(Opts, FileName, Fmt1, Args1, OutStream),
-    call(Goal, OutStream),
-    close_output_stream(OutStream, Fmt2, Args2).
-
-open_output_stream(Opts, FileName, Fmt, Args, OutStream) :-
-    memberchk(filesdir(FilesDir), Opts),
+    must_once(memberchk(filesdir(FilesDir), Opts)),
     make_directory_path(FilesDir),
     atomic_list_concat([FilesDir, FileName], '/', FullPath),
-    open(FullPath, write, OutStream, [encoding(utf8)]),
-    format(OutStream, Fmt, Args).
-
-close_output_stream(OutStream, Fmt, Args) :-
-    format(OutStream, Fmt, Args),
-    close(OutStream).
-
-:- use_module(library(check)).  % DO NOT SUBMIT
-% TODO: trap print_message(informational,check(pass(Message)))
-?- check. % DO NOT SUBMIT
+    setup_call_cleanup(open(FullPath, write, OutStream, [encoding(utf8)]),
+                       (   format(OutStream, Fmt1, Args1),
+                           call(Goal, OutStream)
+                       ),
+                       (   format(OutStream, Fmt2, Args2),
+                           close(OutStream)
+                       )).
 
 end_of_file.
