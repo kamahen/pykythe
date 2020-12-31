@@ -1727,7 +1727,7 @@ def parse(src_file: ast.File, python_version: int) -> Union['Node', 'Leaf']:
     lib2to3_logger = logging.getLogger('pykythe')
     grammar = pygram.python_grammar
     assert python_version == 3, python_version
-    # TODO: why doesn't lib2to3.pygram do this for "exec"?
+    # TODO: why does lib2to3.pygram leave 'exec'and 'print' as keywords for a 3.x grammar?
     # TODO: should make a copy because this does a global change
     if 'print' in grammar.keywords:
         del grammar.keywords['print']
