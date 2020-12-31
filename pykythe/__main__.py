@@ -94,8 +94,8 @@ def main() -> int:
         print(meta_str, file=out_fqn_ast_file)
         print(with_fqns_str, file=out_fqn_ast_file)
         print(ast_color_str, file=out_fqn_ast_file)
-    pykythe_logger.info('End parsing %s / meta:%d fqns:%d color:%d', args.srcpath,
-                        len(meta_str), len(with_fqns_str), len(ast_color_str))
+    pykythe_logger.info('End parsing %s / meta:%d fqns:%d color:%d', args.srcpath, len(meta_str),
+                        len(with_fqns_str), len(ast_color_str))
     return 0
 
 
@@ -116,7 +116,7 @@ def _get_args() -> argparse.Namespace:
                         dest='kythe_root',
                         default='',
                         help='Value of "root" in Kythe facts')
-    parser.add_argument(  # TODO: version should be a triple -- see ast_raw.FAKE_SYS
+    parser.add_argument(  # TODO: version should be a triple -- see fakesys.FAKE_SYS
             '--python_version',
             default=3,
             choices=[2, 3],

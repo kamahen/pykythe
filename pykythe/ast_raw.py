@@ -116,7 +116,7 @@ class Ctx(pod.PlainOldData):
             within the current scope.
         nonlocal_vars: A set of names that appear in "nonlocal"
             statements within the current scope.
-        python_version: 2 or 3
+        python_version: 3  # TODO: make this into a triple - see fakesys.FAKE_SYS
         src_file: source and offset information
     """
 
@@ -124,7 +124,7 @@ class Ctx(pod.PlainOldData):
     scope_bindings: Dict[str, None]  # Set[str] (OrderedSet[str])
     global_vars: Dict[str, None]
     nonlocal_vars: Dict[str, None]
-    python_version: int
+    python_version: int  # TODO: make this into a triple - see fakesys.FAKE_SYS
     src_file: ast.File
     __slots__ = [
             'name_ctx', 'scope_bindings', 'global_vars', 'nonlocal_vars', 'python_version',
@@ -133,7 +133,7 @@ class Ctx(pod.PlainOldData):
     def __post_init__(self) -> None:
         # scope_bindings should be collections.OrderedDicts if you want
         # deterministic results.
-        assert self.python_version in (2, 3)
+        assert self.python_version in (3, )  # TODO: make this a triple: see fakesys.FAKE_SYS
 
     def to_BINDING(self) -> 'Ctx':  # pylint: disable=invalid-name
         return dataclasses.replace(self, name_ctx=NameCtx.BINDING)
@@ -382,17 +382,16 @@ def cvt_comp_for(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     else:
         children = node.children
     in_testlist = cvt(children[3], ctx)  # outside the `for`
-    ctx_for = (
-            ctx if ctx.python_version == 2 else  # TODO: Python 2 test case
-            dataclasses.replace(ctx, scope_bindings=collections.OrderedDict()))
+    # Python 2 doesn't constrain the scope and would be: ctx_for = ctx
+    ctx_for = dataclasses.replace(ctx, scope_bindings=collections.OrderedDict())
     for_exprlist = cvt(children[1], ctx_for.to_BINDING())
     if len(children) == 5:
         comp_iter = cvt(children[4], ctx_for)  # evaluated in context of `for`
     else:
         assert len(children) == 4, [node]
         comp_iter = ast_cooked.OMITTED_NODE
-    if ctx.python_version == 2:  # TODO: Python 2 test case
-        ctx.scope_bindings.update(ctx_for.scope_bindings)  # pragma: no cover
+    # Python 2's different scope rules would do:
+    #    ctx.scope_bindings.update(ctx_for.scope_bindings)
     return ast_cooked.CompForNode(for_astn=ctx.src_file.node_to_astn(children[0]),
                                   for_exprlist=for_exprlist,
                                   in_testlist=in_testlist,
@@ -1727,13 +1726,13 @@ def parse(src_file: ast.File, python_version: int) -> Union['Node', 'Leaf']:
     # logger 'pykythe' is defined in __main__
     lib2to3_logger = logging.getLogger('pykythe')
     grammar = pygram.python_grammar
-    if python_version == 3:
-        # TODO: why doesn't lib2to3.pygram do this for "exec"?
-        # TODO: should make a copy because this does a global change
-        if 'print' in grammar.keywords:
-            del grammar.keywords['print']
-        if 'exec' in grammar.keywords:
-            del grammar.keywords['exec']
+    assert python_version == 3, python_version
+    # TODO: why doesn't lib2to3.pygram do this for "exec"?
+    # TODO: should make a copy because this does a global change
+    if 'print' in grammar.keywords:
+        del grammar.keywords['print']
+    if 'exec' in grammar.keywords:
+        del grammar.keywords['exec']
     parser_driver = driver.Driver(grammar, convert=_convert, logger=lib2to3_logger)  # type: ignore
     # The following is no longer needed:
     # if not src_str.endswith('\n'):  # pragma: no cover

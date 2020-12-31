@@ -145,7 +145,7 @@ class TestAnchor(unittest.TestCase):
                 b'234',
                 b'bcd',
                 b'"<br/>"', ]
-        for python_version in 2, 3:
+        for python_version in (3, ):  # Might change in future: fakesys.FAKE_SYS.version_info
             src_file = ast.make_file_from_contents('<>', src_bytes)
             parse_tree = ast_raw.parse(src_file, python_version)
             logging.debug('RAW= %r', parse_tree)
@@ -220,7 +220,7 @@ class TestColor(unittest.TestCase):
                 '  # Comment 4\n'  # Line 7
                 '  bcd = "<br/>"\n').encode('utf-8')  # Line 8
         src_file = ast.make_file_from_contents(path='<string>', contents_bytes=src_bytes)
-        for python_version in 2, 3:
+        for python_version in (3, ):  # Might change in future: fakesys.FAKE_SYS.version_info
             parse_tree = ast_raw.parse(src_file, python_version)
             for node in parse_tree.pre_order():
                 if isinstance(node, pytree.Leaf):

@@ -112,7 +112,7 @@ class FqnCtx(pod.PlainOldData):
                (module/function/class), followed by a '.'
       fqn_stack: A stack of FQNs (newest first), used to resolve an
                  unknown non-local (e.g., NameRefUnknown).
-      python_version: 2 or 3  # TODO: remove, now that python2 is ELO
+      python_version: 3  # TODO: make this a triple: see fakesys.FAKE_SYS
     """
 
     bindings: typing.ChainMap[str, str]
@@ -120,11 +120,11 @@ class FqnCtx(pod.PlainOldData):
     class_astn: Optional[ast.Astn]
     fqn_dot: str
     fqn_stack: List[str]
-    python_version: int
+    python_version: int  # TODO: make this a triple: see fakesys.FAKE_SYS
     __slots__ = ['bindings', 'class_fqn', 'class_astn', 'fqn_dot', 'fqn_stack', 'python_version']
 
     def __post_init__(self) -> None:
-        assert self.python_version in (2, 3)
+        assert self.python_version in (3, )  # TODO: make this a triple: see fakesys.FAKE_SYS
 
     def replace(self, **kwargs: Any) -> 'FqnCtx':
         return dataclasses.replace(self, **kwargs)
@@ -665,16 +665,13 @@ class CompForNode(Base):
 
         Used by DictGenListSetMakerCompForNode.
         """
-        if ctx.python_version == 2:  # pragma: no cover
-            # The bindings "leak" in Python2
-            ctx.bindings.update((name, ctx.fqn_dot + name) for name in self.scope_bindings)
-            return ctx
-        else:
-            for_fqn = (f'{ctx.fqn_dot}<comp_for>'
-                       f'[{self.for_astn.start:d},{self.for_astn.end:d}]')
-            return ctx.replace(fqn_dot=for_fqn + '.',
-                               fqn_stack=[for_fqn] + ctx.fqn_stack,
-                               bindings=ctx.bindings.new_child(collections.OrderedDict()))
+        # The bindings "leak" in Python2
+        #    ctx.bindings.update((name, ctx.fqn_dot + name) for name in self.scope_bindings)
+        #    return ctx
+        for_fqn = (f'{ctx.fqn_dot}<comp_for>' f'[{self.for_astn.start:d},{self.for_astn.end:d}]')
+        return ctx.replace(fqn_dot=for_fqn + '.',
+                           fqn_stack=[for_fqn] + ctx.fqn_stack,
+                           bindings=ctx.bindings.new_child(collections.OrderedDict()))
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Assume that the caller has created a new child in the

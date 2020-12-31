@@ -72,7 +72,6 @@
 %%              astn(1156,1157, 'x'),
 %%              '/kythe/edge/defines/binding'),
 %%          [class_type('.home.peter.src.typeshed.stdlib.2and3.builtins.str', [])])
-%%                 %% (Py2.7 would be __builtin__.str)
 %%
 %% To process this, we need to resolve the FQNs (in this case,
 %% var_ref('test_data.simple.C2.__init__.<local>.self') by looking up
@@ -735,7 +734,7 @@ pykythe_opts(SrcPaths, Opts) :-
          help('Command for running parser than generates fqn.kythe.json file')],
         [opt(python_version), type(integer), default(3), longflags(python_version),
          help('Python major version')],
-                                % TODO: python_version should be a triple: see ast_raw.FAKE_SYS
+                                % TODO: python_version should be a triple: see fakesys.FAKE_SYS
         [opt(pythonpath), type(atom), default(''), longflags(['pythonpath']),
          help('Similar to $PYTHONPATH for resolving imports (":"-separated paths)')],
         [opt(version), type(atom), default(''), longflags(['version']),
@@ -1222,7 +1221,8 @@ write_to_protobuf(EntriesCmd, SrcPath, KytheJsonPath, KytheEntriesPath) :-
 % is a bit more difficult to debug.
 run_parse_cmd(Opts, SrcPath, SrcFqn, OutPath) :-
     must_once_msg(ground(Opts), 'Invalid command line options'),
-    must_once_msg(memberchk(Opts.python_version, [2, 3]), 'Invalid Python version: ~q', [Opts.python_version]),
+    % TODO: python_version should be triple: see fakesys.FAKE_SYS
+    must_once_msg(memberchk(Opts.python_version, [3]), 'Invalid Python version: ~q', [Opts.python_version]),
     setup_call_cleanup(
         true,
         ( pykythe_tmp_file_stream(Opts.kytheout, OutPath, % TODO: mkdir separate subdir for these
