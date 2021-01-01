@@ -146,10 +146,11 @@ kythe_fact_pred_(_File,
 kythe_fact_pred_(File, Fact, Fact) :-
     domain_error(json, File:Fact).
 
-post_process_fact('/kythe/loc/start', Value0, Value) :- !, atom_number(Value0, Value).
-post_process_fact('/kythe/loc/end',   Value0, Value) :- !, atom_number(Value0, Value).
+post_process_fact('/kythe/loc/start',     Value0, Value) :- !, atom_number(Value0, Value).
+post_process_fact('/kythe/loc/end',       Value0, Value) :- !, atom_number(Value0, Value).
 post_process_fact('/kythe/snippet/start', Value0, Value) :- !, atom_number(Value0, Value).
 post_process_fact('/kythe/snippet/end',   Value0, Value) :- !, atom_number(Value0, Value).
+post_process_fact('/pykythe/color_all',   Value0, Value) :- !, term_string(Value, Value0).
 % TODO: other numeric facts to convert?
 post_process_fact(_, Value, Value).
 

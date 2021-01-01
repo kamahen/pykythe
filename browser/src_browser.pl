@@ -58,7 +58,6 @@
 
 % The "base" Kythe facts, which are dynamically loaded at start-up.
 :- dynamic kythe_node/7, kythe_edge/11.
-:- dynamic kythe_color_all/5.
 
 % Convenience predicates for accessing the base Kythe facts,
 % using vname(Signature, Corpus, Root, Path, Language).
@@ -255,22 +254,7 @@ read_and_assert_kythe_facts :-
                 imports([kythe_node/7,
                          kythe_edge/11])]),
     index_kythe_facts,
-    debug(log, 'Starting assert_color_all ...', []),
-    statistics(process_cputime, T1_color),
-    statistics(walltime, [T1_ms_color,_]),
-    % TODO: check speed-up for this concurrent_forall:
-    concurrent_forall(retract(kythe_node('', Corpus,Root,Path,Language, '/pykythe/color_all', ColorTermStr)),
-                      assert_color_all(Corpus,Root,Path,Language, ColorTermStr)),
-    statistics(walltime, [T2_ms_color,_]),
-    statistics(process_cputime, T2_color),
-    T_color is T2_color - T1_color,
-    T_ms_color is (T2_ms_color - T1_ms_color) * 0.001,
-    debug(log, 'Done assert_colorall: ~3f sec. (real: ~3f sec.).', [T_color, T_ms_color]),
     thread_create(validate_kythe_facts, _, [detached(true)]).
-
-assert_color_all(Corpus,Root,Path,Language, ColorTermStr) :-
-    term_string(ColorTerm, ColorTermStr),
-    assertz(kythe_color_all(Corpus, Root, Path, Language, ColorTerm)).
 
 %! adjust_color(+Corpus,+Root,+Path,+Language, +ColorPairs0, -ColorPairs) is det.
 % Change token_color-'<PUNCTUATION>' to token_color-'<PUNCTUATION_REF>' in ColorPairs0
@@ -294,6 +278,9 @@ adjust_color(Corpus,Root,Path,Language, ColorPairs0, ColorPairs) :-
        % debug(log, 'ADJUST_COLOR: ~q', [ColorPairs]) % DO NOT SUBMIT
     ;  ColorPairs = ColorPairs0
     ).
+
+kythe_color_all(Corpus, Root, Path, Language, ColorTerm) :-
+    kythe_node('', Corpus, Root, Path, Language, '/pykythe/color_all', ColorTerm).
 
 % index_kythe_facts/0 takes a bit of time because it builds the
 % JIT indexes; if you run it a second time, it's fast. (The indexes
@@ -340,11 +327,13 @@ validate_kythe_facts :-
            must_once( ground(kythe_node(Vname, Name, Value)) )),
     forall(kythe_edge(V1, Edge, V2),
            must_once( ground(kythe_edge(V1, Edge, V2)) )),
-    concurrent_forall(kythe_node(Vname, _, _),
-           must_once( ( kythe_node(Vname, Name , _),
-                        memberchk(Name, ['/kythe/node/kind',
-                                         '/pykythe/type',
-                                         '/pykythe/color/token_color']) ) )),
+    % TODO: This test needs to change - /pykythe/color/* facts no longer exist
+    %       no longer exist, but are in /pykythe/color_all
+    % concurrent_forall(kythe_node(Vname, _, _),
+    %        must_once( ( kythe_node(Vname, Name , _),
+    %                     memberchk(Name, ['/kythe/node/kind',
+    %                                      '/pykythe/type',
+    %                                      '/pykythe/color/token_color']) ) )),
     % TODO: The following tests (anchor_to_lineno, anchor_to_line_chunks)
     %       aren't very useful because both of these predicates have
     %       fallback code (for situations where the source didn't parse).
