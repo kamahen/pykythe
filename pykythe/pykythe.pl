@@ -199,6 +199,7 @@
 :- use_module(library(edcg)).   % requires: ?- pack_install(edcg).
 :- use_module(library(error), [must_be/2, domain_error/2]).
 :- use_module(library(gensym), [gensym/2]).
+:- use_module(library(http/json), [atom_json_dict/3]).
 :- use_module(library(lists), [append/2, append/3, list_to_set/2, last/2, member/2, nth0/3, reverse/2, select/3]).
 :- use_module(library(optparse), [opt_arguments/3]).
 :- use_module(library(ordsets), [list_to_ord_set/2, ord_empty/1, ord_union/2, ord_union/3, ord_add_element/3]).
@@ -1451,7 +1452,9 @@ kyfact_color_text_as_single_fact(ColorText) -->>
     % log_if_file('COLOR_TEXT: ~q', [ColorText]), % DO NOT SUBMIT
     % ColorText is list of: color{column:0,end:14,lineno:1,start:0,token_color:'<COMMENT>',value:'# a comment'}
     { maplist(key_color, ColorText, KeyedColorText) },
-    { format(atom(ColorFactText), '~q', [KeyedColorText]) },
+    % { format(atom(ColorFactText), '~q', [KeyedColorText]) },
+    { atom_json_dict(ColorFactText, KeyedColorText,
+                     [width(0),true(#(true)),false(#(false)),null(#(null))]) },
     Meta/file_meta,
     kyfact(json{path: Meta.path, language: Meta.language},
            '/pykythe/color_all', ColorFactText).

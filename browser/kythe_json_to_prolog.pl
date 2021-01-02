@@ -12,7 +12,7 @@
 %  json:json_read_dict/3 takes 41%
 %  json:json_string_codes/3 takes 15% (most of it in utf8_codes/3).
 
-:- use_module(library(http/json), [json_read_dict/3]).
+:- use_module(library(http/json), [atom_json_dict/3, json_read_dict/3]).
 :- use_module(library(base64), [base64/2]).
 :- use_module(library(pairs)).
 
@@ -150,7 +150,10 @@ post_process_fact('/kythe/loc/start',     Value0, Value) :- !, atom_number(Value
 post_process_fact('/kythe/loc/end',       Value0, Value) :- !, atom_number(Value0, Value).
 post_process_fact('/kythe/snippet/start', Value0, Value) :- !, atom_number(Value0, Value).
 post_process_fact('/kythe/snippet/end',   Value0, Value) :- !, atom_number(Value0, Value).
-post_process_fact('/pykythe/color_all',   Value0, Value) :- !, term_string(Value, Value0).
+post_process_fact('/pykythe/color_all',   Value0, Value) :- !,
+    atom_json_dict(Value0, Value,
+                   [width(0),true(#(true)),false(#(false)),null(#(null)),
+                    value_string_as(atom), default_tag(color), end_of_file(@(end))]).
 % TODO: other numeric facts to convert?
 post_process_fact(_, Value, Value).
 

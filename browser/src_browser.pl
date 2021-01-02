@@ -327,13 +327,14 @@ validate_kythe_facts :-
            must_once( ground(kythe_node(Vname, Name, Value)) )),
     forall(kythe_edge(V1, Edge, V2),
            must_once( ground(kythe_edge(V1, Edge, V2)) )),
-    % TODO: This test needs to change - /pykythe/color/* facts no longer exist
-    %       no longer exist, but are in /pykythe/color_all
-    % concurrent_forall(kythe_node(Vname, _, _),
-    %        must_once( ( kythe_node(Vname, Name , _),
-    %                     memberchk(Name, ['/kythe/node/kind',
-    %                                      '/pykythe/type',
-    %                                      '/pykythe/color/token_color']) ) )),
+    % TODO: This test needs to change - /pykythe/color/_ facts no longer exist,
+    %       but are in /pykythe/color_all
+    forall(( kythe_node(Vname, N, _),
+             N \== '/pykythe/color_all' ),
+           must_once( ( kythe_node(Vname, Name , _),
+                        memberchk(Name, ['/kythe/node/kind',
+                                         '/pykythe/type',
+                                         '/pykythe/color/token_color']) ) )),
     % TODO: The following tests (anchor_to_lineno, anchor_to_line_chunks)
     %       aren't very useful because both of these predicates have
     %       fallback code (for situations where the source didn't parse).
