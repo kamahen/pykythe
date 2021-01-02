@@ -287,7 +287,7 @@
                   assign_exprs_count/7,
                   assign_exprs_count_impl/6,
                   assign_normalized/7,
-                  % builtins_symtab_extend/3, % TODO: failed to analyse
+                  builtins_symtab_extend/3,
                   clean_class/3,
                   clean_kind/2,
                   clean_kythe_facts/2,
@@ -297,7 +297,7 @@
                   eval_assign_dot_op_binds_single/9,
                   eval_assign_dot_op_binds_unknown/9,
                   eval_assign_expr/6,
-                  % eval_assign_expr_imports/5, % TODO: failed to analyse
+                  eval_assign_expr_imports/5,
                   eval_assign_import/6,
                   eval_assign_single/8,
                   eval_assign_subscr_op_binds_single/7,
@@ -306,8 +306,8 @@
                   eval_atom_subscr_binds_single/7,
                   eval_atom_subscr_single/7,
                   eval_dot_op_unknown/8,
-                  % eval_lookup/7, % TODO: failed to analyse
-                  % eval_lookup_single/7, % TODO: failed to analyse
+                  eval_lookup/7,
+                  eval_lookup_single/7,
                   eval_single_type/7,
                   eval_single_type_error_msg/7,
                   eval_single_type_import/9,
@@ -316,7 +316,7 @@
                   extend_symtab_with_builtins/3,
                   foldl_process_module_cached_or_from_src/5,
                   if_stmt_elses/2,
-                  % kyImportDotNode/3, % TODO: failed to analyse
+                  kyImportDotNode/3,
                   kyImportDottedAsNamesFqn/7,
                   kyImportDottedAsNamesFqn_top/8,
                   kyImportDottedAsNamesFqn_as/9,
@@ -393,7 +393,7 @@
                   simplify_ast_slot_pair/2,
                   simplify_meta/2,
                   single_type_fqn/2,
-                  % subscr_resolve_dot_binds/7, % TODO: failed to analyse
+                  subscr_resolve_dot_binds/7,
                   symrej_accum/3,
                   symrej_accum_found/7,
                   symtab_pykythe_types/4,
@@ -402,10 +402,10 @@
                   transform_kythe_path/2,
                   wrap_import_ref/4,
                   % symtab_lookup/4,
-                  symtab_scope_pairs/4
-                  % write_symtab/3, % Is det, but expansion confuses write_atomic_stream/2.
-                  % write_to_protobuf/4,  % Is det, but expansion confuses write_atomic_file/2.
-                  % write_kythe_facts/3  % TODO: failed to analyse
+                  symtab_scope_pairs/4,
+                  write_symtab/3,
+                  write_to_protobuf/4,
+                  write_kythe_facts/3
                  ]).
 :- endif.
 
