@@ -124,9 +124,7 @@ kythe_fact_pred_(File,
                  kythe_node(Source1, FactName, FactValue)) :-
     !,
     vname_fix(Source0, Source1),
-    (  FactName == '/pykythe/symtab'  % TODO: does this exist any more?
-    -> FactValue = FactValueB64 % It's not b64-encoded for performance
-    ;  FactName == '/pykythe/color_all'
+    (  FactName == '/pykythe/color_all'
     -> FactValue = FactValueB64 % It's not b64-encoded for performance
     ;  (  base64_utf8(FactValue0, FactValueB64)
        -> true
