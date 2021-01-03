@@ -82,15 +82,12 @@ get_and_assert_kythe_facts_(File) :-
     setup_call_cleanup(open(File, read, InStream, [encoding(utf8)]),
                        read_kythe_json_facts(InStream, KytheDicts),
                        close(InStream)),
-    get_and_assert_kythe_facts_2(KytheDicts).
+    log_if(false, 'read_kythe_json_facts-done ~q', [File]),
+    get_and_assert_kythe_facts_2(KytheDicts, File).
 
-get_and_assert_kythe_facts_2(KytheDicts) :-
-    log_if(false, 'Read_kythe_json_facts-done ~q', [File]),
-    % TODO: base64/2 takes most of the CPU time (from b64_to_utf8_to_atom/2)
-    % TODO: slightly more efficient if kythe_fact_pred/3 is
-    %       moved into read_kythe_json_facts/2.
-    maplist(kythe_fact_pred(File), KytheDicts, Preds0),
-    log_if(false, 'Kythe_fact_pred-done ~q', [File]),
+get_and_assert_kythe_facts_2(KytheDicts, File) :-
+    phrase(kythe_fact_preds(KytheDicts, File), Preds0),
+    log_if(false, 'kythe_fact_preds-done ~q', [File]),
     sort(Preds0, Preds), % remove dups, although there shouldn't be any
     % log_if(false, 'Sort preds-done ~q', [File]),
     assertion(ground(Preds)),
@@ -113,50 +110,54 @@ read_kythe_json_facts(InStream, KytheDicts) :-
        read_kythe_json_facts(InStream, KytheDicts2)
     ).
 
-%! kythe_fact_pred(+File: atom, +JsonFact:dict, -Pred) is det.
+%! kythe_fact_preds(+JsonFacts:list(dict), +File:atom, -Pred)// is det.
+kythe_fact_preds([], _File) --> [ ].
+kythe_fact_preds([JsonFact|JFs], File) -->
+    (  kythe_fact_pred_(JsonFact, File)
+    -> { true }
+    ;  { throw(error(must_once_failed(kythe_fact_pred_(JsonFact, File)), _)) }
+    ),
+    kythe_fact_preds(JFs, File).
+
 % See transform_kythe_fact/3 in pykythe.pl
-
-kythe_fact_pred(File, JsonFact, Pred) :-
-    must_once(kythe_fact_pred_(File, JsonFact, Pred)).
-
-kythe_fact_pred_(File,
-                 json{source:Source0, fact_name:FactName, fact_value:FactValueB64},
-                 kythe_node(Source1, FactName, FactValue)) :-
+kythe_fact_pred_(json{source:Source0, fact_name:FactName, fact_value:FactValueB64}, File) -->
     !,
-    vname_fix(Source0, Source1),
-    (  FactName == '/pykythe/color_all'
-    -> FactValue = FactValueB64 % It's not b64-encoded for performance
-    ;  (  base64_utf8(FactValue0, FactValueB64)
-       -> true
+    { vname_fix(Source0, Source) },
+    (  { FactName == '/pykythe/color_all' }
+    -> { atom_json_dict(FactValueB64, % Not b64-encoded for performance
+                        FactValue,
+                        [width(0),true(#(true)),false(#(false)),null(#(null)),
+                         value_string_as(atom), default_tag(color), end_of_file(@(end))]) },
+       [ kythe_node(Source, FactName, FactValue) ]
+    ;  (  { base64_utf8(FactValue, FactValueB64) }
+       -> [ ]
        ;  % if base64_utf8/2 fails, assume it's invalid UTF-8 encoding
           % and leave it as-is.
           % TODO: Look for '# -*- coding: ...' and use that (see
           %       lib2to3/pgen2/tokenize.py detect_encoding())
-          log_if(true, 'Fact not UTF-8: ~q in ~q', [FactName, File]),
-          base64(FactValue0, FactValueB64)
+          { log_if(true, 'Fact not UTF-8: ~q in ~q', [FactName, File]) },
+          { base64(FactValue, FactValueB64) }
        ),
-       post_process_fact(FactName, FactValue0, FactValue)
+       (  { numeric_fact(FactName) }
+       -> { atom_number(FactValue, FactNumber) },
+          [ kythe_node(Source, FactName, FactNumber) ]
+       ;  [ kythe_node(Source, FactName, FactValue) ]
+       )
     ).
-kythe_fact_pred_(_File,
-                 json{source:Source0, fact_name:'/', edge_kind:EdgeKind, target:Target0},
-                 kythe_edge(Source1, EdgeKind, Target1)) :-
+kythe_fact_pred_(json{source:Source0, fact_name:'/', edge_kind:EdgeKind, target:Target0}, _File) -->
     !,
-    vname_fix(Source0, Source1),
-    vname_fix(Target0, Target1).
-kythe_fact_pred_(File, Fact, Fact) :-
-    domain_error(json, File:Fact).
+    { vname_fix(Source0, Source) },
+    { vname_fix(Target0, Target1) },
+    [ kythe_edge(Source, EdgeKind, Target1) ].
+kythe_fact_pred_(Fact, File) -->
+    [ Fact ],
+    { domain_error(json, File:Fact) }.
 
-post_process_fact('/kythe/loc/start',     Value0, Value) :- !, atom_number(Value0, Value).
-post_process_fact('/kythe/loc/end',       Value0, Value) :- !, atom_number(Value0, Value).
-post_process_fact('/kythe/snippet/start', Value0, Value) :- !, atom_number(Value0, Value).
-post_process_fact('/kythe/snippet/end',   Value0, Value) :- !, atom_number(Value0, Value).
-post_process_fact('/pykythe/color_all',   Value0, Value) :- !,
-    atom_json_dict(Value0, Value,
-                   [width(0),true(#(true)),false(#(false)),null(#(null)),
-                    value_string_as(atom), default_tag(color), end_of_file(@(end))]).
-% TODO: other numeric facts to convert?
-post_process_fact(_, Value, Value).
-
+numeric_fact('/kythe/loc/start').
+numeric_fact('/kythe/loc/end').
+numeric_fact('/kythe/snippet/start').
+numeric_fact('/kythe/snippet/end').
+% TODO: other numeric facts?
 
 %! vname_fix(+Json:json, -Vname:vname) is det.
 % vname is same as verifier:

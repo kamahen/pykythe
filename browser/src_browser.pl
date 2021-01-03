@@ -22,7 +22,7 @@
 :- use_module(library(error), [must_be/2, domain_error/2]).
 :- use_module(library(pairs), [group_pairs_by_key/2, pairs_values/2]).
 :- use_module(library(prolog_jiti), [jiti_list/1]).
-:- use_module(library(apply), [maplist/2, maplist/3, maplist/4, maplist/5]).
+:- use_module(library(apply), [maplist/2, maplist/3, maplist/4, maplist/5, exclude/3]).
 :- use_module(library(thread), [concurrent_maplist/2, concurrent_forall/2]).
 :- use_module(library(http/http_server), [http_server/1,
                                           http_read_json_dict/3,
@@ -738,9 +738,13 @@ color_data_one_file(Corpus, Root, Path,
 
 verify_color_items(ColorItems) :-
     % TODO: delete this validation
+    exclude(has_start, ColorItems, WithoutStart),
+    must_once([] == WithoutStart),
     maplist([Item, Key-Item]>>get_dict(start, Item, Key), ColorItems, KeyedColorItems),
     keysort(KeyedColorItems, KeyedColorItemSorted),
     must_once(KeyedColorItems == KeyedColorItemSorted).
+
+has_start(Item) :- get_dict(start, Item, _).
 
 add_color_edges_and_key(Corpus,Root,Path,Language, ColorAll0, ColorAll0.lineno-ColorAll) :-
     (   ColorAll0.token_color == '<PUNCTUATION>'

@@ -973,7 +973,7 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
     partition([Fact]>>get_dict(fact_name, Fact, '/pykythe/color_all'),
               KytheFacts, ColorFacts, KytheFacts2),
     write_atomic_stream(write_kythe_facts(KytheFacts2), KytheJsonPath),
-    write_atomic_stream(write_color_facts(ColorFacts), PykytheColorPath),
+    write_atomic_stream(write_kythe_facts(ColorFacts), PykytheColorPath),
     write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheSymtabPath),
     (   PykytheSymtabPath = PykytheBatchPath
     ->  log_if(true, 'Not writing to kythebatch: ~w', KytheJsonPath)
@@ -993,13 +993,14 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
     !.                          % "cut" for memory usage
 
 %! transform_kythe_fact(+Fact0, -Fact1) is det.
-
 % TODO: Note that this also changes fact_value to base64 and has special
-%       cases for symtab and text
+%       cases for symtab, text, colors
 transform_kythe_fact(json{source:Source0, fact_name:FactName, fact_value:FactValue},
                      json{source:Source1, fact_name:FactName, fact_value:FactValueBase64}) :- !,
     % text is alread in base64 (from Meta.contents_base64)
     (   FactName == '/kythe/text'
+    ->  FactValueBase64 = FactValue
+    ;   FactName == '/pykythe/color_all'
     ->  FactValueBase64 = FactValue
     ;   base64_utf8(FactValue, FactValueBase64)
     ),
@@ -1197,10 +1198,6 @@ kind_precedence(anchor, -98).
 kind_precedence(variable, -80).
 kind_precedence(record, -50).
 kind_precedence(function, -49).
-
-%! write_color_facts(+ColorFacts, +ColorOutStream) is det.
-write_color_facts(ColorFacts, ColorOutStream) :-
-    maplist(pykythe_json_write_dict_nl(ColorOutStream), ColorFacts).
 
 %! write_kythe_facts(+KytheFacts, +KytheOutStream) is det.
 write_kythe_facts(KytheFacts,KytheOutStream) :-
