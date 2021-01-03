@@ -565,8 +565,12 @@ make-tables: # add-index-pykythe
 	$(RM) -r $(TESTOUTDIR)/graphstore $(TESTOUTDIR)/tables
 	mkdir -p $(TESTOUTDIR)/graphstore $(TESTOUTDIR)/tables
 	@# cat $(basename $(KYTHEOUTDIR)$(SUBSTDIR)$(abspath pykythe))/*.kythe.json
+	@# TODO: does /pykythe/symtab exist any more?
+	@# TODO: /pykythe/color_all - should be in a separate file
 	set -o pipefail; \
 	    cat $$(find $(KYTHEOUTDIR) -name '*.kythe.json') /dev/null | \
+	    grep -v /pykythe/color_all | \
+	    grep -v /pykythe/symtab | \
 	    time $(ENTRYSTREAM_EXE) --read_format=json | \
 	    time $(WRITE_ENTRIES_EXE) -graphstore $(TESTOUTDIR)/graphstore
 	time $(WRITE_TABLES_EXE) -graphstore=$(TESTOUTDIR)/graphstore -out=$(TESTOUTDIR)/tables
@@ -583,7 +587,7 @@ make-json: browser/kythe_json_to_prolog.pl FORCE
 	@# in following: - 99 files in typeshed, 43 in test_data, 10 in pykythe
 	@# The following creates $(KYTHE_FACTS_PL)
 	set -o pipefail; \
-	    find $(KYTHEOUTDIR) -name '*.kythe.json' | \
+	    find $(KYTHEOUTDIR) -name '*.kythe.json' -o -name '*.pykythe.color.json' | \
 	    time $(SWIPL_EXE) -g main -t halt \
 		browser/kythe_json_to_prolog.pl -- \
 		--filesdir=$(KYTHE_FACTS_DIR)

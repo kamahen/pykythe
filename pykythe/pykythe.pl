@@ -192,9 +192,8 @@
 % :- use_module(library(apply_macros).  % TODO: for performance (also maplist_kyfact_symrej etc)
 :- use_module(c3, [mro/2]).
 :- use_module(library(aggregate), [aggregate_all/3, foreach/2]).
-:- use_module(library(apply), [exclude/3, include/3, maplist/2, maplist/3, maplist/4, foldl/4, convlist/3]).
+:- use_module(library(apply), [exclude/3, include/3, maplist/2, maplist/3, maplist/4, foldl/4, convlist/3, partition/4]).
 :- use_module(library(assoc), [is_assoc/1, gen_assoc/3, max_assoc/3, min_assoc/3]).
-:- use_module(library(base64), [base64/2 as base64_ascii]).
 :- use_module(library(debug), [assertion/1, debug/3]).
 :- use_module(library(edcg)).   % requires: ?- pack_install(edcg).
 :- use_module(library(error), [must_be/2, domain_error/2]).
@@ -265,7 +264,6 @@
 
 % % Other imported predicates:
 % :- maplist(rdet, [aggregate_all/3,
-%                   base64_ascii/2,
 %                   directory_file_path/3,
 %                   foreach/2,
 %                   list_to_ord_set/2,
@@ -749,7 +747,9 @@ pykythe_opts(SrcPaths, Opts) :-
         [opt(kythejson_suffix), type(atom), default('.kythe.json'), longflags(['kythout_suffix']),
          help('Suffix (extension) for output files - should have leading ".".')],
         [opt(pykythesymtab_suffix), type(atom), default('.pykythe.symtab'), longflags(['pykythesymtab_suffix']),
-         help('Suffix (extension) for cache symtab files - should have leading ".".')]
+         help('Suffix (extension) for cache symtab files - should have leading ".".')],
+        [opt(pykythecolor_suffix), type(atom), default('.pykythe.color.json'), longflags(['pykythecolor_suffix']),
+         help('Suffix (extension) for color files - should have leading ".".')]
        ],
     opt_arguments(OptsSpec, OptsList, PositionalArgs),
     dict_create(Opts0, opts, OptsList),
@@ -967,9 +967,13 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
     list_to_set(KytheFactsCleaned, KytheFacts),
     log_if(true, 'Writing Kythe facts for ~q', [Meta.path]),
     path_with_suffix(Opts, SrcPath, Opts.kythejson_suffix, KytheJsonPath),
-    write_atomic_stream(write_kythe_facts(KytheFacts), KytheJsonPath),
     path_with_suffix(Opts, SrcPath, Opts.pykythesymtab_suffix, PykytheSymtabPath),
     path_with_suffix(Opts, SrcPath, Opts.pykythebatch_suffix, PykytheBatchPath),
+    path_with_suffix(Opts, SrcPath, Opts.pykythecolor_suffix, PykytheColorPath),
+    partition([Fact]>>get_dict(fact_name, Fact, '/pykythe/color_all'),
+              KytheFacts, ColorFacts, KytheFacts2),
+    write_atomic_stream(write_kythe_facts(KytheFacts2), KytheJsonPath),
+    write_atomic_stream(write_color_facts(ColorFacts), PykytheColorPath),
     write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheSymtabPath),
     (   PykytheSymtabPath = PykytheBatchPath
     ->  log_if(true, 'Not writing to kythebatch: ~w', KytheJsonPath)
@@ -979,7 +983,7 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
         % TODO: should re-process this file in case the race condition
         %       resulted in deleting the output file.
         catch(safe_hard_link_file_dup_ok(PykytheSymtabPath, PykytheBatchPath),
-              error(existence_error(file, _), _),  % context(_, 'No such file or directory')
+              error(existence_error(file, _), _), % context(_, 'No such file or directory')
               log_if(true, 'Failed to hard-link (file does not exist) ~q to ~q', [PykytheSymtabPath, PykytheBatchPath]))
     ),
     log_if(true, 'Converting to Kythe protobuf'),
@@ -990,12 +994,6 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
 
 %! transform_kythe_fact(+Fact0, -Fact1) is det.
 
-% TODO: This is a hack; the correct solution is to modify
-%       pykythe_utils:absolute_file_name_rel to give the path in the
-%       desired form, but there may be some subtle knock-on effects
-%       (e.g., some code that depends on the derived module FQN
-%       starting with ".", so that split_atom(Fqn, '.', '', [''|_])
-%       is assumed.
 % TODO: Note that this also changes fact_value to base64 and has special
 %       cases for symtab and text
 transform_kythe_fact(json{source:Source0, fact_name:FactName, fact_value:FactValue},
@@ -1006,6 +1004,12 @@ transform_kythe_fact(json{source:Source0, fact_name:FactName, fact_value:FactVal
     ;   base64_utf8(FactValue, FactValueBase64)
     ),
     transform_kythe_vname(Source0, Source1).
+% TODO: The following clause is a hack; the correct solution is to
+%       modify pykythe_utils:absolute_file_name_rel to give the path
+%       in the desired form, but there may be some subtle knock-on
+%       effects (e.g., some code that depends on the derived module
+%       FQN starting with ".", so that split_atom(Fqn, '.', '',
+%       [''|_]) is assumed.
 transform_kythe_fact(json{source:Source0, fact_name:'/', edge_kind:EdgeKind, target:Target0},
                      json{source:Source1, fact_name:'/', edge_kind:EdgeKind, target:Target1}) :- !,
     transform_kythe_vname(Source0, Source1),
@@ -1194,8 +1198,12 @@ kind_precedence(variable, -80).
 kind_precedence(record, -50).
 kind_precedence(function, -49).
 
+%! write_color_facts(+ColorFacts, +ColorOutStream) is det.
+write_color_facts(ColorFacts, ColorOutStream) :-
+    maplist(pykythe_json_write_dict_nl(ColorOutStream), ColorFacts).
+
 %! write_kythe_facts(+KytheFacts, +KytheOutStream) is det.
-write_kythe_facts(KytheFacts, KytheOutStream) :-
+write_kythe_facts(KytheFacts,KytheOutStream) :-
     % write(KytheOutStream, "%% === Kythe ==="), nl(KytheOutStream),
     maplist(transform_and_write_kythe_fact(KytheOutStream), KytheFacts).
 
