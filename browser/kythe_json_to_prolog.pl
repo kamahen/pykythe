@@ -12,6 +12,7 @@
 %  json:json_read_dict/3 takes 41%
 %  json:json_string_codes/3 takes 15% (most of it in utf8_codes/3).
 
+:- use_module(library(error), [must_be/2]).
 :- use_module(library(http/json), [atom_json_dict/3, json_read_dict/3]).
 :- use_module(library(base64), [base64/2]).
 :- use_module(library(pairs)).
@@ -93,7 +94,7 @@ get_and_assert_kythe_facts_2(KytheDicts) :-
     log_if(false, 'Kythe_fact_pred-done ~q', [File]),
     sort(Preds0, Preds), % remove dups, although there shouldn't be any
     % log_if(false, 'Sort preds-done ~q', [File]),
-    assertion(ground(Preds)),
+    must_be(ground, Preds),
     % log_if(false, 'Assert ground-done ~q', [File]),
     maplist(assert_pred, Preds),
     log_if(false, 'Assert_kythe_facts-done ~q', [File]).

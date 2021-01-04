@@ -37,6 +37,7 @@
        maybe_read_symtab_from_cache(+, +, +, +, -, 0, 0).
 
 :- use_module(library(apply), [convlist/3]).
+:- use_module(library(error), [must_be/2]).
 :- use_module(library(pairs), [pairs_values/2]).
 :- use_module(library(rbtrees), [is_rbtree/1, list_to_rbtree/2, ord_list_to_rbtree/2, rb_insert/4, rb_lookup/3, rb_visit/2]).
 :- use_module(must_once).
@@ -47,8 +48,7 @@ symtab_empty(Symtab) :-
 
 ord_list_to_symtab(Pairs, Symtab) :-
     ord_list_to_rbtree(Pairs, Symtab),
-    must_once(is_rbtree(Symtab)).  % Ensure no dup keys
-
+    must_once(is_rbtree(Symtab)).  % Ensures no dup keys
 list_to_symtab(Pairs, Symtab) :-
     list_to_rbtree(Pairs, Symtab),
     must_once(is_rbtree(Symtab)).  % Ensure no dup keys
@@ -145,7 +145,7 @@ read_symtab_from_cache_no_check(PykytheSymtabInputPath, Symtab) :-
         ),
         close(PykytheSymtabInputStream)
     ),
-    must_once(ground(SymtabKVs)),
+    must_be(ground, SymtabKVs),
     ord_list_to_rbtree(SymtabKVs, Symtab).
 
 %! write_symtab(+Symtab, +Version, +Sha1, +PykytheBatchOutStream) is det.

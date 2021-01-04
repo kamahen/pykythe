@@ -324,9 +324,9 @@ validate_kythe_facts :-
     statistics(process_cputime, T0),
     must_fail(orphan_semantic(_AnchorVname, _SemanticVname, _Edge)),
     forall(kythe_node(Vname, Name, Value),
-           must_once( ground(kythe_node(Vname, Name, Value)) )),
+           must_be(ground, kythe_node(Vname, Name, Value))),
     forall(kythe_edge(V1, Edge, V2),
-           must_once( ground(kythe_edge(V1, Edge, V2)) )),
+           must_be(ground, kythe_edge(V1, Edge, V2))),
     % TODO: This test needs to change - /pykythe/color/_ facts no longer exist,
     %       but are in /pykythe/color_all
     forall(( kythe_node(Vname, N, _),
@@ -461,7 +461,7 @@ reply_with_json(Request) :-
     % print_term_cleaned(Request, [], RequestPretty),
     % TODO: why doesn't thead_cputime give non-zero value?
     statistics(cputime, T0),
-    must_once(memberchk(method(post), Request)),
+    must_be([method(post)], Request),
     % Doesn't show the 302 (or 301) redirect:
     %    request_uri('/json'), path('/json'),
     %    origin('http://localhost:9999'), content_type('application/json')
@@ -579,8 +579,9 @@ link_to_dict(vname_flip(Corpus, Root, Path, Signature, Language),
                   corpus: Corpus, root: Root,
                   path: Path, language: Language}) :- !.
 link_to_dict(Json, Json) :-
-    must_once((is_dict(Json, Tag), (Tag == line; Tag == path))).
-
+    must_be(dict, Json),
+    is_dict(Json, Tag),
+    must_be(oneof([line,path]), Tag).
 
 % TODO: combine with pykythe_utils:pykythe_json_read_dict?
 http_handler_read_json_dict(Request, JsonIn) :-
@@ -876,7 +877,7 @@ keyed_color_chunk(Vname0, LineNo, Start-color{start:Start, end:End,
                                               lineno:LineNo, column:Column,
                                               signature:Signature,
                                               token_color:TokenColor, value:Value}) :-
-    must_once(ground(LineNo)),
+    must_be(integer, LineNo),
     % TODO: This can be simplified DO NOT SUBMIT
     must_once(Vname0 = vname0(Corpus,Root,Path,Language)),
     kythe_color_all(Corpus, Root, Path, Language, ColorAllTerm),

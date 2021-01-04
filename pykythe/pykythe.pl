@@ -1221,7 +1221,7 @@ write_to_protobuf(EntriesCmd, SrcPath, KytheJsonPath, KytheEntriesPath) :-
 % a a pipe. This needs more memory, is more complicated to manage, and
 % is a bit more difficult to debug.
 run_parse_cmd(Opts, SrcPath, SrcFqn, OutPath) :-
-    must_once_msg(ground(Opts), 'Invalid command line options'),
+    must_be(ground, Opts),
     % TODO: python_version should be triple: see fakesys.FAKE_SYS
     must_once_msg(memberchk(Opts.python_version, [3]), 'Invalid Python version: ~q', [Opts.python_version]),
     setup_call_cleanup(
@@ -1312,9 +1312,9 @@ read_nodes(FqnExprPath, Nodes, Meta, ColorTexts) :-
         close(FqnExprStream)
     ),
     % sanity check that capitalized strings were quoted:
-    must_once(ground(MetaJson)),
-    must_once(ground(NodesJson)),
-    must_once(ground(ColorTextsJson)),
+    must_be(ground, MetaJson),
+    must_be(ground, NodesJson),
+    must_be(ground, ColorTextsJson),
     simplify_meta(MetaJson, Meta),
     simplify_ast(NodesJson, Nodes),
     maplist(simplify_color, ColorTextsJson, ColorTexts).
