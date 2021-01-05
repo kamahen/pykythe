@@ -7,6 +7,11 @@
 %% facts are in kythe_facts.pl
 %% TODO: change how output is specified.
 
+%% TODO: Change processing -- currently, a list of facts is created,
+%%       then asserted, then the asserted facts are output. This cause
+%%       code duplication ... better to just generate a list of facts
+%%       to be output.
+
 % TODO: performance
 %  pykythe_utils:base64_utf8/2 (and b64_to_utf8_to_atom/2) take 57% of the CPU.
 %  json:json_read_dict/3 takes 41%
@@ -32,7 +37,7 @@
 :- use_module('../pykythe/pykythe_utils.pl', [base64_utf8/2, log_if/2, log_if/3, validate_prolog_version/0]).
 :- use_module('../pykythe/must_once.pl').
 
-:- dynamic kythe_node/7, kythe_edge/11.
+:- dynamic kythe_node/7, kythe_edge/11, kythe_color_line/6.
 
 main :-
     main(user_input).
@@ -73,6 +78,9 @@ write_kythe_facts(KytheFactsOutStream) :-
            format(KytheFactsOutStream, '~q.~n',
                   [kythe_edge(Signature1,Corpus1,Root1,Path1,Language1, EdgeName,
                               Signature2,Corpus2,Root2,Path2,Language2)])),
+    forall(kythe_color_line(Corpus,Root,Path,Language,LineNo,LineChunks),
+           format(KytheFactsOutStream, '~q.~n',
+                  [kythe_color_line(Corpus,Root,Path,Language,LineNo,LineChunks)])),
     log_if(false, 'Write_kythe_facts: kythe_edge-done').
 
 get_and_assert_kythe_facts(File) :-
@@ -124,11 +132,7 @@ kythe_fact_pred_(json{source:Source0, fact_name:FactName, fact_value:FactValueB6
     !,
     { vname_fix(Source0, Source) },
     (  { FactName == '/pykythe/color_all' }
-    -> { atom_json_dict(FactValueB64, % Not b64-encoded for performance
-                        FactValue,
-                        [width(0),true(#(true)),false(#(false)),null(#(null)),
-                         value_string_as(atom), default_tag(color), end_of_file(@(end))]) },
-       [ kythe_node(Source, FactName, FactValue) ]
+    -> kythe_fact_pred_color(Source, FactValueB64) % Not b64-encoded for performance
     ;  (  { base64_utf8(FactValue, FactValueB64) }
        -> [ ]
        ;  % if base64_utf8/2 fails, assume it's invalid UTF-8 encoding
@@ -147,8 +151,8 @@ kythe_fact_pred_(json{source:Source0, fact_name:FactName, fact_value:FactValueB6
 kythe_fact_pred_(json{source:Source0, fact_name:'/', edge_kind:EdgeKind, target:Target0}, _File) -->
     !,
     { vname_fix(Source0, Source) },
-    { vname_fix(Target0, Target1) },
-    [ kythe_edge(Source, EdgeKind, Target1) ].
+    { vname_fix(Target0, Target) },
+    [ kythe_edge(Source, EdgeKind, Target) ].
 kythe_fact_pred_(Fact, File) -->
     [ Fact ],
     { domain_error(json, File:Fact) }.
@@ -158,6 +162,34 @@ numeric_fact('/kythe/loc/end').
 numeric_fact('/kythe/snippet/start').
 numeric_fact('/kythe/snippet/end').
 % TODO: other numeric facts?
+
+kythe_fact_pred_color(Source, FactStr) -->
+    { atom_json_dict(FactStr,
+                     FactValue,
+                     [width(0),true(#(true)),false(#(false)),null(#(null)),
+                      value_string_as(atom), default_tag(color), end_of_file(@(end))]) },
+    % The following double-bagof groups chunks by line#:
+    % TODO: is this the same as maplist(lineno_chunk), sort, group_pairs_by_key?
+    { bagof_or_empty(LineNo-LineChunks,
+            bagof(LineChunk, lineno_chunk(LineNo, LineChunk, FactValue), LineChunks),
+            Lines) },
+    kythe_color_lines(Lines, Source).
+
+:- meta_predicate bagof_or_empty(?, ^, ?).
+bagof_or_empty(Template, Goal, Bag) :-
+    (   bagof(Template, Goal, Bag)
+    *-> true
+    ;   Bag = []
+    ).
+
+lineno_chunk(LineNo, LineChunk, Chunks) :-
+    member(LineChunk, Chunks),
+    get_dict(lineno, LineChunk, LineNo).
+
+kythe_color_lines([], _Source) --> [ ].
+kythe_color_lines([LineNo-Line|Lines], Source) -->
+    [ kythe_color_line(Source, LineNo, Line) ],
+    kythe_color_lines(Lines, Source).
 
 %! vname_fix(+Json:json, -Vname:vname) is det.
 % vname is same as verifier:
@@ -183,6 +215,9 @@ assert_pred(kythe_edge(vname(Signature1,Corpus1,Root1,Path1,Language1), EdgeName
     !,
     assertz(kythe_edge(Signature1,Corpus1,Root1,Path1,Language1, EdgeName,
                        Signature2,Corpus2,Root2,Path2,Language2)).
+assert_pred(kythe_color_line(vname('',Corpus,Root,Path,Language), LineNo, Line)) :-
+    !,
+    assertz(kythe_color_line(Corpus,Root,Path,Language, LineNo, Line)).
 assert_pred(Pred) :-
     domain_error(kythe_node_or_edge, Pred).
 
