@@ -467,7 +467,7 @@ reply_with_json(Request) :-
     % print_term_cleaned(Request, [], RequestPretty),
     % TODO: why doesn't thead_cputime give non-zero value?
     statistics(cputime, T0),
-    must_be([method(post)], Request),
+    must_once(memberchk(method(post), Request)),
     % Doesn't show the 302 (or 301) redirect:
     %    request_uri('/json'), path('/json'),
     %    origin('http://localhost:9999'), content_type('application/json')
