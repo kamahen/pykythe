@@ -583,7 +583,7 @@ make-json: browser/kythe_json_to_prolog.pl FORCE
 	@# in following: - 99 files in typeshed, 43 in test_data, 10 in pykythe
 	@# The following creates $(KYTHE_FACTS_PL)
 	set -o pipefail; \
-	    find $(KYTHEOUTDIR) -name '*.kythe.json' | \
+	    find $(KYTHEOUTDIR) -name '*.kythe.json' -o -name '*.pykythe.color.json' | \
 	    time $(SWIPL_EXE) -g main -t halt \
 		browser/kythe_json_to_prolog.pl -- \
 		--filesdir=$(KYTHE_FACTS_DIR)

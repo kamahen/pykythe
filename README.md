@@ -468,9 +468,8 @@ UTF8 everywhere).
 
   * 8859-1 (Latin1) may cause bogus error messages.
 
-* Performance: don't put symtab into JSON (`/pykythe/symtab`), but
-  instead write directly to a separate file (search for comments in
-  `pykythe.pl` about using `fast_read/2` etc).
+* Performance: symtab, color data: search for comments in `pykythe.pl`
+  about using `fast_read/2` etc.
 
 * Only tested with Python 3 source (probably works with Python 2, with
   a bit of fiddling for things like `print` statements and (when

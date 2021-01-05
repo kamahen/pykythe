@@ -393,7 +393,7 @@ write_atomic_stream(WritePred, Path) :-
 %! write_atomic_file(+WritePred, +Path) is semidet.
 % Similar to write_atomic_stream, except it passes a path to Pred
 % instead of a stream.
-% WritePred must take the stream as its last argument.
+% WritePred must take the path as its last argument.
 write_atomic_file(WritePred, Path) :-
     directory_file_path(PathDir, _, Path),
     pykythe_tmp_file_stream(PathDir, TmpPath, Stream, [encoding(utf8)]), % implies open [type(binary)]

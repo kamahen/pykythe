@@ -192,9 +192,8 @@
 % :- use_module(library(apply_macros).  % TODO: for performance (also maplist_kyfact_symrej etc)
 :- use_module(c3, [mro/2]).
 :- use_module(library(aggregate), [aggregate_all/3, foreach/2]).
-:- use_module(library(apply), [exclude/3, include/3, maplist/2, maplist/3, maplist/4, foldl/4, convlist/3]).
+:- use_module(library(apply), [exclude/3, include/3, maplist/2, maplist/3, maplist/4, foldl/4, convlist/3, partition/4]).
 :- use_module(library(assoc), [is_assoc/1, gen_assoc/3, max_assoc/3, min_assoc/3]).
-:- use_module(library(base64), [base64/2 as base64_ascii]).
 :- use_module(library(debug), [assertion/1, debug/3]).
 :- use_module(library(edcg)).   % requires: ?- pack_install(edcg).
 :- use_module(library(error), [must_be/2, domain_error/2]).
@@ -265,7 +264,6 @@
 
 % % Other imported predicates:
 % :- maplist(rdet, [aggregate_all/3,
-%                   base64_ascii/2,
 %                   directory_file_path/3,
 %                   foreach/2,
 %                   list_to_ord_set/2,
@@ -287,7 +285,7 @@
                   assign_exprs_count/7,
                   assign_exprs_count_impl/6,
                   assign_normalized/7,
-                  % builtins_symtab_extend/3, % TODO: failed to analyse
+                  builtins_symtab_extend/3,
                   clean_class/3,
                   clean_kind/2,
                   clean_kythe_facts/2,
@@ -297,7 +295,7 @@
                   eval_assign_dot_op_binds_single/9,
                   eval_assign_dot_op_binds_unknown/9,
                   eval_assign_expr/6,
-                  % eval_assign_expr_imports/5, % TODO: failed to analyse
+                  eval_assign_expr_imports/5,
                   eval_assign_import/6,
                   eval_assign_single/8,
                   eval_assign_subscr_op_binds_single/7,
@@ -306,8 +304,8 @@
                   eval_atom_subscr_binds_single/7,
                   eval_atom_subscr_single/7,
                   eval_dot_op_unknown/8,
-                  % eval_lookup/7, % TODO: failed to analyse
-                  % eval_lookup_single/7, % TODO: failed to analyse
+                  eval_lookup/7,
+                  eval_lookup_single/7,
                   eval_single_type/7,
                   eval_single_type_error_msg/7,
                   eval_single_type_import/9,
@@ -316,7 +314,7 @@
                   extend_symtab_with_builtins/3,
                   foldl_process_module_cached_or_from_src/5,
                   if_stmt_elses/2,
-                  % kyImportDotNode/3, % TODO: failed to analyse
+                  kyImportDotNode/3,
                   kyImportDottedAsNamesFqn/7,
                   kyImportDottedAsNamesFqn_top/8,
                   kyImportDottedAsNamesFqn_as/9,
@@ -393,7 +391,7 @@
                   simplify_ast_slot_pair/2,
                   simplify_meta/2,
                   single_type_fqn/2,
-                  % subscr_resolve_dot_binds/7, % TODO: failed to analyse
+                  subscr_resolve_dot_binds/7,
                   symrej_accum/3,
                   symrej_accum_found/7,
                   symtab_pykythe_types/4,
@@ -402,10 +400,10 @@
                   transform_kythe_path/2,
                   wrap_import_ref/4,
                   % symtab_lookup/4,
-                  symtab_scope_pairs/4
-                  % write_symtab/3, % Is det, but expansion confuses write_atomic_stream/2.
-                  % write_to_protobuf/4,  % Is det, but expansion confuses write_atomic_file/2.
-                  % write_kythe_facts/3  % TODO: failed to analyse
+                  symtab_scope_pairs/4,
+                  write_symtab/3,
+                  write_to_protobuf/4,
+                  write_kythe_facts/3
                  ]).
 :- endif.
 
@@ -749,7 +747,9 @@ pykythe_opts(SrcPaths, Opts) :-
         [opt(kythejson_suffix), type(atom), default('.kythe.json'), longflags(['kythout_suffix']),
          help('Suffix (extension) for output files - should have leading ".".')],
         [opt(pykythesymtab_suffix), type(atom), default('.pykythe.symtab'), longflags(['pykythesymtab_suffix']),
-         help('Suffix (extension) for cache symtab files - should have leading ".".')]
+         help('Suffix (extension) for cache symtab files - should have leading ".".')],
+        [opt(pykythecolor_suffix), type(atom), default('.pykythe.color.json'), longflags(['pykythecolor_suffix']),
+         help('Suffix (extension) for color files - should have leading ".".')]
        ],
     opt_arguments(OptsSpec, OptsList, PositionalArgs),
     dict_create(Opts0, opts, OptsList),
@@ -967,9 +967,13 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
     list_to_set(KytheFactsCleaned, KytheFacts),
     log_if(true, 'Writing Kythe facts for ~q', [Meta.path]),
     path_with_suffix(Opts, SrcPath, Opts.kythejson_suffix, KytheJsonPath),
-    write_atomic_stream(write_kythe_facts(KytheFacts), KytheJsonPath),
     path_with_suffix(Opts, SrcPath, Opts.pykythesymtab_suffix, PykytheSymtabPath),
     path_with_suffix(Opts, SrcPath, Opts.pykythebatch_suffix, PykytheBatchPath),
+    path_with_suffix(Opts, SrcPath, Opts.pykythecolor_suffix, PykytheColorPath),
+    partition([Fact]>>get_dict(fact_name, Fact, '/pykythe/color_all'),
+              KytheFacts, ColorFacts, KytheFacts2),
+    write_atomic_stream(write_kythe_facts(KytheFacts2), KytheJsonPath),
+    write_atomic_stream(write_kythe_facts(ColorFacts), PykytheColorPath),
     write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheSymtabPath),
     (   PykytheSymtabPath = PykytheBatchPath
     ->  log_if(true, 'Not writing to kythebatch: ~w', KytheJsonPath)
@@ -979,7 +983,7 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
         % TODO: should re-process this file in case the race condition
         %       resulted in deleting the output file.
         catch(safe_hard_link_file_dup_ok(PykytheSymtabPath, PykytheBatchPath),
-              error(existence_error(file, _), _),  % context(_, 'No such file or directory')
+              error(existence_error(file, _), _), % context(_, 'No such file or directory')
               log_if(true, 'Failed to hard-link (file does not exist) ~q to ~q', [PykytheSymtabPath, PykytheBatchPath]))
     ),
     log_if(true, 'Converting to Kythe protobuf'),
@@ -989,23 +993,24 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
     !.                          % "cut" for memory usage
 
 %! transform_kythe_fact(+Fact0, -Fact1) is det.
-
-% TODO: This is a hack; the correct solution is to modify
-%       pykythe_utils:absolute_file_name_rel to give the path in the
-%       desired form, but there may be some subtle knock-on effects
-%       (e.g., some code that depends on the derived module FQN
-%       starting with ".", so that split_atom(Fqn, '.', '', [''|_])
-%       is assumed.
 % TODO: Note that this also changes fact_value to base64 and has special
-%       cases for symtab and text
+%       cases for symtab, text, colors
 transform_kythe_fact(json{source:Source0, fact_name:FactName, fact_value:FactValue},
                      json{source:Source1, fact_name:FactName, fact_value:FactValueBase64}) :- !,
     % text is alread in base64 (from Meta.contents_base64)
     (   FactName == '/kythe/text'
     ->  FactValueBase64 = FactValue
+    ;   FactName == '/pykythe/color_all'
+    ->  FactValueBase64 = FactValue
     ;   base64_utf8(FactValue, FactValueBase64)
     ),
     transform_kythe_vname(Source0, Source1).
+% TODO: The following clause is a hack; the correct solution is to
+%       modify pykythe_utils:absolute_file_name_rel to give the path
+%       in the desired form, but there may be some subtle knock-on
+%       effects (e.g., some code that depends on the derived module
+%       FQN starting with ".", so that split_atom(Fqn, '.', '',
+%       [''|_]) is assumed.
 transform_kythe_fact(json{source:Source0, fact_name:'/', edge_kind:EdgeKind, target:Target0},
                      json{source:Source1, fact_name:'/', edge_kind:EdgeKind, target:Target1}) :- !,
     transform_kythe_vname(Source0, Source1),
@@ -1195,7 +1200,7 @@ kind_precedence(record, -50).
 kind_precedence(function, -49).
 
 %! write_kythe_facts(+KytheFacts, +KytheOutStream) is det.
-write_kythe_facts(KytheFacts, KytheOutStream) :-
+write_kythe_facts(KytheFacts,KytheOutStream) :-
     % write(KytheOutStream, "%% === Kythe ==="), nl(KytheOutStream),
     maplist(transform_and_write_kythe_fact(KytheOutStream), KytheFacts).
 
