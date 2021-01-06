@@ -128,8 +128,7 @@ async function renderPage() {
                 lineno)));
 }
 
-// Callback from fetchFromServer({src_file_tree: ''}),
-// for displaying the file navigation tree
+// Callback from server fetch of the file navigation tree
 function setFileTree(file_tree_from_server, source_item) {
     g_file_tree = file_tree_from_server;
     displayFileTree(source_item);
