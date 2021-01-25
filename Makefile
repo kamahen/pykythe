@@ -437,6 +437,7 @@ test_python_lib: # Also does some other source files I have lying around
 	@# Note: ./typeshed not here because it's in mypy and pytype
 	@# TODO: paralall -L80 means it processes in clumps of 80 --
 	@#       parameterize this on NPROC?
+	@#       Also: use --jobs=200% rather than NPROC?
 	set -o pipefail; \
 	find /usr/lib/python3.7 ../mypy ../pytype ../yapf ../importlab ../kythe . \
 	  -name '*.py' -o -name '*.pyi' | sort | \

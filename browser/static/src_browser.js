@@ -265,7 +265,7 @@ function displaySrcContents(source_item, color_data) {
         var row = table.insertRow();
         var td1 = row.insertCell();
         td1.setAttribute('class', 'src_lineno');
-        td1.id = lineno_id(line_key);
+        td1.id = lineno_id(line_key + 1);  // TODO: Fix the 0-origin line_key (the source display is 1-origin)
         var td2 = row.insertCell();
         td2.setAttribute('class', 'src_line');
         var txt_span = document.createElement('span');
@@ -283,8 +283,14 @@ function displaySrcContents(source_item, color_data) {
         if (line_elem) {
             // TODO: ensure behavior is same as hash ('#' + lineno_id(source_item.lineno))
             // Choices are: 'start', 'center', 'end', 'nearest'
-            line_elem.scrollIntoView({block: 'start'});
+            line_elem.scrollIntoView({block: 'center', inline: 'start'});
+            // TODO: highlight the source text as well as the line #
+            line_elem.setAttribute('class', 'src_lineno_hilite');
+        } else {
+            console.log('NO LINE:', lineno_id(source_item.lineno), source_item);
         }
+    } else {
+        console.log('NO LINENO', source_item);
     }
     file_nav_element().lastChild.remove(); // Remove status message
 }
@@ -412,14 +418,19 @@ function setXref(source_item, signature, data) {
                               ')'));
         for (const path_link of edge_links.links) {
             row_cell = tableInsertRowCell(table);
-            // DO NOT SUBMIT - use a CSS class for '<i><b>':
+            // DO NOT SUBMIT - use a CSS class for '<b><i>':
             cellHTML(row_cell,
-                     '<i><b>' + sanitizeText(path_link.path) + '</b></i>');
+                     '<b><i>' + sanitizeText(path_link.path) + '</i></b>');
             for (const link_line of path_link.lines) {
                 row_cell = tableInsertRowCell(table);
                 const lineno_span = row_cell.appendChild(document.createElement('a'));
                 const xref_title = sanitizeText('xref-title'); // DO NOT SUBMIT - addd semantic signature
                 lineno_span.title = xref_title;
+                // TODO - DO NOT SUBMIT
+                //   The following href doesn't do what you expect when it refers to
+                //   the source file that's currently being displayed. Need to check
+                //   for same file and then invoke the scrollIntoView logic that's
+                //   in displaySrceContents.
                 const href = location.origin + location.pathname +
                       '?corpus=' + link_line.corpus +
                       '&root=' + link_line.corpus +
@@ -428,7 +439,7 @@ function setXref(source_item, signature, data) {
                 lineno_span.href = href;
                 lineno_span.innerHTML = '<b><i>' + link_line.lineno + ':&nbsp;</i></b>';  // DO NOT SUBMIT - CSS class, rowspan
                 var txt_span = row_cell.appendChild(document.createElement('a'));
-                txt_span.title = xref_title;
+                txt_span.title = 'xref-title-src'); // DO NOT SUBMIT - addd semantic signature
                 txt_span.href = href;
                 srcLineTextSimple(txt_span, link_line.line, data.semantic);
             }

@@ -51,7 +51,7 @@
 %                          openssl req -new -x509 -key privkey.pem -out cacert.pem -days 1095
 %                          ? openssl req -new -key privkey.pem -out cert.csr
 %                      https://www.openssl.org/docs/manmaster/man1/CA.pl.html
-%       ==> See ~/src/swipl-devel/packages/ssl/mkcerts.pl.in
+%       ==> See swipl-devel/packages/ssl/mkcerts.pl.in
 %           - look for server-key.pem etc.
 %             https://swi-prolog.discourse.group/t/debugging-failing-ssl-test/2073
 % :- use_module(library(http/http_unix_daemon)).
