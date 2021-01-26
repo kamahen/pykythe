@@ -388,7 +388,16 @@ function setXref(source_item, signature, data) {
     // expected out-edges for anchor: defines, defines/binding, ref, ref/call
 
     document.getElementById('xref').innerHTML = 'Getting Kythe links for ' + source_item.combinedFilePath() + ' anchor:' + signature + ' ...';
+
     var table = document.createElement('table');
+    setXrefItemHeader(table, signature, data);
+    setXrefNodeValues(table, data);
+    setXrefEdgeLinks(table, data);
+    setXrefBottom(table);
+}
+
+// In the xref area, display the item signature as a header
+function setXrefItemHeader(table, signature, data) {
     table.setAttribute('class', 'src_table');  // DO NOT SUBMIT - should we have a new CSS class for this?
     var row_cell = tableInsertRowCell(table);
     // TODO: remove <i> using row_cell.settAttribute('class', some-other-class)
@@ -398,6 +407,10 @@ function setXref(source_item, signature, data) {
         row_cell.appendChild(document.createElement('span')).innerHTML = data.semantics.map(
             s => '<i>' + sanitizeText(s.signature) + '</i>').join('<br/>');
     }
+}
+
+// In the xref area, display the node values
+function setXrefNodeValues(table, data) {
     for (const nv of data.semantic_node_values) {
         // TODO: use class attributes:
         tableInsertRowCellHTML(table, '&nbsp;&nbsp;<b>' +
@@ -405,47 +418,65 @@ function setXref(source_item, signature, data) {
                                '</b>:&nbsp;' +
                                sanitizeText(nv.value));
     }
+}
+
+function setXrefEdgeLinks(table, data) {
     for (const edge_links of data.edge_links) {
-        row_cell = tableInsertRowCell(table);
-        row_cell.setAttribute('class', 'xref_head');
-        cellHTML(row_cell,
-                 sanitizeText(edge_links.edge + ' (' +
-                              singular_plural(edge_links.links.length, 'file', 'files') +
-                              ', ' +
-                              singular_plural(
-                                  edge_links.links.map(link => link.lines.length)
-                                      .reduce((x,y)=>x+y,0), 'line', 'lines') +
-                              ')'));
+        setXrefEdgeLinkHead(table, edge_links);
         for (const path_link of edge_links.links) {
-            row_cell = tableInsertRowCell(table);
-            // DO NOT SUBMIT - use a CSS class for '<b><i>':
-            cellHTML(row_cell,
-                     '<b><i>' + sanitizeText(path_link.path) + '</i></b>');
-            for (const link_line of path_link.lines) {
-                row_cell = tableInsertRowCell(table);
-                const lineno_span = row_cell.appendChild(document.createElement('a'));
-                const xref_title = sanitizeText('xref-title'); // DO NOT SUBMIT - addd semantic signature
-                lineno_span.title = xref_title;
-                // TODO - DO NOT SUBMIT
-                //   The following href doesn't do what you expect when it refers to
-                //   the source file that's currently being displayed. Need to check
-                //   for same file and then invoke the scrollIntoView logic that's
-                //   in displaySrceContents.
-                const href = location.origin + location.pathname +
-                      '?corpus=' + link_line.corpus +
-                      '&root=' + link_line.corpus +
-                      '&path=' + link_line.path +
-                      '#' + lineno_id(link_line.lineno);
-                lineno_span.href = href;
-                lineno_span.innerHTML = '<b><i>' + link_line.lineno + ':&nbsp;</i></b>';  // DO NOT SUBMIT - CSS class, rowspan
-                var txt_span = row_cell.appendChild(document.createElement('a'));
-                txt_span.title = 'xref-title-src'; // DO NOT SUBMIT - addd semantic signature
-                txt_span.href = href;
-                srcLineTextSimple(txt_span, link_line.line, data.semantic);
-            }
+            setXrefEdgeLinkItem(table, path_link, data);
         }
     }
-    row_cell = tableInsertRowCell(table);
+}
+
+function setXrefEdgeLinkHead(table, edge_links) {
+    var row_cell = tableInsertRowCell(table);
+    row_cell.setAttribute('class', 'xref_head');
+    cellHTML(
+        row_cell,
+        sanitizeText(
+            edge_links.edge + ' (' +
+                singular_plural(edge_links.links.length, 'file', 'files') +
+                ', ' +
+                singular_plural(
+                    sumList(edge_links.links.map(link => link.lines.length)),
+                    'line', 'lines') +
+                ')'));
+}
+
+function setXrefEdgeLinkItem(table, path_link, data) {
+    {
+        var row_cell = tableInsertRowCell(table);
+        // DO NOT SUBMIT - use a CSS class for '<b><i>':
+        cellHTML(row_cell,
+                 '<b><i>' + sanitizeText(path_link.path) + '</i></b>');
+    }
+    for (const link_line of path_link.lines) {
+        var row_cell = tableInsertRowCell(table);
+        const lineno_span = row_cell.appendChild(document.createElement('a'));
+        const xref_title = sanitizeText('xref-title'); // DO NOT SUBMIT - addd semantic signature
+        lineno_span.title = xref_title;
+        // TODO - DO NOT SUBMIT
+        //   The following href doesn't do what you expect when it refers to
+        //   the source file that's currently being displayed. Need to check
+        //   for same file and then invoke the scrollIntoView logic that's
+        //   in displaySrceContents.
+        const href = location.origin + location.pathname +
+              '?corpus=' + link_line.corpus +
+              '&root=' + link_line.corpus +
+              '&path=' + link_line.path +
+              '#' + lineno_id(link_line.lineno);
+        lineno_span.href = href;
+        lineno_span.innerHTML = '<b><i>' + link_line.lineno + ':&nbsp;</i></b>';  // DO NOT SUBMIT - CSS class, rowspan
+        var txt_span = row_cell.appendChild(document.createElement('a'));
+        txt_span.title = 'xref-title-src'; // DO NOT SUBMIT - addd semantic signature
+        txt_span.href = href;
+        srcLineTextSimple(txt_span, link_line.line, data.semantic);
+    }
+}
+
+function setXrefBottom(table) {
+    var row_cell = tableInsertRowCell(table);
     cellHTML(row_cell, '&nbsp;');  // ensure some space at the bottom
     replaceChildWith('xref', table);
 }
@@ -510,6 +541,11 @@ async function fetchFromServer(request, callback) {
 function jq(id) {
     // TODO: unused?
     return '.' + id.replace( /(:|\.|\[|\]|,|=|@|<|>)/g, '\\$1' );
+}
+
+// Sum the items in a list (array)
+function sumList(items) {
+    return items.reduce((accum, value) => accum + value, 0);
 }
 
 // Clear an element and replace with a single child
