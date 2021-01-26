@@ -439,7 +439,7 @@ function setXref(source_item, signature, data) {
                 lineno_span.href = href;
                 lineno_span.innerHTML = '<b><i>' + link_line.lineno + ':&nbsp;</i></b>';  // DO NOT SUBMIT - CSS class, rowspan
                 var txt_span = row_cell.appendChild(document.createElement('a'));
-                txt_span.title = 'xref-title-src'); // DO NOT SUBMIT - addd semantic signature
+                txt_span.title = 'xref-title-src'; // DO NOT SUBMIT - addd semantic signature
                 txt_span.href = href;
                 srcLineTextSimple(txt_span, link_line.line, data.semantic);
             }
