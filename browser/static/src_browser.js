@@ -117,6 +117,8 @@ async function renderPage() {
     // https://developers.google.com/web/updates/2016/01/urlsearchparams
     const params = new URLSearchParams(location.search);
     const lineno = location.hash ? id_lineno(location.hash) : 1;
+    // TODO: put the full path into the URL area (doesn't always seem to get there, when
+    //       click from the drop-down file menu)
     await fetchFromServer(
         {src_file_tree: ''},
         file_tree_from_server => setFileTree(
@@ -281,6 +283,7 @@ function displaySrcContents(source_item, color_data) {
     if (source_item.lineno) {
         const line_elem = document.getElementById(lineno_id(source_item.lineno));
         if (line_elem) {
+            // TODO: remove any other src_lineo_hilite attributes
             // TODO: ensure behavior is same as hash ('#' + lineno_id(source_item.lineno))
             // Choices are: 'start', 'center', 'end', 'nearest'
             line_elem.scrollIntoView({block: 'center', inline: 'start'});
@@ -373,7 +376,7 @@ function mouseoverAnchor(target, class_action, class_id) {
 
 // Callback for a click on a token (anchor) in the source display
 async function clickAnchor(target, source_item) {
-    console.log('CLICK ' + target.id + ' in ' + source_item.combinedFilePath());
+    // console.log('CLICK ' + target.id + ' in ' + source_item.combinedFilePath());
     await fetchFromServer(
         {anchor_xref: {signature: target.id,
                        corpus: source_item.corpus,
@@ -392,7 +395,7 @@ function setXref(source_item, signature, data) {
     var table = document.createElement('table');
     setXrefItemHeader(table, signature, data);
     setXrefNodeValues(table, data);
-    setXrefEdgeLinks(table, data);
+    setXrefEdgeLinks(table, data, source_item);
     setXrefBottom(table);
 }
 
@@ -420,11 +423,11 @@ function setXrefNodeValues(table, data) {
     }
 }
 
-function setXrefEdgeLinks(table, data) {
+function setXrefEdgeLinks(table, data, source_item) {
     for (const edge_links of data.edge_links) {
         setXrefEdgeLinkHead(table, edge_links);
         for (const path_link of edge_links.links) {
-            setXrefEdgeLinkItem(table, path_link, data);
+            setXrefEdgeLinkItem(table, path_link, data, source_item);
         }
     }
 }
@@ -444,7 +447,7 @@ function setXrefEdgeLinkHead(table, edge_links) {
                 ')'));
 }
 
-function setXrefEdgeLinkItem(table, path_link, data) {
+function setXrefEdgeLinkItem(table, path_link, data, source_item) {
     {
         var row_cell = tableInsertRowCell(table);
         // DO NOT SUBMIT - use a CSS class for '<b><i>':
@@ -463,7 +466,7 @@ function setXrefEdgeLinkItem(table, path_link, data) {
         //   in displaySrceContents.
         const href = location.origin + location.pathname +
               '?corpus=' + link_line.corpus +
-              '&root=' + link_line.corpus +
+              '&root=' + link_line.roo +
               '&path=' + link_line.path +
               '#' + lineno_id(link_line.lineno);
         lineno_span.href = href;
@@ -471,6 +474,22 @@ function setXrefEdgeLinkItem(table, path_link, data) {
         var txt_span = row_cell.appendChild(document.createElement('a'));
         txt_span.title = 'xref-title-src'; // DO NOT SUBMIT - addd semantic signature
         txt_span.href = href;
+        // For the case of same file, the href-fetch doesn't cause the
+        // lineno-handling stuff to be executed, so let's do it
+        // ourselves:
+        if (link_line.corpus == source_item.corpus &&
+            link_line.root == source_item.root &&
+            link_line.path == source_item.path) {
+            txt_span.onclick = async function (e) {
+                // TODO: combine this with the code in displaySrcContents
+                const line_elem = document.getElementById(lineno_id(link_line.lineno));
+                if (line_elem) {
+                    line_elem.scrollIntoView({block: 'center', inline: 'start'});
+                    // TODO: highlight the source text as well as the line #
+                    line_elem.setAttribute('class', 'src_lineno_hilite');
+                }
+            }
+        }
         srcLineTextSimple(txt_span, link_line.line, data.semantic);
     }
 }
