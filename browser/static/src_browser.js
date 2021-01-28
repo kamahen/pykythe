@@ -117,8 +117,6 @@ async function renderPage() {
     // https://developers.google.com/web/updates/2016/01/urlsearchparams
     const params = new URLSearchParams(location.search);
     const lineno = location.hash ? id_lineno(location.hash) : 1;
-    // TODO: put the full path into the URL area (doesn't always seem to get there, when
-    //       click from the drop-down file menu)
     await fetchFromServer(
         {src_file_tree: ''},
         file_tree_from_server => setFileTree(
@@ -234,6 +232,13 @@ function addDropdownOption(dropdown, text, type, id) {
 // Callback from file tree navigation click, to load a file into the
 // file_nav_element() via displaySrcContents.
 async function displayNewSrcFile(source_item) {
+    // TODO: is there a better choice for the 1st arg to replaceState?
+    history.replaceState({}, 'Pykythe Browser',
+                         location.origin + location.pathname +
+                         '?corpus=' + encodeURIComponent(source_item.corpus) +
+                         '&root=' + encodeURIComponent(source_item.root) +
+                         '&path=' + encodeURIComponent(source_item.path) +
+                         '#L' + encodeURIComponent(source_item.lineno));
     var progress = document.createElement('span');
     progress.innerHTML = '&nbsp;&nbsp;&nbsp;Fetching file ' +
         sanitizeText(source_item.combinedFilePath()) + ' ...';
@@ -451,10 +456,10 @@ function setXrefEdgeLinkItem(table, path_link, data, source_item) {
         //   for same file and then invoke the scrollIntoView logic that's
         //   in displaySrceContents.
         const href = location.origin + location.pathname +
-              '?corpus=' + link_line.corpus +
-              '&root=' + link_line.roo +
-              '&path=' + link_line.path +
-              '#' + lineno_id(link_line.lineno);
+              '?corpus=' + encodeURIComponent(link_line.corpus) +
+              '&root=' + encodeURIComponent(link_line.root) +
+              '&path=' + encodeURIComponent(link_line.path) +
+              '#' + encodeURIComponent(lineno_id(link_line.lineno));
         lineno_span.href = href;
         lineno_span.innerHTML = '<b><i>' + link_line.lineno + ':&nbsp;</i></b>';  // DO NOT SUBMIT - CSS class, rowspan
         var txt_span = row_cell.appendChild(document.createElement('a'));
