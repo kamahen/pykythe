@@ -280,21 +280,7 @@ function displaySrcContents(source_item, color_data) {
         td2.appendChild(txt_span);
     }
     replaceChildWith('src', table);
-    if (source_item.lineno) {
-        const line_elem = document.getElementById(lineno_id(source_item.lineno));
-        if (line_elem) {
-            // TODO: remove any other src_lineo_hilite attributes
-            // TODO: ensure behavior is same as hash ('#' + lineno_id(source_item.lineno))
-            // Choices are: 'start', 'center', 'end', 'nearest'
-            line_elem.scrollIntoView({block: 'center', inline: 'start'});
-            // TODO: highlight the source text as well as the line #
-            line_elem.setAttribute('class', 'src_lineno_hilite');
-        } else {
-            console.log('NO LINE:', lineno_id(source_item.lineno), source_item);
-        }
-    } else {
-        console.log('NO LINENO', source_item);
-    }
+    scrollIntoViewAndMark(source_item.lineno, source_item);
     file_nav_element().lastChild.remove(); // Remove status message
 }
 
@@ -481,15 +467,8 @@ function setXrefEdgeLinkItem(table, path_link, data, source_item) {
             link_line.root == source_item.root &&
             link_line.path == source_item.path) {
             txt_span.onclick = async function (e) {
-                // TODO: combine this with the code in displaySrcContents
-                // TODO: it appears that the # part of the URL is executed
-                //       after this, so the block:'center' is effectively ignored
-                const line_elem = document.getElementById(lineno_id(link_line.lineno));
-                if (line_elem) {
-                    line_elem.scrollIntoView({block: 'center', inline: 'start'});
-                    // TODO: highlight the source text as well as the line #
-                    line_elem.setAttribute('class', 'src_lineno_hilite');
-                }
+                scrollIntoViewAndMark(link_line.lineno, link_line);
+                e.preventDefault();  // Prevent standard behavior of scrollIntoView({block: 'start'})
             }
         }
         srcLineTextSimple(txt_span, link_line.line, data.semantic);
@@ -609,6 +588,25 @@ function file_nav_element() {
 // Convert a lineno to an ID
 function lineno_id(lineno) {
     return 'L' + lineno;
+}
+
+function scrollIntoViewAndMark(lineno, debug_item) {
+    if (lineno) {
+        const line_elem = document.getElementById(lineno_id(lineno));
+        if (line_elem) {
+            // TODO: remove any other src_lineo_hilite attributes
+            // TODO: ensure behavior is same as hash ('#' + lineno_id(lineno))
+            // Choices are: 'start', 'center', 'end', 'nearest'
+            line_elem.scrollIntoView({block: 'center', inline: 'start'});
+            // TODO: highlight the source text as well as the line #
+            line_elem.setAttribute('class', 'src_lineno_hilite');
+        } else {
+            console.log('NO LINE:', lineno_id(lineno), debug_item);
+        }
+    } else {
+        console.log('NO LINENO', debug_item);
+    }
+
 }
 
 // Convert an ID or #ID (from location.hash) to a lineno
