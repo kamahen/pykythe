@@ -346,9 +346,13 @@ function srcLineText(parts, txt_span, source_item) {
 
 // Do an action ('add' or 'remove') for an item in a class list
 // - callback from mouseover/leave on a token (anchor) in the source display
+// This loops over all the elements connected to the target (see
+// g_anchor_edges), and applies the action (add/remove) of the
+// class_id. Typically, the class_id is 'src_hover', which highlights
+// the item.
 function mouseoverAnchor(target, class_action, class_id) {
-    for (const a_edge of anchor_target_edges(target.id)) {
-        for (const t_a_edge of target_anchor_edges(a_edge.target)) {
+    for (const a_edge of g_anchor_edges.filter(edge => edge.signature === target.id)) {
+        for (const t_a_edge of g_anchor_edges.filter(edge => targetEq(edge.target, a_edge.target))) {
             const edge = document.getElementById(t_a_edge.signature);
             if (edge) {
                 edge.classList[class_action](class_id);
@@ -568,21 +572,12 @@ function deleteAllChildren(elem) {
     }
 }
 
-// Look up edges that match an anchor signature (click/mouseover target.id)
-function anchor_target_edges(anchor_signature) {
-    return g_anchor_edges
-        .filter(edge => edge.signature === anchor_signature);
-}
-
-// Look up edges that match a corpus,root,path,signature,language
-function target_anchor_edges(target) {
-    return g_anchor_edges
-        .filter(edge =>
-            edge.target.signature === target.signature &&
-                edge.target.corpus === target.corpus &&
-                edge.target.root === target.root &&
-                edge.target.path === target.path &&
-                edge.target.language === target.language);
+function targetEq(t1, t2) {
+    return t1.signature === t2.signature &&
+           t1.corpus    === t2.corpus    &&
+           t1.root      === t2.root      &&
+           t1.path      === t2.path      &&
+           t1.language  === t2.language;
 }
 
 // Convenience function: get the 'file_nav' element
@@ -611,7 +606,6 @@ function scrollIntoViewAndMark(lineno, debug_item) {
     } else {
         console.log('NO LINENO', debug_item);
     }
-
 }
 
 // Convert an ID or #ID (from location.hash) to a lineno
