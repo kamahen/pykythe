@@ -482,6 +482,8 @@ function setXrefEdgeLinkItem(table, path_link, data, source_item) {
             link_line.path == source_item.path) {
             txt_span.onclick = async function (e) {
                 // TODO: combine this with the code in displaySrcContents
+                // TODO: it appears that the # part of the URL is executed
+                //       after this, so the block:'center' is effectively ignored
                 const line_elem = document.getElementById(lineno_id(link_line.lineno));
                 if (line_elem) {
                     line_elem.scrollIntoView({block: 'center', inline: 'start'});

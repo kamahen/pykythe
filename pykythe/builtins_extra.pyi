@@ -1,7 +1,7 @@
 
 ##################################
 
-# Extra declarations appended to typeshed/stdlib/2and3/builtins.pyi
+# Extra declarations appended to typeshed/stdlib/builtins.pyi
 
 class NoneType:
     def __bool__(self) -> bool: ...

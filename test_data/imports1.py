@@ -83,11 +83,11 @@ assert i9.loc == "pykythe/test_data/imports_dir/i8/i9.py"
 
 #- !{ @#0os defines/binding _ }
 #- !{ @#0path defines/binding _ }
-#- { @#0os    ref/imports vname("${TYPESHED_FQN}.stdlib.3.os",                _, _, "", python) }
-#- { @#0path  ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path",           _, _, "", python) }
-#- { @#0sep   ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.sep",            _, _, "", python) }
-#- { @os_path ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path",           _, _, "", python) }
-#- { @os_sep  ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.sep",            _, _, "", python) }
+#- { @#0os    ref/imports vname("${TYPESHED_FQN}.stdlib.os",                _, _, "", python) }
+#- { @#0path  ref/imports vname("${TYPESHED_FQN}.stdlib.os.path",           _, _, "", python) }
+#- { @#0sep   ref/imports vname("${TYPESHED_FQN}.stdlib.os.sep",            _, _, "", python) }
+#- { @os_path ref/imports vname("${TYPESHED_FQN}.stdlib.os.path",           _, _, "", python) }
+#- { @os_sep  ref/imports vname("${TYPESHED_FQN}.stdlib.os.sep",            _, _, "", python) }
 #- { @os_path defines/binding OsPath=vname("${ROOT_FQN}.test_data.imports1.os_path", _, _, "", python) }
 #- { @os_sep  defines/binding vname("${ROOT_FQN}.test_data.imports1.os_sep",  _, _, "", python) }
 from os import path as os_path, sep as os_sep
@@ -100,50 +100,50 @@ print("Curdir: " + os_path.curdir + " => " + os_path.abspath(os_path.curdir))
 # assert os_path.abspath(os_path.curdir).endswith("pykythe/test_data")
 
 #- { @os   defines/binding OS_import_var=vname("${ROOT_FQN}.test_data.imports1.os", _, _, "", python) }
-#- { @os   ref/imports vname("${TYPESHED_FQN}.stdlib.3.os", _, _, "", python) }
-#- { @path ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
+#- { @os   ref/imports vname("${TYPESHED_FQN}.stdlib.os", _, _, "", python) }
+#- { @path ref/imports vname("${TYPESHED_FQN}.stdlib.os.path", _, _, "", python) }
 import os.path
 
 assert os_path == os.path
 
 #- { @os_path ref OsPath }
 #- { @#0os ref OS_import_var }
-#- { @#0path ref vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
+#- { @#0path ref vname("${TYPESHED_FQN}.stdlib.os.path", _, _, "", python) }
 #- { @os_path ref vname("${ROOT_FQN}.test_data.imports1.os_path", _, _, "", python) }
-#- { @#0curdir ref vname("${TYPESHED_FQN}.stdlib.3.os.path.curdir", _, _, "", python) }
-#- { @#1curdir ref vname("${TYPESHED_FQN}.stdlib.3.os.path.curdir", _, _, "", python) }
+#- { @#0curdir ref vname("${TYPESHED_FQN}.stdlib.os.path.curdir", _, _, "", python) }
+#- { @#1curdir ref vname("${TYPESHED_FQN}.stdlib.os.path.curdir", _, _, "", python) }
 assert os.path.curdir == os_path.curdir
 
 
-#- { @#0name ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.name", _, _, "", python) }
+#- { @#0name ref/imports vname("${TYPESHED_FQN}.stdlib.os.name", _, _, "", python) }
 #- { @os_name defines/binding OsName }
 from os import name as os_name
 
 #- { @os defines/binding OS_import_var }
-#- { @os ref/imports vname("${TYPESHED_FQN}.stdlib.3.os", _, _, "", python) }
+#- { @os ref/imports vname("${TYPESHED_FQN}.stdlib.os", _, _, "", python) }
 import os
 
 #- { @os defines/binding OS_import_var }
-#- { @os   ref/imports vname("${TYPESHED_FQN}.stdlib.3.os", _, _, "", python) }
-#- { @path ref/imports OSPATH_import=vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
+#- { @os   ref/imports vname("${TYPESHED_FQN}.stdlib.os", _, _, "", python) }
+#- { @path ref/imports OSPATH_import=vname("${TYPESHED_FQN}.stdlib.os.path", _, _, "", python) }
 import os.path
 
 #- { @os ref OS_import_var }
 #- { @path ref OSPATH_import }
-#- { @sep ref vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, _, python) }
+#- { @sep ref vname("${TYPESHED_FQN}.stdlib.os.path.sep", _, _, _, python) }
 os.path.sep
 
 # import os gets os/__init__.pyi
 #- !{ @#0os defines/binding _ }
 #- { @my_os defines/binding MY_OS_import_var }
-#- { @my_os ref/imports vname("${TYPESHED_FQN}.stdlib.3.os", _, _, "", python) }
+#- { @my_os ref/imports vname("${TYPESHED_FQN}.stdlib.os", _, _, "", python) }
 import os as my_os
 
 #- !{ @#0os defines/binding _ }
-#- { @os_path ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
+#- { @os_path ref/imports vname("${TYPESHED_FQN}.stdlib.os.path", _, _, "", python) }
 import os.path as os_path
 
-#- { @sep ref vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
+#- { @sep ref vname("${TYPESHED_FQN}.stdlib.os.path.sep", _, _, "", python) }
 os_path.sep
 
 #- { @#0os ref OS_import_var }
@@ -152,8 +152,8 @@ assert os == my_os
 
 #- { @#0os ref OS_import_var }
 #- { @my_os ref MY_OS_import_var }
-#- { @#0path ref vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
-#- { @#1path ref vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
+#- { @#0path ref vname("${TYPESHED_FQN}.stdlib.os.path", _, _, "", python) }
+#- { @#1path ref vname("${TYPESHED_FQN}.stdlib.os.path", _, _, "", python) }
 assert os.path == my_os.path
 
 assert os_path == my_os.path
@@ -164,10 +164,10 @@ assert os_name == os.name
 
 # import sys gets sys.pyi
 #- { @sys defines/binding vname("${ROOT_FQN}.test_data.imports1.sys", _, _, "", python) }
-#- { @sys ref/imports vname("${TYPESHED_FQN}.stdlib.3.sys", _, _, "", python) }
+#- { @sys ref/imports vname("${TYPESHED_FQN}.stdlib.sys", _, _, "", python) }
 import sys
 
 #- { @my_sys defines/binding vname("${ROOT_FQN}.test_data.imports1.my_sys", _, _, "", python) }
-#- { @my_sys ref/imports vname("${TYPESHED_FQN}.stdlib.3.sys", _, _, "", python) }
+#- { @my_sys ref/imports vname("${TYPESHED_FQN}.stdlib.sys", _, _, "", python) }
 import sys as my_sys
 

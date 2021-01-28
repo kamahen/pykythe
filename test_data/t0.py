@@ -27,7 +27,7 @@ import sys
 
 if sys.version_info >= (3,):
     #- { @Sized defines/binding Sized }
-    #- { @Sized ref/imports vname("${TYPESHED_FQN}.stdlib.3.typing.Sized", _, _, "", python) }
+    #- { @Sized ref/imports vname("${TYPESHED_FQN}.stdlib.typing.Sized", _, _, "", python) }
     from typing import Sized
 
 if sysx.version_info >= (3,):
@@ -46,7 +46,7 @@ class xxrange(Sized): pass
 from os.path import sep
 
 #- { @os defines/binding OS }
-#- { @os ref/imports vname("${TYPESHED_FQN}.stdlib.3.os", _, _, "", python) }
+#- { @os ref/imports vname("${TYPESHED_FQN}.stdlib.os", _, _, "", python) }
 import os
 
 #- { @pow ref vname("${BUILTINS_FQN}.builtins.pow", _, _, "", python) }
@@ -56,8 +56,8 @@ pow(1, 2)
 #- { @print ref PRINT=vname("${BUILTINS_FQN}.builtins.print", _, _, "", python) }
 #- // { PRINT./pykythe/type PRINT_type? } // "[function_type('${BUILTINS_FQN}.builtins.print',[[],[],[],[],[]],[])]" } // TODO: should show keywords  // info is in another file
 #- { @os ref OS }
-#- { @path ref vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
-#- { @sep ref vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
+#- { @path ref vname("${TYPESHED_FQN}.stdlib.os.path", _, _, "", python) }
+#- { @sep ref vname("${TYPESHED_FQN}.stdlib.os.path.sep", _, _, "", python) }
 #- // { OS_PATH_SEP./pykythe/type SEP_type? } // TODO - in other file
 #- { @strip ref vname("${BUILTINS_FQN}.builtins.bytearray.strip", _, _, "", python) }
 #- { @encode ref OS_PATH_SEP_STRIP_ENCODE? } // DO NOT SUBMIT - see also os_path_sep1.py

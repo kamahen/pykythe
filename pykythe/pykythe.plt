@@ -107,20 +107,20 @@ test(kyImportDottedAsNamesFqn_top) :-
             ['os', 'os/path', 'os/path/sep'],
             [Module_os, Module_os_path, Module_os_path_sep]),
 
-    %% Module_os_path_sep = module_and_token('___.typeshed.stdlib.3.os.path',
-    %%                                       '___/typeshed/stdlib/3/os/path.pyi', sep)
+    %% Module_os_path_sep = module_and_token('___.typeshed.stdlib.os.path',
+    %%                                       '___/typeshed/stdlib/os/path.pyi', sep)
     module_path:full_module_part(Module_os_path_sep, ModuleModule_os_path_sep),
-    pykythe_utils:remove_suffix(ModuleModule_os_path_sep, '.stdlib.3.os.path.sep', TypeshedFqn),
+    pykythe_utils:remove_suffix(ModuleModule_os_path_sep, '.stdlib.os.path.sep', TypeshedFqn),
     assertion(pykythe_utils:has_suffix(TypeshedFqn, '.typeshed')),
     assertion(module_path:token_part(Module_os_path_sep, sep)),
 
-    %% Module_os_path = module_alone('___.typeshed.stdlib.3.os.path', '___/typeshed/stdlib/3/os/path.pyi')
+    %% Module_os_path = module_alone('___.typeshed.stdlib.os.path', '___/typeshed/stdlib/os/path.pyi')
     module_path:full_module_part(Module_os_path, ModuleModule_os_path),
-    assertion(atomic_list_concat([TypeshedFqn, '.stdlib.3.os.path'], ModuleModule_os_path)),
+    assertion(atomic_list_concat([TypeshedFqn, '.stdlib.os.path'], ModuleModule_os_path)),
 
-    %% Module_os = module_alone('___.typeshed.stdlib.3.os', '___/typeshed/stdlib/3/os/__init__.pyi')
+    %% Module_os = module_alone('___.typeshed.stdlib.os', '___/typeshed/stdlib/os/__init__.pyi')
     module_path:full_module_part(Module_os, ModuleModule_os),
-    assertion(atomic_list_concat([TypeshedFqn, '.stdlib.3.os'], ModuleModule_os)),
+    assertion(atomic_list_concat([TypeshedFqn, '.stdlib.os'], ModuleModule_os)),
 
     _FromDots = [],
     DottedNameItems = ['NameBareNode'{name:OsAstn}, 'NameBareNode'{name:PathAstn}, 'NameBareNode'{name:SepAstn}],
@@ -177,13 +177,13 @@ test(kyImportDottedAsNamesFqn_as) :-
     %% OsAstn = 'Astn'{start:7, end:9, value:os}
     %% OsSig = '@7:9<os>'
 
-    %% Module_os_path = module_alone('___.typeshed.stdlib.3.os.path', '___/typeshed/stdlib/3/os/path.pyi')
+    %% Module_os_path = module_alone('___.typeshed.stdlib.os.path', '___/typeshed/stdlib/os/path.pyi')
     module_path:full_module_part(Module_os_path, ModuleModule_os_path),
-    assertion(pykythe_utils:has_suffix(ModuleModule_os_path, '.stdlib.3.os.path')),
+    assertion(pykythe_utils:has_suffix(ModuleModule_os_path, '.stdlib.os.path')),
 
-    %% Module_os = module_alone('___.typeshed.stdlib.3.os', '___/typeshed/stdlib/3/os/__init__.pyi')
+    %% Module_os = module_alone('___.typeshed.stdlib.os', '___/typeshed/stdlib/os/__init__.pyi')
     module_path:full_module_part(Module_os, ModuleModule_os),
-    assertion(pykythe_utils:has_suffix(ModuleModule_os, '.stdlib.3.os')),
+    assertion(pykythe_utils:has_suffix(ModuleModule_os, '.stdlib.os')),
 
     FromDots = [],
     DottedNameItems = ['NameBareNode'{name:OsAstn}, 'NameBareNode'{name:PathAstn}],

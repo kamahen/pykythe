@@ -6,23 +6,23 @@ This code is for development debugging and will change a lot over time
 
 # TODO: remove the "import", "from" tests that exist elsewhere
 
-#- { @os_path ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
-#- { @#0path  ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
-#- { @#0os    ref/imports vname("${TYPESHED_FQN}.stdlib.3.os", _, _, "", python) }
+#- { @os_path ref/imports vname("${TYPESHED_FQN}.stdlib.os.path", _, _, "", python) }
+#- { @#0path  ref/imports vname("${TYPESHED_FQN}.stdlib.os.path", _, _, "", python) }
+#- { @#0os    ref/imports vname("${TYPESHED_FQN}.stdlib.os", _, _, "", python) }
 from os import path as os_path
 
 #- { @sep defines/binding vname("${ROOT_FQN}.test_data.simple.sep", _, _, "", python) }
-#- { @#0os        ref/imports vname("${TYPESHED_FQN}.stdlib.3.os", _, _, "", python) }
-#- { @#0path      ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
-#- { @#0sep       ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
-#- { @sep         ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
+#- { @#0os        ref/imports vname("${TYPESHED_FQN}.stdlib.os", _, _, "", python) }
+#- { @#0path      ref/imports vname("${TYPESHED_FQN}.stdlib.os.path", _, _, "", python) }
+#- { @#0sep       ref/imports vname("${TYPESHED_FQN}.stdlib.os.path.sep", _, _, "", python) }
+#- { @sep         ref/imports vname("${TYPESHED_FQN}.stdlib.os.path.sep", _, _, "", python) }
 from os.path import sep
 
 #- { @os_path_sep defines/binding vname("${ROOT_FQN}.test_data.simple.os_path_sep", _, _, "", python) }
-#- { @#0os        ref/imports vname("${TYPESHED_FQN}.stdlib.3.os", _, _, "", python) }
-#- { @#0path      ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
-#- { @#0sep       ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
-#- { @os_path_sep ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
+#- { @#0os        ref/imports vname("${TYPESHED_FQN}.stdlib.os", _, _, "", python) }
+#- { @#0path      ref/imports vname("${TYPESHED_FQN}.stdlib.os.path", _, _, "", python) }
+#- { @#0sep       ref/imports vname("${TYPESHED_FQN}.stdlib.os.path.sep", _, _, "", python) }
+#- { @os_path_sep ref/imports vname("${TYPESHED_FQN}.stdlib.os.path.sep", _, _, "", python) }
 from os.path import sep as os_path_sep
 
 #- // Note that .xxx doesn't exist

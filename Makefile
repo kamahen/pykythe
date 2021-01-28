@@ -150,7 +150,7 @@ SUBSTDIR_PWD_REAL:=$(SUBSTDIR)$(PWD_REAL)
 KYTHEOUTDIR_PWD_REAL:=$(KYTHEOUTDIR)$(PWD_REAL)
 PYTHONPATH_DOT:=$(shell realpath --no-symlinks .. | sed 's!^/!$(SUBSTDIR)/!')
 PYTHONPATH_BUILTINS:=$(SUBSTDIR)/BUILTINS
-# TODO: add typeshed/stdlib/3/_sitebuiltins.pyi
+# TODO: add typeshed/stdlib/_sitebuiltins.pyi
 BUILTINS_PATH:=$(SUBSTDIR)/BUILTINS/builtins.pyi
 TESTOUT_SRCS:=$(shell $(FIND_EXE) $(TEST_DATA_DIR) -name '*.py' | xargs ls -S | \
     sed -e 's!^!$(SUBSTDIR_PWD_REAL)/!')
@@ -175,8 +175,11 @@ else
     BATCH_OPT:=--pykythebatch_suffix='.pykythe.batch-$(BATCH_ID)'
 endif
 # TODO: parameterize following for python3.7, etc.:
-PYTHONPATH_OPT:=--pythonpath='$(PYTHONPATH_DOT):$(PYTHONPATH_BUILTINS):$(TYPESHED_REAL)/stdlib/3.7:$(TYPESHED_REAL)/stdlib/3:$(TYPESHED_REAL)/stdlib/2and3:/usr/lib/python3.7'
-PYTHONPATH_OPT_NO_SUBST:=--pythonpath='$(PYTHONPATH_DOT):$(TYPESHED_REAL)/stdlib/3.7:$(TYPESHED_REAL)/stdlib/3:$(TYPESHED_REAL)/stdlib/2and3:/usr/lib/python3.7'
+# TODO: Verify how typeshed/stubs works
+#       For example stdlib/array.pyi has "from typing_extensions import Literal",
+#       but the relevant file is in stubs/typing-extensions/typing_extensions.pyi
+PYTHONPATH_OPT:=--pythonpath='$(PYTHONPATH_DOT):$(PYTHONPATH_BUILTINS):$(TYPESHED_REAL)/stdlib:$(TYPESHED_REAL)/stubs:/usr/lib/python3.7'
+PYTHONPATH_OPT_NO_SUBST:=--pythonpath='$(PYTHONPATH_DOT):$(TYPESHED_REAL)/stdlib:$(TYPESHED_REAL)/stubs:/usr/lib/python3.7'
 PYKYTHE_OPTS0=$(VERSION_OPT) $(BATCH_OPT) \
 	--builtins_symtab=$(BUILTINS_SYMTAB_FILE) \
 	--builtins_path=$(BUILTINS_PATH) \
@@ -304,26 +307,26 @@ $(KYTHEOUTDIR)%.kythe.entries: \
 #            TODO: split into two rules and have a builtins_symtab_bootstrap.pl
 
 # TODO: This uses /tmp/pykythe_test/SUBST/home/peter/src/pykythe/pykythe/bootstrap_builtins.py
-#       This is the same as make $(mumble)/src/typeshed/stdlib/3/builtins.kythe.json
+#       This is the same as make $(mumble)/src/typeshed/stdlib/builtins.kythe.json
 #       followed by gen_builtins_symtab.
 # $(PYKYTHE_SRCS) is a dependency because it's used to compute $(VERSION)
 
 $(BUILTINS_SYMTAB_FILE) \
-$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/3/builtins.pykythe.symtab \
-$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/3/builtins.kythe.json \
-$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/3/builtins.kythe.entries: \
+$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/builtins.pykythe.symtab \
+$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/builtins.kythe.json \
+$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/builtins.kythe.entries: \
 		$(SUBSTDIR_PWD_REAL)/pykythe/bootstrap_builtins.py \
 		$(SUBSTDIR_PWD_REAL)/pykythe/bootstrap_builtins_symtab.pl \
 		$(PYKYTHE_SRCS) \
 	 	$(PYKYTHE_EXE) \
-		$(TYPESHED_REAL)/stdlib/3/builtins.pyi pykythe/builtins_extra.pyi \
+		$(TYPESHED_REAL)/stdlib/builtins.pyi pykythe/builtins_extra.pyi \
 		pykythe/gen_builtins_symtab.pl \
 		pykythe/pykythe.pl pykythe/*.pl \
 		pykythe/__main__.py pykythe/*.py
 	mkdir -p "$(dir $(BUILTINS_SYMTAB_FILE))"
 	@# Override the builtins:
 	mkdir -p "$(PYTHONPATH_BUILTINS)"
-	cat $(TYPESHED_REAL)/stdlib/3/builtins.pyi \
+	cat $(TYPESHED_REAL)/stdlib/builtins.pyi \
 	        pykythe/builtins_extra.pyi \
 		>$(BUILTINS_PATH)
 	@# This bootstrap symtab file will be replaced by running gen_builtins_symtab.pl below
@@ -334,7 +337,7 @@ $(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/3/builtins.kythe.entries: \
 	  $(TIME) $$PYKYTHE_STRACE_EXE $(PYKYTHE_EXE_) \
 	    $(PYKYTHE_OPTS) \
 	    "$(SUBSTDIR_PWD_REAL)/pykythe/bootstrap_builtins.py"
-	@# instead of input from "$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/3/builtins.kythe.json"
+	@# instead of input from "$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/builtins.kythe.json"
 	@# use "$(KYTHEOUTDIR)$(PYTHONPATH_BUILTINS)/builtins.kythe.json":
 	$(SWIPL_EXE) pykythe/gen_builtins_symtab.pl \
 	    -- $(VERSION_OPT) $(PYTHONPATH_OPT) \

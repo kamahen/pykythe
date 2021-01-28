@@ -4,9 +4,9 @@
 # works properly.
 
 #- { @sep defines/binding vname("${ROOT_FQN}.test_data.dummy_dir.dummy_file.sep", _, _, "", python) }
-#- { @#0os    ref/imports vname("${TYPESHED_FQN}.stdlib.3.os",                    _, _, "", python) }
-#- { @#0path  ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path",               _, _, "", python) }
-#- { @#0sep   ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path.sep",           _, _, "", python) }
+#- { @#0os    ref/imports vname("${TYPESHED_FQN}.stdlib.os",                    _, _, "", python) }
+#- { @#0path  ref/imports vname("${TYPESHED_FQN}.stdlib.os.path",               _, _, "", python) }
+#- { @#0sep   ref/imports vname("${TYPESHED_FQN}.stdlib.os.path.sep",           _, _, "", python) }
 from os.path import sep
 
 #- { @dummy_dir   ref/imports vname("${ROOT_FQN}.test_data.dummy_dir", _, _, "", python) }

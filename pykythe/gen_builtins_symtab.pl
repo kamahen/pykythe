@@ -193,16 +193,16 @@ is_object_type(ObjectType, [ObjectType]) :- !.
 % TODO: Some of these are wrong (e.g., None should be NoneType)
 %       But right now aren't used anyway.
 :- if(false).
-missing('None', [[fqn_type('${TYPESHED_FQN}.stdlib.2and3.builtins.object')]]).
-missing('False', [[fqn_type('${TYPESHED_FQN}.stdlib.2and3.builtins.bool')]]).
-missing('True',  [[fqn_type('${TYPESHED_FQN}.stdlib.2and3.builtins.bool')]]).
+missing('None', [[fqn_type('${TYPESHED_FQN}.stdlib.builtins.object')]]).
+missing('False', [[fqn_type('${TYPESHED_FQN}.stdlib.builtins.bool')]]).
+missing('True',  [[fqn_type('${TYPESHED_FQN}.stdlib.builtins.bool')]]).
 missing('__build_class__', []). % TODO
-missing('__debug__', [[fqn_type('${TYPESHED_FQN}.stdlib.2and3.builtins.bool')]]).
+missing('__debug__', [[fqn_type('${TYPESHED_FQN}.stdlib.builtins.bool')]]).
 missing('__doc__', []).         % TODO: Optional[str]
 missing('__import__', []).      % TODO: Function
 missing('__loader__', []).      % TODO: Function
-missing('__name__',  [[fqn_type('${TYPESHED_FQN}.stdlib.2and3.builtins.str')]]).
-missing('__package__', [[fqn_type('${TYPESHED_FQN}.stdlib.2and3.builtins.str')]]).
+missing('__name__',  [[fqn_type('${TYPESHED_FQN}.stdlib.builtins.str')]]).
+missing('__package__', [[fqn_type('${TYPESHED_FQN}.stdlib.builtins.str')]]).
 missing('__spec__', []). % TODO: <class '_frozen_importlib.ModuleSpec'>
 :- endif.
 

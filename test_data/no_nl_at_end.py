@@ -4,5 +4,5 @@
 
 from os import path
 
-# { @sep ref vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
+# { @sep ref vname("${TYPESHED_FQN}.stdlib.os.path.sep", _, _, "", python) }
 print(path.sep)

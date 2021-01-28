@@ -1,3 +1,6 @@
+# TODO: why does this get the following error:  DO NOT SUBMIT
+#       Invalid/nonexistant module '.tmp.pykythe_test.SUBST.home.peter.src.pykythe'
+
 # TODO: DELETE the following when they're in another test file
 #- { @i5    ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i5",     _, _, "", python) }
 #- { @#1"." ref/imports vname("${ROOT_FQN}.test_data.imports_dir1.i1_sub", _, _, "", python) }

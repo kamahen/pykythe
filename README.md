@@ -322,11 +322,11 @@ a reference to the imported module in typeshed).
     'foo.bar.os': module_type(module_alone(
         '${FQN_TYPESHED}.os',
         '${FQN_TYPESHED}/stdlib/3/os/__init__.pyi'))
-    '.foo.bar.sep': class_type('${FQN_TYPESHED}.stdlib.2and3.builtins.str', [])
+    '.foo.bar.sep': class_type('${FQN_TYPESHED}.stdlib.builtins.str', [])
     '${FQN_TYPESHED}.os': module_type(module_alone(
         '${FQN_TYPESHED}.os',
-        '${FQN_TYPESHED}/stdlib/3/os/__init__.pyi'))
-    '${FQN_TYPESHED}.os.sep': class_type('${FQN_TYPESHED}.stdlib.2and3.builtins.str', [])
+        '${FQN_TYPESHED}/stdlib/os/__init__.pyi'))
+    '${FQN_TYPESHED}.os.sep': class_type('${FQN_TYPESHED}.stdlib.builtins.str', [])
 
 A symtab is self-contained: there is no need to import the symtabs of
 modules that it imports. However, the imports' symtabs need to be

@@ -45,28 +45,28 @@ from lib2to3 import pytree
 
 #- { @token ref vname("${ROOT_FQN}.test_data.t4.token", _, _, "", python) }
 #- // { @token ref/imports TOKEN? }  // DO NOT SUBMIT
-#- { @ENDMARKER ref vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pgen2.token.ENDMARKER", _, _, "", python) }
+#- { @ENDMARKER ref vname("${TYPESHED_FQN}.stdlib.lib2to3.pgen2.token.ENDMARKER", _, _, "", python) }
 print(token.ENDMARKER)
 
-#- { @Base ref vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pytree.Base", _, _, "", python) }
+#- { @Base ref vname("${TYPESHED_FQN}.stdlib.lib2to3.pytree.Base", _, _, "", python) }
 node: pytree.Base
 
-#- { @parent ref vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pytree.Base.parent", _, _, "", python) }
-#- { @type ref vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pytree.Base.type", _, _, "", python) }
-#- { @type ref vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pytree.Base.type", _, _, "", python) }
+#- { @parent ref vname("${TYPESHED_FQN}.stdlib.lib2to3.pytree.Base.parent", _, _, "", python) }
+#- { @type ref vname("${TYPESHED_FQN}.stdlib.lib2to3.pytree.Base.type", _, _, "", python) }
+#- { @type ref vname("${TYPESHED_FQN}.stdlib.lib2to3.pytree.Base.type", _, _, "", python) }
 #- { @real ref vname("${BUILTINS_FQN}.builtins.int.real", _, _, "", python) }
 print(node.parent.type.real)
 
-#- { @children ref _CHILDREN=vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pytree.Base.children", _, _, "", python) }
+#- { @children ref _CHILDREN=vname("${TYPESHED_FQN}.stdlib.lib2to3.pytree.Base.children", _, _, "", python) }
 #- { _CHILDREN./pykythe/type "[class_type('${BUILTINS_FQN}.builtins.str',[])]" }
 #- { @ch0 defines/binding CH0=vname("${ROOT_FQN}.test_data.t4.ch0", _, _, "", python) }
 #- { CH0./pykythe/type CH0_TYPE? } // DO NOT SUBMIT - should not be "[]"
 ch0 = node.children[0]
 #- // TODO: when we properly handle type inferencing for ch0, make another test
 #- //       that has ch0 without a type and which generates the 3 possibilities below
-#- { @type ref vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pytree.Base.type", _, _, "", python) }  // TODO: other vname's shouldn't appear, but currently there are 3 alternatives
-#- { @type ref vname("${TYPESHED_FQN}.stdlib.2and3.lib2to3.pytree.BasePattern.type", _, _, "", python) }  // TODO: delete
-#- { @type ref vname("${TYPESHED_FQN}.stdlib.3._ast.ExceptHandler.type", _, _, "", python) }  // TODO: delete
+#- { @type ref vname("${TYPESHED_FQN}.stdlib.lib2to3.pytree.Base.type", _, _, "", python) }  // TODO: other vname's shouldn't appear, but currently there are 3 alternatives
+#- { @type ref vname("${TYPESHED_FQN}.stdlib.lib2to3.pytree.BasePattern.type", _, _, "", python) }  // TODO: delete
+#- { @type ref vname("${TYPESHED_FQN}.stdlib._ast.ExceptHandler.type", _, _, "", python) }  // TODO: delete
 print(node, node.children, ch0, ch0.type, token.LSQB)
 
 if ch0.type == token.LSQB:

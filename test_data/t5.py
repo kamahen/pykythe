@@ -10,18 +10,18 @@ def foo():
     root[:] = [root]
 
 
-#- { @#0os ref/imports vname("${TYPESHED_FQN}.stdlib.3.os", _, _, "", python) }
-#- { @#0path ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
-#- { @#0sep ref/imports vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
+#- { @#0os ref/imports vname("${TYPESHED_FQN}.stdlib.os", _, _, "", python) }
+#- { @#0path ref/imports vname("${TYPESHED_FQN}.stdlib.os.path", _, _, "", python) }
+#- { @#0sep ref/imports vname("${TYPESHED_FQN}.stdlib.os.path.sep", _, _, "", python) }
 #- { @os_path_sep defines/binding OS_PATH_SEP_local=vname("${ROOT_FQN}.test_data.t5.os_path_sep", _, _, "", python) }
 import os.path.sep as os_path_sep  # // DO NOT SUBMIT: verify fix this bug(#19) https://github.com/kamahen/pykythe/issues/19
 
 #- { @os_path_sep ref OS_PATH_SEP_local }
 print(os_path_sep)
 
-#- { @os ref/imports OS=vname("${TYPESHED_FQN}.stdlib.3.os", _, _, "", python) }
-#- { @path ref/imports OS_PATH=vname("${TYPESHED_FQN}.stdlib.3.os.path", _, _, "", python) }
-#- { @sep ref/imports OS_PATH_SEP=vname("${TYPESHED_FQN}.stdlib.3.os.path.sep", _, _, "", python) }
+#- { @os ref/imports OS=vname("${TYPESHED_FQN}.stdlib.os", _, _, "", python) }
+#- { @path ref/imports OS_PATH=vname("${TYPESHED_FQN}.stdlib.os.path", _, _, "", python) }
+#- { @sep ref/imports OS_PATH_SEP=vname("${TYPESHED_FQN}.stdlib.os.path.sep", _, _, "", python) }
 #- { @os defines/binding OS_local=vname("${ROOT_FQN}.test_data.t5.os", _, _, "", python) }
 import os.path.sep  # // DO NOT SUBMIT: verify fix this bug(#19) https://github.com/kamahen/pykythe/issues/19
 

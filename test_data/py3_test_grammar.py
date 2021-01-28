@@ -45,7 +45,7 @@ TODO: remove all "#- //" lines (these are "to be implemented" syntactic items).
 #- { @check_syntax_error ref/imports vname(".usr.lib.python3.7.test.support.check_syntax_error", _, _, _, python) }
 #- { @check_syntax_error defines/binding _ }
 from test.support import run_unittest, check_syntax_error
-#- { @unittest ref/imports vname("${TYPESHED_FQN}.stdlib.3.unittest", _, _, _, python) }
+#- { @unittest ref/imports vname("${TYPESHED_FQN}.stdlib.unittest", _, _, _, python) }
 import unittest
 import sys
 # testing import *

@@ -1,4 +1,4 @@
-# This example is taken from typeshed/stdlib/2and3/builtins.pyi
+# This example is taken from typeshed/stdlib/builtins.pyi
 
 import sys
 

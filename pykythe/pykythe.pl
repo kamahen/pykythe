@@ -71,7 +71,7 @@
 %%   assign([dot_op(var_ref('test_data.simple.C2.__init__.<local>.self')],
 %%              astn(1156,1157, 'x'),
 %%              '/kythe/edge/defines/binding'),
-%%          [class_type('.home.peter.src.typeshed.stdlib.2and3.builtins.str', [])])
+%%          [class_type('.home.peter.src.typeshed.stdlib.builtins.str', [])])
 %%
 %% To process this, we need to resolve the FQNs (in this case,
 %% var_ref('test_data.simple.C2.__init__.<local>.self') by looking up
@@ -633,7 +633,7 @@ pred_info_(exprs, 1,                               [expr]).
     builtins_version/1.
 
 %! object_fqn(-ObjectFqn) is det.
-% Unify with the FQN for object '${TYPESHED_FQN}.stdlib.2and3.builtins.object'.
+% Unify with the FQN for object '${TYPESHED_FQN}.stdlib.builtins.object'.
 % Only works after builtins symtab has been loaded (see pykythe_main2/0).
 % TODO: 2020/05/18 - object_fqn([class_type(ObjectFqn, [])]).
 object_fqn(ObjectFqn) :-
@@ -1934,7 +1934,7 @@ if_stmt_elses([Cond,_ThenItem|ElseItems], [Cond|ElseItemsConds]) :-
 % NOTE: there are some weird corner cases ... for example, "import
 %       os.path" gets a name in /usr/lib/python3.7/os.py that happens
 %       to be a module but alternatively gets
-%       typeshed/stdlib/3/os/path.pyi ... we therefore have to allow
+%       typeshed/stdlib/os/path.pyi ... we therefore have to allow
 %       for module_alone and module_and_token everywhere.
 kyImportDottedAsNamesFqn('ImportDottedFqn'{
                              dotted_name: 'DottedNameNode'{items: DottedNameItems},
@@ -2336,7 +2336,7 @@ maplist_eval_assign_expr([Assign|Assigns]) -->>
 % Process a signle assign/2 or expr/1 node.
 eval_assign_expr(assign(BindsLeft, Right)) -->> !,
     % TODO: e.g.: _S = TypeVar('_S')
-    %             => assign([var_binds('.home.peter.src.typeshed.stdlib.3.collections._S')], [call([var_ref('.home.peter.src.typeshed.stdlib.3.collections.TypeVar')],[['.home.peter.src.typeshed.stdlib.2and3.builtins.str']])])
+    %             => assign([var_binds('.home.peter.src.typeshed.stdlib.collections._S')], [call([var_ref('.home.peter.src.typeshed.stdlib.collections.TypeVar')],[['.home.peter.src.typeshed.stdlib.builtins.str']])])
     eval_union_type(Right, RightEval),
     eval_union_type(BindsLeft, BindsLeftEval),
     maplist_kyfact_symrej(eval_assign_single(RightEval, BindsLeft), BindsLeftEval).
@@ -2641,7 +2641,7 @@ eval_single_type(call(Atom, Args), EvalType) -->> !,
     maplist_kyfact_symrej_union(eval_atom_call_single(ArgsEval), AtomEval, EvalType).
 eval_single_type(call_op(_OpAstns, ArgsTypes), EvalType) -->> !,
     maplist_kyfact_symrej(eval_union_type, ArgsTypes, _ArgsTypesEval),
-    % See typeshed/stdlib/2and3/operator.pyi
+    % See typeshed/stdlib/operator.pyi
     { EvalType = [] }.
 eval_single_type(ellipsis, []) -->> !, [ ].
 eval_single_type(module(Fqn, Path), [module(Fqn,Path)]) -->> !, [ ].
@@ -3309,9 +3309,9 @@ maplist_kyfact_expr_([X|Xs], Pred, [Y|Ys]) -->>
     maplist_kyfact_expr_(Xs, Pred, Ys).
 
 trace_file(this_will_never_match).
-% trace_file('/home/peter/src/typeshed/stdlib/3/collections/__init__.pyi'). % TODO: delete
+% trace_file('/home/peter/src/typeshed/stdlib/collections/__init__.pyi'). % TODO: delete
 % TODO: For debugging t4.pl node.children -- neeeds to understand _NL = Union[Node, Leaf]; cildren: List[_NL]
-% trace_file('/home/peter/src/typeshed/stdlib/2and3/lib2to3/pytree.pyi'). % TODO: delete
+% trace_file('/home/peter/src/typeshed/stdlib/lib2to3/pytree.pyi'). % TODO: delete
 % trace_file('/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/a10.py'). % TODO: delete
 
 log_if_file(Fmt, Args) -->>
@@ -3347,7 +3347,7 @@ starts_with_fqn_type(Prefix, Fqn-Type, Fqn2-Type) :-
     (   remove_prefix(Fqn, Prefix, Fqn2a)
     ->  join_fqn(['<>', Fqn2a], Fqn2)
     % For debugging, the following can be used to show additional symtab entries:
-    % ;  remove_prefix(Fqn, '.home.peter.src.typeshed.stdlib.2and3.lib2to3.', Fqn2a)
+    % ;  remove_prefix(Fqn, '.home.peter.src.typeshed.stdlib.lib2to3.', Fqn2a)
     %    join_fqn(['<lib2to3>', Fqn2a], Fqn2)
     ),
     builtins_pairs(BuiltinsPairs), % TODO: this is inefficient.
