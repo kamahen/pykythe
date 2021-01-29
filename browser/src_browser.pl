@@ -734,28 +734,6 @@ get_link_edges(Corpus, Root, Path, Language, ColorAll1, ColorAll) :-
     ;   put_dict(edges, ColorAll1, [], ColorAll)
     ).
 
-add_links(Vname0, LineNo-Items, LineNo-AppendedItems) :-
-    maplist(add_link(Vname0), Items, AppendedItems).
-
-add_link(Vname0, Item, ItemWithEdges) :-
-    Start = Item.start,
-    % Note the use of Signature -- it gets instantiated by a lookup to
-    % /kythe/loc/start and then edges are found. The lookup gives
-    % either 0 or 1 result (Item.start might not have any edges
-    % associated with it).
-    vname_vname0(Vname, Signature, Vname0),
-    (  kythe_node(Vname, '/kythe/loc/start', Start),
-       % There can be multiple edges with the same label (but
-       % different targets, so leave as a list and don't combine into
-       % a dict.
-       setof(json{edge:Edge,target:TargetJson},
-             node_and_edge_json(Signature, Vname0, Edge, TargetJson),
-             Edges)
-    -> true
-    ;  Edges = []
-    ),
-    put_dict(edges, Item, Edges, ItemWithEdges).
-
 node_and_edge_json(Signature, Vname0, Edge, TargetJson) :-
     node_and_edge(Signature, Vname0, Edge, Target),
     vname_json(Target, TargetJson).
