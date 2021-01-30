@@ -841,6 +841,7 @@ upgrade-pkgs:
 	sudo apt autoremove
 	sudo apt --with-new-pkgs --assume-yes upgrade
 	sudo apt --assume-yes full-upgrade
+	sudo apt autoremove
 	@# And an old incantation from decades ago
 	sudo sync
 	sudo sync

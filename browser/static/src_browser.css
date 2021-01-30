@@ -35,6 +35,11 @@ body {
     cursor: pointer;
 }
 
+.src_hilite {  /* Added by hilite param on a page (from mouse click) */
+    background-color: gold;  /* TODO: goldenrod,khaki,palegoldenrod,... */
+    cursor: pointer;
+}
+
 /* Used by select (dropdown) */
 .file_nav_sel_dir {
     background-color: #f1f1f1;

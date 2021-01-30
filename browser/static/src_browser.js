@@ -20,12 +20,13 @@
 // a single object (lineno is optional and defaults to 1),
 // with some convenience methods and constructors.
 class SourceItem {
-    constructor(corpus, root, path, lineno) {
+    constructor(corpus, root, path, lineno, hilite) {
         // TODO: escape '/' in corpus, root
         this.corpus = corpus || '';
         this.root = root || '';
         this.path = path || '';
         this.lineno = lineno || 1;
+        this.hilite = hilite || null;
     }
 
     static newFromCombined(corpus_root_path, lineno) {
@@ -53,15 +54,14 @@ class SourceItem {
     }
 
     toString() {
-        return combinedFilePath + '#' + lineno_id(this.lineno);
+        return combinedFilePath + '#' + linenoId(this.lineno);
     }
 }
 
-
-// global 'g_anchor_edges' gets
-//    {signature:str, edge:str, target:{corpus:_,root:_,path:_,language:_,signature:_}}
-//    items (see color_data.lines[*].edges)
-var g_anchor_edges = [];
+// global `g_anchor_to_anchors` gets a mapping of anchor signature to
+// anchor signature that is used to highlight when the mouse moves
+// over an anchor.
+var g_anchor_to_anchors = {};
 
 // tree of dir/file entries - set by dynamic load from server
 // TODO: can we get rid of this (singleton) global?
@@ -116,7 +116,7 @@ const path_type_to_class = {
 async function renderPage() {
     // https://developers.google.com/web/updates/2016/01/urlsearchparams
     const params = new URLSearchParams(location.search);
-    const lineno = location.hash ? id_lineno(location.hash) : 1;
+    const lineno = location.hash ? idLineno(location.hash) : 1;
     await fetchFromServer(
         {src_file_tree: ''},
         file_tree_from_server => setFileTree(
@@ -125,7 +125,8 @@ async function renderPage() {
                 params.get('corpus'),
                 params.get('root'),
                 params.get('path'),
-                lineno)));
+                lineno,
+                params.get('hilite'))));
 }
 
 // Callback from server fetch of the file navigation tree
@@ -137,7 +138,7 @@ function setFileTree(file_tree_from_server, source_item) {
 // Display file tree (id='file_nav')
 async function displayFileTree(source_item) {
     const path_items = source_item.pathItems();
-    var tree = file_nav_element();
+    var tree = fileNavElement();
     while (tree.firstChild) {
         tree.firstChild.remove();
     }
@@ -177,7 +178,7 @@ async function displayFileTreeItems(item_i, path_items, file_tree_nodes, lineno)
             }
         }
     }
-    file_nav_element().appendChild(dropdown);
+    fileNavElement().appendChild(dropdown);
     const selected_node = file_tree_nodes[dropdown.selectedIndex];
 
     if (path_items.length > 0) {
@@ -230,19 +231,21 @@ function addDropdownOption(dropdown, text, type, id) {
 }
 
 // Callback from file tree navigation click, to load a file into the
-// file_nav_element() via displaySrcContents.
+// fileNavElement() via displaySrcContents.
 async function displayNewSrcFile(source_item) {
     // TODO: is there a better choice for the 1st arg to replaceState?
-    history.replaceState({}, 'Pykythe Browser',
-                         location.origin + location.pathname +
-                         '?corpus=' + encodeURIComponent(source_item.corpus) +
-                         '&root=' + encodeURIComponent(source_item.root) +
-                         '&path=' + encodeURIComponent(source_item.path) +
-                         '#L' + encodeURIComponent(source_item.lineno));
+    history.replaceState(
+        {}, 'Pykythe Browser',
+        location.origin + location.pathname +
+            '?corpus=' + encodeURIComponent(source_item.corpus) +
+            '&root=' + encodeURIComponent(source_item.root) +
+            '&path=' + encodeURIComponent(source_item.path) +
+            (source_item.hilite ? '&hilite=' + encodeURIComponent(source_item.hilite) : '') +
+            '#L' + encodeURIComponent(source_item.lineno));
     var progress = document.createElement('span');
     progress.innerHTML = '&nbsp;&nbsp;&nbsp;Fetching file ' +
         sanitizeText(source_item.combinedFilePath()) + ' ...';
-    file_nav_element().appendChild(progress);
+    fileNavElement().appendChild(progress);
     // TODO: alert if fetch fails
     await fetchFromServer(
         {src_browser_file: {corpus: source_item.corpus,
@@ -259,26 +262,26 @@ async function displayNewSrcFile(source_item) {
 //  each in edges having edge,target{corpus,language,path,root,signature}
 // TODO: remove the duplication of information (the result of refactoring)
 function displaySrcContents(source_item, color_data) {
+    g_anchor_to_anchors = color_data.anchor_to_anchors;
     console.assert(source_item.corpus === color_data.corpus &&
                    source_item.root === color_data.root &&
                    source_item.path === color_data.path,
                    "Mismatch source-item, color_data");
-    file_nav_element().lastChild.innerHTML =
+    fileNavElement().lastChild.innerHTML =
         'Rendering file ' + source_item.combinedFilePath() + '...';
-    // console.log('DISPLAY_SRC: ' + JSON.stringify(color_data));  // DO NOT SUBMIT
     var table = document.createElement('table');
     table.setAttribute('class', 'src_table');
     for (const [line_key, line_parts] of color_data.lines.entries()) {
         var row = table.insertRow();
         var td1 = row.insertCell();
         td1.setAttribute('class', 'src_lineno');
-        td1.id = lineno_id(line_key + 1);  // TODO: Fix the 0-origin line_key (the source display is 1-origin)
+        td1.id = linenoId(line_key + 1);  // TODO: Fix the 0-origin line_key (the source display is 1-origin)
         var td2 = row.insertCell();
         td2.setAttribute('class', 'src_line');
         var txt_span = document.createElement('span');
         if (line_parts.length) {
             td1.appendChild(document.createTextNode(line_parts[0].lineno));
-            srcLineText(line_parts, txt_span, source_item);
+            srcLineTextHoverable(line_parts, txt_span, source_item);
         } else {
             txt_span.innerHTML = '&nbsp;';
         }
@@ -286,41 +289,46 @@ function displaySrcContents(source_item, color_data) {
     }
     replaceChildWith('src', table);
     scrollIntoViewAndMark(source_item.lineno, source_item);
-    file_nav_element().lastChild.remove(); // Remove status message
+    fileNavElement().lastChild.remove(); // Remove status message
 }
 
 // Simplified source display (no active links)
-function srcLineTextSimple(txt_span, parts, highlight_semantic) {
-    for (const part of parts) {
+// See also srcLineTextHoverable()
+function srcLineTextSimple(line_parts, txt_span, data_semantics) {
+    for (const line_part of line_parts) {
         var span = document.createElement('span');
-        span.setAttribute('class', token_css_color_class[part.token_color]);
-        if (is_token_name[part.token_color] && part.signature == highlight_semantic) {
-            span.classList.add('src_hover');
+        span.setAttribute('class', token_css_color_class[line_part.token_color]);
+        // DO NOT SUBMIT -- data_semantics is an array, whose signatures
+        //                  are, e.g. '@6711:6712<C>' - in other words,
+        //                  the anchors and not the semantics
+        if (is_token_name[line_part.token_color] && line_part.signature == data_semantics) {
+            span.classList.add('src_hilite');
         }
-        span.innerHTML = sanitizeText(part.value);
+        span.innerHTML = sanitizeText(line_part.value);
         txt_span.appendChild(span)
     }
 }
 
 // Display a single line of a source display
-function srcLineText(parts, txt_span, source_item) {
-    for (const part of parts) {
+function srcLineTextHoverable(line_parts, txt_span, source_item) {
+    for (const line_part of line_parts) {
         var span = document.createElement('span');
-        span.setAttribute('class', token_css_color_class[part.token_color]);
-        span.innerHTML = sanitizeText(part.value);
-        if (is_token_name[part.token_color] && part.signature) {
-            for (const p_edge of part.edges) {
-                g_anchor_edges.push({signature: part.signature,
-                                     edge: p_edge.edge,
-                                     target: p_edge.target});
-            }
-            span.id = part.signature;  // DO NOT SUBMIT -- should have a known prefix on the id
+        span.setAttribute('class', token_css_color_class[line_part.token_color]);
+        span.innerHTML = sanitizeText(line_part.value);
+        if (is_token_name[line_part.token_color] && line_part.signature) {
+            // TODO: remove this code (when we know we won't need g_anchor_edges):
+            // for (const p_edge of line_part.edges) {
+            //     g_anchor_edges.push({anchor_signature: line_part.signature,
+            //                          edge: p_edge.edge,
+            //                          target: p_edge.target});
+            // }
+            span.id = line_part.signature;  // DO NOT SUBMIT -- should have a known prefix on the id
             span.onmouseover = async function(e) { // e is MouseEvent
-                mouseoverAnchor(e.currentTarget, 'add', 'src_hover');
+                mouseoverAnchor(e.currentTarget, 'add', 'src_hover', source_item);
                 e.preventDefault();
             };
             span.onmouseleave = async function(e) { // e is MouseEvent
-                mouseoverAnchor(e.currentTarget, 'remove', 'src_hover');
+                mouseoverAnchor(e.currentTarget, 'remove', 'src_hover', source_item);
                 e.preventDefault();
             };
             span.onclick = async function(e) { // e is MouseEvent
@@ -331,14 +339,14 @@ function srcLineText(parts, txt_span, source_item) {
             // span.oncontextmenu = async function(e) { // e is MouseEvent
             //     e.preventDefault();
             // };
-        } else if (is_token_name[part.token_color]) {
-            console.assert(part.signature,
+        } else if (is_token_name[line_part.token_color]) {
+            console.assert(line_part.signature,
                            'SIGNATURE SHOULD NOT BE EMPTY',
-                           part.token_color, part.signature);
+                           line_part);
         } else {
-            console.assert(! part.signature,
+            console.assert(! line_part.signature,
                            'SIGNATURE SHOULD BE EMPTY',
-                           part.token_color, part.signature);
+                           line_part);
         }
         txt_span.appendChild(span);
     }
@@ -346,45 +354,40 @@ function srcLineText(parts, txt_span, source_item) {
 
 // Do an action ('add' or 'remove') for an item in a class list
 // - callback from mouseover/leave on a token (anchor) in the source display
-// This loops over all the elements connected to the target (see
-// g_anchor_edges), and applies the action (add/remove) of the
+// This loops over all the elements connected to the target
+// (g_anchor_to_anchors) and applies the action (add/remove) of the
 // class_id. Typically, the class_id is 'src_hover', which highlights
 // the item.
-function mouseoverAnchor(target, class_action, class_id) {
-    for (const a_edge of g_anchor_edges.filter(edge => edge.signature === target.id)) {
-        for (const t_a_edge of g_anchor_edges.filter(edge => targetEq(edge.target, a_edge.target))) {
-            const edge = document.getElementById(t_a_edge.signature);
-            if (edge) {
-                edge.classList[class_action](class_id);
-            } else {
-                // TODO: this doesn't seem to happen consistently:
-                // DO NOT SUBMIT - shouldn't happen - do we need to filter
-                //                 for same source path?
-                // *** can make it happen with test_data/c3a.py __bases__
-                // *** but if click on builtins.py __bases__, doesn't happen
-                // *** but then go to another file, it does happen
-                console.log('No edge for ' + target.id + ' ' + t_a_edge.signature);
+function mouseoverAnchor(mouse_target, class_action, class_id, source_item) {
+    for (const anchors2 of g_anchor_to_anchors[mouse_target.id]) {
+        const sig2 = document.getElementById(anchors2);
+        if (sig2) {
+            // sig2.classList.{add,remove}(class_id):
+            sig2.classList[class_action](class_id);
+        } else {
+            if (class_action === 'add') {
+                console.log('No edge for ' + mouse_target.id + ' ' + signature2);
+                // alert('No edge for ' + mouse_target.id + ' ' + signature2);  // DO NOT SUBMIT
             }
         }
     }
 }
 
 // Callback for a click on a token (anchor) in the source display
-async function clickAnchor(target, source_item) {
-    // console.log('CLICK ' + target.id + ' in ' + source_item.combinedFilePath());
+async function clickAnchor(mouse_target, source_item) {
+    // console.log('CLICK ' + mouse_target.id + ' in ' + source_item.combinedFilePath());
     await fetchFromServer(
-        {anchor_xref: {signature: target.id,
+        {anchor_xref: {signature: mouse_target.id,
                        corpus: source_item.corpus,
                        root: source_item.root,
                        path: source_item.path,
                        language: 'python'}},  // DO NOT SUBMIT - don't hard-code language
-        data => setXref(source_item, target.id, data));
+        data => setXref(source_item, mouse_target.id, data));
 }
 
 // Callback from getting Kythe facts for a token (anchor) click
 function setXref(source_item, signature, data) {
     // expected out-edges for anchor: defines, defines/binding, ref, ref/call
-
     document.getElementById('xref').innerHTML = 'Getting Kythe links for ' + source_item.combinedFilePath() + ' anchor:' + signature + ' ...';
 
     var table = document.createElement('table');
@@ -434,9 +437,9 @@ function setXrefEdgeLinkHead(table, edge_links) {
         row_cell,
         sanitizeText(
             edge_links.edge + ' (' +
-                singular_plural(edge_links.links.length, 'file', 'files') +
+                singularPlural(edge_links.links.length, 'file', 'files') +
                 ', ' +
-                singular_plural(
+                singularPlural(
                     sumList(edge_links.links.map(link => link.lines.length)),
                     'line', 'lines') +
                 ')'));
@@ -452,26 +455,20 @@ function setXrefEdgeLinkItem(table, path_link, data, source_item) {
     for (const link_line of path_link.lines) {
         var row_cell = tableInsertRowCell(table);
         const lineno_span = row_cell.appendChild(document.createElement('a'));
-        const xref_title = sanitizeText('xref-title'); // DO NOT SUBMIT - addd semantic signature
-        lineno_span.title = xref_title;
-        // TODO - DO NOT SUBMIT
-        //   The following href doesn't do what you expect when it refers to
-        //   the source file that's currently being displayed. Need to check
-        //   for same file and then invoke the scrollIntoView logic that's
-        //   in displaySrceContents.
+        lineno_span.title = sanitizeText('xref-title-lineno'); // DO NOT SUBMIT - addd semantic signature
         const href = location.origin + location.pathname +
               '?corpus=' + encodeURIComponent(link_line.corpus) +
               '&root=' + encodeURIComponent(link_line.root) +
               '&path=' + encodeURIComponent(link_line.path) +
-              '#' + encodeURIComponent(lineno_id(link_line.lineno));
+              '&hilite=' + encodeURIComponent('HILITE') +
+              '#' + encodeURIComponent(linenoId(link_line.lineno));
         lineno_span.href = href;
         lineno_span.innerHTML = '<b><i>' + link_line.lineno + ':&nbsp;</i></b>';  // DO NOT SUBMIT - CSS class, rowspan
         var txt_span = row_cell.appendChild(document.createElement('a'));
-        txt_span.title = 'xref-title-src'; // DO NOT SUBMIT - addd semantic signature
+        txt_span.title = sanitizeText('xref-title-lineno'); // DO NOT SUBMIT - addd semantic signature
         txt_span.href = href;
         // For the case of same file, the href-fetch doesn't cause the
-        // lineno-handling stuff to be executed, so let's do it
-        // ourselves:
+        // lineno-handling stuff to be executed, so do it ourselves:
         if (link_line.corpus == source_item.corpus &&
             link_line.root == source_item.root &&
             link_line.path == source_item.path) {
@@ -480,7 +477,7 @@ function setXrefEdgeLinkItem(table, path_link, data, source_item) {
                 e.preventDefault();  // Prevent standard behavior of scrollIntoView({block: 'start'})
             }
         }
-        srcLineTextSimple(txt_span, link_line.line, data.semantic);
+        srcLineTextSimple(link_line.line, txt_span, data.semantics);
     }
 }
 
@@ -502,7 +499,7 @@ function tableInsertRowCellHTML(table, html) {
     cellHTML(tableInsertRowCell(table), html);
 }
 
-function singular_plural(number, singular, plural) {
+function singularPlural(number, singular, plural) {
     if (number == 1) {
         return 'one ' + singular;
     } else {
@@ -511,18 +508,21 @@ function singular_plural(number, singular, plural) {
 }
 
 // Sanitize a string, allowing tags to not cause problems
+// TODO: is there a builtin function for this? (cf encodeURIComponent)
 function sanitizeText(raw_str) {
     // There shouldn't be a need for .replace(/ /g, '&nbsp;') if CSS
     // has white-space:pre ... but by experiment, it's needed.
     // TODO: remove the '<br/>' insertion and put it into extract_color.pl.
-    return (raw_str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&apos;')
-        .replace(/\n/g, '<br/>')  // TODO: remove - not needed?
-        .replace(/\s/g, '&nbsp;');  // TODO: add test for tabs in source
+    // DO NOT SUBMIT - FIXME: figure out where raw_str can be null and fix
+    return raw_str ? (raw_str
+                      .replace(/&/g, '&amp;')
+                      .replace(/</g, '&lt;')
+                      .replace(/>/g, '&gt;')
+                      .replace(/"/g, '&quot;')
+                      .replace(/'/g, '&apos;')
+                      .replace(/\n/g, '<br/>')  // TODO: remove - not needed?
+                      .replace(/\s/g, '&nbsp;'))  // TODO: add test for tabs in source
+        : raw_str;
 }
 
 // Send a request to the server and schedule a callback.
@@ -572,36 +572,28 @@ function deleteAllChildren(elem) {
     }
 }
 
-function targetEq(t1, t2) {
-    return t1.signature === t2.signature &&
-           t1.corpus    === t2.corpus    &&
-           t1.root      === t2.root      &&
-           t1.path      === t2.path      &&
-           t1.language  === t2.language;
-}
-
 // Convenience function: get the 'file_nav' element
-function file_nav_element() {
+function fileNavElement() {
     return document.getElementById('file_nav');
 }
 
 // Convert a lineno to an ID
-function lineno_id(lineno) {
+function linenoId(lineno) {
     return 'L' + lineno;
 }
 
 function scrollIntoViewAndMark(lineno, debug_item) {
     if (lineno) {
-        const line_elem = document.getElementById(lineno_id(lineno));
+        const line_elem = document.getElementById(linenoId(lineno));
         if (line_elem) {
             // TODO: remove any other src_lineo_hilite attributes
-            // TODO: ensure behavior is same as hash ('#' + lineno_id(lineno))
+            // TODO: ensure behavior is same as hash ('#' + linenoId(lineno))
             // Choices are: 'start', 'center', 'end', 'nearest'
             line_elem.scrollIntoView({block: 'center', inline: 'start'});
             // TODO: highlight the source text as well as the line #
             line_elem.setAttribute('class', 'src_lineno_hilite');
         } else {
-            console.log('NO LINE:', lineno_id(lineno), debug_item);
+            console.log('NO LINE:', linenoId(lineno), debug_item);
         }
     } else {
         console.log('NO LINENO', debug_item);
@@ -609,7 +601,7 @@ function scrollIntoViewAndMark(lineno, debug_item) {
 }
 
 // Convert an ID or #ID (from location.hash) to a lineno
-function id_lineno(id) {
+function idLineno(id) {
     var lineno;
     if (id.substr(0, 1) == 'L') {
         lineno = parseInt(id.substr(1));
