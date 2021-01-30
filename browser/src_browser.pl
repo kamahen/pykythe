@@ -286,6 +286,8 @@ validate_kythe_facts :-
            must_once( ( kythe_node(Vname, Name , _),
                         memberchk(Name, ['/kythe/node/kind',
                                          '/pykythe/type']) ) )),
+    forall(distinct(Vname, kythe_node_kind_kythe(Vname)),
+           must_once(valid_kythe_node(Vname))),
     % TODO: The following tests (anchor_to_lineno, anchor_to_line_chunks)
     %       aren't very useful because both of these predicates have
     %       fallback code (for situations where the source didn't parse).
@@ -304,6 +306,46 @@ validate_kythe_facts :-
     debug(log, 'Validation done: ~3f sec. (real: ~3f sec.).', [Tvalid, T_ms_valid]),
     debug(log, '', []),
     debug(log, 'Server started: to stop, enter ctrl-D or "halt." (including the ".")', []).
+
+kythe_node_kind_kythe(Vname) :-
+    kythe_node(Vname, Kind, _),
+    sub_atom(Kind, 0, _, _, '/kythe/').
+
+valid_kythe_node(Vname) :-
+    % distinct(Vname, kythe_node(Vname, _, _)),
+    bagof(K, kythe_node(Vname, '/kythe/node/kind', K), [Kind]), % must be unique
+    valid_node_kind(Kind, Vname).
+
+valid_node_kind(anchor,     Vname) :- valid_anchor_vname(Vname).
+valid_node_kind(diagnostic, Vname) :- valid_anchor_vname(Vname).
+valid_node_kind(file,       Vname) :-
+    kythe_node(Vname, '/kythe/language', Language),
+    Language \== '',
+    kythe_node(Vname, '/kythe/text', _),
+    kythe_node(Vname, '/kythe/text/encoding', _).
+valid_node_kind(function,   Vname) :- valid_semantic_vname(Vname).
+valid_node_kind(package,    Vname) :- valid_semantic_vname(Vname).
+valid_node_kind(record,     Vname) :- valid_semantic_vname(Vname).
+valid_node_kind(variable,   Vname) :- valid_semantic_vname(Vname).
+
+valid_semantic_vname(vname(Signature, _Corpus, _Root, Path, Language)) :-
+    Signature \== '',
+    Path == '',
+    Language \= ''.
+
+valid_anchor_vname(vname(Signature, _Corpus, _Root, Path, Language)) :-
+    Signature \== '',
+    Path \== '',
+    Language \== ''.
+
+valid_path_vname(vname(Signature, _Corpus, _Root, Path, Language)) :-
+    Signature \== '',
+    Path \== '',
+    Language == ''.
+
+v_n(Vname) :-
+    kythe_node(Vname, '/pykythe/type', _),
+    \+ kythe_node(Vname, '/kythe/node/kind', _).
 
 % TODO: validate_anchor_link_anchor is incorrect:
 % Semantic links have unique signatures ... this isn't true. For example
@@ -667,11 +709,15 @@ tree_to_json(dir(N,Path,Children), json([type=dir, name=N, path=Path, children=C
 
 color_data_one_file(Corpus, Root, Path,
                     json{corpus:Corpus, root:Root, path:Path, language:Language,
-                         lines:ColorTextLines}) :-
+                         lines:ColorTextLines,
+                         anchor_to_anchors:AnchorToAnchorDict}) :-
     kythe_file(Corpus,Root,Path,Language),
     kythe_color_all(Corpus,Root,Path,Language, ColorAll0),
     maplist(verify_color_items, ColorAll0), % TODO: delete
-    maplist(maplist(add_color_edges(Corpus,Root,Path,Language)), ColorAll0, ColorTextLines).
+    maplist(maplist(add_color_edges(Corpus,Root,Path,Language)), ColorAll0, ColorTextLines),
+    convlist(convlist(anchor_to_anchors_same_file(Corpus,Root,Path,Language)), ColorAll0, AnchorToAnchor0),
+    append(AnchorToAnchor0, AnchorToAnchor),
+    dict_pairs(AnchorToAnchorDict, json, AnchorToAnchor).
 
 kythe_color_all(Corpus, Root, Path, Language, ColorTerm) :-
     % Depends on ordering of the facts; if we can't depend on it,
@@ -721,7 +767,8 @@ get_link_edges(Corpus, Root, Path, Language, ColorAll1, ColorAll) :-
     % associated with it).
     (   Vname = vname(Signature, Corpus, Root, Path, Language),
         kythe_node(Vname, '/kythe/loc/start', ColorAll1.start),
-        kythe_node(Vname, '/kythe/loc/end', ColorAll1.end),  % TODO: not needed?
+        kythe_node(Vname, '/kythe/loc/end', ColorAll1.end), % TODO: not needed?
+        must_once(kythe_node(Vname, '/kythe/node/kind', 'anchor')), % TODO: remove this check
         vname_vname0(Vname, Signature, Vname0),
         % There can be multiple edges with the same label (but
         % different targets), so leave as a list and don't combine
@@ -733,28 +780,6 @@ get_link_edges(Corpus, Root, Path, Language, ColorAll1, ColorAll) :-
         put_dict(signature, ColorAll2, Signature, ColorAll)
     ;   put_dict(edges, ColorAll1, [], ColorAll)
     ).
-
-add_links(Vname0, LineNo-Items, LineNo-AppendedItems) :-
-    maplist(add_link(Vname0), Items, AppendedItems).
-
-add_link(Vname0, Item, ItemWithEdges) :-
-    Start = Item.start,
-    % Note the use of Signature -- it gets instantiated by a lookup to
-    % /kythe/loc/start and then edges are found. The lookup gives
-    % either 0 or 1 result (Item.start might not have any edges
-    % associated with it).
-    vname_vname0(Vname, Signature, Vname0),
-    (  kythe_node(Vname, '/kythe/loc/start', Start),
-       % There can be multiple edges with the same label (but
-       % different targets, so leave as a list and don't combine into
-       % a dict.
-       setof(json{edge:Edge,target:TargetJson},
-             node_and_edge_json(Signature, Vname0, Edge, TargetJson),
-             Edges)
-    -> true
-    ;  Edges = []
-    ),
-    put_dict(edges, Item, Edges, ItemWithEdges).
 
 node_and_edge_json(Signature, Vname0, Edge, TargetJson) :-
     node_and_edge(Signature, Vname0, Edge, Target),
@@ -792,6 +817,32 @@ vname_sort(vname(Signature, Corpus, Root, Path, Language),
     ;  true
     ).
 
+anchor_to_anchors_same_file(Corpus,Root,Path,Language, ColorAll0, Signature-Signatures) :-
+    var_token(ColorAll0.token_color),
+    Signature = ColorAll0.signature,
+    % The following constraint the anchors to all be in the same file;
+    % it will fail if Signature isn't for an anchor.
+    setof(S,
+          anchor_link_anchor(vname(Signature,Corpus,Root,Path,Language),
+                             vname(S,        Corpus,Root,Path,Language)),
+          Signatures).
+
+% anchor_link_anchor always succeeds at least once with anchor_link_anchor(A, A).
+anchor_link_anchor(AnchorVname1, AnchorVname2) :-
+    anchor_link_anchor(AnchorVname1, _Edge1, _SemanticVname, _Edg2, AnchorVname2).
+
+% See pykythe:var_token/1.
+
+var_token('<ARG_KEYWORD>').
+var_token('<ATTR_BINDING>').
+var_token('<ATTR_REF>').
+var_token('<BARE>').
+% var_token('<PUNCTUATION>').   % if exists semantic => '<PUNCTUATION_REF>'
+var_token('<PUNCTUATION_REF>'). % This is generated add_color_edges/6
+var_token('<VAR_BINDING>').
+var_token('<VAR_BINDING_GLOBAL>').
+var_token('<VAR_REF>').
+
 %! anchor_to_line_chunks(+AnchorVname:vname, +LineNo:int, -Chunks:list(dict)) is semidet.
 % Given an AnchorVname, get all the color chunks (in order) for the
 % line that anchor is in. Can fail if the anchor is invalid (and if
@@ -803,8 +854,7 @@ anchor_to_line_chunks(AnchorVname, LineNo, Chunks) :-
     keyed_color_chunks(Vname0, LineNo, Chunks).
 
 anchor_to_lineno(AnchorVname, LineNo) :-
-    % Some tokens don't have a signature in the color data (see also
-    % add_color_edges_and_key/6).
+    % Some tokens don't have a signature in the color data.
     % Fix kythe_color_all/5 facts to contain signatures for bare tokens.
     AnchorVname = vname(_Signature,Corpus,Root,Path,Language),
     must_once(kythe_node(AnchorVname, '/kythe/loc/start', Start)),

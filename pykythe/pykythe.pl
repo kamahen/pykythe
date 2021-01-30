@@ -1471,13 +1471,15 @@ key_color(color{column:Column, end:End, lineno:Lineno, start:Start, token_color:
     ;   Signature = ''
     ).
 
-var_token('<VAR_REF>').
-var_token('<VAR_BINDING>').
-var_token('<VAR_BINDING_GLOBAL>').
-var_token('<PUNCTUATION>').   % TODO: if exists semantic
-var_token('<PUNCTUATION_REF>'). % This is generated in src_browser.pl
+% If the below changes, also change src_browser:var_token
+% and src_browser.js token_css_color_class
 var_token('<ATTR_BINDING>').
 var_token('<ATTR_REF>').
+var_token('<PUNCTUATION>').   % TODO: if exists semantic
+var_token('<PUNCTUATION_REF>'). % This is generated in src_browser.pl
+var_token('<VAR_BINDING>').
+var_token('<VAR_BINDING_GLOBAL>').
+var_token('<VAR_REF>').
 % TODO: '<ARG_KEYWORD>'
 % TODO: '<BARE>'
 
