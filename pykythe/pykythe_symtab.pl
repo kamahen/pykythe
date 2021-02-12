@@ -11,6 +11,7 @@
 :- module(pykythe_symtab, [
                            conv_symtab/3,
                            conv_symtab_pairs/3,
+                           is_symtab/1,
                            list_to_symtab/2,
                            ord_list_to_symtab/2,
                            maybe_read_symtab_from_cache/7,
@@ -20,6 +21,7 @@
                            symtab_lookup/3,
                            symtab_pairs/2,
                            symtab_scope_pairs/3,
+                           symtab_size/2,
                            symtab_values/2,
                            write_symtab/4
                           ]).
@@ -43,6 +45,11 @@
 :- use_module(must_once).
 :- use_module(pykythe_utils).
 
+is_symtab(Symtab) :-
+    % TODO: this is too crude: can we have the symtab
+    %       marked by, e.g. symtab(Rbtree)?
+    is_rbtree(Symtab).
+
 symtab_empty(Symtab) :-
     rb_empty(Symtab).
 
@@ -62,6 +69,9 @@ symtab_lookup(Key, Symtab, Value) :-
     ->  rb_lookup(Key, Value, Symtab)
     ;   instantiation_error(Key)
     ).
+
+symtab_size(Symtab, Size) :-
+    rb_size(Symtab, Size).
 
 symtab_pairs(Symtab, Pairs) :-
     rb_visit(Symtab, Pairs).
