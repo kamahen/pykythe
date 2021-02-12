@@ -48,17 +48,11 @@ PYTHON3_EXE:=$(shell type -p python3.7)  # TODO: 3.9 doesn't have lib2to3
 FIND_EXE:=$(shell type -p find)          # /usr/bin/find The following
 # /usr/bin/swipl:
 SWIPL_EXE_GLBL:=$(shell type -p swipl)
-SWIPL_SRC:=swipl-devel/src
-SWIPL_EXE_DEVEL:=$(abspath swipl-devel/build/src/swipl)
+# See build-swipl-full:
 SWIPL_EXE_GITHUB:=$(abspath ../swipl-devel/build/src/swipl)
 # SWIPL_EXE_GITHUB:=$(abspath ../swipl-devel/build.nlr/src/swipl)
-# SWIPL_EXE:=$(abspath $(SWIPL_EXE_DEVEL))
 # SWIPL_EXE:=$(abspath $(SWIPL_EXE_GITHUB))
 SWIPL_EXE:=$(abspath $(SWIPL_EXE_GLBL))
-# From github:
-# SWIPL_EXE requires having run build-swpl or build-swpl-full, or else
-# you'll get a weird error message about "--version: command not found"
-# SWIPL_EXE:=$(realpath $(SWIPL_EXE_DEVEL))
 COVERAGE=$(shell type -p coverage)      # /usr/local/bin/coverage
 # For running parallel(1) - by experiment this works (2x the number of CPUs)
 # (larger numbers smooth things out for processing large/small source files):
@@ -209,7 +203,6 @@ show-vars:
 	@echo "PYTHONPATH_BUILTINS      $(PYTHONPATH_BUILTINS)"
 	@echo "SWIPL_EXE                $(SWIPL_EXE)"
 	@# echo "SWIPL_EXE_GLBL ..."
-	@echo "SWIPL_EXE_DEVEL          $(SWIPL_EXE_DEVEL)"
 	@# echo "TESTOUT_SRCS           $(TESTOUT_SRCS)"
 	@echo
 
@@ -804,20 +797,25 @@ run-underhood-all:
 lint-logtalk:
 	cat scripts/lint_logtalk.pl | swipl
 
+# This rule depends on having swipl-devel as a submodule
 # See https://github.com/SWI-Prolog/swipl/blob/master/CMAKE.md
 #     https://www.swi-prolog.org/build/guidelines.html
-.PHONY: build-swipl build-swipl-full
-build-swipl: $(SWIPL_EXE_DEVEL)
-$(SWIPL_EXE_DEVEL): $(SWIPL_SRC)/*.[ch]
-	@# TODO: need a more complete set of source files
-	@#   before ninja:
-	@#       ../script/pgo-compile.sh
-	cd swipl-devel && \
-		mkdir -p build && \
-		cd build && \
-		cmake -G Ninja .. && \
-		ninja
+# SWIPL_SRC:=swipl-devel/src
+# .PHONY: build-swipl build-swipl-full
+# build-swipl: $(SWIPL_EXE_DEVEL)
+# $(SWIPL_EXE_DEVEL): $(SWIPL_SRC)/*.[ch]
+# 	@# TODO: need a more complete set of source files
+# 	@#   before ninja:
+# 	@#       ../script/pgo-compile.sh
+# 	cd swipl-devel && \
+# 		mkdir -p build && \
+# 		cd build && \
+# 		cmake -G Ninja .. && \
+# 		ninja
 
+# See https://github.com/SWI-Prolog/swipl/blob/master/CMAKE.md
+#     https://www.swi-prolog.org/build/guidelines.html
+.PHONY: build-swipl-full
 build-swipl-full:
 	@# cd swipl-devel && git pull --recurse
 	@# TODO: before ninja:
