@@ -1725,6 +1725,11 @@ def parse(src_file: ast.File, python_version: int) -> Union['Node', 'Leaf']:
     #       アミメニシキヘビ 《網目錦蛇》 【あみめにしきへび】 (n) (uk) reticulated python (Python reticulatus)
     # logger 'pykythe' is defined in __main__
     lib2to3_logger = logging.getLogger('pykythe')
+    # TODO: does this get a pickled grammar file, or does it
+    #       reprocess /usr/lib/python3.7/lib2to3/Grammar.txt
+    #       each time?
+    #         pygram._GRAMMAR_FILE = '/usr/lib/python3.7/lib2to3/Grammar.txt',
+    #         driver._generate_pickle_name(os.path.basename(pygram._GRAMMAR_FILE)) = 'Grammar3.7.9.final.0.pickle')
     grammar = pygram.python_grammar
     assert python_version == 3, python_version
     # TODO: why does lib2to3.pygram leave 'exec'and 'print' as keywords for a 3.x grammar?
