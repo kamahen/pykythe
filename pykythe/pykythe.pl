@@ -149,7 +149,7 @@
 %%
 %% See discussion below about reprocessing of "reject"ed items.
 
-%% All types are unions (represented as an ord_set); [] means that
+%% All types are unions (represented as an ordset); [] means that
 %% there's no information and is effectively "Any". Many of the
 %% predicates come in two versions: one that works with a type union
 %% (ordset), and one that works on single "types", such as
@@ -304,8 +304,6 @@
                   eval_atom_subscr_binds_single/7,
                   eval_atom_subscr_single/7,
                   eval_dot_op_unknown/8,
-                  eval_lookup/7,
-                  eval_lookup_single/7,
                   eval_single_type/7,
                   eval_single_type_error_msg/7,
                   eval_single_type_import/9,
@@ -514,8 +512,6 @@ pred_info_(eval_atom_dot_single, 3,                [kyfact,symrej,file_meta]).
 pred_info_(eval_atom_subscr_binds_single, 2,       [kyfact,symrej,file_meta]).
 pred_info_(eval_atom_subscr_single, 2,             [kyfact,symrej,file_meta]).
 pred_info_(eval_dot_op_unknown, 3,                 [kyfact,symrej,file_meta]).
-pred_info_(eval_lookup, 2,                         [kyfact,symrej,file_meta]).
-pred_info_(eval_lookup_single, 2,                  [kyfact,symrej,file_meta]).
 pred_info_(eval_single_type, 2,                    [kyfact,symrej,file_meta]).
 pred_info_(eval_single_type_import, 4,             [kyfact,symrej,file_meta]).
 pred_info_(eval_union_type, 2,                     [kyfact,symrej,file_meta]).
@@ -2335,7 +2331,7 @@ maplist_eval_assign_expr([Assign|Assigns]) -->>
     maplist_eval_assign_expr(Assigns).
 
 %! eval_assign_expr_eval(+Node)//[kyfact,symrej,file_meta] is det.
-% Process a signle assign/2 or expr/1 node.
+% Process a single assign/2 or expr/1 node.
 eval_assign_expr(assign(BindsLeft, Right)) -->> !,
     % TODO: e.g.: _S = TypeVar('_S')
     %             => assign([var_binds('.home.peter.src.typeshed.stdlib.collections._S')], [call([var_ref('.home.peter.src.typeshed.stdlib.collections.TypeVar')],[['.home.peter.src.typeshed.stdlib.builtins.str']])])
@@ -2554,7 +2550,7 @@ eval_union_type(Expr, UnionEvalType) -->>
     maplist_kyfact_symrej_union(eval_single_type, Expr, UnionEvalType).
 
 %! eval_single_type((+Expr, -UnionEvalType)//[kyfact,symrej,file_meta] is det.
-% Evaluate (non-union) Expr and look it up in the symtab.
+% Evaluate (non-union) Expr, including look up in the symtab.
 eval_single_type(var_ref(Fqn), Type) -->> !,
     % TODO: could call symtab_lookup(Fqn, UnionEvalType)
     %       to avoid weird code in symrej_accum: ( Type = [] -> true ; true )
@@ -2781,7 +2777,9 @@ eval_atom_dot_single(AttrAstn, AtomSingleType, EvalType) -->>
         %          builtins_symtab_primitive(function, FunctionType)
         %          apply dot operator
         kyfact_attr(FqnAttr, AttrAstn, TypeSymtab)
-    ;   [ ]
+    ;   { EvalType = [] },  % TODO - is this correct? DO NOT SUBMIT - note that
+            % it's called in the context of maplist_kyfact_symrej_union(eval_atom_dot_single(AttrAstn), AtomEval, EvalType).
+        [ ]
     ).
 
 %! eval_atom_subscr_single(+Expr, -EvalType)//[kyfact,symrej,file_meta] is det. is det.
@@ -3152,20 +3150,26 @@ goal_failed(Goal) :-
     fail.
 
 user:portray(Term) :-
+    nonvar(Term),  % Shouldn't be needed, but just in case.
     % fail,  % uncomment this line to turn off pykythe_portray/1
     % in the following, format/2 is used because
     % print_message(warning, E) gives an infinite recursion.
-    E = error(_, _),            % avoid trapping abort, timeout, etc.
+    E = error(ErrorTerm, _Context), % avoid trapping abort, timeout, etc.
+    % _Context = context(pykythe:pykythe_portray/1,_)
     catch(pykythe_portray(Term),
           E,
-          format('EXCEPTION:portray(~q)', [Term])).
+          format('portrayEXCEPTION/~q:~q', [ErrorTerm, Term])).
 
 %! pykythe_portray is semidet.
 %  TODO: change all to use pykythe_portray_unify (see 1st clause).
+%    DO NOT SUBMIT -- use Picat pattern matching (=>).
+%                     requires swipl version 8.3.19
 pykythe_portray(Astn) :-
     node_astn(Astn0, Start, End, Value),
-    pykythe_portray_unify(Astn0, Astn), !,
-    format("'ASTN'(~d:~d, ~q)", [Start, End, Value]).
+    pykythe_portray_unify(Astn0, Astn),
+    integer(Start), integer(End),
+    !,
+    format("'ASTN'(~w:~w, ~q)", [Start, End, Value]).
 pykythe_portray('NameBareNode'{name:Astn}) :-
     format("'NameBareNode'{name:~p}", [Astn]).
 pykythe_portray(module_and_token(Path, Token)) :-
@@ -3228,20 +3232,32 @@ pykythe_portray(Assoc) :-
     aggregate_all(count, gen_assoc(_, Assoc, _), Length),
     min_assoc(Assoc, MinKey, MinValue),
     max_assoc(Assoc, MaxKey, MaxValue),
-    format('<assoc:~d, ~p: ~p ... ~p: ~p>', [Length, MinKey, MinValue, MaxKey, MaxValue]).
-pykythe_portray(Symtab) :-
-    % DO NOT SUBMIT - replace this with something that uses pykythe_symtab predicates.
-    is_dict(Symtab, Tag),
-    Tag == symtab,          % ==/2 in case dict has uninstantiated tag
+    format('<assoc:~w, ~p: ~p ... ~p: ~p>', [Length, MinKey, MinValue, MaxKey, MaxValue]).
+pykythe_portray(Dict) :-
+    is_dict(Dict, Tag),
     !,
-    dict_pairs(Symtab, Tag, Entries),
+    dict_pairs(Dict, Tag, Entries),
     length(Entries, NumEntries),
     (   NumEntries < 30
     ->  format('~q{', [Tag]),
-        pykythe_portray_dict_entries(Entries, ''),
+        pykythe_portray_dict_entries(Entries),
         format('}', [])
-    ;   format('symtab{<~d items>...}', [NumEntries])
+    ;   format('~q{<~w items>...}', [Tag, NumEntries])
     ).
+pykythe_portray(Symtab) :-
+    is_symtab(Symtab),
+    !,
+    symtab_size(Symtab, NumEntries),
+    (   NumEntries < 30
+    ->  symtab_pairs(Symtab, Entries),
+        format('symtab{', []),
+        pykythe_portray_dict_entries(Entries),
+        format('}', [])
+    ;   format('symtab{<~w items>...}', [NumEntries])
+    ).
+
+pykythe_portray_dict_entries(Entries) :-
+    pykythe_portray_dict_entries(Entries, '').
 
 pykythe_portray_dict_entries([], _Sep).
 pykythe_portray_dict_entries([K-V|KVs], Sep) :-
@@ -3259,6 +3275,7 @@ pykythe_portray_unify(Generic, Term) :-
 %! maplist_kyfact(:Pred, +L:list)//[kyfact,file_meta] is det.
 % maplist/2 for EDCG [kyfact,file_meta]
 maplist_kyfact(Pred, L) -->> maplist_kyfact_(L, Pred).
+
 maplist_kyfact_([], _Pred) -->> [ ].
 maplist_kyfact_([X|Xs], Pred) -->>
     call(Pred, X):[kyfact,file_meta],
@@ -3268,6 +3285,7 @@ maplist_kyfact_([X|Xs], Pred) -->>
 %! maplist_kyfact(:Pred, +L0:list, -L:list)//[kyfact,file_meta] is det.
 % maplist/3 for EDCG [kyfact,file_meta]
 maplist_kyfact(Pred, L0, L) -->> maplist_kyfact_(L0, Pred, L).
+
 maplist_kyfact_([], _Pred, []) -->> [ ].
 maplist_kyfact_([X|Xs], Pred, [Y|Ys]) -->>
     call(Pred, X, Y):[kyfact,file_meta],
@@ -3277,6 +3295,7 @@ maplist_kyfact_([X|Xs], Pred, [Y|Ys]) -->>
 %! maplist_kyfact_symrej(:Pred, +L:list)//[kyfact,symrej,file_meta] is det.
 % maplist/2 for EDCG [kyfact,symrej,file_meta]
 maplist_kyfact_symrej(Pred, L) -->> maplist_kyfact_symrej_(L, Pred).
+
 maplist_kyfact_symrej_([], _Pred) -->> [ ].
 maplist_kyfact_symrej_([X|Xs], Pred) -->>
     call(Pred, X):[kyfact,symrej,file_meta],
@@ -3286,6 +3305,7 @@ maplist_kyfact_symrej_([X|Xs], Pred) -->>
 %! maplist_kyfact_symrej(:Pred, +L0:list, -L:list)//[kyfact,symrej,file_meta] is det.
 % maplist/3 for EDCG [kyfact,symrej,file_meta]
 maplist_kyfact_symrej(Pred, L0, L) -->> maplist_kyfact_symrej_(L0, Pred, L).
+
 maplist_kyfact_symrej_([], _Pred, []) -->> [ ].
 maplist_kyfact_symrej_([X|Xs], Pred, [Y|Ys]) -->>
     call(Pred, X, Y):[kyfact,symrej,file_meta],
@@ -3295,6 +3315,7 @@ maplist_kyfact_symrej_([X|Xs], Pred, [Y|Ys]) -->>
 %! maplist_kyfact_expr(:Pred, +L0:list)//[kyfact,expr,file_meta] is det.
 % maplist/2 for EDCG [kyfact,expr,file_meta]
 maplist_kyfact_expr(Pred, L) -->> maplist_kyfact_expr_(L, Pred).
+
 maplist_kyfact_expr_([], _Pred) -->> [ ].
 maplist_kyfact_expr_([X|Xs], Pred) -->>
     call(Pred, X):[kyfact,expr,file_meta],
@@ -3304,6 +3325,7 @@ maplist_kyfact_expr_([X|Xs], Pred) -->>
 %! maplist_kyfact_expr(:Pred, +L0:list, -L:list)//[kyfact,expr,file_meta] is det.
 % maplist/3 for EDCG [kyfact,expr,file_meta]
 maplist_kyfact_expr(Pred, L0, L) -->> maplist_kyfact_expr_(L0, Pred, L).
+
 maplist_kyfact_expr_([], _Pred, []) -->> [ ].
 maplist_kyfact_expr_([X|Xs], Pred, [Y|Ys]) -->>
     call(Pred, X, Y):[kyfact,expr,file_meta], !,
