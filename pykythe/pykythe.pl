@@ -2781,7 +2781,7 @@ eval_atom_dot_single(AttrAstn, AtomSingleType, EvalType) -->>
         %          builtins_symtab_primitive(function, FunctionType)
         %          apply dot operator
         kyfact_attr(FqnAttr, AttrAstn, TypeSymtab)
-    ;   [ ]
+    ;   { EvalType = [] }
     ).
 
 %! eval_atom_subscr_single(+Expr, -EvalType)//[kyfact,symrej,file_meta] is det. is det.
