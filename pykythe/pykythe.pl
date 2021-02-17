@@ -2777,9 +2777,8 @@ eval_atom_dot_single(AttrAstn, AtomSingleType, EvalType) -->>
         %          builtins_symtab_primitive(function, FunctionType)
         %          apply dot operator
         kyfact_attr(FqnAttr, AttrAstn, TypeSymtab)
-    ;   { EvalType = [] },  % TODO - is this correct? DO NOT SUBMIT - note that
-            % it's called in the context of maplist_kyfact_symrej_union(eval_atom_dot_single(AttrAstn), AtomEval, EvalType).
-        [ ]
+    ;   { EvalType = [] }  % TODO - is this correct? DO NOT SUBMIT - note that
+             % it's called in the context of maplist_kyfact_symrej_union(eval_atom_dot_single(AttrAstn), AtomEval, EvalType).
     ).
 
 %! eval_atom_subscr_single(+Expr, -EvalType)//[kyfact,symrej,file_meta] is det. is det.
