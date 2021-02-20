@@ -113,6 +113,43 @@ kythe_edge(vname(Signature1, Corpus1, Root1, Path1, Language1),
                   Signature1, Corpus1, Root1, Path1, Language1)
     ).
 
+% For validation, get all corpus and roots:
+kythe_corpus(Corpus) :- kythe_node(_Signature, Corpus, _Root, _Path, _Language, _FactName, _FactValue).
+kythe_corpus(Corpus) :- kythe_edge(_Signature1, Corpus, _Root1, _Path1, _Language1,
+                                   _Edge,
+                                   _Signature2, _Corpus2, _Root2, _Path2, _Language2).
+kythe_corpus(Corpus) :- kythe_edge(_Signature1, _Corpus1, _Root1, _Path1, _Language1,
+                                   _Edge,
+                                   _Signature2, Corpus, _Root2, _Path2, _Language2).
+kythe_root(Root) :- kythe_node(_Signature, _Corpus, Root, _Path, _Language, _FactName, _FactValue).
+kythe_root(Root) :- kythe_edge(_Signature1, _Corpus1, Root, _Path1, _Language1,
+                               _Edge,
+                               _Signature2, _Corpus2, _Root2, _Path2, _Language2).
+kythe_root(Root) :- kythe_edge(_Signature1, _Corpus1, _Root1, _Path1, _Language1,
+                               _Edge,
+                               _Signature2, _Corpus, Root, _Path2, _Language2).
+kythe_language(Language) :- kythe_node(_Signature, _Corpus, _Root, _Path, Language, _FactName, _FactValue).
+kythe_language(Language) :- kythe_edge(_Signature1, _Corpus, _Root1, _Path1, Language,
+                                       _Edge,
+                                       _Signature2, _Corpus2, _Root2, _Path2, _Language2).
+kythe_language(Language) :- kythe_edge(_Signature1, _Corpus1, _Root1, _Path1, _Language1,
+                                       _Edge,
+                                       _Signature2, _Corpus2, _Root2, _Path2, Language).
+kythe_path(Path) :- kythe_node(_Signature, _Corpus, _Root, Path, _Language, _FactName, _FactValue).
+kythe_path(Path) :- kythe_edge(_Signature1, _Corpus, _Root1, Path, _Language1,
+                               _Edge,
+                               _Signature2, _Corpus2, _Root2, _Path2, _Language2).
+kythe_path(Path) :- kythe_edge(_Signature1, _Corpus1, _Root1, _Path1, _Language1,
+                               _Edge,
+                               _Signature2, _Corpus2, _Root2, Path, _Language2).
+kythe_signature(Signature) :- kythe_node(Signature, _Corpus, _Root, _Path, _Language, _FactName, _FactValue).
+kythe_signature(Signature) :- kythe_edge(Signature, _Corpus1, _Root1, _Path1, _Language1,
+                                         _Edge,
+                                         _Signature2, _Corpus2, _Root2, _Path2, _Language2).
+kythe_signature(Signature) :- kythe_edge(_Signature1, _Corpus1, _Root1, _Path1, _Language1,
+                                         _Edge,
+                                         Signature, _Corpus2, _Root2, _Path2, _Language2).
+
 :- debug(log).    % enable log messages with debug(log, '...', [...]).
 % :- debug(redirect_log).
 % :- debug(request_json_log).
@@ -278,6 +315,32 @@ validate_kythe_facts :-
     statistics(walltime, [T0_ms_valid, _]),
     statistics(process_cputime, T0),
     must_fail(orphan_semantic(_AnchorVname, _SemanticVname, _Edge)),
+    forall(distinct(Corpus, kythe_corpus(Corpus)),
+           must_once(atom(Corpus))),
+    forall(distinct(Root, kythe_root(Root)),
+           must_once(atom(Root))),
+    forall(distinct(Language, kythe_language(Language)),
+           must_once(atom(Language))),
+    forall(kythe_path(Path),
+           must_once(atom(Path))),
+    forall(kythe_signature(Signature),
+           must_once(atom(Signature))),
+    % The tests for "/" and "</>" are to allow making single-string
+    % names out of Corpus,Root,Language,Signature for semantic nodes,
+    % joining by "/" -- anchor_link_semantic_name/2 etc.
+    % src_browser.js uses "/" to make directory pull-down callbacks -
+    % see SourceItem.constructor and SourceItem.combinedFilePath() and
+    % files_to_tree/2 (which uses "/" to separate corpus and root but
+    % (of course) allows "/" in the path)
+    forall(distinct(Corpus, kythe_corpus(Corpus)),
+           must_once(\+ sub_atom(Corpus, _, _, _, '/'))),
+    forall(distinct(Root, kythe_root(Root)),
+           must_once(\+ sub_atom(Root, _, _, _, '/'))),
+    forall(distinct(Language, kythe_language(Language)),
+           must_once(\+ sub_atom(Language, _, _, _, '/'))),
+    % See anchor_link_semantic_name/2 for '</>'.
+    forall(kythe_signature(Signature),
+           must_once(\+ sub_atom(Signature, _, _, _, '</>'))),
     forall(kythe_node(Vname, Name, Value),
            must_be(ground, kythe_node(Vname, Name, Value))),
     forall(kythe_edge(V1, Edge, V2),
@@ -447,6 +510,7 @@ reply_with_json(Request) :-
     debug(timing, 'Request-JSON: ~q [~3f sec]', [JsonIn, Tdelta1]),
     must_once(
               json_response(JsonIn, JsonOut)), % TODO: improve this error handling
+    % debug(request_json_log, 'Request(json): ~q => ~q', [JsonIn, JsonOut]), % DO NOT SUBMIT
     statistics(cputime, T2),
     Tdelta2 is T2 - T1,
     debug(timing, 'Request-response: ~q [~3f sec]', [JsonIn, Tdelta2]),
@@ -588,6 +652,14 @@ anchor_link_anchor(AnchorVname1, Edge1, SemanticVname, Edge2, AnchorVname2) :-
     node_link_node(AnchorVname1, Edge1, SemanticVname, Edge2, AnchorVname2),
     kythe_node(AnchorVname2, '/kythe/node/kind', 'anchor').
 
+anchor_link_semantic(AnchorVname, Edge, SemanticVname) :-
+    (   var(AnchorVname)
+    ->  kythe_edge(AnchorVname, Edge, SemanticVname),
+        kythe_node(AnchorVname, '/kythe/node/kind', 'anchor')
+    ;   kythe_node(AnchorVname, '/kythe/node/kind', 'anchor'),
+        kythe_edge(AnchorVname, Edge, SemanticVname)
+    ).
+
 %! orphan_semantic(?AnchorVname1, ?SemanticVname, ?Edge) is nondet.
 % An orphan semantic doesn't have an associated anchor.
 % Used for validation of Kythe facts.
@@ -710,14 +782,29 @@ tree_to_json(dir(N,Path,Children), json([type=dir, name=N, path=Path, children=C
 color_data_one_file(Corpus, Root, Path,
                     json{corpus:Corpus, root:Root, path:Path, language:Language,
                          lines:ColorTextLines,
-                         anchor_to_anchors:AnchorToAnchorDict}) :-
+                         anchor_to_anchors:AnchorToAnchorsDict,
+                         anchor_to_semantics:AnchorToSemanticsDict,
+                         semantic_to_anchors:SemanticToAnchorsDict}) :-
     kythe_file(Corpus,Root,Path,Language),
     kythe_color_all(Corpus,Root,Path,Language, ColorAll0),
     maplist(verify_color_items, ColorAll0), % TODO: delete
     maplist(maplist(add_color_edges(Corpus,Root,Path,Language)), ColorAll0, ColorTextLines),
-    convlist(convlist(anchor_to_anchors_same_file(Corpus,Root,Path,Language)), ColorAll0, AnchorToAnchor0),
-    append(AnchorToAnchor0, AnchorToAnchor),
-    dict_pairs(AnchorToAnchorDict, json, AnchorToAnchor).
+    conv_conv_dict(anchor_to_anchors_same_file(Corpus,Root,Path,Language), ColorAll0, AnchorToAnchorsDict),
+    % TODO: the code for AnchorToSemanticsDict and SemanticToAnchorsDict is too
+    %       complicated; better to just generate all pairs of anchor-semantic and
+    %       then group by anchor or semantic
+    conv_conv_dict(anchor_to_semantics(Corpus,Root,Path,Language), ColorAll0, AnchorToSemanticsDict),
+    semantic_to_anchors_same_file(Corpus,Root,Path,Language, ColorAll0, SemanticToAnchorsDict),
+    % debug(log, 'color_data- ~q', [[Corpus, Root, Path, Language]]), % DO NOT SUBMIT
+    % debug(log, 'color_data- anchor_to_anchors ~q', [AnchorToAnchorsDict]), % DO NOT SUBMIT
+    % debug(log, 'color_data- anchor_to_semantics ~q', [AnchorToSemanticsDict]), % DO NOT SUBMIT
+    % debug(log, 'color_data- semantic_to_anchors ~q', [SemanticToAnchorsDict]), % DO NOT SUBMIT
+    true.
+
+conv_conv_dict(Pred, ColorAll0, Dict) :-
+    convlist(convlist(Pred), ColorAll0, PairsList),
+    append(PairsList, Pairs),
+    dict_pairs(Dict, json, Pairs).
 
 kythe_color_all(Corpus, Root, Path, Language, ColorTerm) :-
     % Depends on ordering of the facts; if we can't depend on it,
@@ -817,19 +904,54 @@ vname_sort(vname(Signature, Corpus, Root, Path, Language),
     ;  true
     ).
 
-anchor_to_anchors_same_file(Corpus,Root,Path,Language, ColorAll0, Signature-Signatures) :-
-    var_token(ColorAll0.token_color),
-    Signature = ColorAll0.signature,
-    % The following constraint the anchors to all be in the same file;
+anchor_to_anchors_same_file(Corpus,Root,Path,Language, ColorToken, AnchorSignature-Signatures) :-
+    var_token(ColorToken.token_color),
+    AnchorSignature = ColorToken.signature,
+    % The following constrains the anchors to all be in the same file;
     % it will fail if Signature isn't for an anchor.
     setof(S,
-          anchor_link_anchor(vname(Signature,Corpus,Root,Path,Language),
-                             vname(S,        Corpus,Root,Path,Language)),
+          anchor_link_anchor(vname(AnchorSignature,Corpus,Root,Path,Language),
+                             vname(S,              Corpus,Root,Path,Language)),
           Signatures).
 
 % anchor_link_anchor always succeeds at least once with anchor_link_anchor(A, A).
 anchor_link_anchor(AnchorVname1, AnchorVname2) :-
     anchor_link_anchor(AnchorVname1, _Edge1, _SemanticVname, _Edg2, AnchorVname2).
+
+anchor_to_semantics(Corpus,Root,Path,Language, ColorToken, AnchorSignature-Signatures) :-
+    var_token(ColorToken.token_color),
+    AnchorSignature = ColorToken.signature,
+    % TODO: vname(S,Corpus,Root,'',Language2) - might be a different language
+    setof(S,
+          anchor_link_semantic_name(vname(AnchorSignature,Corpus,Root,Path,Language), S),
+          Signatures).
+
+semantic_to_anchors_same_file(Corpus,Root,Path,Language, ColorAll0, SemanticAnchorsDict) :-
+    convlist(convlist(anchor_token_semantics(Corpus,Root,Path,Language)), ColorAll0, Semantics0),
+    append(Semantics0, Semantics1),
+    append(Semantics1, Semantics2),
+    sort(Semantics2, Semantics),
+    maplist(semantic_anchor(Corpus,Root,Path,Language), Semantics, SemanticAnchorsPairs),
+    dict_pairs(SemanticAnchorsDict, json, SemanticAnchorsPairs).
+
+anchor_token_semantics(Corpus,Root,Path,Language, ColorToken, SemanticNames) :-
+    var_token(ColorToken.token_color),
+    AnchorSignature = ColorToken.signature,
+    setof(S, anchor_link_semantic(vname(AnchorSignature,Corpus,Root,Path,Language), S),
+          SemanticNames).
+
+anchor_link_semantic_name(AnchorVname, SemanticName) :-
+    anchor_link_semantic(AnchorVname, _Edge, vname(S, Corpus,Root,'',Language)),
+    atomic_list_concat([Corpus,Root,Language,S], '</>', SemanticName).
+
+semantic_anchor(Corpus,Root,Path,Language, SemanticVname, SemanticName-Anchors) :-
+    must_once(SemanticVname = vname(SemanticSignature, Corpus,Root,_,Language)), % TODO: Path vs '' ?
+    atomic_list_concat([Corpus,Root,Language,SemanticSignature], '</>', SemanticName),
+    setof_or_empty(A, anchor_link_semantic(vname(A, Corpus,Root,Path,Language), SemanticVname),
+                   Anchors).
+
+anchor_link_semantic(AnchorVname, SemanticVname) :-
+    anchor_link_semantic(AnchorVname, _Edge, SemanticVname).
 
 % See pykythe:var_token/1.
 

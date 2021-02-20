@@ -16,9 +16,10 @@
 //       separate items or combined into 'corpus/root/path'.
 //       Scan for newFromCombined.
 
-// SourceItem class encapsulates corpus/root/path/lineno into
-// a single object (lineno is optional and defaults to 1),
-// with some convenience methods and constructors.
+// SourceItem class encapsulates corpus/root/path/lineno/hilite into a
+// single object (lineno is optional and defaults to 1; hilite is
+// semantic object and defaults to null), with some convenience
+// methods and constructors.
 class SourceItem {
     constructor(corpus, root, path, lineno, hilite) {
         // TODO: escape '/' in corpus, root
@@ -27,15 +28,18 @@ class SourceItem {
         this.path = path || '';
         this.lineno = lineno || 1;
         this.hilite = hilite || null;
+        console.assert(this.corpus.indexOf('/') < 0, 'Invalid corpus (contains "/")', corpus);
+        console.assert(this.root.indexOf('/') < 0, 'Invalid root (contains "/")', root);
     }
 
-    static newFromCombined(corpus_root_path, lineno) {
+    static newFromCombined(corpus_root_path, lineno, hilite) {
         // TODO: escape '/' in corpus, root
+        // Note that src_browser.pl currently verifies that corpus and root don't have '/' in them.
         const corpus_root_path_split = corpus_root_path.split('/');
         return new SourceItem(corpus_root_path_split[0], // corpus
                               corpus_root_path_split[1], // root
                               corpus_root_path_split.slice(2).join('/'), // path
-                              lineno);
+                              lineno, hilite);
     }
 
     static newFromJSON(json) {
@@ -58,12 +62,21 @@ class SourceItem {
     }
 }
 
-// global `g_anchor_to_anchors` gets a mapping of anchor signature to
-// anchor signature that is used to highlight when the mouse moves
-// over an anchor.
+// In the following the Corpus, Root, Language of the semantic are
+// encoded as "Corpus</>Root</>Language</>fullyQualifedSemantic".
+
+// Global mapping anchor signature to anchor signatures that is used to
+// highlight when the mouse moves over an anchor. An anchor always maps
+// to itself, plus possibly some more.
 var g_anchor_to_anchors = {};
 
-// tree of dir/file entries - set by dynamic load from server
+// Global mapping anchor signature to semantic signatures.
+var g_anchor_to_semantics = {};
+
+// Global mapping semantic signature to anchor signatures.
+var g_semantic_to_anchors = {};
+
+// global tree of dir/file entries - set by dynamic load from server
 // TODO: can we get rid of this (singleton) global?
 var g_file_tree = null;
 
@@ -142,13 +155,13 @@ async function displayFileTree(source_item) {
     while (tree.firstChild) {
         tree.firstChild.remove();
     }
-    await displayFileTreeItems(0, path_items, g_file_tree, source_item.lineno);
+    await displayFileTreeItems(0, path_items, g_file_tree, source_item.lineno, source_item.hilite);
 }
 
 // Recursive function for displaying the remaining file tree
 // navigation items, starting from item_i (0-indexed).
 // The path_items are used to "pre-select" items in the drop-downs.
-async function displayFileTreeItems(item_i, path_items, file_tree_nodes, lineno) {
+async function displayFileTreeItems(item_i, path_items, file_tree_nodes, lineno, hilite) {
     // file_tree_nodes is a list of 'file' or 'dir' items
     // TODO: for now, corpus and root are treated as path items
 
@@ -184,17 +197,17 @@ async function displayFileTreeItems(item_i, path_items, file_tree_nodes, lineno)
     if (path_items.length > 0) {
         if (selected_node.type == 'dir') {
             await displayFileTreeItems(item_i + 1, path_items.slice(1),
-                                       selected_node.children, lineno);
+                                       selected_node.children, lineno, hilite);
         } else if (selected_node.type == 'file') {
-            await displayNewSrcFile(SourceItem.newFromCombined(selected_node.path, lineno));
+            await displayNewSrcFile(SourceItem.newFromCombined(selected_node.path, lineno, hilite));
         } else {
             return alert('Bad file_tree_nodes.type: ' + selected_node[0].type);
         }
     } else if (file_tree_nodes.length == 1) {
         if (file_tree_nodes[0].type == 'dir') {
-            await displayFileTreeItems(item_i + 1, [], file_tree_nodes[0].children, lineno);
+            await displayFileTreeItems(item_i + 1, [], file_tree_nodes[0].children, lineno, hilite);
         } else if (file_tree_nodes[0].type == 'file') {
-            await displayNewSrcFile(SourceItem.newFromCombined(selected_node.path, lineno));
+            await displayNewSrcFile(SourceItem.newFromCombined(selected_node.path, lineno, hilite));
         } else {
             return alert('Bad file_tree_nodes.type: ' + file_tree_nodes[0].type);
         }
@@ -233,6 +246,8 @@ function addDropdownOption(dropdown, text, type, id) {
 // Callback from file tree navigation click, to load a file into the
 // fileNavElement() via displaySrcContents.
 async function displayNewSrcFile(source_item) {
+    // Update the displayed URL, to allow navigating back to this page.
+    // See setXrefEdgeLinkItem() for how the URL is created.
     // TODO: is there a better choice for the 1st arg to replaceState?
     history.replaceState(
         {}, 'Pykythe Browser',
@@ -260,13 +275,16 @@ async function displayNewSrcFile(source_item) {
 // lines is an array of arrays: each item having
 //    lineno,column,start,end,signature,token_color,value,edges
 //  each in edges having edge,target{corpus,language,path,root,signature}
-// TODO: remove the duplication of information (the result of refactoring)
 function displaySrcContents(source_item, color_data) {
     g_anchor_to_anchors = color_data.anchor_to_anchors;
+    g_anchor_to_semantics = color_data.anchor_to_semantics;
+    g_semantic_to_anchors = color_data.semantic_to_anchors;
     console.assert(source_item.corpus === color_data.corpus &&
                    source_item.root === color_data.root &&
                    source_item.path === color_data.path,
-                   "Mismatch source-item, color_data");
+                   'Mismatch source-item, color_data',
+                   'source', source_item,
+                   'color', color_data);
     fileNavElement().lastChild.innerHTML =
         'Rendering file ' + source_item.combinedFilePath() + '...';
     var table = document.createElement('table');
@@ -288,7 +306,8 @@ function displaySrcContents(source_item, color_data) {
         td2.appendChild(txt_span);
     }
     replaceChildWith('src', table);
-    scrollIntoViewAndMark(source_item.lineno, source_item);
+    // console.log('DISPLAY_SRC_CONTENTS', source_item);  // DO NOT SUBMIT
+    scrollIntoViewAndMark(source_item.lineno, source_item.hilite, source_item);
     fileNavElement().lastChild.remove(); // Remove status message
 }
 
@@ -298,10 +317,9 @@ function srcLineTextSimple(line_parts, txt_span, data_semantics) {
     for (const line_part of line_parts) {
         var span = document.createElement('span');
         span.setAttribute('class', token_css_color_class[line_part.token_color]);
-        // DO NOT SUBMIT -- data_semantics is an array, whose signatures
-        //                  are, e.g. '@6711:6712<C>' - in other words,
-        //                  the anchors and not the semantics
-        if (is_token_name[line_part.token_color] && line_part.signature == data_semantics) {
+        // TODO: the following doesn't hilite - why?  DO NOT SUBMIT
+        if (is_token_name[line_part.token_color] &&
+            (data_semantics || []).indexOf(g_anchor_to_semantics[line_part.signature]) >= 0) {
             span.classList.add('src_hilite');
         }
         span.innerHTML = sanitizeText(line_part.value);
@@ -359,7 +377,7 @@ function srcLineTextHoverable(line_parts, txt_span, source_item) {
 // class_id. Typically, the class_id is 'src_hover', which highlights
 // the item.
 function mouseoverAnchor(mouse_target, class_action, class_id, source_item) {
-    for (const anchors2 of g_anchor_to_anchors[mouse_target.id]) {
+    for (const anchors2 of (g_anchor_to_anchors[mouse_target.id] || [])) {
         const sig2 = document.getElementById(anchors2);
         if (sig2) {
             // sig2.classList.{add,remove}(class_id):
@@ -393,7 +411,7 @@ function setXref(source_item, signature, data) {
     var table = document.createElement('table');
     setXrefItemHeader(table, signature, data);
     setXrefNodeValues(table, data);
-    setXrefEdgeLinks(table, data, source_item);
+    setXrefEdgeLinks(table, data, signature, source_item);
     setXrefBottom(table);
 }
 
@@ -421,11 +439,11 @@ function setXrefNodeValues(table, data) {
     }
 }
 
-function setXrefEdgeLinks(table, data, source_item) {
+function setXrefEdgeLinks(table, data, signature, source_item) {
     for (const edge_links of data.edge_links) {
         setXrefEdgeLinkHead(table, edge_links);
         for (const path_link of edge_links.links) {
-            setXrefEdgeLinkItem(table, path_link, data, source_item);
+            setXrefEdgeLinkItem(table, path_link, data, signature, source_item);
         }
     }
 }
@@ -445,7 +463,7 @@ function setXrefEdgeLinkHead(table, edge_links) {
                 ')'));
 }
 
-function setXrefEdgeLinkItem(table, path_link, data, source_item) {
+function setXrefEdgeLinkItem(table, path_link, data, signature, source_item) {
     {
         var row_cell = tableInsertRowCell(table);
         // DO NOT SUBMIT - use a CSS class for '<b><i>':
@@ -455,12 +473,13 @@ function setXrefEdgeLinkItem(table, path_link, data, source_item) {
     for (const link_line of path_link.lines) {
         var row_cell = tableInsertRowCell(table);
         const lineno_span = row_cell.appendChild(document.createElement('a'));
-        lineno_span.title = sanitizeText('xref-title-lineno'); // DO NOT SUBMIT - addd semantic signature
+        lineno_span.title = sanitizeText('xref-title-lineno'); // DO NOT SUBMIT - addd semantic signature to xref
+        const semantic = g_anchor_to_semantics[signature];
         const href = location.origin + location.pathname +
               '?corpus=' + encodeURIComponent(link_line.corpus) +
               '&root=' + encodeURIComponent(link_line.root) +
               '&path=' + encodeURIComponent(link_line.path) +
-              '&hilite=' + encodeURIComponent('HILITE') +
+              (semantic ? '&hilite=' + encodeURIComponent(semantic) : '') +
               '#' + encodeURIComponent(linenoId(link_line.lineno));
         lineno_span.href = href;
         lineno_span.innerHTML = '<b><i>' + link_line.lineno + ':&nbsp;</i></b>';  // DO NOT SUBMIT - CSS class, rowspan
@@ -473,7 +492,7 @@ function setXrefEdgeLinkItem(table, path_link, data, source_item) {
             link_line.root == source_item.root &&
             link_line.path == source_item.path) {
             txt_span.onclick = async function (e) {
-                scrollIntoViewAndMark(link_line.lineno, link_line);
+                scrollIntoViewAndMark(link_line.lineno, semantic, link_line);
                 e.preventDefault();  // Prevent standard behavior of scrollIntoView({block: 'start'})
             }
         }
@@ -506,23 +525,28 @@ function singularPlural(number, singular, plural) {
         return number + ' ' + plural;
     }
 }
+// There shouldn't be a need for .replace(/ /g, '&nbsp;') if CSS
+// has white-space:pre ... but by experiment, it's needed.
+const sanitize_re = /[&<>\n "'`/]/ig;
+const sanitizeMap = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '\n': '<br/>', // TODO: not needed? - put into extract_color.pl
+    ' ': '&nbsp;', // TODO: add test for tabs, line-feed, etc. in source
+    '"': '&quot;',
+    "'": '&apos;',
+    '`': '&grave;',
+    '/': '&#x2F;',
+};
 
-// Sanitize a string, allowing tags to not cause problems
+// Sanitize a string, allowing HTML tags and special characters to not cause problems
 // TODO: is there a builtin function for this? (cf encodeURIComponent)
 function sanitizeText(raw_str) {
-    // There shouldn't be a need for .replace(/ /g, '&nbsp;') if CSS
-    // has white-space:pre ... but by experiment, it's needed.
-    // TODO: remove the '<br/>' insertion and put it into extract_color.pl.
     // DO NOT SUBMIT - FIXME: figure out where raw_str can be null and fix
-    return raw_str ? (raw_str
-                      .replace(/&/g, '&amp;')
-                      .replace(/</g, '&lt;')
-                      .replace(/>/g, '&gt;')
-                      .replace(/"/g, '&quot;')
-                      .replace(/'/g, '&apos;')
-                      .replace(/\n/g, '<br/>')  // TODO: remove - not needed?
-                      .replace(/\s/g, '&nbsp;'))  // TODO: add test for tabs in source
-        : raw_str;
+    return raw_str
+        ? raw_str.replace(sanitize_re, (match)=>(sanitizeMap[match]))
+        : '';
 }
 
 // Send a request to the server and schedule a callback.
@@ -582,13 +606,13 @@ function linenoId(lineno) {
     return 'L' + lineno;
 }
 
-function scrollIntoViewAndMark(lineno, debug_item) {
+function scrollIntoViewAndMark(lineno, hilite, debug_item) {
     if (lineno) {
         const line_elem = document.getElementById(linenoId(lineno));
         if (line_elem) {
-            // TODO: remove any other src_lineo_hilite attributes
+            // TODO: remove any other 'src_lineno_hilite' attributes
             // TODO: ensure behavior is same as hash ('#' + linenoId(lineno))
-            // Choices are: 'start', 'center', 'end', 'nearest'
+            // Choices for block/inline are: 'start', 'center', 'end', 'nearest'
             line_elem.scrollIntoView({block: 'center', inline: 'start'});
             // TODO: highlight the source text as well as the line #
             line_elem.setAttribute('class', 'src_lineno_hilite');
@@ -597,6 +621,16 @@ function scrollIntoViewAndMark(lineno, debug_item) {
         }
     } else {
         console.log('NO LINENO', debug_item);
+    }
+    // see mousoverAnchor() - combine some of the source
+    for (const anchors2 of g_semantic_to_anchors[hilite] || []) {
+        const sig2 = document.getElementById(anchors2);
+        if (sig2) {
+            sig2.classList.add('src_hover');
+        } else {
+            console.log('No edge for ' + mouse_target.id + ' ' + signature2);
+            // alert('No edge for ' + mouse_target.id + ' ' + signature2);  // DO NOT SUBMIT
+        }
     }
 }
 

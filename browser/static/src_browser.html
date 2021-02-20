@@ -2,11 +2,10 @@
 <html>
   <head lang="en">
     <!-- disable cache for debugging -->
-    <meta http-equiv='cache-control' content='no-cache'/>
-    <meta http-equiv='expires' content='0'/>
-    <meta http-equiv='pragma' content='no-cache'/>
+    <meta http-equiv="cache-control" content="no-cache"/>
+    <meta http-equiv="expires" content="0"/>
+    <meta http-equiv="pragma" content="no-cache"/>
     <!-- end: disable cache for debugging -->
-    <meta Access-Control-Allow-Origin/>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <link rel="shortcut icon" type="image/png" href="favicon.png"/>  <!-- relative to 'static' dir -->
@@ -15,7 +14,7 @@
     <link href="https://fonts.googleapis.com/css?family=Source Code Pro" rel="stylesheet"/>
     <link rel="stylesheet" href="src_browser.css"/>
     <! -- TODO: remove jquery (only used for debugging) -->
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+    <!-- script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script -->
     <script src="src_browser.js" defer="defer"></script>
 
     <title>Pykythe Browser</title>
@@ -23,6 +22,7 @@
     <!-- The convention is that id 'foo' gets a different ID for each instance,
          and all the instances have the same CLASS 'sel-foo'. -->
     <body onload="renderPage();">
+      <noscript><h1>You need to enable JavaScript to run this app!!!</h1></noscript>
       <div class="container">
         <div class="file_nav" id="file_nav">
           File navigation goes here.
