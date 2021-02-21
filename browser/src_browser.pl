@@ -572,10 +572,9 @@ json_response(json{src_file_tree: _}, PathTreeJson) :-
 %! file_path(-CombinedPath) is nondet.
 % Combine the Corpus/Root/Path into a single string for the browser's file tree
 % TODO: Escape '</>' in Corpus, Root
-file_path(CombinedPath) :-
-    kythe_file(Corpus, Root, Path, _Language),
+file_path(Corpus:Root:Path) :-
     % TODO: escape '</>' inside Corpus, Root
-    format(atom(CombinedPath), '~w/~w/~w', [Corpus, Root, Path]).
+    kythe_file(Corpus, Root, Path, _Language).
 
 %! anchor_links_grouped(+AnchorVname, -SemanticNodeValues, -GroupedLinks) is det.
 % Get the anchor links (grouped for an AnchorVname.
@@ -1075,11 +1074,12 @@ files_to_tree(Files, Tree) :-
     maplist(split_on_slash, Files, SplitFiles),
     list_to_tree(SplitFiles, [], Tree).
 
-split_on_slash(Str, Split) :-
+split_on_slash(Corpus:Root:Str, Split) :-
     split_string(Str, '/', '', SplitStr),
     maplist(string_atom, SplitStr, Split0),
     once(append(First, [Last], Split0)), % like last/2 but also gets first part.
-    maplist(wrap_dir, First, FirstWrapped),
+    % wrap all but last in dir(_), last in file(_)
+    maplist(wrap_dir, [Corpus,Root|First], FirstWrapped),
     append(FirstWrapped, [file(Last)], Split).
 
 wrap_dir(Dir, dir(Dir)).
@@ -1096,14 +1096,22 @@ subtree(Prefix, Item-Sublist, Result) :-
     subtree_(Item, Sublist, Prefix, Result).
 
 subtree_(dir(Dir), Sublist, Prefix, dir(Dir,Path,Children)) :-
-    append(Prefix, [Dir], Prefix2),
-    atomic_list_concat(Prefix2, '/', Path),
+    append(Prefix, [Dir], Prefix2), % extract Dir as last element
+    corpus_root_path_to_str(Prefix2, Path),
     list_to_tree(Sublist, Prefix2, Children).
 subtree_(file(File), [[]], Prefix, file(File,Path)) :-
-    append(Prefix, [File], Prefix2),
-    atomic_list_concat(Prefix2, '/', Path).
+    append(Prefix, [File], Prefix2), % extract File as last element
+    corpus_root_path_to_str(Prefix2, Path).
 
 head_tail_pair([Hd|Tl], Hd-Tl).
+
+% TODO: use '</>' to combine the first two items in the path (Corpus, Root)
+corpus_root_path_to_str([Corpus], Corpus) :- !.
+corpus_root_path_to_str([Corpus,Root], Str) :- !,
+    atomic_list_concat([Corpus,Root], '/', Str).
+corpus_root_path_to_str([Corpus,Root|Path], Str) :-
+    atomic_list_concat(Path, '/', PathStr),
+    atomic_list_concat([Corpus,Root,PathStr], '/', Str).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -1116,11 +1124,11 @@ head_tail_pair([Hd|Tl], Hd-Tl).
 :- begin_tests(file_tree).
 
 t1(Ftree) :-
-    F = ['x',
-         'a/b/x1',
-         'a/b/x2',
-         'a/c',
-         'a/d/e/x3'
+    F = ['CORPUS':'ROOT':'x',
+         'CORPUS':'ROOT':'a/b/x1',
+         'CORPUS':'ROOT':'a/b/x2',
+         'CORPUS':'ROOT':'a/c',
+         'CORPUS':'ROOT':'a/d/e/x3'
         ],
     files_to_tree(F, Ftree),
     tree_to_json(Ftree, FtreeJson),
@@ -1128,29 +1136,24 @@ t1(Ftree) :-
                    (current_output(JsonStream),
                     pykythe_json_write_dict_nl(JsonStream, FtreeJson))),
     % format('~w~n', [JsonAtom]),
-    assertion(JsonAtom == '[ {"type":"dir", "name":"a", "path":"a", "children": [ {"type":"dir", "name":"b", "path":"a/b", "children": [ {"type":"file", "name":"x1", "path":"a/b/x1"},  {"type":"file", "name":"x2", "path":"a/b/x2"} ]},  {"type":"dir", "name":"d", "path":"a/d", "children": [ {"type":"dir", "name":"e", "path":"a/d/e", "children": [ {"type":"file", "name":"x3", "path":"a/d/e/x3"} ]} ]},  {"type":"file", "name":"c", "path":"a/c"} ]},  {"type":"file", "name":"x", "path":"x"} ]\n').
+    assertion(JsonAtom == '[ {"type":"dir", "name":"CORPUS", "path":"CORPUS", "children": [ {"type":"dir", "name":"ROOT", "path":"CORPUS/ROOT", "children": [ {"type":"dir", "name":"a", "path":"CORPUS/ROOT/a", "children": [ {"type":"dir", "name":"b", "path":"CORPUS/ROOT/a/b", "children": [ {"type":"file", "name":"x1", "path":"CORPUS/ROOT/a/b/x1"},  {"type":"file", "name":"x2", "path":"CORPUS/ROOT/a/b/x2"} ]},  {"type":"dir", "name":"d", "path":"CORPUS/ROOT/a/d", "children": [ {"type":"dir", "name":"e", "path":"CORPUS/ROOT/a/d/e", "children": [ {"type":"file", "name":"x3", "path":"CORPUS/ROOT/a/d/e/x3"} ]} ]},  {"type":"file", "name":"c", "path":"CORPUS/ROOT/a/c"} ]},  {"type":"file", "name":"x", "path":"CORPUS/ROOT/x"} ]} ]} ]\n').
 
 test(f1, [true]) :-
     t1(Ftree),
     assertion(
-              [dir(a, 'a',
-                   [dir(b, 'a/b',
-                        [file(x1, 'a/b/x1'), file(x2, 'a/b/x2')]
-                       ),
-                    dir(d, 'a/d',
-                        [
-                         dir(e, 'a/d/e',
-                             [file(x3, 'a/d/e/x3')]
-                            )
-                        ]
-                       ),
-                    file(c, 'a/c')
-                   ]
-                  ),
-               file(x, 'x')
-              ]
-             = Ftree).
+              [dir('CORPUS','CORPUS',
+                   [dir('ROOT','CORPUS/ROOT',
+                        [dir(a,'CORPUS/ROOT/a',
+                             [dir(b,'CORPUS/ROOT/a/b',
+                                  [file(x1,'CORPUS/ROOT/a/b/x1'),
+                                   file(x2,'CORPUS/ROOT/a/b/x2')]),
+                              dir(d,'CORPUS/ROOT/a/d',
+                                  [dir(e,'CORPUS/ROOT/a/d/e',
+                                       [file(x3,'CORPUS/ROOT/a/d/e/x3')])]),
+                              file(c,'CORPUS/ROOT/a/c')]),
+                         file(x,'CORPUS/ROOT/x')])])]
+             == Ftree).
 
 :- end_tests(file_tree).
 
-end_of_file.
+-end_of_file.
