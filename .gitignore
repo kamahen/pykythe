@@ -1,6 +1,6 @@
-build.ninja
+# build.ninja
 .cayley_history
-.lgt_tmp
+.lgt_tmp  # From Logtalk
 .mypy_cache
 __pycache__
 .pytype

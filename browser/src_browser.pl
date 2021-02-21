@@ -330,17 +330,25 @@ validate_kythe_facts :-
     % joining by "/" -- anchor_link_semantic_name/2 etc.
     % src_browser.js uses "/" to make directory pull-down callbacks -
     % see SourceItem.constructor and SourceItem.combinedFilePath() and
-    % files_to_tree/2 (which uses "/" to separate corpus and root but
+    % files_to_tree/2 (which uses "</>" to separate corpus and root but
     % (of course) allows "/" in the path)
+    % See anchor_link_semantic_name/2 for '</>'.
+    forall(distinct(Corpus, kythe_corpus(Corpus)),
+           must_once(\+ sub_atom(Corpus, _, _, _, '</>'))),
+    forall(distinct(Root, kythe_root(Root)),
+           must_once(\+ sub_atom(Root, _, _, _, '</>'))),
+    forall(distinct(Language, kythe_language(Language)),
+           must_once(\+ sub_atom(Language, _, _, _, '</>'))),
+    forall(kythe_signature(Signature),
+           must_once(\+ sub_atom(Signature, _, _, _, '</>'))),
+    % TODO: remove the following 3 tests when we properly separate
+    %       the corpus and root with '</>' instead of '/':
+    %       No restrictions ln Langauge, Signature; they're not
+    %       used in file navigation by src_browser.js
     forall(distinct(Corpus, kythe_corpus(Corpus)),
            must_once(\+ sub_atom(Corpus, _, _, _, '/'))),
     forall(distinct(Root, kythe_root(Root)),
            must_once(\+ sub_atom(Root, _, _, _, '/'))),
-    forall(distinct(Language, kythe_language(Language)),
-           must_once(\+ sub_atom(Language, _, _, _, '/'))),
-    % See anchor_link_semantic_name/2 for '</>'.
-    forall(kythe_signature(Signature),
-           must_once(\+ sub_atom(Signature, _, _, _, '</>'))),
     forall(kythe_node(Vname, Name, Value),
            must_be(ground, kythe_node(Vname, Name, Value))),
     forall(kythe_edge(V1, Edge, V2),
@@ -563,10 +571,10 @@ json_response(json{src_file_tree: _}, PathTreeJson) :-
 
 %! file_path(-CombinedPath) is nondet.
 % Combine the Corpus/Root/Path into a single string for the browser's file tree
-% TODO: Escape '/' in Corpus, Root
+% TODO: Escape '</>' in Corpus, Root
 file_path(CombinedPath) :-
     kythe_file(Corpus, Root, Path, _Language),
-    % TODO: escape '/' inside Corpus, Root
+    % TODO: escape '</>' inside Corpus, Root
     format(atom(CombinedPath), '~w/~w/~w', [Corpus, Root, Path]).
 
 %! anchor_links_grouped(+AnchorVname, -SemanticNodeValues, -GroupedLinks) is det.
