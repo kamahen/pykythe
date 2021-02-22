@@ -72,6 +72,10 @@
 % The "base" Kythe facts, which are dynamically loaded at start-up.
 :- dynamic kythe_node/7, kythe_edge/11, kythe_color_line/6.
 
+% Simplistic cache for json_response/2
+% TODO: LRU cache
+:- dynamic json_response_cache/2.
+
 % Convenience predicates for accessing the base Kythe facts, using
 % vname(Signature, Corpus, Root, Path, Language).
 % Some predicates use vname0, which omits the Signature:
@@ -151,6 +155,7 @@ kythe_signature(Signature) :- kythe_edge(_Signature1, _Corpus1, _Root1, _Path1, 
                                          Signature, _Corpus2, _Root2, _Path2, _Language2).
 
 :- debug(log).    % enable log messages with debug(log, '...', [...]).
+:- debug(timing).
 % :- debug(redirect_log).
 % :- debug(request_json_log).
 
@@ -513,16 +518,22 @@ reply_with_json(Request) :-
     %    origin('http://localhost:9999'), content_type('application/json')
     http_handler_read_json_dict(Request, JsonIn), % [content_type("application/json")]),
     debug(request_json_log, 'Request(json): ~q', [JsonIn]),
-    statistics(cputime, T1),
-    Tdelta1 is T1 - T0,
-    debug(timing, 'Request-JSON: ~q [~3f sec]', [JsonIn, Tdelta1]),
-    must_once(
-              json_response(JsonIn, JsonOut)), % TODO: improve this error handling
-    % debug(request_json_log, 'Request(json): ~q => ~q', [JsonIn, JsonOut]), % DO NOT SUBMIT
-    statistics(cputime, T2),
-    Tdelta2 is T2 - T1,
-    debug(timing, 'Request-response: ~q [~3f sec]', [JsonIn, Tdelta2]),
-    reply_json_dict(JsonOut, [width(0)]), % TODO: this is the most expensive part
+    (   json_response_cache(JsonIn, JsonOut)
+    ->  statistics(cputime, T2),
+        debug(timing, 'Request-Json:  ~q found in cache', [JsonIn])
+   ;    statistics(cputime, T1),
+        Tdelta1 is T1 - T0,
+        debug(timing, 'Request-JSON: ~q [~3f sec]', [JsonIn, Tdelta1]),
+        must_once(
+                  json_response(JsonIn, JsonOut)), % TODO: improve this error handling
+        % debug(request_json_log, 'Request(json): ~q => ~q', [JsonIn, JsonOut]), % DO NOT SUBMIT
+        asserta(json_response_cache(JsonIn, JsonOut)),
+        statistics(cputime, T2),
+        Tdelta2 is T2 - T1,
+        debug(timing, 'Request-response: ~q [~3f sec]', [JsonIn, Tdelta2])
+    ),
+    % TODO: cache the JSON form rather than the JsonOut form
+    reply_json_dict(JsonOut, [width(0)]), % TODO: is this the most expensive part?
     statistics(cputime, T3),
     Tdelta3 is T3 - T2,
     debug(timing, 'Request-reply: ~q [~3f sec]', [JsonIn, Tdelta3]).
