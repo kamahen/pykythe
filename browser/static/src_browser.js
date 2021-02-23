@@ -14,51 +14,17 @@
 // A more complete (redirected) URL is:
 //   http://localhost:9999/static/src_browser.html?corpus=CORPUS&root=ROOT&path=tmp%2Fpykythe_test%2FSUBST%2Fhome%2Fpeter%2Fsrc%2Fpykythe%2Ftest_data%2Fc3_a.py#L40
 
-
-// TODO: The code is inconsistent in whether it has corpus, root, path as
-//       separate items or combined into 'corpus/root/path'.
-//       When combined, we use the convention (also in src_browser.pl)
-//       that the pieces are combined with '</>', but in some places '/'
-//       is still used.
-//       Scan for newFromCombined.
-
 // SourceItem class encapsulates corpus/root/path/lineno/hilite into a
 // single object (lineno is optional and defaults to 1; hilite is
 // semantic object and defaults to null), with some convenience
 // methods and constructors.
 class SourceItem {
     constructor(corpus, root, path, lineno, hilite) {
-        // TODO: escape '</>' in corpus, root
         this.corpus = corpus || '';
         this.root = root || '';
         this.path = path || '';
         this.lineno = lineno || 1;
         this.hilite = hilite || null;
-        console.assert(this.corpus.indexOf('</>') < 0, 'Invalid corpus (contains "</>")', corpus);
-        console.assert(this.root.indexOf('</>') < 0, 'Invalid root (contains "</>")', root);
-        // TODO: remove these 2 tests when we properly separate corpus, root with "</>":  DO NOT SUBMIT
-        console.assert(this.corpus.indexOf('/') < 0, 'Invalid corpus (contains "/")', corpus);  // DO NOT SUBMIT
-        console.assert(this.root.indexOf('/') < 0, 'Invalid root (contains "/")', root);  // DO NOT SUBMIT
-    }
-
-    // DO NOT SUBMIT: replace newFromCombined with newFromCombinedFixed:
-    static newFromCombinedFixed(corpus_root_path, lineno, hilite) {
-        // TODO: escape '</>' in corpus, root
-        // Note that src_browser.pl currently verifies that corpus and
-        // root don't have '</>'.
-        const [corpus, root, path] = corpus_root_path.split('</>');
-        return new SourceItem(corpus, root, path, lineno, hilite);
-    }
-
-    // DO NOT SUBMIT: replace newFromCombined with newFromCombinedFIxed:
-    static newFromCombined(corpus_root_path, lineno, hilite) {
-        // TODO: escape '/' in corpus, root
-        // Note that src_browser.pl currently verifies that corpus and root don't have '/' in them.
-        const corpus_root_path_split = corpus_root_path.split('/');
-        return new SourceItem(corpus_root_path_split[0], // corpus
-                              corpus_root_path_split[1], // root
-                              corpus_root_path_split.slice(2).join('/'), // path
-                              lineno, hilite);
     }
 
     static newFromJSON(json) {
@@ -73,10 +39,8 @@ class SourceItem {
             .concat((this.path === '') ? [] : this.path.split('/'));
     }
 
-    // put all the fields except lineno,hilite into a single string
     combinedFilePath() {
-        // TODO: escape '</>' in corpus, root
-        return this.corpus + '</>' + this.root + '</>' + this.path;
+        return this.corpus + ' / ' + this.root + ' / ' + this.path;
     }
 
     toString() {
@@ -84,9 +48,6 @@ class SourceItem {
             (this.hilite ? '#hilite=' + this.hilite : '');
     }
 }
-
-// In the following the Corpus, Root, Language of the semantic are
-// encoded as "Corpus</>Root</>Language</>fullyQualifedSemantic".
 
 // Global mapping anchor signature to anchor signatures that is used to
 // highlight when the mouse moves over an anchor. An anchor always maps
@@ -99,7 +60,7 @@ var g_anchor_to_semantics = {};
 // Global mapping semantic signature to anchor signatures.
 var g_semantic_to_anchors = {};
 
-// global tree of dir/file entries - set by dynamic load from server
+// Global tree of dir/file entries - set by dynamic load from server
 // TODO: can we get rid of this (singleton) global?
 var g_file_tree = null;
 
@@ -176,13 +137,14 @@ function setFileTree(file_tree_from_server, source_item) {
 
 // Display file tree (id='file_nav')
 async function displayFileTree(source_item) {
-    var tree = fileNavElement();
-    while (tree.firstChild) {
-        tree.firstChild.remove();
-    }
+    deleteAllChildren(fileNavElement());
     await displayFileTreeItems(g_file_tree, 0, source_item.pathItems(),
                                source_item.lineno, source_item.hilite);
 }
+
+const line_in_menu = '—————'; // multiple Unicode em-dashes
+
+const filetree_prefix = 'nav_sel-'; // prefix for IDs in file tree SELECT dropdowns
 
 // Recursive function for displaying the remaining file tree
 // navigation items, starting from item_i (0-indexed).
@@ -190,49 +152,16 @@ async function displayFileTree(source_item) {
 // (path_item[0] is corpus; path_item[1] is root; path_item[2..] are
 // the actual file path.)
 async function displayFileTreeItems(file_tree_nodes, item_i, path_items, lineno, hilite) {
-    // file_tree_nodes is a list of 'file' or 'dir' items
-    // TODO: for now, corpus and root are treated as path items
-
-    var dropdown = null;
-    if (path_items.length == 0) {
-        if (file_tree_nodes.length > 1) {
-            dropdown = createDropdown(item_i, 'dir');
-            addDropdownOption(dropdown,
-                              '————', // multiple Unicode em-dashes:
-                              'dir',
-                              'nav_sel-' + file_tree_nodes.path);
-        } else {
-            dropdown = createDropdown(item_i, 'dir');
-        }
-        for (const tree_item of file_tree_nodes) {
-            addDropdownOption(dropdown,
-                              tree_item.name,
-                              tree_item.type,
-                              'nav_sel-' + tree_item.path);
-        }
-        dropdown.selectedIndex = 0;
-    } else {
-        dropdown = createDropdown(item_i, 'dir');
-        for (const [i, tree_item] of file_tree_nodes.entries()) {
-            // TODO: make directories display differently
-            addDropdownOption(dropdown,
-                              tree_item.name,
-                              tree_item.type,
-                              'nav_sel-' + tree_item.path);
-            if (tree_item.name == path_items[0]) {
-                dropdown.selectedIndex = i;
-            }
-        }
-    }
-    fileNavElement().appendChild(dropdown);
+    let dropdown = makeFileTreeDropdown(file_tree_nodes, item_i, path_items);
     const selected_node = file_tree_nodes[dropdown.selectedIndex];
-
+    fileNavElement().appendChild(dropdown);
     if (path_items.length > 0) {
         if (selected_node.type == 'dir') {
             await displayFileTreeItems(selected_node.children, item_i + 1, path_items.slice(1),
                                        lineno, hilite);
         } else if (selected_node.type == 'file') {
-            await displayNewSrcFile(SourceItem.newFromCombined(selected_node.path, lineno, hilite));
+            await displayNewSrcFile(new SourceItem(
+                selected_node.corpus, selected_node.root, selected_node.path, lineno, hilite));
         } else {
             return alert('Bad file_tree_nodes.type: ' + selected_node[0].type);
         }
@@ -240,36 +169,68 @@ async function displayFileTreeItems(file_tree_nodes, item_i, path_items, lineno,
         if (file_tree_nodes[0].type == 'dir') {
             await displayFileTreeItems(file_tree_nodes[0].children, item_i + 1, [], lineno, hilite);
         } else if (file_tree_nodes[0].type == 'file') {
-            await displayNewSrcFile(SourceItem.newFromCombined(selected_node.path, lineno, hilite));
+            await displayNewSrcFile(new SourceItem(
+                selected_node.corpus, selected_node.root, selected_node.path, lineno, hilite));
         } else {
             return alert('Bad file_tree_nodes.type: ' + file_tree_nodes[0].type);
         }
     }
 }
 
+function makeFileTreeDropdown(file_tree_nodes, item_i, path_items) {
+    let dropdown = createDropdownSelect();
+    if (path_items.length == 0) {
+        if (file_tree_nodes.length > 1) {
+            addDropdownOption(dropdown,
+                              {type: 'dir',name: line_in_menu,
+                               corpus: null, root: null, path: null});
+        }
+        for (const tree_item of file_tree_nodes) {
+            addDropdownOption(dropdown, tree_item);
+        }
+        dropdown.selectedIndex = 0;
+    } else {
+        for (const [i, tree_item] of file_tree_nodes.entries()) {
+            // TODO: make directories display differently
+            addDropdownOption(dropdown, tree_item);
+            if (tree_item.name == path_items[0]) {
+                dropdown.selectedIndex = i;
+            }
+        }
+    }
+    return dropdown;
+}
+
 // Create a dropdown (<SELECT ...>) element for file selection.
-function createDropdown(i, type) {
-    var dropdown = document.createElement('select');
-    // TODO: FIXME: -- first option is nav_sel-undefined  DO NOT SUBMIT
-    dropdown.setAttribute('class', path_type_to_class[type]);
-    // dropdown.id = 'path-' + i;
+function createDropdownSelect() {
+    // There's no way to catch the "onClick" for an individual
+    // dropdown item; only the dropdown as a whole, which gets the ID
+    // of the selected item in e.currentTarget.selectedIndex.
+    let dropdown = document.createElement('select');
+    dropdown.setAttribute('class', path_type_to_class['dir']);
     dropdown.onclick = async function(e) {
         e.preventDefault();
         const  t = e.currentTarget;
+        if (t.selectedIndex == null) { return; } // ==, not ===: also matches undefined
         const  t_selected = t[t.selectedIndex];
-        if (t_selected.id.startsWith('nav_sel-')) {
-            displayFileTree(SourceItem.newFromCombined(t_selected.id.substr('nav_sel-'.length)));
-        }
+        if (! t_selected || ! t_selected.id) { return; }
+        console.assert(t_selected.id.startsWith(filetree_prefix), 'Invalid filetree_prefix', filetree_prefix);
+        const id_parsed = JSON.parse(t_selected.id.substr(filetree_prefix.length));
+        const tree_item = new SourceItem(id_parsed.corpus, id_parsed.root, id_parsed.path);
+        displayFileTree(tree_item);
     };
     return dropdown;
 }
 
 // Add an <OPTION ...> element to a dropdown for file selection.
-function addDropdownOption(dropdown, text, type, id) {
-    var option = document.createElement('option');
-    option.setAttribute('class', path_type_to_class[type]);
-    option.text = text;
-    option.id = id;
+function addDropdownOption(dropdown, tree_item) {
+    let option = document.createElement('option');
+    option.setAttribute('class', path_type_to_class[tree_item.type]);
+    option.text = tree_item.name;
+    if (tree_item.path) {
+        option.id = filetree_prefix + JSON.stringify(
+            {corpus: tree_item.corpus, root: tree_item.root, path: tree_item.path});
+    }
     dropdown.add(option);
 }
 
@@ -291,7 +252,7 @@ function updateBrowserUrl(source_item) {
 // fileNavElement() via displaySrcContents.
 async function displayNewSrcFile(source_item) {
     updateBrowserUrl(source_item);
-    var progress = document.createElement('span');
+    let progress = document.createElement('span');
     progress.innerHTML = '&nbsp;&nbsp;&nbsp;Fetching file ' +
         sanitizeText(source_item.combinedFilePath()) + ' ...';
     fileNavElement().appendChild(progress);
@@ -321,16 +282,16 @@ function displaySrcContents(source_item, color_data) {
                    'color', color_data);
     fileNavElement().lastChild.innerHTML =
         'Rendering file ' + source_item.combinedFilePath() + '...';
-    var table = document.createElement('table');
+    let table = document.createElement('table');
     table.setAttribute('class', 'src_table');
     for (const [line_key, line_parts] of color_data.lines.entries()) {
-        var row = table.insertRow();
-        var td1 = row.insertCell();
+        let row = table.insertRow();
+        let td1 = row.insertCell();
         td1.setAttribute('class', 'src_lineno');
         td1.id = linenoId(line_key + 1);  // TODO: Fix the 0-origin line_key (the source display is 1-origin)
-        var td2 = row.insertCell();
+        let td2 = row.insertCell();
         td2.setAttribute('class', 'src_line');
-        var txt_span = document.createElement('span');
+        let txt_span = document.createElement('span');
         if (line_parts.length) {
             td1.appendChild(document.createTextNode(line_parts[0].lineno));
             srcLineTextAddHoverable(line_parts, txt_span, source_item);
@@ -348,7 +309,7 @@ function displaySrcContents(source_item, color_data) {
 // See also srcLineTextAddHoverable()
 function srcLineTextSimple(line_parts, txt_span, data_semantics) {
     for (const line_part of line_parts) {
-        var span = document.createElement('span');
+        let span = document.createElement('span');
         span.setAttribute('class', token_css_color_class[line_part.token_color]);
         // TODO: the following doesn't hilite - why?  DO NOT SUBMIT FIXME
         if (is_token_name[line_part.token_color] &&
@@ -363,7 +324,7 @@ function srcLineTextSimple(line_parts, txt_span, data_semantics) {
 // Display a single line of a source display
 function srcLineTextAddHoverable(line_parts, txt_span, source_item) {
     for (const line_part of line_parts) {
-        var span = document.createElement('span');
+        let span = document.createElement('span');
         span.setAttribute('class', token_css_color_class[line_part.token_color]);
         span.innerHTML = sanitizeText(line_part.value);
         if (is_token_name[line_part.token_color] && line_part.signature) {
@@ -441,7 +402,7 @@ function setXref(source_item, signature, data) {
     document.getElementById('xref').innerHTML = sanitizeText(
         'Getting Kythe links for ' + source_item.combinedFilePath() + ' anchor:' + signature + ' ...');
 
-    var table = document.createElement('table');
+    let table = document.createElement('table');
     setXrefItemHeader(table, signature, data);
     setXrefNodeValues(table, data);
     setXrefEdgeLinks(table, data, signature, source_item);
@@ -451,7 +412,7 @@ function setXref(source_item, signature, data) {
 // In the xref area, display the item signature as a header
 function setXrefItemHeader(table, signature, data) {
     table.setAttribute('class', 'src_table');
-    var row_cell = tableInsertRowCell(table);
+    let row_cell = tableInsertRowCell(table);
     // TODO: remove <i> using row_cell.settAttribute('class', some-other-class)
     if (data.semantics.length == 0) {
         row_cell.appendChild(document.createElement('span')).innerHTML + '<i>(no semantics)</i>';
@@ -484,7 +445,7 @@ function setXrefEdgeLinks(table, data, signature, source_item) {
 
 // In the xref area, a header for the links
 function setXrefEdgeLinkHead(table, edge_links) {
-    var row_cell = tableInsertRowCell(table);
+    let row_cell = tableInsertRowCell(table);
     row_cell.setAttribute('class', 'xref_head');
     cellHTML(
         row_cell,
@@ -501,13 +462,13 @@ function setXrefEdgeLinkHead(table, edge_links) {
 // In the xref area, add a single xref item
 function setXrefEdgeLinkItem(table, path_link, data, signature, source_item) {
     {
-        var row_cell = tableInsertRowCell(table);
+        let row_cell = tableInsertRowCell(table);
         // DO NOT SUBMIT - use a CSS class for '<b><i>':
         cellHTML(row_cell,
                  '<b><i>' + sanitizeText(path_link.path) + '</i></b>');
     }
     for (const link_line of path_link.lines) {
-        var row_cell = tableInsertRowCell(table);
+        let row_cell = tableInsertRowCell(table);
         const lineno_span = row_cell.appendChild(document.createElement('a'));
         lineno_span.title = link_line.path + ':' + link_line.lineno;
         const semantic = g_anchor_to_semantics[signature];
@@ -519,7 +480,7 @@ function setXrefEdgeLinkItem(table, path_link, data, signature, source_item) {
               '#' + encodeURIComponent(linenoId(link_line.lineno));
         lineno_span.href = href;
         lineno_span.innerHTML = '<b><i>' + link_line.lineno + ':&nbsp;</i></b>';  // DO NOT SUBMIT - CSS class, rowspan
-        var txt_span = row_cell.appendChild(document.createElement('a'));
+        let txt_span = row_cell.appendChild(document.createElement('a'));
         txt_span.title = link_line.path + ':' + link_line.lineno;
         txt_span.href = href;
         // For the case of same file, the href-fetch doesn't cause the
@@ -538,7 +499,7 @@ function setXrefEdgeLinkItem(table, path_link, data, signature, source_item) {
 }
 
 function setXrefBottom(table) {
-    var row_cell = tableInsertRowCell(table);
+    let row_cell = tableInsertRowCell(table);
     cellHTML(row_cell, '&nbsp;');  // ensure some space at the bottom
     replaceChildWith('xref', table);
 }
@@ -624,15 +585,19 @@ function sumList(items) {
 
 // Clear an element and replace with a single child
 function replaceChildWith(id, new_child) {
-    var elem = document.getElementById(id);
-    // elem.replaceChild(new_child, elem.firstChild);
+    let elem = document.getElementById(id);
+    // This should suffice, but let's instead delete
+    // the children and replace:
+    //     elem.replaceChild(new_child, elem.firstChild);
     deleteAllChildren(elem);
     elem.appendChild(new_child);
 }
 
-// Clear an element
+// Clear an element.
+// Recursively removes chidren, even though probably not needed
 function deleteAllChildren(elem) {
     while (elem.firstChild) {
+        deleteAllChildren(elem.firstChild);
         elem.firstChild.remove();
     }
 }
@@ -669,7 +634,7 @@ function scrollIntoViewAndMark(lineno, hilite, debug_item) {
 
 // Convert an ID or #ID (from location.hash) to a lineno
 function idLineno(id) {
-    var lineno;
+    let lineno;
     if (id.substr(0, 1) == 'L') {
         lineno = parseInt(id.substr(1));
     } else if (id.substr(0, 2) == '#L') {  // From location.hash
