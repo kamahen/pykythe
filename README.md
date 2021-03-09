@@ -248,6 +248,15 @@ Pykythe depends on the deprecated `lib2to3` parser, and the details of
 the `Grammar.txt` file.
 
 TODO: This requires Python version 3.7.5.
+You can create this in `$HOME/.local/bin/python3.7` by the following:
+```
+git clone git@github.com:python/cpython.git
+git checkout v3.7.5
+./configure --prefix=$HOME/.local --enable-optimizations
+make -j
+make -j test
+make install
+```
 
 TODO: A test has been added to ast_raw.parse
 
