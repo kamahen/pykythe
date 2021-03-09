@@ -242,6 +242,20 @@ and `pylint`. It is intended to also be processed by `pytype`.
 
 ## Implementation notes
 
+## Grammar
+
+Pykythe depends on the deprecated `lib2to3` parser, and the details of
+the `Grammar.txt` file.
+
+TODO: This requires Python version 3.7.5.
+
+TODO: A test has been added to ast_raw.parse
+
+DO NOT SUBMIT - FIXME - TODO
+Use a later version.
+
+
+
 ### Processing a single source file
 
 A source file is processed in the following steps:
