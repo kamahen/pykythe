@@ -140,9 +140,13 @@ function initDrag(debug_reason) {
     //       a position:absolute item has no style.height, etc.
     //       Supposedly enclosing it in a position:relative
     //       fixes that, but that causes everything to disappear!
-    const src_elem = document.getElementById('src');
-    const splitter_elem = document.getElementById('splitter');
-    const xref_elem = document.getElementById('xref');
+    let src_elem = document.getElementById('src');
+    let splitter_elem = document.getElementById('splitter');
+    let xref_elem = document.getElementById('xref');
+
+    let src_selector = document.querySelector('#src');
+    let splitter_selector = document.querySelector('#splitter');
+    let xref_selector = document.querySelector('#xref');
 
     // Find the CSS rules in our stylesheet
     // TODO: doesn't work: for (const stylesheet of document.styleSheets) {...}
@@ -175,17 +179,26 @@ function initDrag(debug_reason) {
                          y: e.clientY - md.e.clientY};
 
             // Prevent negative-sized elements
-            delta.y = Math.min(Math.max(delta.y, -md.firstHeight), md.secondHeight);
+            delta.y = Math.min(Math.max(delta.y, -md.srcHeight), md.xrefHeight);
 
-            // src_elem.style.height = (md.srcHeight + delta.y) + 'px';
-            rules['#src'].style.height = (md.srcHeight + delta.y) + 'px';
-            // splitter_elem.style.top = (md.splitterTop + delta.y) + 'px';
-            rules['#src'].style.top = (md.splitterTop + delta.y) + 'px';
-            // xref_elem.style.height = (md.xrefHeight - delta.y) + 'px';
-            rules['#xref'].style.height =(md.xrefHeight - delta.y) + 'px';
+            // splitter_selector.style.setProperty('--splitter-top', (md.splitterTop + delta.y) + 'px');
+
+            // console.log('mouse down:', e.clientY, delta.y, md.splitterTop, splitter_selector.style.getPropertyValue('--splitter-top'));
+
+            // src_selector.style.setProperty('--src-height', (md.srcHeight + delta.y) + 'px');
+            // xref_selector.style.setProperty('--xref-height', (md.xrefHeight - delta.y) + 'px');
+            // xref_selector.style.setProperty('--xref-top', (md.xrefTop - delta.y) + 'px');
+
+            src_elem.style.height = (md.srcHeight + delta.y) + 'px';
+            splitter_elem.style.top = (md.splitterTop + delta.y) + 'px';
+            xref_elem.style.height = (md.xrefHeight - delta.y) + 'px';
             // TODO: if grid layout, don't need to modify xref_elem.style.top:
-            // xref_elem.style.top = (md.xrefTop - delta.y) + 'px';
-            rules['#xref'].style.top =(md.xrefTop - delta.y) + 'px';
+            xref_elem.style.top = (md.xrefTop + delta.y) + 'px';
+
+            // rules['#src'].style.height = (md.srcHeight + delta.y) + 'px';
+            // rules['#src'].style.top = (md.splitterTop + delta.y) + 'px';
+            // rules['#xref'].style.height =(md.xrefHeight - delta.y) + 'px';
+            // rules['#xref'].style.top =(md.xrefTop - delta.y) + 'px';
             // console.log('mouse move:', e.clientX, e.clientY, src_elem.style, xref_elem.style);
         }
 
