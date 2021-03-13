@@ -3091,6 +3091,14 @@ possible_classes_from_attr(AttrName, Classes) -->>
 %! classes_from_attr(+Symtab, +AttrName:atom, -Classes is nondet.
 % Given an AttrName, find symbol table entries for classes that
 % define/use it.
+% TODO: classes_from_attr/3 uses 48% of processing (according to
+%       profile/1), almost all in rb_conv_pairs_4 (called from
+%       conv_symtab_pairs).  The problem seesm to be that we do a scan
+%       of the entire symtab; so probably should have an inverted list
+%       for class attributes.  - BUT: this probably only applies to
+%       sources that have lots of unresolved attributes, so better to
+%       first concentrate on resolving as many attrs as possible.
+% TODO: https://github.com/kamahen/pykythe/issues/38
 classes_from_attr_(Symtab, AttrName, Classes) :-
     (   common_attr(AttrName)
     ->  Classes = []
