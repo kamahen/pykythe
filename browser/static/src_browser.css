@@ -4,6 +4,16 @@
 
 /* For the various cursors, see https://www.w3schools.com/cssref/playit.asp?filename=playcss_cursor */
 
+:root {
+    --file-nav-height: 4%;
+    --file-nav-padding-bottom: 5pt;
+    --src-height: 64%;
+    --src-top: 6%;  /* .file_nav.height + 2% */
+    --xref-height: 30%;
+    --xref-top: 70%;  /* .file_nav.height + .src.height */
+    --xref-padding-top: 5pt;
+}
+
 body {
     /* Colors from https://ethanschoonover.com/solarized/ */
     /* Commented out because jigsaw doesn't like them. */
@@ -70,9 +80,9 @@ body {
     color: red;
     font-family: "Source Code Pro";
     font-size: 9pt;
-    height: 4%;
+    height: var(--file-nav-height);
     overflow: auto; /* Shouldn't need this */
-    padding-bottom: 5pt;
+    padding-bottom: var(--file-nav-padding-bottom);
     position: absolute;
     /* top: 0 */ /* If uncommented, text disappears */
     width: 99%;
@@ -86,19 +96,19 @@ body {
     border-right: 0;
     border-style: groove;
     border-top: 1px solid black;
-    height: 64%;
+    height: var(--src-height);
     overflow: auto;
     position: absolute;
-    top: 6%;  /* .file_nav.height + 2% */
+    top: var(--src-top);
     width: 99%;
 }
 
 .xref {
-    height: 30%;
+    height: var(--xref-height);
     overflow: auto;
-    padding-top: 5pt;
+    padding-top: var(--xref-padding-top);
     position: absolute;
-    top: 70%;  /* .file_nav.height + .src.height */
+    top: var(--xref-top);
     width: 99%;
 }
 
