@@ -478,8 +478,7 @@ pyflakes:
 		grep -v snippets.py | xargs -L1 pyflakes
 
 PYTYPE_DIR=/tmp/pykythe_pytype
-# TODO: PYTYPE_V=3.7 when it's supported:
-PYTYPE_V=3.6
+PYTYPE_V=3.7
 # Can't do the following because need to compile
 # things like parser_ext:
 #   PYTYPE=PYTHONPATH=$$(pwd)/../pytype ../pytype/scripts/pytype
@@ -492,8 +491,6 @@ PYTYPE=$(shell type -p pytype)
 #       "cd pykythe" and instead using the file name "pykythe/...py"
 #       but that seems to upset pytype's imnport mechanism.
 
-# TODO: --python-version=3.6  # conflict if python3.6 is not default python3
-#       maybe --no-site-packages ?
 # Anyway, mypy doesn't yet have a plugin for dataclasses. :(
 MYPY:=$(shell type -p mypy) --python-version=3.7 --strict-optional --check-untyped-defs --warn-incomplete-stub --warn-no-return --no-incremental --disallow-any-unimported --show-error-context --implicit-optional --strict --disallow-incomplete-defs
 # TODO: --disallow-incomplete-defs  https://github.com/python/mypy/issues/4603
@@ -835,16 +832,18 @@ upgrade-mypy:
 	python3 -m pip install -U git+git://github.com/python/mypy.git
 
 upgrade-pkgs:
-	sudo apt update
+	@# sudo apt update  # don't need -- done by /usr/lib/apt/apt.systemd.daily
 	sudo apt autoremove
-	sudo apt --with-new-pkgs --assume-yes upgrade
+	sudo apt --with-new-pkgs --assume-yes upgrade  # dist-upgrade?
 	sudo apt --assume-yes full-upgrade
 	sudo apt autoremove
 	@# And an old incantation from decades ago
 	sudo sync
 	sudo sync
 	sudo sync
-	echo sudo time fstrim --all -v
+	@# Not needed if:  systemctl enable fstrim.timer
+	@#   - check with: systemctl list-timers fstrim.timer
+	@# echo sudo time fstrim --all -v
 
 pull-swipl:
 	cd ../swipl-devel && git pull --recurse
