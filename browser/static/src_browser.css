@@ -4,20 +4,17 @@
 
 /* For the various cursors, see https://www.w3schools.com/cssref/playit.asp?filename=playcss_cursor */
 
-:root {
+:root { /* selects the root element of the document (i.e., <html>) */
+    /* layout variables */
     --file-nav-height: 4%;
     --file-nav-padding-bottom: 5pt;
     --src-height: 64%;
-    --src-top: 6%;  /* .file_nav.height + 2% */
-    --xref-height: 30%;
-    --xref-top: 70%;  /* .file_nav.height + .src.height */
+    --src-top: calc( var(--file-nav-height) + 2% );
+    --xref-height: calc( 30% - 2% ); /* extra 2% gets rid of some slop, it seems */
+    --xref-top: calc( var(--src-height) + var(--src-top) );
     --xref-padding-top: 5pt;
-}
 
-body {
     /* Colors from https://ethanschoonover.com/solarized/ */
-    /* Commented out because jigsaw doesn't like them. */
-    /* ---
     --base03:    #002b36;
     --base02:    #073642;
     --base01:    #586e75;
@@ -34,10 +31,11 @@ body {
     --blue:      #268bd2;
     --cyan:      #2aa198;
     --green:     #859900;
+}
 
+body { /* <body> */
     background-color: var(--base3);
-    --- */
-    background-color: #fdf6e3;
+    overflow: clip; /* TODO: why does this leave a scroll bar? (see also .container { ... } */
 }
 
 .src_hover {  /* Added by mouseover on an anchor */
@@ -74,6 +72,7 @@ body {
        width: 99vm; */
     background: ivory;
     border: 0 solid black;
+    overflow: clip; /* TODO: why does this leave a scroll bar? */
 }
 
 .file_nav {
@@ -81,6 +80,7 @@ body {
     font-family: "Source Code Pro";
     font-size: 9pt;
     height: var(--file-nav-height);
+    min_height: 12pt;
     overflow: auto; /* Shouldn't need this */
     padding-bottom: var(--file-nav-padding-bottom);
     position: absolute;
