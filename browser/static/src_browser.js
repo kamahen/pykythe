@@ -14,6 +14,11 @@
 // A more complete (redirected) URL is:
 //   http://localhost:9999/static/src_browser.html?corpus=CORPUS&root=ROOT&path=tmp%2Fpykythe_test%2FSUBST%2Fhome%2Fpeter%2Fsrc%2Fpykythe%2Ftest_data%2Fc3_a.py#L40
 
+// All the IDs have defined prefixes (e.g., filetree_prefix, src_prefix, 'L'),
+// or a few from <div>s (file_nav, src, xref).
+// To check that all the IDs in the page are as expected:
+//     Array.from(document.querySelectorAll('[id]')).sort();
+
 // SourceItem class encapsulates corpus/root/path/lineno/hilite into a
 // single object (lineno is optional and defaults to 1; hilite is
 // semantic object and defaults to null), with some convenience
@@ -145,6 +150,7 @@ async function displayFileTree(source_item) {
 const line_in_menu = '—————'; // multiple Unicode em-dashes
 
 const filetree_prefix = 'nav_sel-'; // prefix for IDs in file tree SELECT dropdowns
+const src_prefix = 'sig-'; // prefix for IDs that are signatures in the srce
 
 // Recursive function for displaying the remaining file tree
 // navigation items, starting from item_i (0-indexed).
@@ -214,7 +220,7 @@ function createDropdownSelect() {
         if (t.selectedIndex == null) { return; } // ==, not ===: also matches undefined
         const  t_selected = t[t.selectedIndex];
         if (! t_selected || ! t_selected.id) { return; }
-        console.assert(t_selected.id.startsWith(filetree_prefix), 'Invalid filetree_prefix', filetree_prefix);
+        console.assert(t_selected.id.startsWith(filetree_prefix), 'Invalid filetree_prefix', t_selected.id, 'should start with:', filetree_prefix);
         const id_parsed = JSON.parse(t_selected.id.substr(filetree_prefix.length));
         const tree_item = new SourceItem(id_parsed.corpus, id_parsed.root, id_parsed.path);
         displayFileTree(tree_item);
@@ -328,8 +334,7 @@ function srcLineTextAddHoverable(line_parts, txt_span, source_item) {
         span.setAttribute('class', token_css_color_class[line_part.token_color]);
         span.innerHTML = sanitizeText(line_part.value);
         if (is_token_name[line_part.token_color] && line_part.signature) {
-            // DO NOT SUBMIT: span.id should have a known prefix on the id
-            span.id = line_part.signature;
+            span.id = src_prefix + line_part.signature;
             span.onmouseover = async function(e) { // e is MouseEvent
                 e.preventDefault();
                 mouseoverAnchor(e.currentTarget, 'add', 'src_hover', source_item);
@@ -366,19 +371,21 @@ function srcLineTextAddHoverable(line_parts, txt_span, source_item) {
 // class_id. Typically, the class_id is 'src_hover', which highlights
 // the item.
 function mouseoverAnchor(mouse_target, class_action, class_id, source_item) {
+    console.assert(mouse_target.id.startsWith(src_prefix), 'Invalid src_prefix', mouse_target.id, 'should start with:', src_prefix);
+    const signature = mouse_target.id.substr(src_prefix.length);
     mouseoverHilite(class_action, class_id,
-                    g_anchor_to_anchors[mouse_target.id], mouse_target.id);
+                    g_anchor_to_anchors[signature], mouse_target.id);
 }
 
 // Highlight on/off (class_action={'add','remove}) on an anchor.
 function mouseoverHilite(class_action, class_id, anchors, debug_item) {
     for (const anchor of anchors || []) {
-        const sig = document.getElementById(anchor);
+        const sig = document.getElementById(src_prefix + anchor);
         if (sig) {
             sig.classList[class_action](class_id); // sig.classList.{add,remove}(class_id)
         } else {
             if (class_action === 'add') {
-                console.log('No edge for ' + debug_item);
+                console.trace('No edge for anchor', anchor, debug_item);
                 // alert('No edge for ' + debug_item);
             }
         }
@@ -387,8 +394,10 @@ function mouseoverHilite(class_action, class_id, anchors, debug_item) {
 
 // Callback for a click on a token (anchor) in the source display
 async function clickAnchor(mouse_target, source_item) {
+    console.assert(mouse_target.id.startsWith(src_prefix), 'Invalid src_prefix', mouse_target.id, 'should start with:', src_prefix);
+    const signature = mouse_target.id.substr(src_prefix.length);
     await fetchFromServer(
-        {anchor_xref: {signature: mouse_target.id,
+        {anchor_xref: {signature: signature,
                        corpus: source_item.corpus,
                        root: source_item.root,
                        path: source_item.path,
@@ -624,10 +633,10 @@ function scrollIntoViewAndMark(lineno, hilite, debug_item) {
             // TODO: highlight the source text as well as the line #
             line_elem.setAttribute('class', 'src_lineno_hilite');
         } else {
-            console.log('NO LINE:', linenoId(lineno), debug_item);
+            console.trace('NO LINE:', linenoId(lineno), debug_item);
         }
     } else {
-        console.log('NO LINENO', debug_item);
+        console.trace('NO LINENO', debug_item);
     }
     mouseoverHilite('add', 'src_hover', g_semantic_to_anchors[hilite], hilite);
 }
@@ -643,7 +652,7 @@ function idLineno(id) {
         lineno = NaN;
     }
     if (isNaN(lineno)) {
-        console.log('Invalid lineno ID: "' + id + '"');
+        console.trace('Invalid lineno ID: "' + id + '"');
         lineno = 1;
     }
     return lineno;
