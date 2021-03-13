@@ -4,14 +4,21 @@
 
 /* For the various cursors, see https://www.w3schools.com/cssref/playit.asp?filename=playcss_cursor */
 
+/* TODO: use grid layout rather than absolute layout
+         (and modify JS initDrag document.onmousemove to
+         not modify the xref position)
+ */
+
 :root { /* selects the root element of the document (i.e., <html>) */
     /* layout variables */
-    --file-nav-height: 4%;
+    --file-nav-height: 3%;
     --file-nav-padding-bottom: 5pt;
     --src-height: 64%;
     --src-top: calc( var(--file-nav-height) + 2% );
+    --splitter-top: calc( var(--src-top) + var(--src-height) );
+    --splitter-height: 6px;
     --xref-height: calc( 30% - 2% ); /* extra 2% gets rid of some slop, it seems */
-    --xref-top: calc( var(--src-height) + var(--src-top) );
+    --xref-top: calc( var(--splitter-top) + var(--splitter-height) );
     --xref-padding-top: 5pt;
 
     /* Colors from https://ethanschoonover.com/solarized/ */
@@ -35,7 +42,6 @@
 
 body { /* <body> */
     background-color: var(--base3);
-    overflow: clip; /* TODO: why does this leave a scroll bar? (see also .container { ... } */
 }
 
 .src_hover {  /* Added by mouseover on an anchor */
@@ -67,15 +73,15 @@ body { /* <body> */
     padding: 4px 0;
 }
 
-.container {
-    /* height: 99vh;
-       width: 99vm; */
+#container {
     background: ivory;
     border: 0 solid black;
-    overflow: clip; /* TODO: why does this leave a scroll bar? */
+    /* position: relative; /* Allegedly, allows contained elements can be re-positioned */
+    top: 0;
+    height: 99vh;
 }
 
-.file_nav {
+#file_nav {
     color: red;
     font-family: "Source Code Pro";
     font-size: 9pt;
@@ -84,13 +90,12 @@ body { /* <body> */
     overflow: auto; /* Shouldn't need this */
     padding-bottom: var(--file-nav-padding-bottom);
     position: absolute;
-    /* top: 0 */ /* If uncommented, text disappears */
-    width: 99%;
+    top: 0;
     /* white-space: pre; */
 }
 
 /* TODO: min-top hack: https://stackoverflow.com/questions/15552358/is-there-a-css-min-top-property */
-.src {
+#src {
     border-bottom: 1px solid black;
     border-left: 0;
     border-right: 0;
@@ -103,7 +108,26 @@ body { /* <body> */
     width: 99%;
 }
 
-.xref {
+#splitter {
+    background-color: var(--base01);
+    cursor: row-resize;
+    height: var(--splitter-height);
+    min-height: var(--splitter-height);
+    position: absolute;
+    top: var(--splitter-top);
+    width: 99%;
+    /* Prevent the browser's built-in drag from interfering */
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+
+    /* See https://stackoverflow.com/questions/12194469/best-way-to-do-a-split-pane-in-html/52536726#52536726
+       TODP: The following is for a left-right split; modify it for top-bottom split
+       background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='30'><path d='M2 0 v30 M5 0 v30 M8 0 v30' fill='none' stroke='black'/></svg>"); */
+    */
+}
+
+#xref {
     height: var(--xref-height);
     overflow: auto;
     padding-top: var(--xref-padding-top);

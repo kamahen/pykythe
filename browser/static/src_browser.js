@@ -121,6 +121,8 @@ async function renderPage() {
     // https://developers.google.com/web/updates/2016/01/urlsearchparams
     const params = new URLSearchParams(location.search);
     const lineno = location.hash ? idLineno(location.hash) : 1;
+    initDrag('initial');
+    window.onresize = () => initDrag('resize'); // TODO: not needed?
     await fetchFromServer(
         {src_file_tree: ''},
         file_tree_from_server => setFileTree(
@@ -131,6 +133,85 @@ async function renderPage() {
                 params.get('path'),
                 lineno,
                 params.get('hilite'))));
+}
+
+function initDrag(debug_reason) {
+    // TODO: This code doesn't do anything, presumably because
+    //       a position:absolute item has no style.height, etc.
+    //       Supposedly enclosing it in a position:relative
+    //       fixes that, but that causes everything to disappear!
+    const src_elem = document.getElementById('src');
+    const splitter_elem = document.getElementById('splitter');
+    const xref_elem = document.getElementById('xref');
+
+    // Find the CSS rules in our stylesheet
+    // TODO: doesn't work: for (const stylesheet of document.styleSheets) {...}
+    let rules = {};
+    for (let i = 0; i < document.styleSheets.length; i++) {
+        try {
+            const stylesheet = document.styleSheets[i];
+            for (let j = 0; j < stylesheet.cssRules.length; j++) {
+                add_rule(stylesheet.cssRules[j], rules);
+            }
+        } catch { }; // skip unavailable stylesheets
+    }
+
+    // See diagram https://developer.mozilla.org/en-US/docs/Web/API/CSS_Object_Model/Determining_the_dimensions_of_elements
+    // This code derived from https://stackoverflow.com/questions/12194469/best-way-to-do-a-split-pane-in-html/52536726#52536726
+    var md = null; // remember mouse down info
+
+    splitter_elem.onmousedown = (e) => {
+        md = {e,
+              splitterTop: splitter_elem.offsetTop,
+              srcHeight:   src_elem.offsetHeight,
+              xrefHeight:  xref_elem.offsetHeight,
+              xrefTop:     xref_elem.offsetTop,
+             };
+        // console.log('mouse down:', e.clientX, e.clientY, md, src_elem, xref_elem);
+        // console.log('  ... md', src_elem.style.cssText, xref_elem.style.cssText);
+
+        document.onmousemove = (e) => {
+            var delta = {x: e.clientX - md.e.clientX,
+                         y: e.clientY - md.e.clientY};
+
+            // Prevent negative-sized elements
+            delta.y = Math.min(Math.max(delta.y, -md.firstHeight), md.secondHeight);
+
+            // src_elem.style.height = (md.srcHeight + delta.y) + 'px';
+            rules['#src'].style.height = (md.srcHeight + delta.y) + 'px';
+            // splitter_elem.style.top = (md.splitterTop + delta.y) + 'px';
+            rules['#src'].style.top = (md.splitterTop + delta.y) + 'px';
+            // xref_elem.style.height = (md.xrefHeight - delta.y) + 'px';
+            rules['#xref'].style.height =(md.xrefHeight - delta.y) + 'px';
+            // TODO: if grid layout, don't need to modify xref_elem.style.top:
+            // xref_elem.style.top = (md.xrefTop - delta.y) + 'px';
+            rules['#xref'].style.top =(md.xrefTop - delta.y) + 'px';
+            // console.log('mouse move:', e.clientX, e.clientY, src_elem.style, xref_elem.style);
+        }
+
+        document.onmouseup = () => {
+            // console.log('mouse up:', e.clientX, e.clientY, md,
+            //             {offsetTop:  splitter_elem.offsetTop,
+            //              srcHeight:  src_elem.offsetHeight,
+            //              xrefHeight: xref_elem.offsetHeight,
+            //              xrefTop:    xref_elem.offsetTop,
+            //             },
+            //             src_elem, xref_elem,
+            //             'src_rule', rules['#src'],
+            //             'xref_rule', rules['#xref']);
+            document.onmousemove = document.onmouseup = null;
+        }
+    }
+
+    // console.log('initDrag', debug_reason,
+    //             'src@', src_elem.offsetTop, src_elem.offsetHeight,
+    //             'splitter@', splitter_elem.offsetTop, splitter_elem.offsetHeight,
+    //             'xref@', xref_elem.offsetTop, xref_elem.offsetHeight);
+}
+
+function add_rule(css_rule, rules) {
+    console.assert(! rules[css_rule.selectorText], 'Duplicate css_rule', css_rule);
+    rules[css_rule.selectorText] = css_rule;
 }
 
 // Callback from server fetch of the file navigation tree
