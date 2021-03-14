@@ -14,7 +14,7 @@
 // A more complete (redirected) URL is:
 //   http://localhost:9999/static/src_browser.html?corpus=CORPUS&root=ROOT&path=tmp%2Fpykythe_test%2FSUBST%2Fhome%2Fpeter%2Fsrc%2Fpykythe%2Ftest_data%2Fc3_a.py#L40
 
-// All the IDs have defined prefixes (e.g., filetree_prefix, src_prefix, 'L'),
+// All the IDs have defined prefixes (e.g., filetree_prefix, signature_prefix, lineno_prefix),
 // or a few from <div>s (file_nav, src, xref).
 // To check that all the IDs in the page are as expected:
 //     Array.from(document.querySelectorAll('[id]')).sort();
@@ -23,17 +23,50 @@
 // single object (lineno is optional and defaults to 1; hilite is
 // semantic object and defaults to null), with some convenience
 // methods and constructors.
+//   options has these fields (added to SourceItem):
+//     hilite: hilite semantic object (signature)
+//     lineno: lineno
+//     src_height: CSS .src.height used by <div class="src">
 class SourceItem {
-    constructor(corpus, root, path, lineno, hilite) {
+    constructor(corpus, root, path, options) {
         this.corpus = corpus || '';
         this.root = root || '';
         this.path = path || '';
-        this.lineno = lineno || 1;
-        this.hilite = hilite || null;
+        this.lineno = options ? (options.lineno || 1) : 1;
+        this.hilite = options ? (options.hilite || null) : null;
+        this.src_height = options ? options.src_height : null; // can be null or NaN
     }
 
     static newFromJSON(json) {
-        return new SourceItem(json.corpus, json.root, json.path, json.lineno);
+        return new SourceItem(json.corpus, json.root, json.path, {lineno:json.lineno});
+    }
+
+    static newFromSearch() {
+        // https://developers.google.com/web/updates/2016/01/urlsearchparams
+        const params = new URLSearchParams(location.search);
+        const lineno = location.hash ? idLineno(location.hash) : 1;
+        return new SourceItem(
+            params.get('corpus'),
+            params.get('root'),
+            params.get('path'),
+            {lineno:lineno,
+             hilite:params.get('hilite'),
+             src_height:parseInt(params.get('src_ht'))});
+    }
+
+    toUriParams() {
+        return 'corpus=' + encodeURIComponent(this.corpus) +
+            '&root=' + encodeURIComponent(this.root) +
+            (this.src_height ? '&src_ht=' + encodeURIComponent(this.src_height) : '') + // TODO: move to later in URI
+            '&path=' + encodeURIComponent(this.path) +
+            (this.hilite ? '&hilite=' + encodeURIComponent(this.hilite) : '') +
+            '#' + encodeURIComponent(linenoId(this.lineno));
+    }
+
+    options() {
+        return {lineno: this.lineno,
+                hilite: this.hilite,
+                src_height: this.src_height};
     }
 
     // Split the path into components path0, path1, ... pathN; and return
@@ -44,15 +77,20 @@ class SourceItem {
             .concat((this.path === '') ? [] : this.path.split('/'));
     }
 
-    combinedFilePath() {
+    toStringCorpusRootPath() {
         return this.corpus + ' / ' + this.root + ' / ' + this.path;
     }
 
     toString() {
-        return combinedFilePath + '#' + linenoId(this.lineno) +
+        return toStringCorpusRootPath() + '#' + linenoId(this.lineno) +
             (this.hilite ? '#hilite=' + this.hilite : '');
     }
 }
+
+// TODO: some of these might not be needed; all the elements that use
+//       a particular class can be found by
+//       document.getElementsByClassName('className') which returns an
+//       array-like object.  See also document.querySelectorAll().
 
 // Global mapping anchor signature to anchor signatures that is used to
 // highlight when the mouse moves over an anchor. An anchor always maps
@@ -118,21 +156,14 @@ const path_type_to_class = {
 // Fetches the file tree from the server and schedules continuation
 // that displays the file selector dropdown(s).
 async function renderPage() {
-    // https://developers.google.com/web/updates/2016/01/urlsearchparams
-    const params = new URLSearchParams(location.search);
-    const lineno = location.hash ? idLineno(location.hash) : 1;
     initDrag('initial');
-    window.onresize = () => initDrag('resize'); // TODO: not needed?
+    // TODO: figure out new proportional height from resize
+    window.onresize = () => initDrag('resize');
     await fetchFromServer(
         {src_file_tree: ''},
         file_tree_from_server => setFileTree(
             file_tree_from_server,
-            new SourceItem(
-                params.get('corpus'),
-                params.get('root'),
-                params.get('path'),
-                lineno,
-                params.get('hilite'))));
+            SourceItem.newFromSearch()));
 }
 
 function initDrag(debug_reason) {
@@ -183,41 +214,46 @@ function setFileTree(file_tree_from_server, source_item) {
 async function displayFileTree(source_item) {
     deleteAllChildren(fileNavElement());
     await displayFileTreeItems(g_file_tree, 0, source_item.pathItems(),
-                               source_item.lineno, source_item.hilite);
+                               source_item.options);
 }
 
 const line_in_menu = '—————'; // multiple Unicode em-dashes
 
 const filetree_prefix = 'nav_sel-'; // prefix for IDs in file tree SELECT dropdowns
-const src_prefix = 'sig-'; // prefix for IDs that are signatures in the srce
+const signature_prefix = 'sig-'; // prefix for IDs that are signatures in the srce
+const lineno_prefix = 'L'; // prefix for lineno IDs (note the absence of '-')
 
 // Recursive function for displaying the remaining file tree
 // navigation items, starting from item_i (0-indexed).
 // The path_items are used to "pre-select" items in the drop-downs.
 // (path_item[0] is corpus; path_item[1] is root; path_item[2..] are
 // the actual file path.)
-async function displayFileTreeItems(file_tree_nodes, item_i, path_items, lineno, hilite) {
+async function displayFileTreeItems(file_tree_nodes, item_i, path_items, src_item_options) {
     let dropdown = makeFileTreeDropdown(file_tree_nodes, item_i, path_items);
     const selected_node = file_tree_nodes[dropdown.selectedIndex];
     fileNavElement().appendChild(dropdown);
     if (path_items.length > 0) {
         if (selected_node.type == 'dir') {
             await displayFileTreeItems(selected_node.children, item_i + 1, path_items.slice(1),
-                                       lineno, hilite);
+                                       src_item_options);
         } else if (selected_node.type == 'file') {
             await displayNewSrcFile(new SourceItem(
-                selected_node.corpus, selected_node.root, selected_node.path, lineno, hilite));
+                selected_node.corpus, selected_node.root, selected_node.path, src_item_options));
         } else {
-            return alert('Bad file_tree_nodes.type: ' + selected_node[0].type);
+            console.log('Bad file_tree_nodes.type', selected_node[0].type);
+            alert('Bad file_tree_nodes.type: ' + selected_node[0].type);
+            return;
         }
     } else if (file_tree_nodes.length == 1) {
         if (file_tree_nodes[0].type == 'dir') {
-            await displayFileTreeItems(file_tree_nodes[0].children, item_i + 1, [], lineno, hilite);
+            await displayFileTreeItems(file_tree_nodes[0].children, item_i + 1, [], src_item_options);
         } else if (file_tree_nodes[0].type == 'file') {
             await displayNewSrcFile(new SourceItem(
-                selected_node.corpus, selected_node.root, selected_node.path, lineno, hilite));
+                selected_node.corpus, selected_node.root, selected_node.path, src_item_options));
         } else {
-            return alert('Bad file_tree_nodes.type: ' + file_tree_nodes[0].type);
+            console.log('Bad file_tree_nodes.type' + file_tree_nodes[0].type);
+            alert('Bad file_tree_nodes.type: ' + file_tree_nodes[0].type);
+            return;
         }
     }
 }
@@ -256,6 +292,7 @@ function createDropdownSelect() {
     dropdown.onclick = async function(e) {
         e.preventDefault();
         const  t = e.currentTarget;
+        // Careful: t.selectedIndex can be 0!
         if (t.selectedIndex == null) { return; } // ==, not ===: also matches undefined
         const  t_selected = t[t.selectedIndex];
         if (! t_selected || ! t_selected.id) { return; }
@@ -285,23 +322,24 @@ function updateBrowserUrl(source_item) {
     // TODO: is there a better choice for the 1st arg to replaceState?
     history.replaceState(
         {}, 'Pykythe Browser',
-        location.origin + location.pathname +
-            '?corpus=' + encodeURIComponent(source_item.corpus) +
-            '&root=' + encodeURIComponent(source_item.root) +
-            '&path=' + encodeURIComponent(source_item.path) +
-            (source_item.hilite ? '&hilite=' + encodeURIComponent(source_item.hilite) : '') +
-            '#L' + encodeURIComponent(source_item.lineno));
+        location.origin + location.pathname + '?' +
+            source_item.toUriParams());
 }
 
 // Callback from file tree navigation click, to load a file into the
 // fileNavElement() via displaySrcContents.
 async function displayNewSrcFile(source_item) {
+    if (! isNaN(source_item.src_height)) { // isNan(null) is true
+        // const src = document.getElementById('src');
+        // const xref = document.getElementById('xref');
+        // TODO: see initDrag for how to set the various heights/tops
+    }
     updateBrowserUrl(source_item);
     let progress = document.createElement('span');
     progress.innerHTML = '&nbsp;&nbsp;&nbsp;Fetching file ' +
-        sanitizeText(source_item.combinedFilePath()) + ' ...';
+        sanitizeText(source_item.toStringCorpusRootPath()) + ' ...';
     fileNavElement().appendChild(progress);
-    // TODO: alert if fetch fails
+    // TODO: alert if fetch fails - see also fetchFromServer()'s handler
     await fetchFromServer(
         {src_browser_file: {corpus: source_item.corpus,
                             root: source_item.root,
@@ -326,7 +364,7 @@ function displaySrcContents(source_item, color_data) {
                    'source', source_item,
                    'color', color_data);
     fileNavElement().lastChild.innerHTML =
-        'Rendering file ' + source_item.combinedFilePath() + '...';
+        'Rendering file ' + source_item.toStringCorpusRootPath() + ' ...';
     let table = document.createElement('table');
     table.setAttribute('class', 'src_table');
     for (const [line_key, line_parts] of color_data.lines.entries()) {
@@ -356,7 +394,6 @@ function srcLineTextSimple(line_parts, txt_span, data_semantics) {
     for (const line_part of line_parts) {
         let span = document.createElement('span');
         span.setAttribute('class', token_css_color_class[line_part.token_color]);
-        // TODO: the following doesn't hilite - why?  DO NOT SUBMIT FIXME
         if (is_token_name[line_part.token_color] &&
             (data_semantics || []).indexOf(g_anchor_to_semantics[line_part.signature]) >= 0) {
             span.classList.add('src_hilite');
@@ -373,7 +410,7 @@ function srcLineTextAddHoverable(line_parts, txt_span, source_item) {
         span.setAttribute('class', token_css_color_class[line_part.token_color]);
         span.innerHTML = sanitizeText(line_part.value);
         if (is_token_name[line_part.token_color] && line_part.signature) {
-            span.id = src_prefix + line_part.signature;
+            span.id = signature_prefix + line_part.signature;
             span.onmouseover = async function(e) { // e is MouseEvent
                 e.preventDefault();
                 mouseoverAnchor(e.currentTarget, 'add', 'src_hover', source_item);
@@ -410,8 +447,8 @@ function srcLineTextAddHoverable(line_parts, txt_span, source_item) {
 // class_id. Typically, the class_id is 'src_hover', which highlights
 // the item.
 function mouseoverAnchor(mouse_target, class_action, class_id, source_item) {
-    console.assert(mouse_target.id.startsWith(src_prefix), 'Invalid src_prefix', mouse_target.id, 'should start with:', src_prefix);
-    const signature = mouse_target.id.substr(src_prefix.length);
+    console.assert(mouse_target.id.startsWith(signature_prefix), 'Invalid signature_prefix', mouse_target.id, 'should start with:', signature_prefix);
+    const signature = mouse_target.id.substr(signature_prefix.length);
     mouseoverHilite(class_action, class_id,
                     g_anchor_to_anchors[signature], mouse_target.id);
 }
@@ -419,7 +456,7 @@ function mouseoverAnchor(mouse_target, class_action, class_id, source_item) {
 // Highlight on/off (class_action={'add','remove}) on an anchor.
 function mouseoverHilite(class_action, class_id, anchors, debug_item) {
     for (const anchor of anchors || []) {
-        const sig = document.getElementById(src_prefix + anchor);
+        const sig = document.getElementById(signature_prefix + anchor);
         if (sig) {
             sig.classList[class_action](class_id); // sig.classList.{add,remove}(class_id)
         } else {
@@ -433,14 +470,14 @@ function mouseoverHilite(class_action, class_id, anchors, debug_item) {
 
 // Callback for a click on a token (anchor) in the source display
 async function clickAnchor(mouse_target, source_item) {
-    console.assert(mouse_target.id.startsWith(src_prefix), 'Invalid src_prefix', mouse_target.id, 'should start with:', src_prefix);
-    const signature = mouse_target.id.substr(src_prefix.length);
+    console.assert(mouse_target.id.startsWith(signature_prefix), 'Invalid signature_prefix', mouse_target.id, 'should start with:', signature_prefix);
+    const signature = mouse_target.id.substr(signature_prefix.length);
     await fetchFromServer(
         {anchor_xref: {signature: signature,
                        corpus: source_item.corpus,
                        root: source_item.root,
                        path: source_item.path,
-                       language: 'python'}},  // DO NOT SUBMIT - don't hard-code language
+                       language: 'python'}},  // TODO: don't hard-code language
         data => setXref(source_item, mouse_target.id, data));
 }
 
@@ -448,7 +485,8 @@ async function clickAnchor(mouse_target, source_item) {
 function setXref(source_item, signature, data) {
     // expected out-edges for anchor: defines, defines/binding, ref, ref/call
     document.getElementById('xref').innerHTML = sanitizeText(
-        'Getting Kythe links for ' + source_item.combinedFilePath() + ' anchor:' + signature + ' ...');
+        'Getting Kythe links for ' + source_item.toStringCorpusRootPath() +
+            ' anchor:' + signature + ' ...');
 
     let table = document.createElement('table');
     setXrefItemHeader(table, signature, data);
@@ -511,7 +549,7 @@ function setXrefEdgeLinkHead(table, edge_links) {
 function setXrefEdgeLinkItem(table, path_link, data, signature, source_item) {
     {
         let row_cell = tableInsertRowCell(table);
-        // DO NOT SUBMIT - use a CSS class for '<b><i>':
+        // TODO: - CSS class for '<b><i>':
         cellHTML(row_cell,
                  '<b><i>' + sanitizeText(path_link.path) + '</i></b>');
     }
@@ -520,26 +558,25 @@ function setXrefEdgeLinkItem(table, path_link, data, signature, source_item) {
         const lineno_span = row_cell.appendChild(document.createElement('a'));
         lineno_span.title = link_line.path + ':' + link_line.lineno;
         const semantic = g_anchor_to_semantics[signature];
-        const href = location.origin + location.pathname +
-              '?corpus=' + encodeURIComponent(link_line.corpus) +
-              '&root=' + encodeURIComponent(link_line.root) +
-              '&path=' + encodeURIComponent(link_line.path) +
-              (semantic ? '&hilite=' + encodeURIComponent(semantic) : '') +
-              '#' + encodeURIComponent(linenoId(link_line.lineno));
+        const link_source_item = new SourceItem(
+            link_line.corpus, link_line.root, link_line.path,
+            { lineno:link_line.lineno, hilite: semantic });
+        const href = location.origin + location.pathname + '?' +
+              link_source_item.toUriParams();
         lineno_span.href = href;
-        lineno_span.innerHTML = '<b><i>' + link_line.lineno + ':&nbsp;</i></b>';  // DO NOT SUBMIT - CSS class, rowspan
+        lineno_span.innerHTML = '<b><i>' + link_source_item.lineno + ':&nbsp;</i></b>';  // TODO: CSS class, rowspan
         let txt_span = row_cell.appendChild(document.createElement('a'));
-        txt_span.title = link_line.path + ':' + link_line.lineno;
+        txt_span.title = link_source_item.path + ':' + link_source_item.lineno;
         txt_span.href = href;
         // For the case of same file, the href-fetch doesn't cause the
         // lineno-handling stuff to be executed, so do it ourselves:
-        if (link_line.corpus == source_item.corpus &&
-            link_line.root == source_item.root &&
-            link_line.path == source_item.path) {
+        if (link_source_item.corpus == source_item.corpus &&
+            link_source_item.root == source_item.root &&
+            link_source_item.path == source_item.path) {
             txt_span.onclick = async function (e) {
                 e.preventDefault();  // Prevent standard behavior of scrollIntoView({block: 'start'})
-                scrollIntoViewAndMark(link_line.lineno, semantic, link_line);
-                updateBrowserUrl(link_line);
+                scrollIntoViewAndMark(link_source_item.lineno, semantic, link_source_item);
+                updateBrowserUrl(link_source_item);
             }
         }
         srcLineTextSimple(link_line.line, txt_span, data.semantics);
@@ -593,7 +630,7 @@ const sanitizeMap = {
 // Sanitize a string, allowing HTML tags and special characters to not cause problems
 // TODO: is there a builtin function for this? (cf encodeURIComponent)
 function sanitizeText(raw_str) {
-    // DO NOT SUBMIT - FIXME: figure out where raw_str can be null and fix
+    // TODO: FIXME - figure out where raw_str can be null and fix
     return raw_str
         ? raw_str.replace(sanitize_re, (match)=>(sanitizeMap[match]))
         : '';
@@ -657,7 +694,7 @@ function fileNavElement() {
 
 // Convert a lineno to an ID
 function linenoId(lineno) {
-    return 'L' + lineno;
+    return lineno_prefix + lineno;
 }
 
 // Ensure that a line is visible.
@@ -683,9 +720,9 @@ function scrollIntoViewAndMark(lineno, hilite, debug_item) {
 // Convert an ID or #ID (from location.hash) to a lineno
 function idLineno(id) {
     let lineno;
-    if (id.substr(0, 1) == 'L') {
+    if (id.substr(0, 1) === lineno_prefix) {
         lineno = parseInt(id.substr(1));
-    } else if (id.substr(0, 2) == '#L') {  // From location.hash
+    } else if (id.substr(0, 2) === '#' + lineno_prefix) {  // From location.hash
         lineno = parseInt(id.substr(2));
     } else {
         lineno = NaN;

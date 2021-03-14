@@ -11,7 +11,7 @@
 
 :root { /* selects the root element of the document (i.e., <html>) */
     /* layout variables */
-    --file-nav-height: 3%;
+    --file-nav-height: 4%;
     --file-nav-padding-bottom: 5pt;
     --src-height: 64%;
     --src-top: calc( var(--file-nav-height) + 2% );
