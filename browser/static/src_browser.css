@@ -7,17 +7,29 @@
 /* TODO: use grid layout rather than absolute layout
          (and modify JS initDrag document.onmousemove to
          not modify the xref position)
- */
+*/
 
+/* TODO: The "width: 99vw" items are from experiementation; if
+         #container.height isn't set appropriately, there's a side
+         scroll bar that messes things up.  But there should be a more
+         principled way of doing this.
+*/
+
+/* TODO: See comment in initDrag -- extra scroll bars (from #container, I think0
+         appear if the splitter is moved too far down the page.
+   TODO: Extra scroll bars appear if page is too narrow
+*/
+/* See also: https://developer.mozilla.org/en-US/docs/Web/API/CSS_Object_Model/Determining_the_dimensions_of_elements */
 :root { /* selects the root element of the document (i.e., <html>) */
     /* layout variables */
-    --file-nav-height: 4%;
-    --file-nav-padding-bottom: 5pt;
-    --src-height: 64%;
-    --src-top: calc( var(--file-nav-height) + 2% );
+    --file-nav-height: 3vh;
+    --file-nav-padding-top: 3pt;
+    --file-nav-padding-bottom: 3pt;
+    --src-height: 70vh;
+    --src-top: calc( var(--file-nav-height) );
     --splitter-top: calc( var(--src-top) + var(--src-height) );
-    --splitter-height: 6px;
-    --xref-height: calc( 30% - 2% ); /* extra 2% gets rid of some slop, it seems */
+    --splitter-height: 4pt;
+    --xref-height: calc( 98vh - var(--file-nav-height) - var(--src-height) - var(--splitter-height) );
     --xref-top: calc( var(--splitter-top) + var(--splitter-height) );
     --xref-padding-top: 5pt;
 
@@ -74,48 +86,51 @@ body { /* <body> */
 }
 
 #container {
+    top: 0;
+    heigh: 98vh; // By experiment, removes the side scroll bar
     background: ivory;
     border: 0 solid black;
+    overflow: hidden; /* prevent scroll bars when splitter moves */
     /* position: relative; /* Allegedly, allows contained elements can be re-positioned */
-    top: 0;
-    height: 99vh;
 }
 
 #file_nav {
+    top: 0;
+    height: var(--file-nav-height);
+    min-height: 12pt;
+    width: 99vw;
     color: red;
     font-family: "Source Code Pro";
     font-size: 9pt;
-    height: var(--file-nav-height);
-    min_height: 12pt;
     overflow: auto; /* Shouldn't need this */
     padding-bottom: var(--file-nav-padding-bottom);
     position: absolute;
-    top: 0;
     /* white-space: pre; */
 }
 
 /* TODO: min-top hack: https://stackoverflow.com/questions/15552358/is-there-a-css-min-top-property */
 #src {
+    top: var(--src-top);
+    height: var(--src-height);
+    min-height: 12pt; /* doesn't seem to do anything with height is set programmatically */
+    width: 99vw;
     border-bottom: 1px solid black;
     border-left: 0;
     border-right: 0;
     border-style: groove;
     border-top: 1px solid black;
-    height: var(--src-height);
     overflow: auto;
     position: absolute;
-    top: var(--src-top);
-    width: 99%;
 }
 
 #splitter {
-    background-color: var(--base01);
-    cursor: row-resize;
+    top: var(--splitter-top);
     height: var(--splitter-height);
     min-height: var(--splitter-height);
+    width: 99vw;
+    background-color: var(--base01);
+    cursor: row-resize;
     position: absolute;
-    top: var(--splitter-top);
-    width: 99%;
     /* Prevent the browser's built-in drag from interfering */
     -moz-user-select: none;
     -ms-user-select: none;
@@ -128,19 +143,20 @@ body { /* <body> */
 }
 
 #xref {
+    top: var(--xref-top);
     height: var(--xref-height);
+    min-height: 12pt; /* doesn't seem to do anything with height is set programmatically */
+    width: 99vw;
     overflow: auto;
     padding-top: var(--xref-padding-top);
     position: absolute;
-    top: var(--xref-top);
-    width: 99%;
 }
 
 .src_row {
     border: 0 solid black;
     border-collapse: collapse;
     overflow: auto;
-    width: 99%;
+    width: 99vw;
 }
 
 .src_table {
@@ -157,7 +173,7 @@ body { /* <body> */
     font-size: 9pt;
     line-height: 1.1;
     overflow: auto;
-    width: 100%;
+    width: 99%;
 }
 
 .src_lineno {

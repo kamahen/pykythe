@@ -167,38 +167,70 @@ async function renderPage() {
 }
 
 function initDrag(debug_reason) {
-    let src_elem = document.getElementById('src');
-    let splitter_elem = document.getElementById('splitter');
-    let xref_elem = document.getElementById('xref');
+    const src_elem = document.getElementById('src');
+    const splitter_elem = document.getElementById('splitter');
+    const xref_elem = document.getElementById('xref');
+
+    if (false) { // For debugging the various layout variables:
+        const container_elem = document.getElementById('container');
+        const nav_elem = document.getElementById('file_nav');
+        console.log(
+            'Heights:', window.innerHeight,
+            {'1_container': {top:container_elem.offsetTop, height:container_elem.offsetHeight },
+             '2_nav':       {top:nav_elem.offsetTop,       height:nav_elem.offsetHeight       },
+             '3_src':       {top:src_elem.offsetTop,       height:src_elem.offsetHeight       },
+             '4_splitter':  {top:splitter_elem.offsetTop,  height:splitter_elem.offsetHeight  },
+             '5_xref':      {top:xref_elem.offsetTop,      height:xref_elem.offsetHeight      },
+            });
+    }
 
     // See diagram https://developer.mozilla.org/en-US/docs/Web/API/CSS_Object_Model/Determining_the_dimensions_of_elements
     // This code derived from https://stackoverflow.com/questions/12194469/best-way-to-do-a-split-pane-in-html/52536726#52536726
-    var md = null; // remember mouse down info
+    var md = null; // remember mouse down info - set by onmousedown, used by onmousemove
 
     splitter_elem.onmousedown = (e) => {
         md = {e,
-              splitterTop: splitter_elem.offsetTop,
-              srcHeight:   src_elem.offsetHeight,
-              xrefHeight:  xref_elem.offsetHeight,
-              xrefTop:     xref_elem.offsetTop,
+              splitterTop:    splitter_elem.offsetTop,
+              splitterHeight: splitter_elem.offsetHeight,
+              srcTop:         src_elem.offsetTop,
+              srcHeight:      src_elem.offsetHeight,
+              xrefTop:        xref_elem.offsetTop,
+              xrefHeight:     xref_elem.offsetHeight,
              };
+
+        document.onmouseup = () => {
+            document.onmousemove = null;
+            document.onmouseup = null;
+        }
 
         document.onmousemove = (e) => {
             var delta = {x: e.clientX - md.e.clientX,
                          y: e.clientY - md.e.clientY};
 
-            // Prevent negative-sized elements
-            delta.y = Math.min(Math.max(delta.y, -md.srcHeight), md.xrefHeight);
+            // Prevent negative-sized elements.
+            // document.querySelectorAll('#src')[0].style.minHeight) doesn't have min-height value!
+            // There doesn't seem to be a general way of converting
+            // units such as pt or cm to px, but by experiment, 20
+            // seems a reasonable amount to leave.
 
-            src_elem.style.height = (md.srcHeight + delta.y) + 'px';
+            // TODO: The following isn't quite right at the bottom: if
+            //       you move the splitter as far as possible,
+            //       mouse-up, then move it again, you can make the
+            //       splitter disappear.
+            // TODO: If you move the splitter too far, then an extra
+            //       set of scrollbars appear (from #container?)
+
+            if (md.srcHeight + delta.y < 20) {
+                delta.y = md.srcTop - md.splitterTop + 20;
+            }
+            if (md.xrefHeight - delta.y < 20) {
+                delta.y = md.splitterHeight + md.xrefHeight - 20;
+            }
+
+            src_elem.style.height   = (md.srcHeight   + delta.y) + 'px';
             splitter_elem.style.top = (md.splitterTop + delta.y) + 'px';
-            xref_elem.style.height = (md.xrefHeight - delta.y) + 'px';
-            // TODO: if grid layout, don't need to modify xref_elem.style.top?
-            xref_elem.style.top = (md.xrefTop + delta.y) + 'px';
-        }
-
-        document.onmouseup = () => {
-            document.onmousemove = document.onmouseup = null;
+            xref_elem.style.height  = (md.xrefHeight  - delta.y) + 'px';
+            xref_elem.style.top     = (md.xrefTop     + delta.y) + 'px'; // Not needed for grid layout?
         }
     }
 }
