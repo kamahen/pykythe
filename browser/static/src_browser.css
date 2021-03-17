@@ -9,16 +9,6 @@
          not modify the xref position)
 */
 
-/* TODO: The "width: 99vw" items are from experiementation; if
-         #container.height isn't set appropriately, there's a side
-         scroll bar that messes things up.  But there should be a more
-         principled way of doing this.
-*/
-
-/* TODO: See comment in initDrag -- extra scroll bars (from #container, I think0
-         appear if the splitter is moved too far down the page.
-   TODO: Extra scroll bars appear if page is too narrow
-*/
 /* See also: https://developer.mozilla.org/en-US/docs/Web/API/CSS_Object_Model/Determining_the_dimensions_of_elements */
 :root { /* selects the root element of the document (i.e., <html>) */
     /* layout variables */
@@ -27,6 +17,7 @@
     --file-nav-padding-bottom: 3pt;
     --src-height: 70vh;
     --src-top: calc( var(--file-nav-height) );
+    /* TODO: add padding on splitter (for src scrollbar) */
     --splitter-top: calc( var(--src-top) + var(--src-height) );
     --splitter-height: 4pt;
     --xref-height: calc( 98vh - var(--file-nav-height) - var(--src-height) - var(--splitter-height) );
@@ -54,6 +45,10 @@
 
 body { /* <body> */
     background-color: var(--base3);
+}
+
+.noscroll {
+    overflow: hidden; /* prevent <body> scrollbar appearing when splitter is used */
 }
 
 .src_hover {  /* Added by mouseover on an anchor */
@@ -85,27 +80,18 @@ body { /* <body> */
     padding: 4px 0;
 }
 
-#container {
-    top: 0;
-    heigh: 98vh; // By experiment, removes the side scroll bar
-    background: ivory;
-    border: 0 solid black;
-    overflow: hidden; /* prevent scroll bars when splitter moves */
-    /* position: relative; /* Allegedly, allows contained elements can be re-positioned */
-}
-
 #file_nav {
     top: 0;
     height: var(--file-nav-height);
     min-height: 12pt;
-    width: 99vw;
+    width: 99%;
     color: red;
     font-family: "Source Code Pro";
     font-size: 9pt;
     overflow: auto; /* Shouldn't need this */
     padding-bottom: var(--file-nav-padding-bottom);
     position: absolute;
-    /* white-space: pre; */
+    white-space: pre;
 }
 
 /* TODO: min-top hack: https://stackoverflow.com/questions/15552358/is-there-a-css-min-top-property */
@@ -113,7 +99,7 @@ body { /* <body> */
     top: var(--src-top);
     height: var(--src-height);
     min-height: 12pt; /* doesn't seem to do anything with height is set programmatically */
-    width: 99vw;
+    width: 99%;
     border-bottom: 1px solid black;
     border-left: 0;
     border-right: 0;
@@ -127,7 +113,7 @@ body { /* <body> */
     top: var(--splitter-top);
     height: var(--splitter-height);
     min-height: var(--splitter-height);
-    width: 99vw;
+    width: 99%;
     background-color: var(--base01);
     cursor: row-resize;
     position: absolute;
@@ -146,17 +132,18 @@ body { /* <body> */
     top: var(--xref-top);
     height: var(--xref-height);
     min-height: 12pt; /* doesn't seem to do anything with height is set programmatically */
-    width: 99vw;
+    width: 99%;
     overflow: auto;
     padding-top: var(--xref-padding-top);
     position: absolute;
+    white-space: pre;
 }
 
 .src_row {
     border: 0 solid black;
     border-collapse: collapse;
-    overflow: auto;
-    width: 99vw;
+    white-space: pre;
+    width: 99%;
 }
 
 .src_table {
@@ -182,7 +169,7 @@ body { /* <body> */
     padding-right: 5px;
     text-align: right;
     vertical-align: top;
-    white-space: nowrap;
+    white-space: pre;
     width: 1px; /* fit as tight as possible */
 }
 
@@ -193,31 +180,21 @@ body { /* <body> */
     padding-right: 5px;
     text-align: right;
     vertical-align: top;
-    white-space: nowrap;
+    white-space: pre;
     width: 1px; /* fit as tight as possible */
 }
 
 .src_line {
     border-left: 0px solid black;
     padding-left: 5px;
-    /* white-space: pre; */
-}
-
-.edge_type {
-    padding-right: 5px;
-    white-space: nowrap;
-    width: 1px; /* fit as tight as possible */
+    white-space: pre;
 }
 
 .xref_head {
     background: darkgrey;
     color: darkblue;
     font-weight: bold;
-    white-space: nowrap;
-}
-
-.xref_file {
-    font-style: italic;
+    white-space: pre;
 }
 
 /* Colors: https://www.w3schools.com/colors/colors_names.asp */

@@ -171,19 +171,6 @@ function initDrag(debug_reason) {
     const splitter_elem = document.getElementById('splitter');
     const xref_elem = document.getElementById('xref');
 
-    if (false) { // For debugging the various layout variables:
-        const container_elem = document.getElementById('container');
-        const nav_elem = document.getElementById('file_nav');
-        console.log(
-            'Heights:', window.innerHeight,
-            {'1_container': {top:container_elem.offsetTop, height:container_elem.offsetHeight },
-             '2_nav':       {top:nav_elem.offsetTop,       height:nav_elem.offsetHeight       },
-             '3_src':       {top:src_elem.offsetTop,       height:src_elem.offsetHeight       },
-             '4_splitter':  {top:splitter_elem.offsetTop,  height:splitter_elem.offsetHeight  },
-             '5_xref':      {top:xref_elem.offsetTop,      height:xref_elem.offsetHeight      },
-            });
-    }
-
     // See diagram https://developer.mozilla.org/en-US/docs/Web/API/CSS_Object_Model/Determining_the_dimensions_of_elements
     // This code derived from https://stackoverflow.com/questions/12194469/best-way-to-do-a-split-pane-in-html/52536726#52536726
     var md = null; // remember mouse down info - set by onmousedown, used by onmousemove
@@ -198,14 +185,26 @@ function initDrag(debug_reason) {
               xrefHeight:     xref_elem.offsetHeight,
              };
 
+
+        if (false) { // For debugging the various layout variables:
+            const nav_elem = document.getElementById('file_nav');
+            console.log(
+                'Heights:', window.innerHeight,
+                {'1_nav':       {top:nav_elem.offsetTop,       height:nav_elem.offsetHeight       },
+                 '2_src':       {top:src_elem.offsetTop,       height:src_elem.offsetHeight       },
+                 '3_splitter':  {top:splitter_elem.offsetTop,  height:splitter_elem.offsetHeight  },
+                 '4_xref':      {top:xref_elem.offsetTop,      height:xref_elem.offsetHeight      },
+                 'md': md,
+                });
+        }
+
         document.onmouseup = () => {
             document.onmousemove = null;
             document.onmouseup = null;
         }
 
         document.onmousemove = (e) => {
-            var delta = {x: e.clientX - md.e.clientX,
-                         y: e.clientY - md.e.clientY};
+            var delta_y = e.clientY - md.e.clientY;
 
             // Prevent negative-sized elements.
             // document.querySelectorAll('#src')[0].style.minHeight) doesn't have min-height value!
@@ -217,20 +216,24 @@ function initDrag(debug_reason) {
             //       you move the splitter as far as possible,
             //       mouse-up, then move it again, you can make the
             //       splitter disappear.
-            // TODO: If you move the splitter too far, then an extra
-            //       set of scrollbars appear (from #container?)
 
-            if (md.srcHeight + delta.y < 20) {
-                delta.y = md.srcTop - md.splitterTop + 20;
+            // TODO: take into account a wild scroll bar appearing!
+            //       document.body.clientWidth
+            //       window.innerWidth
+            //       const scrollbarWidth = window.innerWidth - document.body.clientWidth
+            //       https://destroytoday.com/blog/100vw-and-the-horizontal-overflow-you-probably-didnt-know-about
+
+            if (md.srcHeight + delta_y < 20) {
+                delta_y = md.srcTop - md.splitterTop + 20;
             }
-            if (md.xrefHeight - delta.y < 20) {
-                delta.y = md.splitterHeight + md.xrefHeight - 20;
+            if (md.xrefHeight - delta_y < 20) {
+                delta_y = md.splitterHeight + md.xrefHeight - 20;
             }
 
-            src_elem.style.height   = (md.srcHeight   + delta.y) + 'px';
-            splitter_elem.style.top = (md.splitterTop + delta.y) + 'px';
-            xref_elem.style.height  = (md.xrefHeight  - delta.y) + 'px';
-            xref_elem.style.top     = (md.xrefTop     + delta.y) + 'px'; // Not needed for grid layout?
+            src_elem.style.height   = (md.srcHeight   + delta_y) + 'px';
+            splitter_elem.style.top = (md.splitterTop + delta_y) + 'px';
+            xref_elem.style.height  = (md.xrefHeight  - delta_y) + 'px';
+            xref_elem.style.top     = (md.xrefTop     + delta_y) + 'px'; // Not needed for grid layout?
         }
     }
 }
