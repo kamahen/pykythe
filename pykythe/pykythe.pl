@@ -1949,8 +1949,8 @@ kynode('Crash',
     { Node = 'Crash'{repr: Repr, str: Str, srcpath: SrcPath} },
     [ crash(Node) ]:expr.
 % And a catch-all - TODO: delete this?
-kynode(_Tag, X, Ty) -->>
-    { goal_failed(kynode(X,Ty)) }.
+kynode(Tag, X, Ty) -->>
+    { goal_failed(kynode(Tag,X,Ty)) }.
 
 %! kynode_add_items(Items:list)//[kyfact,expr,file_meta] is det.
 kynode_add_items([]) -->> [ ].

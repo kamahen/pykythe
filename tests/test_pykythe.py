@@ -166,7 +166,7 @@ class TestAnchor(unittest.TestCase):
             cooked_nodes = ast_raw.cvt_parse_tree(parse_tree, python_version, src_file)
             logging.debug('RAW= %r', parse_tree)
             logging.debug('COOKED= %r', cooked_nodes)
-            fqn_ctx = ast_cooked.FqnCtx(fqn_dot='testing.',
+            fqn_ctx = ast_cooked.FqnCtx(fqn='testing',
                                         fqn_stack=[],
                                         bindings=collections.ChainMap(),
                                         class_fqn=None,

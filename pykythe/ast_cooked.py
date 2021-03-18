@@ -81,7 +81,7 @@ from .typing_debug import cast as xcast
 def add_fqns(cooked_nodes: 'Base', module: str, python_version: int) -> 'Base':
     """Top-level wrapper for adding FQNs to the cooked AST."""
     return cooked_nodes.add_fqns(
-            FqnCtx(fqn_dot=module + '.',
+            FqnCtx(fqn=module,
                    fqn_stack=[],
                    bindings=collections.ChainMap(collections.OrderedDict()),
                    class_fqn=None,
@@ -108,8 +108,7 @@ class FqnCtx(pod.PlainOldData):
       class_fqn: either None if not within a class or the
                  FQN of the enclosing class.
       class_astn: class name's ASTN or None (if not within a class).
-      fqn_dot: The Fully Qualifed Name of this scope
-               (module/function/class), followed by a '.'
+      fqn: The Fully Qualifed Name of this scope (module/function/class).
       fqn_stack: A stack of FQNs (newest first), used to resolve an
                  unknown non-local (e.g., NameRefUnknown).
       python_version: 3  # TODO: make this a triple: see fakesys.FAKE_SYS
@@ -118,10 +117,10 @@ class FqnCtx(pod.PlainOldData):
     bindings: typing.ChainMap[str, str]
     class_fqn: Optional[str]
     class_astn: Optional[ast.Astn]
-    fqn_dot: str
+    fqn: str
     fqn_stack: List[str]
     python_version: int  # TODO: make this a triple: see fakesys.FAKE_SYS
-    __slots__ = ['bindings', 'class_fqn', 'class_astn', 'fqn_dot', 'fqn_stack', 'python_version']
+    __slots__ = ['bindings', 'class_fqn', 'class_astn', 'fqn', 'fqn_stack', 'python_version']
 
     def __post_init__(self) -> None:
         assert self.python_version in (3, )  # TODO: make this a triple: see fakesys.FAKE_SYS
@@ -616,12 +615,11 @@ class ClassDefStmt(Base):
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Similar to FuncDefStmt.add_fqns
-        class_fqn = ctx.fqn_dot + self.name.name.value
-        class_fqn_dot = class_fqn + '.'
+        class_fqn = ctx.fqn + '.' + self.name.name.value
         name_add_fqns = xcast(NameBindsFqn, self.name.add_fqns(ctx))  # already in bindings
         # The class attributes are not visible inside a nested class (they
         # need a `self.` operation to get them. (Nested classes are rare.)
-        new_bindings = collections.OrderedDict((name, class_fqn_dot + name)
+        new_bindings = collections.OrderedDict((name, class_fqn + '.' + name)
                                                for name in self.scope_bindings)
         if ctx.class_fqn:
             class_bindings = ctx.bindings.parents.new_child(new_bindings)
@@ -629,7 +627,7 @@ class ClassDefStmt(Base):
         else:
             class_bindings = ctx.bindings.new_child(new_bindings)
             class_fqn_stack = [class_fqn] + ctx.fqn_stack
-        class_ctx = ctx.replace(fqn_dot=class_fqn_dot,
+        class_ctx = ctx.replace(fqn=class_fqn,
                                 fqn_stack=class_fqn_stack,
                                 bindings=class_bindings,
                                 class_fqn=class_fqn,
@@ -668,10 +666,10 @@ class CompForNode(Base):
         Used by DictGenListSetMakerCompForNode.
         """
         # The bindings "leak" in Python2
-        #    ctx.bindings.update((name, ctx.fqn_dot + name) for name in self.scope_bindings)
+        #    ctx.bindings.update((name, ctx.fqn + '.' + name) for name in self.scope_bindings)
         #    return ctx
-        for_fqn = (f'{ctx.fqn_dot}<comp_for>' f'[{self.for_astn.start:d},{self.for_astn.end:d}]')
-        return ctx.replace(fqn_dot=for_fqn + '.',
+        for_fqn = (f'{ctx.fqn}.<comp_for>' f'[{self.for_astn.start:d},{self.for_astn.end:d}]')
+        return ctx.replace(fqn=for_fqn,
                            fqn_stack=[for_fqn] + ctx.fqn_stack,
                            bindings=ctx.bindings.new_child(collections.OrderedDict()))
 
@@ -685,7 +683,7 @@ class CompForNode(Base):
         #    (x, y) for x in [1,2] for y in range(x)  # `x` in `range(x)` is from `for x`
         # [(x, y) for x in [1,2,x] for y in range(x)]  # error: y undefined
         in_testlist_add_fqns = self.in_testlist.add_fqns(ctx)
-        ctx.bindings.update((name, ctx.fqn_dot + name) for name in self.scope_bindings)
+        ctx.bindings.update((name, ctx.fqn + '.' + name) for name in self.scope_bindings)
         for_exprlist_add_fqns = self.for_exprlist.add_fqns(ctx)
         comp_iter_add_fqns = self.comp_iter.add_fqns(ctx)
         return CompFor(for_exprlist=for_exprlist_add_fqns,
@@ -914,7 +912,7 @@ class FileInput(Base):
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         file_ctx = ctx.replace(bindings=ctx.bindings.new_child(
-                collections.OrderedDict((name, ctx.fqn_dot + name)
+                collections.OrderedDict((name, ctx.fqn + '.' + name)
                                         for name in self.scope_bindings)))
         stmts = [stmt.add_fqns(file_ctx) for stmt in self.stmts]
         return FileInput(path=self.path, stmts=stmts, scope_bindings=self.scope_bindings)
@@ -994,29 +992,29 @@ class FuncDefStmt(Base):
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Similar to ClassDefStmt.add_fqns
-        # '.<local>.' is needed to distinguish `x` in following:
+        # '.<local>' is needed to distinguish `x` in following:
         #    def foo(x): print(x)
         #    foo.x = 'a string'
         if self.name.name.value == 'lambda':
             # Make a unique name for the lambda
-            func_fqn = (f'{ctx.fqn_dot}<lambda>'
+            func_fqn = (f'{ctx.fqn}.<lambda>'
                         f'[{self.name.name.start:d},{self.name.name.end:d}]')
         else:
-            func_fqn = f'{ctx.fqn_dot}{self.name.name.value}'
-        func_fqn_dot = func_fqn + '.<local>.'
+            func_fqn = f'{ctx.fqn}.{self.name.name.value}'
+        func_fqn_local = func_fqn + '.<local>'
         # self.name is already in bindings
         name_add_fqns = xcast(NameBindsFqn, self.name.add_fqns(ctx))
         # The class attributes are not visible inside a method (they
         # need a `self.` operation to get them.
-        new_bindings = collections.OrderedDict((name, func_fqn_dot + name)
+        new_bindings = collections.OrderedDict((name, func_fqn_local + '.' + name)
                                                for name in self.scope_bindings)
         if ctx.class_fqn:
             func_bindings = ctx.bindings.parents.new_child(new_bindings)
-            func_fqn_stack = [func_fqn_dot[:-1]] + ctx.fqn_stack[1:]
+            func_fqn_stack = [func_fqn_local] + ctx.fqn_stack[1:]
         else:
             func_bindings = ctx.bindings.new_child(new_bindings)
-            func_fqn_stack = [func_fqn_dot[:-1]] + ctx.fqn_stack
-        func_ctx = ctx.replace(fqn_dot=func_fqn_dot,
+            func_fqn_stack = [func_fqn_local] + ctx.fqn_stack
+        func_ctx = ctx.replace(fqn=func_fqn_local,
                                fqn_stack=func_fqn_stack,
                                bindings=func_bindings,
                                class_fqn=None,
@@ -1409,7 +1407,7 @@ class NameBindsNode(Base):
         else:
             # The main (only?) situation for this is bare import such
             # as "import sys", which binds "sys".
-            fqn = ctx.fqn_dot + name
+            fqn = ctx.fqn + '.' + name
             ctx.bindings[name] = fqn
         return NameBindsFqn(name=self.name,
                             fqn=fqn,
@@ -1449,7 +1447,7 @@ class NameBindsGlobalNode(Base):
             # See comment with NameRefNode about ctx.bindings[name].
             # Also, this situation probabl shouldn't happen, even if a global
             # gets assigned multiple times.
-            # DO NOT: ctx.bindings[name] = ctx.fqn_dot + name
+            # DO NOT: ctx.bindings[name] = ctx.fqn + '.' + name
             # TODO: should this throw an assertion error?
             return NameBindsUnknown(name=self.name,
                                     fqn_stack=ctx.fqn_stack,
@@ -1524,7 +1522,7 @@ class NameRefNode(Base):
         else:
             # Do *not* add to bindings because that means subsequent
             # uses of this name will resolve:
-            # DO NOT: ctx.bindings[name] = ctx.fqn_dot + name
+            # DO NOT: ctx.bindings[name] = ctx.fqn + '.' + name
             return NameRefUnknown(name=self.name, fqn_stack=ctx.fqn_stack)
 
     def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
@@ -1694,7 +1692,7 @@ class StarNode(Base):
     __slots__ = ['star']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
-        return StarFqn(star=self.star, fqn=ctx.fqn_dot + self.star.value)
+        return StarFqn(star=self.star, fqn=ctx.fqn + '.' + self.star.value)
 
     def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
         yield (self.star, '<PUNCTUATION>')  # Not needed but doesn't hurt
