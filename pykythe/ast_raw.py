@@ -834,9 +834,9 @@ def cvt_import_from(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:
     assert isinstance(
             import_part,
             (ast_cooked.ImportAsNamesNode, ast_cooked.StarFqn, ast_cooked.StarNode))  # For mypy
-    return ast_cooked.ImportFromStmt(from_dots=from_dots,
-                                     from_name=from_name,
-                                     import_part=import_part)
+    return ast_cooked.ImportFromStmtNode(from_dots=from_dots,
+                                         from_name=from_name,
+                                         import_part=import_part)
 
 
 def cvt_import_name(node: pytree.Base, ctx: Ctx) -> ast_cooked.Base:

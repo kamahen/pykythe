@@ -16,6 +16,18 @@ author intends to make significant changes and improvements to the
 code, so if you want to work on it, please contact
 <peter.ludemann@gmail.com> first.
 
+## Debugging note
+
+Sometimes pykythe.qlf can output an "unexpectedly failed" error
+message without enough context to figure out where the failure
+happened. To track this down, run the command again, but with the
+`/tmp/pykythe_test/pykythe.qlf` replaced by `swipl -l
+pykythe/pykythe.pl`; the run two commands:
+```
+debug.
+pykythe:pykythe_main2.
+```
+
 ## Browsing
 
 ### Experimental source browser

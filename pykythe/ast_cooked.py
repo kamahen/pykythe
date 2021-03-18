@@ -594,8 +594,9 @@ class Class(BaseNoFqnProcessing):
 
     fqn: str
     name: ast.Astn
+    childof: str
     bases: Sequence[Base]
-    __slots__ = ['fqn', 'name', 'bases']
+    __slots__ = ['fqn', 'name', 'childof', 'bases']
 
     def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
         yield (self.name, '<VAR_BINDING>')
@@ -635,6 +636,7 @@ class ClassDefStmt(Base):
                                 class_astn=self.name.name)
         class_add_fqns = Class(fqn=class_fqn,
                                name=name_add_fqns.name,
+                               childof='***', # DO NOT SUBMIT
                                bases=[base.add_fqns(ctx) for base in self.bases])
         return make_stmts([class_add_fqns, self.suite.add_fqns(class_ctx)])
 
@@ -962,9 +964,10 @@ class Func(BaseNoFqnProcessing):
 
     fqn: str
     name: ast.Astn
+    childof: str
     parameters: Sequence[Base]
     return_type: Base
-    __slots__ = ['fqn', 'name', 'parameters', 'return_type']
+    __slots__ = ['fqn', 'name', 'childof', 'parameters', 'return_type']
 
     def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
         yield (self.name, '<VAR_BINDING>')
@@ -1047,11 +1050,13 @@ class FuncDefStmt(Base):
         if ctx.class_fqn:
             func_add_fqns = Method(fqn=func_fqn,
                                    name=name_add_fqns.name,
+                                   childof='***', # DO NOT SUBMIT
                                    parameters=parameters,
                                    return_type=self.return_type.add_fqns(ctx))
         else:
             func_add_fqns = Func(fqn=func_fqn,
                                  name=name_add_fqns.name,
+                                 childof='***', # DO NOT SUBMIT
                                  parameters=parameters,
                                  return_type=self.return_type.add_fqns(ctx))
         return make_stmts([func_add_fqns, self.suite.add_fqns(func_ctx)])
@@ -1242,7 +1247,25 @@ class ImportDottedFqn(Base):
 
 
 @dataclass(frozen=True)
-class ImportFromStmt(Base):
+class ImportFromStmt(BaseNoFqnProcessing):
+    """Created by ImportFromStmtNode.add_fqns."""
+
+    from_dots: Sequence[ImportDotNode]
+    from_name: Optional[DottedNameNode]
+    import_part: Union[ImportAsNamesNode, 'StarFqn', 'StarNode']
+    childof: str
+    __slots__ = ['from_dots', 'from_name', 'import_part', 'childof']
+
+    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+        for n in self.from_dots:
+            yield from n.name_astns()
+        if self.from_name:
+            yield from self.from_name.name_astns()
+        yield from self.import_part.name_astns()
+
+
+@dataclass(frozen=True)
+class ImportFromStmtNode(Base):
     """Corresponds to `import_name`."""
 
     from_dots: Sequence[ImportDotNode]
@@ -1268,14 +1291,9 @@ class ImportFromStmt(Base):
                           self.from_name.add_fqns(ctx)) if self.from_name else self.from_name
         import_part = self.import_part.add_fqns(ctx)
         assert isinstance(import_part, (ImportAsNamesNode, StarFqn, StarNode))  # For mypy
-        return ImportFromStmt(from_dots=from_dots, from_name=from_name, import_part=import_part)
-
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
-        for n in self.from_dots:
-            yield from n.name_astns()
-        if self.from_name:
-            yield from self.from_name.name_astns()
-        yield from self.import_part.name_astns()
+        return ImportFromStmt(from_dots=from_dots, from_name=from_name, import_part=import_part,
+                              childof='***'  # DO NOT SUBMIT
+                              )
 
 
 @dataclass(frozen=True)
@@ -1337,9 +1355,10 @@ class Method(BaseNoFqnProcessing):
 
     fqn: str
     name: ast.Astn
+    childof: str
     parameters: Sequence[Base]
     return_type: Base
-    __slots__ = ['fqn', 'name', 'parameters', 'return_type']
+    __slots__ = ['fqn', 'name', 'childof', 'parameters', 'return_type']
 
     def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
         yield (self.name, '<VAR_BINDING>')
@@ -1354,7 +1373,8 @@ class NameBindsFqn(BaseNoFqnProcessing):
 
     name: ast.Astn
     fqn: str
-    __slots__ = ['name', 'fqn']
+    childof: str
+    __slots__ = ['name', 'fqn', 'childof']
 
     def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
         yield (self.name, '<VAR_BINDING>')
@@ -1391,7 +1411,10 @@ class NameBindsNode(Base):
             # as "import sys", which binds "sys".
             fqn = ctx.fqn_dot + name
             ctx.bindings[name] = fqn
-        return NameBindsFqn(name=self.name, fqn=fqn)
+        return NameBindsFqn(name=self.name,
+                            fqn=fqn,
+                            childof='***' # DO NOT SUBMIT
+                            )
 
     def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
         yield (self.name, '<VAR_BINDING>')
@@ -1418,14 +1441,20 @@ class NameBindsGlobalNode(Base):
         # See also comments in NameRefNode.add_fqns
         name = self.name.value
         if name in ctx.bindings:
-            return NameBindsFqn(name=self.name, fqn=ctx.bindings[name] or '')
+            return NameBindsFqn(name=self.name,
+                                fqn=ctx.bindings[name] or '',
+                                childof='***' # DO NOT SUBMIT
+                                )
         else:
             # See comment with NameRefNode about ctx.bindings[name].
             # Also, this situation probabl shouldn't happen, even if a global
             # gets assigned multiple times.
             # DO NOT: ctx.bindings[name] = ctx.fqn_dot + name
             # TODO: should this throw an assertion error?
-            return NameBindsUnknown(name=self.name, fqn_stack=ctx.fqn_stack)
+            return NameBindsUnknown(name=self.name,
+                                    fqn_stack=ctx.fqn_stack,
+                                    childof='***' # DO NOT SUBMIT
+                                    )
 
     def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
         yield (self.name, '<VAR_BINDING_GLOBAL>')
@@ -1437,7 +1466,8 @@ class NameBindsUnknown(BaseNoFqnProcessing):
 
     name: ast.Astn
     fqn_stack: List[str]
-    __slots__ = ['name', 'fqn_stack']
+    childof: str
+    __slots__ = ['name', 'fqn_stack', 'childof']
 
     def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
         yield (self.name, '<VAR_BINDING_GLOBAL>')  # Should seldom happen

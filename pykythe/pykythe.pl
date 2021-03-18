@@ -319,7 +319,7 @@
                   kyImportDottedAsNamesFqn_as_unknown/9,
                   kyImportDottedAsNamesFqn_from_part/8,
                   kyImportDottedAsNamesFqn_from_part2/9,
-                  kyImportFromStmt/9,
+                  kyImportFromStmt/10,
                   kyanchor/7,
                   kyanchor_kyedge_fqn/8,
                   kyanchor_node/5,
@@ -488,7 +488,7 @@ pred_info_(kyImportDottedAsNamesFqn_from_part2, 4, [kyfact,expr,file_meta]).
 pred_info_(kyImport_path_pieces_to_module, 4,      [kyfact,expr,file_meta]).
 pred_info_(kyImportDottedAsNamesFqn_top, 3,        [kyfact,expr,file_meta]).
 pred_info_(kyImport_path_dots, 1,                  [kyfact,expr,file_meta]).
-pred_info_(kyImportFromStmt, 4,                    [kyfact,expr,file_meta]).
+pred_info_(kyImportFromStmt, 5,                    [kyfact,expr,file_meta]).
 pred_info_(kynode, 2,                              [kyfact,expr,file_meta]).
 pred_info_(kynode, 3,                              [kyfact,expr,file_meta]).
 pred_info_(kynode_add_items, 1,                    [kyfact,expr,file_meta]).
@@ -1613,8 +1613,9 @@ kynode('BreakStmt',
        'BreakStmt'{},
        [stmt(break)]) -->> !, [ ].
 kynode('Class',
-       'Class'{bases: Bases, fqn: Fqn, name: NameAstn},
+       'Class'{bases: Bases, fqn: Fqn, childof: ChildOf, name: NameAstn},
        [class_type(Fqn, BaseTypes)]) -->> !,
+    log_if_file('CLASS ~q childof ~q', [Fqn, ChildOf]),
     kyanchor_node_kyedge_fqn(NameAstn, '/kythe/edge/defines/binding', Fqn),
     kyfacts_signature_node(Fqn,
                            ['/kythe/node/kind'-'record',
@@ -1722,9 +1723,11 @@ kynode('AssignExprStmt',
 kynode('Func',
        'Func'{fqn: Fqn,
               name: NameAstn,
+              childof: ChildOf,
               parameters: Params,
               return_type: Return},
        [stmt(function(Fqn,ParamsTypes,ReturnType))]) -->> !,
+    log_if_file('FUNC ~q childof ~q', [Fqn, ChildOf]),
     % Similar to 'Method'{...}
     kyanchor_node_kyedge_fqn(NameAstn, '/kythe/edge/defines/binding', Fqn),
     kyfact_signature_node(Fqn, '/kythe/node/kind', 'function'),
@@ -1741,38 +1744,43 @@ kynode('IfStmt',
     kynode_if_stmt(EvalResults, Items).
 kynode('ImportFromStmt',
        'ImportFromStmt'{from_dots: FromDots,
-                        import_part: ImportPart},
+                        import_part: ImportPart,
+                        childof: ChildOf},
        Type) -->> !,
     % The parser doesn't output a field if it's None, so add
     % from_name and recurse.
     kynode('ImportFromStmt',
            'ImportFromStmt'{from_dots: FromDots,
                             from_name: 'DottedNameNode'{items:[]},
-                            import_part: ImportPart},
+                            import_part: ImportPart,
+                            childof: ChildOf},
            Type).
 kynode('ImportFromStmt',
        'ImportFromStmt'{from_dots: FromDots,
                         from_name: FromName,
-                        import_part: 'ImportAsNamesNode'{items: ImportPartItems}},
+                        import_part: 'ImportAsNamesNode'{items: ImportPartItems},
+                        childof: ChildOf},
        [unused_import('ImportFromStmt',Types)]) -->> !,
-    maplist_kyfact_expr(kyImportFromStmt(FromDots, FromName), ImportPartItems, Types).
+    maplist_kyfact_expr(kyImportFromStmt(FromDots, FromName, ChildOf), ImportPartItems, Types).
 kynode('ImportFromStmt',
        'ImportFromStmt'{from_dots: FromDots,
                         from_name: FromName,
-                        import_part: 'StarFqn'{star:StarAstn, fqn:StarFqn}},
+                        import_part: 'StarFqn'{star:StarAstn, fqn:StarFqn},
+                        childof: ChildOf},
        Type) -->> !,
     % TODO: process this properly
     % For the '*' part, set up binds for __all__ variables.
     % We need to record this information so that var_binds_lookup etc behave
     % correctly in the 2nd pass.
     { ImportPartItems = [
-        'AsNameNode'{as_name:'NameBindsFqn'{fqn:StarFqn, name:StarAstn},
+        'AsNameNode'{as_name:'NameBindsFqn'{fqn:StarFqn, name:StarAstn, childof: ChildOf},
                      name:'NameBareNode'{name:StarAstn}}] },
     { ImportPart = 'ImportAsNamesNode'{items: ImportPartItems} },
     kynode('ImportFromStmt',
            'ImportFromStmt'{from_dots: FromDots,
                             from_name: FromName,
-                            import_part: ImportPart},
+                            import_part: ImportPart,
+                            childof: ChildOf},
            Type).
 kynode('ImportNameFqn',
        'ImportNameFqn'{dotted_as_names: 'ImportDottedAsNamesFqn'{items: DottedAsNames}},
@@ -1795,9 +1803,11 @@ kynode('ListMakerNode',
 kynode('Method',
        'Method'{fqn: Fqn,
                 name: NameAstn,
+                childof: ChildOf,
                 parameters: Params,
                 return_type: Return},
        [stmt(method(Fqn,ParamsTypes,ReturnType))]) -->> !,
+    log_if_file('METHOD ~q childof ~q', [Fqn, ChildOf]),
     % Similar to 'Func'{...}
     kyanchor_node_kyedge_fqn(NameAstn, '/kythe/edge/defines/binding', Fqn),
     kyfact_signature_node(Fqn, '/kythe/node/kind', 'function'),
@@ -1813,18 +1823,15 @@ kynode('Method',
 % it's handled separately.
 % TODO: special case this within processing of AssignExprStmt?
 kynode('NameBindsFqn',
-       'NameBindsFqn'{fqn: Fqn, name: NameAstn},
+       'NameBindsFqn'{fqn: Fqn, name: NameAstn, childof: ChildOf},
        [var_binds(Fqn)]) -->> !,  % result is same as NameRefFqn
-    kyanchor_node_kyedge_fqn(NameAstn, '/kythe/edge/defines/binding', Fqn), % only difference from NameRef
-    kyfact_signature_node(Fqn, '/kythe/node/kind', 'variable').
-kynode('NameBindsGlobalFqn',
-       'NameBindsGlobalFqn'{fqn: Fqn, name: NameAstn},
-       [var_binds(Fqn)]) -->> !,  % result is same as NameRefFqn
+    log_if_file('NAME_BINDS_FQN ~q childof ~q', [Fqn, ChildOf]),
     kyanchor_node_kyedge_fqn(NameAstn, '/kythe/edge/defines/binding', Fqn), % only difference from NameRef
     kyfact_signature_node(Fqn, '/kythe/node/kind', 'variable').
 kynode('NameBindsUnknown',
-       'NameBindsUnknown'{fqn_stack: FqnStack, name: NameAstn},
+       'NameBindsUnknown'{fqn_stack: FqnStack, name: NameAstn, childof: ChildOf},
        [var_binds_lookup(FqnStack, NameAstn)]) -->> !,
+    log_if_file('NAME_BINDS_UNKNOWN ~q childof ~q', [NameAstn, ChildOf]),
     [ ].  % /kythe/edge/ref edge will be added in eval_single_type//2.
 kynode('NameRefFqn',
        'NameRefFqn'{fqn: Fqn, name: NameAstn},
@@ -2020,7 +2027,7 @@ if_stmt_elses([Cond,_ThenItem|ElseItems], [Cond|ElseItemsConds]) :-
 %       for module_alone and module_and_token everywhere.
 kyImportDottedAsNamesFqn('ImportDottedFqn'{
                              dotted_name: 'DottedNameNode'{items: DottedNameItems},
-                             top_name: 'NameBindsFqn'{fqn: BindsFqn, name: BindsNameAstn}},
+                             top_name: 'NameBindsFqn'{fqn: BindsFqn, name: BindsNameAstn, childof: _ChildOf}},
                          unused_import('ImportDottedFqn',BindsFqn)) -->>
     % From "import os" or "import os.path" or "import os.path.sep"
     % BindsFqn is just the "top name" (e.g., "${FQN}.os" for
@@ -2028,20 +2035,20 @@ kyImportDottedAsNamesFqn('ImportDottedFqn'{
     kyImportDottedAsNamesFqn_top(DottedNameItems, BindsFqn, BindsNameAstn).
 kyImportDottedAsNamesFqn('ImportDottedAsNameFqn'{
                              dotted_name: 'DottedNameNode'{items: DottedNameItems},
-                             as_name: 'NameBindsFqn'{fqn: BindsFqn, name: BindsNameAstn}},
+                             as_name: 'NameBindsFqn'{fqn: BindsFqn, name: BindsNameAstn, childof: _ChildOf}},
                          unused_import('ImportDottedAsNameFqn',BindsFqn)) -->>
     % From "import foo as baz" or "import foo.bar as baz"
     kyImportDottedAsNamesFqn_as([], % FromDots
                                 DottedNameItems, BindsFqn, BindsNameAstn).
 kyImportDottedAsNamesFqn('ImportDottedAsNameFqn'{
                              dotted_name: 'DottedNameNode'{items: DottedNameItems},
-                             as_name: 'NameBindsUnknown'{fqn_stack: FqnStack, name: BindsNameAstn}},
+                             as_name: 'NameBindsUnknown'{fqn_stack: FqnStack, name: BindsNameAstn, childof: _ChildOf}},
                          unused_import('ImportDottedAsNameFqn',BindsNameAstn:FqnStack)) -->>
     % From "global baz; import foo as baz" or "global baz; import foo.bar as baz"
     kyImportDottedAsNamesFqn_as_unknown([], % FromDots
                                         DottedNameItems, FqnStack, BindsNameAstn).
 
-%! kyImportFromStmt(+FromDots:list, +FromName, +AsNameNode, +ImportPart)//[kyfact,expr,file_meta] is det.
+%! kyImportFromStmt(+FromDots:list, +FromName, +ChildOf, +AsNameNode, +ImportPart)//[kyfact,expr,file_meta] is det.
 % Corresponds to a single item of `import_from`: "from ... import ..."
 % TODO: (excluding "from ... import *", to be handled by kyImportFromStmt_star).
 %
@@ -2060,8 +2067,9 @@ kyImportDottedAsNamesFqn('ImportDottedAsNameFqn'{
 % information for the file, followed by '/..' as needed.
 kyImportFromStmt(FromDots,
                  'DottedNameNode'{items:DottedNameItems},
+                 ChildOf,
                  'AsNameNode'{name:BareNameAstn, % 'NameBareNode'{name:NameAstn},
-                              as_name:'NameBindsFqn'{fqn: BindsFqn, name: AsNameAstn}},
+                              as_name:'NameBindsFqn'{fqn: BindsFqn, name: AsNameAstn, childof: ChildOf}},
                  unused_import('AsNameNode',BindsFqn)) -->>
     % From "from foo import baz [as zot]" and many variations
     { append(DottedNameItems, [BareNameAstn], DottedNameItemsComb) -> true ; fail, DottedNameItemsComb = '***' },
@@ -2069,8 +2077,9 @@ kyImportFromStmt(FromDots,
                                 DottedNameItemsComb, BindsFqn, AsNameAstn).
 kyImportFromStmt(FromDots,
                  'DottedNameNode'{items:DottedNameItems},
+                 ChildOf,
                  'AsNameNode'{name:BareNameAstn, % 'NameBareNode'{name:NameAstn},
-                              as_name:'NameBindsUnknown'{fqn_stack: FqnStack, name: AsNameAstn}},
+                              as_name:'NameBindsUnknown'{fqn_stack: FqnStack, name: AsNameAstn, childof: ChildOf}},
                  unused_import('AsNameNode',AsNameAstn)) -->>
     % From "global zot; from foo import baz as zot" and many variations
     { append(DottedNameItems, [BareNameAstn], DottedNameItemsComb) -> true ; fail, DottedNameItemsComb = '***' },
@@ -3428,6 +3437,7 @@ trace_file(this_will_never_match).
 % TODO: For debugging t4.pl node.children -- neeeds to understand _NL = Union[Node, Leaf]; cildren: List[_NL]
 % trace_file('/home/peter/src/typeshed/stdlib/lib2to3/pytree.pyi'). % TODO: delete
 % trace_file('/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/a10.py'). % TODO: delete
+% trace_file('/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/childof.py'). % TODO: delete
 
 log_if_file(Fmt, Args) -->>
     Meta/file_meta,
