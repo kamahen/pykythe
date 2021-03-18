@@ -44,6 +44,9 @@
 }
 
 body { /* <body> */
+    /* TODO: when I added `overflow: hidden` to this, it didn't prevent
+             the wild scrollbar from appearing, but if the HTML has
+             <body class="noscroll">, things are OK. */
     background-color: var(--base3);
 }
 
