@@ -524,28 +524,30 @@ function setXref(source_item, signature, data) {
             ' anchor:' + signature + ' ...');
 
     let table = document.createElement('table');
-    setXrefItemHeader(table, signature, data);
-    setXrefNodeValues(table, data);
-    setXrefEdgeLinks(table, data, signature, source_item);
+    setXrefItemHeader(table, signature, data.semantics);
+    setXrefNodeValues(table, data.semantic_node_values);
+    setXrefEdgeLinks(table, data.edge_links, data.semantics, signature, source_item);
     setXrefBottom(table);
 }
 
 // In the xref area, display the item signature as a header
-function setXrefItemHeader(table, signature, data) {
+function setXrefItemHeader(table, signature, data_semantics) {
     table.setAttribute('class', 'src_table');
     let row_cell = tableInsertRowCell(table);
     // TODO: remove <i> using row_cell.settAttribute('class', some-other-class)
-    if (data.semantics.length == 0) {
+    // console.log('setXrefItemHeader', signature, data_semantics);
+    if (data_semantics.length == 0) {
         row_cell.appendChild(document.createElement('span')).innerHTML + '<i>(no semantics)</i>';
     } else {
-        row_cell.appendChild(document.createElement('span')).innerHTML = data.semantics.map(
+        row_cell.appendChild(document.createElement('span')).innerHTML = data_semantics.map(
             s => '<i>' + sanitizeText(s.signature) + '</i>').join('<br/>');
     }
 }
 
 // In the xref area, display the node values
-function setXrefNodeValues(table, data) {
-    for (const nv of data.semantic_node_values) {
+function setXrefNodeValues(table, data_semantic_node_values) {
+    // console.log('setXrefNodeValues', data_semantic_node_values);
+    for (const nv of data_semantic_node_values) {
         // TODO: use class attributes:
         tableInsertRowCellHTML(table, '&nbsp;&nbsp;<b>' +
                                sanitizeText(nv.kind) +
@@ -555,11 +557,11 @@ function setXrefNodeValues(table, data) {
 }
 
 // In the xref area, add the xref links
-function setXrefEdgeLinks(table, data, signature, source_item) {
-    for (const edge_links of data.edge_links) {
+function setXrefEdgeLinks(table, data_edge_links, data_semantics, signature, source_item) {
+    for (const edge_links of data_edge_links) {
         setXrefEdgeLinkHead(table, edge_links);
         for (const path_link of edge_links.links) {
-            setXrefEdgeLinkItem(table, path_link, data, signature, source_item);
+            setXrefEdgeLinkItem(table, path_link, data_semantics, signature, source_item);
         }
     }
 }
@@ -581,7 +583,7 @@ function setXrefEdgeLinkHead(table, edge_links) {
 }
 
 // In the xref area, add a single xref item
-function setXrefEdgeLinkItem(table, path_link, data, signature, source_item) {
+function setXrefEdgeLinkItem(table, path_link, data_semantics, signature, source_item) {
     {
         let row_cell = tableInsertRowCell(table);
         // TODO: - CSS class for '<b><i>':
@@ -614,7 +616,7 @@ function setXrefEdgeLinkItem(table, path_link, data, signature, source_item) {
                 updateBrowserUrl(link_source_item);
             }
         }
-        srcLineTextSimple(link_line.line, txt_span, data.semantics);
+        srcLineTextSimple(link_line.line, txt_span, data_semantics);
     }
 }
 
