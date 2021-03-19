@@ -82,6 +82,7 @@ def add_fqns(cooked_nodes: 'Base', module: str, python_version: int) -> 'Base':
     """Top-level wrapper for adding FQNs to the cooked AST."""
     return cooked_nodes.add_fqns(
             FqnCtx(fqn=module,
+                   parent_fqn=module,
                    fqn_stack=[],
                    bindings=collections.ChainMap(collections.OrderedDict()),
                    class_fqn=None,
@@ -109,6 +110,7 @@ class FqnCtx(pod.PlainOldData):
                  FQN of the enclosing class.
       class_astn: class name's ASTN or None (if not within a class).
       fqn: The Fully Qualifed Name of this scope (module/function/class).
+      parent_fqn: The FQN to use for childof information
       fqn_stack: A stack of FQNs (newest first), used to resolve an
                  unknown non-local (e.g., NameRefUnknown).
       python_version: 3  # TODO: make this a triple: see fakesys.FAKE_SYS
@@ -118,9 +120,12 @@ class FqnCtx(pod.PlainOldData):
     class_fqn: Optional[str]
     class_astn: Optional[ast.Astn]
     fqn: str
+    parent_fqn: str
     fqn_stack: List[str]
     python_version: int  # TODO: make this a triple: see fakesys.FAKE_SYS
-    __slots__ = ['bindings', 'class_fqn', 'class_astn', 'fqn', 'fqn_stack', 'python_version']
+    __slots__ = [
+            'bindings', 'class_fqn', 'class_astn', 'fqn', 'parent_fqn', 'fqn_stack',
+            'python_version']
 
     def __post_init__(self) -> None:
         assert self.python_version in (3, )  # TODO: make this a triple: see fakesys.FAKE_SYS
@@ -628,13 +633,14 @@ class ClassDefStmt(Base):
             class_bindings = ctx.bindings.new_child(new_bindings)
             class_fqn_stack = [class_fqn] + ctx.fqn_stack
         class_ctx = ctx.replace(fqn=class_fqn,
+                                parent_fqn=class_fqn,
                                 fqn_stack=class_fqn_stack,
                                 bindings=class_bindings,
                                 class_fqn=class_fqn,
                                 class_astn=self.name.name)
         class_add_fqns = Class(fqn=class_fqn,
                                name=name_add_fqns.name,
-                               childof='***', # DO NOT SUBMIT
+                               childof=ctx.parent_fqn,
                                bases=[base.add_fqns(ctx) for base in self.bases])
         return make_stmts([class_add_fqns, self.suite.add_fqns(class_ctx)])
 
@@ -669,9 +675,11 @@ class CompForNode(Base):
         #    ctx.bindings.update((name, ctx.fqn + '.' + name) for name in self.scope_bindings)
         #    return ctx
         for_fqn = (f'{ctx.fqn}.<comp_for>' f'[{self.for_astn.start:d},{self.for_astn.end:d}]')
-        return ctx.replace(fqn=for_fqn,
-                           fqn_stack=[for_fqn] + ctx.fqn_stack,
-                           bindings=ctx.bindings.new_child(collections.OrderedDict()))
+        return ctx.replace(
+                fqn=for_fqn,
+                # parent_fqn remains the same (from the enclosing function)
+                fqn_stack=[for_fqn] + ctx.fqn_stack,
+                bindings=ctx.bindings.new_child(collections.OrderedDict()))
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         # Assume that the caller has created a new child in the
@@ -997,8 +1005,7 @@ class FuncDefStmt(Base):
         #    foo.x = 'a string'
         if self.name.name.value == 'lambda':
             # Make a unique name for the lambda
-            func_fqn = (f'{ctx.fqn}.<lambda>'
-                        f'[{self.name.name.start:d},{self.name.name.end:d}]')
+            func_fqn = (f'{ctx.fqn}.<lambda>' f'[{self.name.name.start:d},{self.name.name.end:d}]')
         else:
             func_fqn = f'{ctx.fqn}.{self.name.name.value}'
         func_fqn_local = func_fqn + '.<local>'
@@ -1015,6 +1022,7 @@ class FuncDefStmt(Base):
             func_bindings = ctx.bindings.new_child(new_bindings)
             func_fqn_stack = [func_fqn_local] + ctx.fqn_stack
         func_ctx = ctx.replace(fqn=func_fqn_local,
+                               parent_fqn=func_fqn,
                                fqn_stack=func_fqn_stack,
                                bindings=func_bindings,
                                class_fqn=None,
@@ -1048,13 +1056,13 @@ class FuncDefStmt(Base):
         if ctx.class_fqn:
             func_add_fqns = Method(fqn=func_fqn,
                                    name=name_add_fqns.name,
-                                   childof='***', # DO NOT SUBMIT
+                                   childof=ctx.parent_fqn,
                                    parameters=parameters,
                                    return_type=self.return_type.add_fqns(ctx))
         else:
             func_add_fqns = Func(fqn=func_fqn,
                                  name=name_add_fqns.name,
-                                 childof='***', # DO NOT SUBMIT
+                                 childof=ctx.parent_fqn,
                                  parameters=parameters,
                                  return_type=self.return_type.add_fqns(ctx))
         return make_stmts([func_add_fqns, self.suite.add_fqns(func_ctx)])
@@ -1289,9 +1297,10 @@ class ImportFromStmtNode(Base):
                           self.from_name.add_fqns(ctx)) if self.from_name else self.from_name
         import_part = self.import_part.add_fqns(ctx)
         assert isinstance(import_part, (ImportAsNamesNode, StarFqn, StarNode))  # For mypy
-        return ImportFromStmt(from_dots=from_dots, from_name=from_name, import_part=import_part,
-                              childof='***'  # DO NOT SUBMIT
-                              )
+        return ImportFromStmt(from_dots=from_dots,
+                              from_name=from_name,
+                              import_part=import_part,
+                              childof=ctx.parent_fqn)
 
 
 @dataclass(frozen=True)
@@ -1409,10 +1418,7 @@ class NameBindsNode(Base):
             # as "import sys", which binds "sys".
             fqn = ctx.fqn + '.' + name
             ctx.bindings[name] = fqn
-        return NameBindsFqn(name=self.name,
-                            fqn=fqn,
-                            childof='***' # DO NOT SUBMIT
-                            )
+        return NameBindsFqn(name=self.name, fqn=fqn, childof=ctx.parent_fqn)
 
     def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
         yield (self.name, '<VAR_BINDING>')
@@ -1441,8 +1447,7 @@ class NameBindsGlobalNode(Base):
         if name in ctx.bindings:
             return NameBindsFqn(name=self.name,
                                 fqn=ctx.bindings[name] or '',
-                                childof='***' # DO NOT SUBMIT
-                                )
+                                childof=ctx.parent_fqn)
         else:
             # See comment with NameRefNode about ctx.bindings[name].
             # Also, this situation probabl shouldn't happen, even if a global
@@ -1451,8 +1456,7 @@ class NameBindsGlobalNode(Base):
             # TODO: should this throw an assertion error?
             return NameBindsUnknown(name=self.name,
                                     fqn_stack=ctx.fqn_stack,
-                                    childof='***' # DO NOT SUBMIT
-                                    )
+                                    childof=ctx.parent_fqn)
 
     def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
         yield (self.name, '<VAR_BINDING_GLOBAL>')

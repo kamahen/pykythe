@@ -328,6 +328,7 @@
                   kyanchor_node_kyedge_fqn/7,
                   kyedge/6,
                   kyedge_fqn/6,
+                  kyedge_fqn_fqn/6,
                   kyfact/6,
                   kyfact_attr/6,
                   kyfact_color_text_as_single_fact/4,
@@ -461,6 +462,7 @@ pred_info_(kyanchor_node_kyedge_fqn, 3,            [kyfact,file_meta]).
 pred_info_(kyanchor_node_kyedge_fqn, 4,            [kyfact,file_meta]).
 pred_info_(kyedge, 3,                              [kyfact,file_meta]).
 pred_info_(kyedge_fqn, 3,                          [kyfact,file_meta]).
+pred_info_(kyedge_fqn_fqn, 3,                      [kyfact,file_meta]).
 pred_info_(kyfact, 3,                              [kyfact,file_meta]).
 pred_info_(kyfact_attr, 3,                         [kyfact,file_meta]).
 pred_info_(kyfact_color_text_as_single_fact, 1,    [kyfact,file_meta]).
@@ -1433,12 +1435,12 @@ kyfile(SrcInfo) -->>
     { Source = json{corpus: Meta.kythe_corpus, root: Meta.kythe_root, path: Meta.path} },
     % If the following is changed, also change the validation
     % in process_module_cached_impl/7.
-    kyfact(Source, '/pykythe/version', Meta.version),
-    kyfact(Source, '/pykythe/text/sha1', Meta.sha1),
-    kyfact(Source, '/kythe/node/kind', 'file'),
+    kyfact(Source, '/pykythe/version',     Meta.version),
+    kyfact(Source, '/pykythe/text/sha1',   Meta.sha1),
+    kyfact(Source, '/kythe/node/kind',     'file'),
     kyfact(Source, '/kythe/text/encoding', Meta.encoding),
-    kyfact(Source, '/kythe/language', python),
-    kyfact(Source, '/kythe/text', Meta.contents_base64),  % Special case - see transform_kythe_fact/2
+    kyfact(Source, '/kythe/language',      python),
+    kyfact(Source, '/kythe/text',          Meta.contents_base64),  % Special case - see transform_kythe_fact/2
     kyfact_color_text_as_single_fact(SrcInfo.color_text),
     kyedge_fqn(Source, '/kythe/edge/childof', SrcInfo.src_fqn),
     % Kythe's "package" is the equivalent of Python's "module".
@@ -1614,8 +1616,8 @@ kynode('BreakStmt',
        [stmt(break)]) -->> !, [ ].
 kynode('Class',
        'Class'{bases: Bases, fqn: Fqn, childof: ChildOf, name: NameAstn},
-       [class_type(Fqn, BaseTypes)]) -->> !,
-    log_if_file('CLASS ~q childof ~q', [Fqn, ChildOf]),
+        [class_type(Fqn, BaseTypes)]) -->> !,
+    kyedge_fqn_fqn(Fqn, '/kythe/edge/childof', ChildOf),
     kyanchor_node_kyedge_fqn(NameAstn, '/kythe/edge/defines/binding', Fqn),
     kyfacts_signature_node(Fqn,
                            ['/kythe/node/kind'-'record',
@@ -1727,7 +1729,7 @@ kynode('Func',
               parameters: Params,
               return_type: Return},
        [stmt(function(Fqn,ParamsTypes,ReturnType))]) -->> !,
-    log_if_file('FUNC ~q childof ~q', [Fqn, ChildOf]),
+    kyedge_fqn_fqn(Fqn, '/kythe/edge/childof', ChildOf),
     % Similar to 'Method'{...}
     kyanchor_node_kyedge_fqn(NameAstn, '/kythe/edge/defines/binding', Fqn),
     kyfact_signature_node(Fqn, '/kythe/node/kind', 'function'),
@@ -1807,8 +1809,8 @@ kynode('Method',
                 parameters: Params,
                 return_type: Return},
        [stmt(method(Fqn,ParamsTypes,ReturnType))]) -->> !,
-    log_if_file('METHOD ~q childof ~q', [Fqn, ChildOf]),
     % Similar to 'Func'{...}
+    kyedge_fqn_fqn(Fqn, '/kythe/edge/childof', ChildOf),
     kyanchor_node_kyedge_fqn(NameAstn, '/kythe/edge/defines/binding', Fqn),
     kyfact_signature_node(Fqn, '/kythe/node/kind', 'function'),
     (   { node_astn(NameAstn, _, _, Name) },
@@ -1825,13 +1827,13 @@ kynode('Method',
 kynode('NameBindsFqn',
        'NameBindsFqn'{fqn: Fqn, name: NameAstn, childof: ChildOf},
        [var_binds(Fqn)]) -->> !,  % result is same as NameRefFqn
-    log_if_file('NAME_BINDS_FQN ~q childof ~q', [Fqn, ChildOf]),
+    kyedge_fqn_fqn(Fqn, '/kythe/edge/childof', ChildOf),
     kyanchor_node_kyedge_fqn(NameAstn, '/kythe/edge/defines/binding', Fqn), % only difference from NameRef
     kyfact_signature_node(Fqn, '/kythe/node/kind', 'variable').
 kynode('NameBindsUnknown',
-       'NameBindsUnknown'{fqn_stack: FqnStack, name: NameAstn, childof: ChildOf},
+       'NameBindsUnknown'{fqn_stack: FqnStack, name: NameAstn, childof: _ChildOf},
        [var_binds_lookup(FqnStack, NameAstn)]) -->> !,
-    log_if_file('NAME_BINDS_UNKNOWN ~q childof ~q', [NameAstn, ChildOf]),
+    % kyedge_fqn_fqn(Fqn, '/kythe/edge/childof', ChildOf),
     [ ].  % /kythe/edge/ref edge will be added in eval_single_type//2.
 kynode('NameRefFqn',
        'NameRefFqn'{fqn: Fqn, name: NameAstn},
@@ -2279,6 +2281,14 @@ anchor_signature_str(Start, End, Token, Signature) :-
 
 anchor_signature_str('Astn'{start:Start, end:End, value:Token}, Signature) :-
     anchor_signature_str(Start, End, Token, Signature).
+
+%! kyedge_fqn_fqn(+Fqn1:atom, +EdgeKind:atom, +Fqn2:atom)//[kyfact,file_meta] is det.
+% High-level create a Kythe edge fact from an FQN to a target
+% identified by an FQN.
+kyedge_fqn_fqn(Fqn1, EdgeKind, Fqn2) -->>
+    signature_node(Fqn1, Source1),
+    signature_node(Fqn2, Source2),
+    kyedge(Source1, EdgeKind, Source2).
 
 %! kyedge_fqn(+Source:dict, +EdgeKind:atom, +Fqn:atom)//[kyfact,file_meta] is det.
 % High-level create a Kythe edge fact to a target identified by an
@@ -3437,7 +3447,6 @@ trace_file(this_will_never_match).
 % TODO: For debugging t4.pl node.children -- neeeds to understand _NL = Union[Node, Leaf]; cildren: List[_NL]
 % trace_file('/home/peter/src/typeshed/stdlib/lib2to3/pytree.pyi'). % TODO: delete
 % trace_file('/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/a10.py'). % TODO: delete
-% trace_file('/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/childof.py'). % TODO: delete
 
 log_if_file(Fmt, Args) -->>
     Meta/file_meta,
