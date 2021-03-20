@@ -384,7 +384,7 @@ all_tests: etags unit_tests pykythe_test test_imports1 test_data_tests # json-de
 
 .PHONY: unit_tests
 unit_tests: tests/test_pykythe.py \
-		pykythe/ast.py \
+		pykythe/ast_node.py \
 		pykythe/ast_color.py \
 		pykythe/ast_cooked.py \
 		pykythe/ast_raw.py \
@@ -732,14 +732,14 @@ run-pytype-server:
 # 	@mkdir -p $(dir $@)
 # 	-$(PYTYPE) -V$(PYTYPE_V) -P $(PYTYPE_DIR) $< -o $@
 
-# $(PYTYPE_DIR)/pykythe/ast.pyi: $(addprefix $(PYTYPE_DIR)/pykythe/,\
+# $(PYTYPE_DIR)/pykythe/ast_node.pyi: $(addprefix $(PYTYPE_DIR)/pykythe/,\
 # 	pod.pyi)
 # $(PYTYPE_DIR)/pykythe/ast_cooked.pyi: $(addprefix $(PYTYPE_DIR)/pykythe/,\
-# 	pod.pyi typing_debug.pyi ast.pyi)
+# 	pod.pyi typing_debug.pyi ast_node.pyi)
 # $(PYTYPE_DIR)/pykythe/ast_raw.pyi: $(addprefix $(PYTYPE_DIR)/pykythe/,\
 # 	pod.pyi typing_debug.pyi ast_cooked.pyi)
 # $(PYTYPE_DIR)/pykythe/__main__.pyi: $(addprefix $(PYTYPE_DIR)/pykythe/,\
-# 	pod.pyi typing_debug.pyi ast_raw.pyi ast_cooked.pyi ast.pyi)
+# 	pod.pyi typing_debug.pyi ast_raw.pyi ast_cooked.pyi ast_node.pyi)
 
 ######### DO NOT SUBMIT -- underhood
 

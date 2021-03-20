@@ -16,7 +16,7 @@ from lib2to3.pgen2 import parse as pgen2_parse
 from lib2to3.pgen2 import tokenize as pgen2_tokenize
 from typing import Iterable, Optional, Text, Tuple, Union
 
-from . import ast, ast_raw, ast_cooked, ast_color, pod
+from . import ast_node, ast_raw, ast_cooked, ast_color, pod
 from .typing_debug import cast as xcast
 
 # TODO: a bit more refactoring - look at error types, for example.
@@ -26,7 +26,7 @@ RawBaseType = Union[ast_raw.Node, ast_raw.Leaf]
 
 def main() -> int:
     """Main (uses sys.argv)."""
-    src_file: Optional[ast.File]
+    src_file: Optional[ast_node.File]
     parse_error: Optional['CompilationError']
     parse_tree: Optional[RawBaseType]
     with_fqns: Union['CompilationError', ast_cooked.Base]
@@ -38,7 +38,7 @@ def main() -> int:
     pykythe_logger.addHandler(pykythe_logger_hdlr)
     pykythe_logger.setLevel(logging.WARNING)
 
-    # TODO: add to ast.File: args.root, args.corpus (even though they're in Meta)
+    # TODO: add to ast_node.File: args.root, args.corpus (even though they're in Meta)
 
     args = _get_args()
     pykythe_logger.info('Start parsing %s', args.srcpath)
@@ -126,11 +126,11 @@ def _get_args() -> argparse.Namespace:
 
 
 def _make_file(
-        args: argparse.Namespace) -> Tuple[Optional[ast.File], Optional['CompilationError']]:
+        args: argparse.Namespace) -> Tuple[Optional[ast_node.File], Optional['CompilationError']]:
     parse_error: Optional['CompilationError']
-    src_file: Optional[ast.File] = None
+    src_file: Optional[ast_node.File] = None
     try:
-        src_file = ast.make_file(path=args.srcpath)
+        src_file = ast_node.make_file(path=args.srcpath)
         parse_error = None
     except SyntaxError as exc:
         # TODO: This seems to sometimes be raised from an encoding error with
@@ -153,7 +153,7 @@ def _make_file(
     return src_file, parse_error
 
 
-def _parse_file(src_file: ast.File,
+def _parse_file(src_file: ast_node.File,
                 args: argparse.Namespace) -> Tuple[RawBaseType, Optional['CompilationError']]:
     parse_error: Optional['CompilationError'] = None
     parse_tree: Optional[RawBaseType] = None
@@ -187,7 +187,7 @@ def _parse_file(src_file: ast.File,
 
 
 def _process_ast(
-        src_file: ast.File, parse_tree: RawBaseType, args: argparse.Namespace
+        src_file: ast_node.File, parse_tree: RawBaseType, args: argparse.Namespace
 ) -> Tuple[Optional[RawBaseType], Union['Crash', 'ParseError', ast_cooked.Base],
            Optional['ParseError']]:
     logging.getLogger('pykythe').debug('RAW= %r', parse_tree)
@@ -228,7 +228,7 @@ class CompilationError(pod.PlainOldDataExtended):
     def pre_order(self) -> Iterable[pytree.Base]:  # pylint: disable=no-self-use
         yield from ()
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:  # pylint: disable=no-self-use
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:  # pylint: disable=no-self-use
         """Do-nothing version of ast_cooked.Base.name_astns()."""
         yield from ()
 

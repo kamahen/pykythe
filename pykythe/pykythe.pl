@@ -1394,7 +1394,7 @@ simplify_ast_slot_pair(Key-Value, Key-Value2) :-
 % using a straightforward transformation from the Python (ast_color.Color).
 % simplify_color/2 simplifies the data.
 % TODO: Generate the simplified form in the Python parser, by adding
-%       a suitable as_prolog_str() method to ast_color.Color (and maybe to ast.Astn).
+%       a suitable as_prolog_str() method to ast_color.Color (and maybe to ast_node.Astn).
 simplify_color(json{ kind:'Color',
                      slots:json{ astn:json{ kind:'Astn',
                                             slots:json{end:End,start:Start,value:Value}

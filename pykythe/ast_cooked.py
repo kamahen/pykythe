@@ -70,7 +70,7 @@ import functools
 from typing import Any, Mapping, Iterable, List, Optional, Sequence, Tuple, TypeVar, Union
 import typing
 
-from . import ast, fakesys, pod, typing_debug
+from . import ast_node, fakesys, pod, typing_debug
 from .typing_debug import cast as xcast
 
 # pylint: disable=too-few-public-methods
@@ -118,7 +118,7 @@ class FqnCtx(pod.PlainOldData):
 
     bindings: typing.ChainMap[str, str]
     class_fqn: Optional[str]
-    class_astn: Optional[ast.Astn]
+    class_astn: Optional[ast_node.Astn]
     fqn: str
     parent_fqn: str
     fqn_stack: List[str]
@@ -203,7 +203,7 @@ class Base(pod.PlainOldDataExtended):
         except Exception as exc:
             raise RuntimeError('%r node=%r:%r' % (exc, attr, getattr(self, attr))) from exc
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         """Map of astns to '<VAR_REF>', '<VAR_BINDING>', etc."""
         raise NotImplementedError(type(self))  # pragma: no cover
 
@@ -214,7 +214,7 @@ class BaseNoOutput(Base):
     def as_prolog_str(self) -> str:
         return _not_implemented(self, '***ERROR***')
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         raise NotImplementedError(type(self))  # pragma: no cover
 
 
@@ -228,7 +228,7 @@ class BaseNoFqnProcessing(Base):
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return _not_implemented(self, self)
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         raise NotImplementedError(type(self))  # pragma: no cover
 
 
@@ -241,7 +241,7 @@ class BaseNoFqnProcessingNoOutput(BaseNoOutput):
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return _not_implemented(self, self)
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         raise NotImplementedError(type(self))  # pragma: no cover
 
 
@@ -296,7 +296,7 @@ class ListBase(Base):
         #       and then use self.__class__(**attr_values)
         return type(self)(items=[item.add_fqns(ctx) for item in self.items])
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         for item in self.items:
             yield from item.name_astns()
 
@@ -310,7 +310,7 @@ class EmptyBase(Base):
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from ()
 
 
@@ -331,7 +331,7 @@ class BareAnnAssignNode(BaseNoFqnProcessingNoOutput):
     expr: Base
     __slots__ = ['left_annotation', 'expr']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         raise NotImplementedError(type(self))  # pragma: no cover
 
 
@@ -350,7 +350,7 @@ class AnnAssignStmt(Base):
     left: Base
     __slots__ = ['left_annotation', 'expr', 'left']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.left_annotation.name_astns()
         yield from self.expr.name_astns()
         yield from self.left.name_astns()
@@ -374,7 +374,7 @@ class BareArgListNode(BaseAtomTrailer):
         # has an extra check that's not in the grammar).
         return AtomCallNode(atom=atom, args=self.args)
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         raise NotImplementedError(type(self))  # pragma: no cover
 
 
@@ -386,14 +386,14 @@ class ArgumentNode(Base):
     ast_raw.cvt_argument removes them by returning the child node.
     """
 
-    name: ast.Astn
+    name: ast_node.Astn
     arg: Base
     __slots__ = ['name', 'arg']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return ArgumentNode(name=self.name, arg=self.arg.add_fqns(ctx))
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.name, '<ARG_KEYWORD>')
         yield from self.arg.name_astns()
 
@@ -412,7 +412,7 @@ class AsNameNode(Base):
                 (NameBindsNode, NameBindsFqn, NameBindsGlobalNode, NameBindsUnknown)), dict(
                         name=type(self.name), as_name=type(self.as_name))
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.name.name_astns()
         yield from self.as_name.name_astns()
 
@@ -429,7 +429,7 @@ class AssignExprStmt(BaseNoFqnProcessing):
     expr: Base
     __slots__ = ['left', 'expr']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.left.name_astns()
         yield from self.expr.name_astns()
 
@@ -468,7 +468,7 @@ class AssignMultipleExprStmt(Base):
         else:
             return ExprStmt(expr=expr)
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.expr.name_astns()
         for item in self.left_list:
             yield from item.name_astns()
@@ -496,7 +496,7 @@ class AtomCallNode(Base):
         return AtomCallNode(atom=self.atom.add_fqns(ctx),
                             args=[arg.add_fqns(ctx) for arg in self.args])
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.atom.name_astns()
         for arg in self.args:
             yield from arg.name_astns()
@@ -511,7 +511,7 @@ class AtomDotNode(Base):
     """
 
     atom: Base
-    attr_name: ast.Astn
+    attr_name: ast_node.Astn
     binds: bool
     __slots__ = ['atom', 'attr_name', 'binds']
 
@@ -520,7 +520,7 @@ class AtomDotNode(Base):
                            attr_name=self.attr_name,
                            binds=self.binds)
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.atom.name_astns()
         if self.binds:
             yield (self.attr_name, '<ATTR_BINDING>')
@@ -547,7 +547,7 @@ class AtomSubscriptNode(Base):
                                  subscripts=[
                                          subscript.add_fqns(ctx) for subscript in self.subscripts])
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.atom.name_astns()
         for subscripts in self.subscripts:
             yield from subscripts.name_astns()
@@ -557,10 +557,10 @@ class AtomSubscriptNode(Base):
 class AugAssignNode(BaseNoFqnProcessing):
     """Corresponds to `augassign`."""
 
-    op: ast.Astn
+    op: ast_node.Astn
     __slots__ = ['op']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.op, '<KEYWORD>')  # Not needed but doesn't hurt
 
 
@@ -572,7 +572,7 @@ class AugAssignStmt(Base):
     __slots__ and args to __init_ have `left_list` last.
     """
 
-    augassign: ast.Astn
+    augassign: ast_node.Astn
     expr: Base
     left: Base
     __slots__ = ['augassign', 'expr', 'left']
@@ -582,7 +582,7 @@ class AugAssignStmt(Base):
                              expr=self.expr.add_fqns(ctx),
                              left=self.left.add_fqns(ctx))
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.augassign, '<PUNCTUATION>')  # Not needed but doesn't hurt
         yield from self.expr.name_astns()
         yield from self.left.name_astns()
@@ -597,12 +597,12 @@ class Class(BaseNoFqnProcessing):
     """Created by ClassDefStmt.add_fqns()."""
 
     fqn: str
-    name: ast.Astn
+    name: ast_node.Astn
     childof: str
     bases: Sequence[Base]
     __slots__ = ['fqn', 'name', 'childof', 'bases']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.name, '<VAR_BINDING>')
         for base in self.bases:
             yield from base.name_astns()
@@ -644,7 +644,7 @@ class ClassDefStmt(Base):
                                bases=[base.add_fqns(ctx) for base in self.bases])
         return make_stmts([class_add_fqns, self.suite.add_fqns(class_ctx)])
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.name.name_astns()
         for base in self.bases:
             yield from base.name_astns()
@@ -659,7 +659,7 @@ class CompForNode(Base):
     between `for foo= ...` and for foo,=...`)
     """
 
-    for_astn: ast.Astn  # Used for generating unique IDs
+    for_astn: ast_node.Astn  # Used for generating unique IDs
     for_exprlist: Base
     in_testlist: Base
     comp_iter: Base
@@ -698,7 +698,7 @@ class CompForNode(Base):
                        in_testlist=in_testlist_add_fqns,
                        comp_iter=comp_iter_add_fqns)
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.for_exprlist.name_astns()
         yield from self.in_testlist.name_astns()
         yield from self.comp_iter.name_astns()
@@ -713,7 +713,7 @@ class CompFor(BaseNoFqnProcessing):
     comp_iter: Base
     __slots__ = ['for_exprlist', 'in_testlist', 'comp_iter']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.for_exprlist.name_astns()
         yield from self.in_testlist.name_astns()
         yield from self.comp_iter.name_astns()
@@ -727,7 +727,7 @@ class CompIfCompIterNode(Base):
     comp_iter: Base
     __slots__ = ['value_expr', 'comp_iter']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.value_expr.name_astns()
         yield from self.comp_iter.name_astns()
 
@@ -783,7 +783,7 @@ class DecoratorNode(Base):
         return AtomCallNode(atom=atom_reduced.add_fqns(ctx),
                             args=[arg.add_fqns(ctx) for arg in self.args])
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.name.name_astns()
         for arg in self.args:
             yield from arg.name_astns()
@@ -809,7 +809,7 @@ class DictGenListSetMakerCompFor(BaseNoFqnProcessing):
     comp_for: CompFor
     __slots__ = ['value_expr', 'comp_for']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.value_expr.name_astns()
         yield from self.comp_for.name_astns()
 
@@ -831,7 +831,7 @@ class DictGenListSetMakerCompForNode(Base):
         value_expr = self.value_expr.add_fqns(comp_for_ctx)
         return DictGenListSetMakerCompFor(value_expr=value_expr, comp_for=comp_for)
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.value_expr.name_astns()
         yield from self.comp_for.name_astns()
 
@@ -849,7 +849,7 @@ class DottedNameNode(ListBase):
 class EllipsisNode(EmptyBase):
     """Corresponds to `...`."""
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from ()  # TODO: highlight this? (similar to `pass`)
 
 
@@ -877,7 +877,7 @@ class ExprListNode(Base):
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return ExprListNode(items=[item.add_fqns(ctx) for item in self.items], binds=self.binds)
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         for item in self.items:
             yield from item.name_astns()
 
@@ -892,7 +892,7 @@ class ExprStmt(BaseNoFqnProcessing):
     expr: Base
     __slots__ = ['expr']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.expr.name_astns()
 
 
@@ -904,7 +904,7 @@ class ExceptClauseNode(Base):
     as_item: Base
     __slots__ = ['expr', 'as_item']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.expr.name_astns()
         yield from self.as_item.name_astns()
 
@@ -925,7 +925,7 @@ class FileInput(Base):
         stmts = [stmt.add_fqns(file_ctx) for stmt in self.stmts]
         return FileInput(path=self.path, stmts=stmts, scope_bindings=self.scope_bindings)
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         for stmt in self.stmts:
             yield from stmt.name_astns()
 
@@ -957,7 +957,7 @@ class ForStmt(Base):
                        suite=self.suite.add_fqns(ctx),
                        else_suite=self.else_suite.add_fqns(ctx))
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.for_exprlist.name_astns()
         yield from self.in_testlist.name_astns()
         yield from self.suite.name_astns()
@@ -969,13 +969,13 @@ class Func(BaseNoFqnProcessing):
     """Created by FuncDefStmt.add_fqns()."""
 
     fqn: str
-    name: ast.Astn
+    name: ast_node.Astn
     childof: str
     parameters: Sequence[Base]
     return_type: Base
     __slots__ = ['fqn', 'name', 'childof', 'parameters', 'return_type']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.name, '<VAR_BINDING>')
         for parameter in self.parameters:
             yield from parameter.name_astns()
@@ -1067,7 +1067,7 @@ class FuncDefStmt(Base):
                                  return_type=self.return_type.add_fqns(ctx))
         return make_stmts([func_add_fqns, self.suite.add_fqns(func_ctx)])
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.name.name_astns()
         for parameter in self.parameters:
             yield from parameter.name_astns()
@@ -1094,7 +1094,7 @@ class IfExpr(Base):
                           then_expr=self.then_expr.add_fqns(ctx),
                           else_expr=self.else_expr.add_fqns(ctx))
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.cond_expr.name_astns()
         yield from self.then_expr.name_astns()
         yield from self.else_expr.name_astns()
@@ -1119,7 +1119,7 @@ class IfStmt(Base):
         return type(self)(eval_results=self.eval_results,
                           items=[item.add_fqns(ctx) for item in self.items])
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         for item in self.items:
             yield from item.name_astns()
 
@@ -1136,13 +1136,13 @@ class ImportDotNode(Base):
         dot: The AST node for the token ('.').
     """
 
-    dot: ast.Astn
+    dot: ast_node.Astn
     __slots__ = ['dot']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.dot, '<PUNCTUATION>')  # Not needed but doesn't hurt
 
 
@@ -1164,7 +1164,7 @@ class ImportDottedAsNameFqn(Base):
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self  # The components have already been processed
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.dotted_name.name_astns()
         yield from self.as_name.name_astns()
 
@@ -1194,7 +1194,7 @@ class ImportDottedAsNameNode(Base):
                                              self.dotted_name.items[0]).name).add_fqns(ctx))
             return ImportDottedFqn(dotted_name=dotted_name, top_name=top_name)
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.dotted_name.name_astns()
         if self.as_name:
             yield from self.as_name.name_astns()
@@ -1247,7 +1247,7 @@ class ImportDottedFqn(Base):
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self  # The components have already been processed
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.dotted_name.name_astns()
         yield from self.top_name.name_astns()
 
@@ -1262,7 +1262,7 @@ class ImportFromStmt(BaseNoFqnProcessing):
     childof: str
     __slots__ = ['from_dots', 'from_name', 'import_part', 'childof']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         for n in self.from_dots:
             yield from n.name_astns()
         if self.from_name:
@@ -1313,7 +1313,7 @@ class ImportNameFqn(Base):
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self  # The components have already been processed
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.dotted_as_names.name_astns()
 
 
@@ -1332,7 +1332,7 @@ class ImportNameNode(Base):
         return ImportNameFqn(
                 dotted_as_names=xcast(ImportDottedAsNamesFqn, self.dotted_as_names.add_fqns(ctx)))
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.dotted_as_names.name_astns()
 
 
@@ -1351,7 +1351,7 @@ class ListMakerNode(Base):
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return ListMakerNode(items=[item.add_fqns(ctx) for item in self.items], binds=self.binds)
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         for item in self.items:
             yield from item.name_astns()
 
@@ -1361,13 +1361,13 @@ class Method(BaseNoFqnProcessing):
     """Created by FuncDefStmt.add_fqns()."""
 
     fqn: str
-    name: ast.Astn
+    name: ast_node.Astn
     childof: str
     parameters: Sequence[Base]
     return_type: Base
     __slots__ = ['fqn', 'name', 'childof', 'parameters', 'return_type']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.name, '<VAR_BINDING>')
         for parameter in self.parameters:
             yield from parameter.name_astns()
@@ -1378,12 +1378,12 @@ class Method(BaseNoFqnProcessing):
 class NameBindsFqn(BaseNoFqnProcessing):
     """Created by NameBindsNode.add_fqns."""
 
-    name: ast.Astn
+    name: ast_node.Astn
     fqn: str
     childof: str
     __slots__ = ['name', 'fqn', 'childof']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.name, '<VAR_BINDING>')
 
 
@@ -1396,7 +1396,7 @@ class NameBindsNode(Base):
               is self.astn.value
     """
 
-    name: ast.Astn
+    name: ast_node.Astn
     __slots__ = ['name']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
@@ -1420,7 +1420,7 @@ class NameBindsNode(Base):
             ctx.bindings[name] = fqn
         return NameBindsFqn(name=self.name, fqn=fqn, childof=ctx.parent_fqn)
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.name, '<VAR_BINDING>')
 
 
@@ -1436,7 +1436,7 @@ class NameBindsGlobalNode(Base):
               self.astn.value
     """
 
-    name: ast.Astn
+    name: ast_node.Astn
     __slots__ = ['name']
 
     # TODO: test case
@@ -1458,7 +1458,7 @@ class NameBindsGlobalNode(Base):
                                     fqn_stack=ctx.fqn_stack,
                                     childof=ctx.parent_fqn)
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.name, '<VAR_BINDING_GLOBAL>')
 
 
@@ -1466,12 +1466,12 @@ class NameBindsGlobalNode(Base):
 class NameBindsUnknown(BaseNoFqnProcessing):
     """Created by NameBindsGlobalNode.add_fqns."""
 
-    name: ast.Astn
+    name: ast_node.Astn
     fqn_stack: List[str]
     childof: str
     __slots__ = ['name', 'fqn_stack', 'childof']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.name, '<VAR_BINDING_GLOBAL>')  # Should seldom happen
 
 
@@ -1479,22 +1479,22 @@ class NameBindsUnknown(BaseNoFqnProcessing):
 class NameBareNode(Base):
     """Corresponds to a NAME node that doesn't get a FQN.
 
-    This is just a wrapper for ast.Astn, so that ast_raw type-checking
+    This is just a wrapper for ast_node.Astn, so that ast_raw type-checking
     works (an alternative would be to convolute things so that
-    ast.Astn is a subclass of ast_cooked.Base).
+    ast_node.Astn is a subclass of ast_cooked.Base).
 
     Attributes:
         name: The AST node of the name (a Leaf node) - the name
               is self.astn.value
     """
 
-    name: ast.Astn
+    name: ast_node.Astn
     __slots__ = ['name']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.name, '<BARE>')
 
 
@@ -1507,7 +1507,7 @@ class NameRefNode(Base):
               is self.astn.value
     """
 
-    name: ast.Astn
+    name: ast_node.Astn
     __slots__ = ['name']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
@@ -1529,7 +1529,7 @@ class NameRefNode(Base):
             # DO NOT: ctx.bindings[name] = ctx.fqn + '.' + name
             return NameRefUnknown(name=self.name, fqn_stack=ctx.fqn_stack)
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.name, '<VAR_REF>')
 
 
@@ -1537,11 +1537,11 @@ class NameRefNode(Base):
 class NameRefFqn(BaseNoFqnProcessing):
     """Created by NameRefNode.add_fqns."""
 
-    name: ast.Astn
+    name: ast_node.Astn
     fqn: str
     __slots__ = ['name', 'fqn']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.name, '<VAR_REF>')
 
 
@@ -1549,11 +1549,11 @@ class NameRefFqn(BaseNoFqnProcessing):
 class NameRefUnknown(BaseNoFqnProcessing):
     """Created by NameRefNode.add_fqns."""
 
-    name: ast.Astn
+    name: ast_node.Astn
     fqn_stack: List[str]
     __slots__ = ['name', 'fqn_stack']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.name, '<VAR_REF>')
 
 
@@ -1570,7 +1570,7 @@ class NameRefGenerated(BaseNoFqnProcessing):
     fqn: str
     __slots__ = ['fqn']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from ()  # There's no astn, so can't color it
 
 
@@ -1586,13 +1586,13 @@ class NumberComplexNode(Base):
     astn: The AST node of the number
     """
 
-    astn: ast.Astn
+    astn: ast_node.Astn
     __slots__ = ['astn']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.astn, '<NUMBER>')  # Not needed but doesn't hurt
 
 
@@ -1604,13 +1604,13 @@ class NumberFloatNode(Base):
     astn: The AST node of the number
     """
 
-    astn: ast.Astn
+    astn: ast_node.Astn
     __slots__ = ['astn']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.astn, '<NUMBER>')  # Not needed but doesn't hurt
 
 
@@ -1622,13 +1622,13 @@ class NumberIntNode(Base):
     astn: The AST node of the number
     """
 
-    astn: ast.Astn
+    astn: ast_node.Astn
     __slots__ = ['astn']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.astn, '<NUMBER>')  # Not needed but doesn't hurt
 
 
@@ -1644,17 +1644,17 @@ OMITTED_NODE = OmittedNode()  # type: Base
 class OpNode(Base):
     """Corresponds to various expression nodes (unary, binary, comparison)."""
 
-    op_astns: Sequence[ast.Astn]
+    op_astns: Sequence[ast_node.Astn]
     args: Sequence[Base]
     __slots__ = ['op_astns', 'args']
 
     def __post_init__(self) -> None:
-        typing_debug.assert_all_isinstance(ast.Astn, self.op_astns)
+        typing_debug.assert_all_isinstance(ast_node.Astn, self.op_astns)
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return OpNode(op_astns=self.op_astns, args=[arg.add_fqns(ctx) for arg in self.args])
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         for op_astn in self.op_astns:
             yield (op_astn, '<KEYWORD>')  # Not needed but doesn't hurt
         for arg in self.args:
@@ -1677,14 +1677,14 @@ class RaiseStmt(ListBase):
 class StarFqn(Base):
     """Created by StarNode.add_fqns."""
 
-    star: ast.Astn
+    star: ast_node.Astn
     fqn: str
     __slots__ = ['star', 'fqn']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.star, '<PUNCTUATION>')  # Not needed but doesn't hurt
 
 
@@ -1692,13 +1692,13 @@ class StarFqn(Base):
 class StarNode(Base):
     """Corresponds to `'*' (in from...import)`."""
 
-    star: ast.Astn
+    star: ast_node.Astn
     __slots__ = ['star']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return StarFqn(star=self.star, fqn=ctx.fqn + '.' + self.star.value)
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield (self.star, '<PUNCTUATION>')  # Not needed but doesn't hurt
 
 
@@ -1728,13 +1728,13 @@ class StringBytesNode(Base):
         astns: The AST nodes of the byte string
     """
 
-    astns: Sequence[ast.Astn]
+    astns: Sequence[ast_node.Astn]
     __slots__ = ['astns']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         for astn in self.astns:
             yield (astn, '<STRING>')  # Not needed but doesn't hurt
 
@@ -1747,13 +1747,13 @@ class StringNode(Base):
         astns: The AST nodes of the string
     """
 
-    astns: Sequence[ast.Astn]
+    astns: Sequence[ast_node.Astn]
     __slots__ = ['astns']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
         return self
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         for astn in self.astns:
             yield (astn, '<STRING>')  # Not needed but doesn't hurt
 
@@ -1767,7 +1767,7 @@ class SubscriptNode(Base):
     expr3: Base
     __slots__ = ['expr1', 'expr2', 'expr3']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.expr1.name_astns()
         yield from self.expr2.name_astns()
         yield from self.expr3.name_astns()
@@ -1787,7 +1787,7 @@ class BareDotNameTrailerNode(BaseAtomTrailer):
     def atom_trailer_node(self, atom: Base, binds: bool) -> Base:
         return AtomDotNode(atom=atom, attr_name=self.name.name, binds=binds)
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.name.name_astns()
 
 
@@ -1809,7 +1809,7 @@ class BareSubscriptListNode(BaseAtomTrailer):
     def atom_trailer_node(self, atom: Base, binds: bool) -> Base:
         return AtomSubscriptNode(atom=atom, subscripts=self.subscripts, binds=binds)
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         for subscript in self.subscripts:
             yield from subscript.name_astns()
 
@@ -1825,7 +1825,7 @@ class BareTypedArgsListNode(BaseNoFqnProcessingNoOutput):
     args: Sequence['TypedArgNode']
     __slots__ = ['args']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         for arg in self.args:
             yield from arg.name_astns()
 
@@ -1845,7 +1845,7 @@ class TnameNode(Base):
     def __post_init__(self) -> None:  # DO NOT SUBMIT - remove this validation
         assert isinstance(self.name, (NameBindsNode, NameBindsFqn)), dict(name=type(self.name))
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.name.name_astns()
         yield from self.type_expr.name_astns()
 
@@ -1868,7 +1868,7 @@ class TypedArgNode(Base):
     expr: Base
     __slots__ = ['tname', 'expr']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.tname.name_astns()
         yield from self.expr.name_astns()
 
@@ -1882,7 +1882,7 @@ class WhileStmt(Base):
     else_suite: Base
     __slots__ = ['test', 'suite', 'else_suite']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.test.name_astns()
         yield from self.suite.name_astns()
         yield from self.else_suite.name_astns()
@@ -1896,7 +1896,7 @@ class WithItemNode(Base):
     as_item: Base
     __slots__ = ['item', 'as_item']
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         yield from self.item.name_astns()
         yield from self.as_item.name_astns()
 
@@ -1918,7 +1918,7 @@ class WithStmt(Base):
         return WithStmt(items=[xcast(WithItemNode, item.add_fqns(ctx)) for item in self.items],
                         suite=self.suite.add_fqns(ctx))
 
-    def name_astns(self) -> Iterable[Tuple[ast.Astn, str]]:
+    def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:
         for item in self.items:
             yield from item.name_astns()
         yield from self.suite.name_astns()

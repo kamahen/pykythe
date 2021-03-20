@@ -6,7 +6,7 @@ from lib2to3.pgen2 import token
 
 from typing import Dict, Iterable, List, Optional
 
-from . import ast, pod
+from . import ast_node, pod
 
 
 @dataclass(frozen=True)
@@ -15,7 +15,7 @@ class Color(pod.PlainOldDataExtended):
 
     # TODO: Add as_prolog_str() method, and remove pykythe.pl' simplify_color/2.
 
-    astn: ast.Astn
+    astn: ast_node.Astn
     lineno: int
     column: int
     token_color: str
@@ -31,10 +31,10 @@ def colored_list_as_prolog_str(colored: List[Color]) -> str:
 class ColorFile:
     """Encapsulate src_file, etc. for convenience."""
 
-    src_file: Optional[ast.File]
+    src_file: Optional[ast_node.File]
     parse_tree: Optional[pytree.Base]
     # name_astns from ast_cooked.add_fqns(...).name_astns() - maps name to '<VAR_REF>' etc.
-    name_astns: Dict[ast.Astn, str]
+    name_astns: Dict[ast_node.Astn, str]
 
     def color(self) -> List[Color]:
         """Traverse parse tree, outputting Color nodes."""
@@ -63,14 +63,15 @@ class ColorFile:
             return
         assert self.src_file  # For mypy
         lineno, column = self.src_file.byte_offset_to_lineno_column(start)
-        yield Color(astn=ast.Astn(value=value,
-                                  start=start,
-                                  end=self.src_file.byte_offset_adjust_chr(start, len(value))),
+        yield Color(astn=ast_node.Astn(value=value,
+                                       start=start,
+                                       end=self.src_file.byte_offset_adjust_chr(
+                                               start, len(value))),
                     lineno=lineno,
                     column=column,
                     token_color=token_color)
 
-    def _color_value(self, node: pytree.Leaf, astn: ast.Astn) -> Iterable[Color]:
+    def _color_value(self, node: pytree.Leaf, astn: ast_node.Astn) -> Iterable[Color]:
         """Generate Color items from a leaf node's value."""
         if not node.value:
             return
@@ -129,7 +130,7 @@ class ColorFile:
         yield from self._make_color(stripped, start_at, '<COMMENT>')
         yield from self._make_color(after, start_after, '<WHITESPACE>')
 
-    def _string_lines(self, astn: ast.Astn, token_color: str) -> Iterable[Color]:
+    def _string_lines(self, astn: ast_node.Astn, token_color: str) -> Iterable[Color]:
         """Break up string into chunks and generate Color items."""
         # TODO: can this be combined with _color_whitespace?
         astn_value_pieces = astn.value.splitlines(keepends=True)
