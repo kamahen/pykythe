@@ -82,6 +82,9 @@ c1 = C1(111)
 print(c1.get_f4())
 print(c1.values())
 
+#- // TODO: should there be a childof for f4?
+c1.f4 = '==='
+
 c2 = c1.C2(666)
 print(c2.values())
 

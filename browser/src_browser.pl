@@ -345,9 +345,9 @@ validate_kythe_facts :-
     %       aren't very useful because both of these predicates have
     %       fallback code (for situations where the source didn't parse).
     %       Need better tests.
-    % concurrent_forall(kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
+    % concurrent_forall(kythe_anchor(Anchor),
     %        must_once( anchor_to_lineno(Anchor, _LineNo) )),
-    % concurrent_forall(kythe_node(Anchor, '/kythe/node/kind', 'anchor'),
+    % concurrent_forall(kythe_anchor(Anchor),
     %        must_once(( anchor_to_line_chunks(Anchor, _, Chunks),
     %                    Chunks \== [] ))),
     % show_jiti,    % Not needed - should be the same as the first one
@@ -369,17 +369,17 @@ valid_kythe_node(Vname) :-
     bagof(K, kythe_node(Vname, '/kythe/node/kind', K), [Kind]), % must be unique
     valid_node_kind(Kind, Vname).
 
-valid_node_kind(anchor,     Vname) :- valid_anchor_vname(Vname).
-valid_node_kind(diagnostic, Vname) :- valid_anchor_vname(Vname).
-valid_node_kind(file,       Vname) :-
+valid_node_kind('anchor',     Vname) :- valid_anchor_vname(Vname).
+valid_node_kind('diagnostic', Vname) :- valid_anchor_vname(Vname).
+valid_node_kind('file',       Vname) :-
     kythe_node(Vname, '/kythe/language', Language),
     Language \== '',
     kythe_node(Vname, '/kythe/text', _),
     kythe_node(Vname, '/kythe/text/encoding', _).
-valid_node_kind(function,   Vname) :- valid_semantic_vname(Vname).
-valid_node_kind(package,    Vname) :- valid_semantic_vname(Vname).
-valid_node_kind(record,     Vname) :- valid_semantic_vname(Vname).
-valid_node_kind(variable,   Vname) :- valid_semantic_vname(Vname).
+valid_node_kind('function',   Vname) :- valid_semantic_vname(Vname).
+valid_node_kind('package',    Vname) :- valid_semantic_vname(Vname).
+valid_node_kind('record',     Vname) :- valid_semantic_vname(Vname).
+valid_node_kind('variable',   Vname) :- valid_semantic_vname(Vname).
 
 valid_semantic_vname(vname(Signature, _Corpus, _Root, Path, Language)) :-
     Signature \== '',
@@ -641,15 +641,15 @@ anchor_link_anchor_sort_order(AnchorVname, Edge2, AnchorVnameSort) :-
 %! anchor_link_anchor(?AnchorVname1, ?Edge1, ?SemanticVname, ?Edge2, ?AnchorVname2) is nondet.
 % Lookup AnchorVname1 (Edge1)-> SemanticVname (Edge2)-> AnchorVname2
 anchor_link_anchor(AnchorVname1, Edge1, SemanticVname, Edge2, AnchorVname2) :-
-    kythe_node(AnchorVname1, '/kythe/node/kind', 'anchor'),
+    kythe_anchor(AnchorVname1),
     node_link_node(AnchorVname1, Edge1, SemanticVname, Edge2, AnchorVname2),
-    kythe_node(AnchorVname2, '/kythe/node/kind', 'anchor').
+    kythe_anchor(AnchorVname2).
 
 anchor_link_semantic(AnchorVname, Edge, SemanticVname) :-
     (   var(AnchorVname)
     ->  kythe_edge(AnchorVname, Edge, SemanticVname),
-        kythe_node(AnchorVname, '/kythe/node/kind', 'anchor')
-    ;   kythe_node(AnchorVname, '/kythe/node/kind', 'anchor'),
+        kythe_anchor(AnchorVname)
+    ;   kythe_anchor(AnchorVname),
         kythe_edge(AnchorVname, Edge, SemanticVname)
     ).
 
@@ -658,21 +658,21 @@ anchor_link_semantic(AnchorVname, Edge, SemanticVname) :-
 % Used for validation of Kythe facts.
 % TODO: orphan semantics for non-anchors
 orphan_semantic(AnchorVname1, SemanticVname, Edge) :-
-    kythe_node(AnchorVname1, '/kythe/node/kind', 'anchor'),
+    kythe_anchor(AnchorVname1),
     kythe_edge(AnchorVname1, Edge, SemanticVname),
     \+ (kythe_edge(AnchorVname2, _Edge2, SemanticVname),
-        kythe_node(AnchorVname2, '/kythe/node/kind', 'anchor')).
+        kythe_anchor(AnchorVname2)).
 
 % Note that because the graph is bidirectional (e.g.,
 % Edge1='/kythe/edge/ref', Edge2='%/kythe/edge/ref'), it is possible
 % that Vname1 = Vname2.
 node_link_node(Vname1, Edge1, SemanticVname, Edge2, Vname2) :-
     kythe_edge(Vname1, Edge1, SemanticVname),
-    kythe_edge(Vname2, Edge2, SemanticVname).
+    kythe_edge(SemanticVname, Edge2, Vname2).
 
 node_link_node_value(Vname, EdgeNodeKind, Value) :-
     kythe_edge(Vname, Edge, NodeVname),
-    \+ kythe_node(NodeVname, '/kythe/node/kind', 'anchor'),
+    \+ kythe_anchor(NodeVname),
     kythe_node(NodeVname, Name, Value),
     format(atom(EdgeNodeKind), '(~w)~w', [Edge, Name]).
 
@@ -700,7 +700,7 @@ do_not_submit2(SemanticJsonSet) :-
                    SemanticJsonSet).
 
 anchor_semantic(AnchorVname, Semantic) :-
-    kythe_node(AnchorVname, '/kythe/node/kind', 'anchor'),
+    kythe_anchor(AnchorVname),
     kythe_edge(AnchorVname, Edge, Semantic),
     semantic_edge(Edge).
 
@@ -709,6 +709,7 @@ anchor_semantic(AnchorVname, Semantic) :-
 % semantic_edge/1 is for anchor->semantic edges that define semantics
 % so, for example, a diagnostic (/kythe/edge/tagged) would not be a
 % semantic edge.
+semantic_edge('/kythe/edge/childof').
 semantic_edge('/kythe/edge/defines').
 semantic_edge('/kythe/edge/defines/binding').
 semantic_edge('/kythe/edge/ref').
@@ -741,13 +742,17 @@ anchor_out_edge('%/kythe/edge/ref/file').
 anchor_out_edge('%/kythe/edge/ref/imports').
 anchor_out_edge('%/kythe/edge/tagged').
 
+%! kythe_anchor(?Vname) is nondet.
+kythe_anchor(Vname) :-
+    kythe_node(Vname, '/kythe/node/kind', 'anchor').
+
 %! kythe_anchor(?Vname, ?Start, ?End, -Token) is nondet.
 % Lookup an anchor, and extract its "token" from the /kythe/text fact.
 % TODO: currently unused
 kythe_anchor(Vname, Start, End, Token) :-
-    kythe_node(Vname, '/kythe/node/kind', anchor),
+    kythe_anchor(Vname),
     kythe_node(Vname, '/kythe/loc/start', Start),
-    kythe_node(Vname, '/kythe/loc/end', End),
+    kythe_node(Vname, '/kythe/loc/end',   End),
     Len is End - Start,
     Vname = vname(_, Corpus, Root, Path, _),
     kythe_node(vname('', Corpus, Root, Path, _), '/kythe/text', SourceText),
@@ -839,7 +844,7 @@ kythe_node_punctuation_linkable(Signature, Corpus,Root,Path,Language, Start, End
     AnchorPunctuation = vname(Signature, Corpus,Root,Path,Language),
     kythe_node(AnchorPunctuation, '/kythe/loc/start', Start),
     kythe_node(AnchorPunctuation, '/kythe/loc/end', End),
-    (   kythe_node(AnchorPunctuation, '/kythe/node/kind', 'anchor')
+    (   kythe_anchor(AnchorPunctuation)
     ;   kythe_edge(AnchorPunctuation, '/kythe/edge/tagged', _)
     ).
 
@@ -852,7 +857,7 @@ get_link_edges(Corpus, Root, Path, Language, ColorAll1, ColorAll) :-
     (   Vname = vname(Signature, Corpus, Root, Path, Language),
         kythe_node(Vname, '/kythe/loc/start', ColorAll1.start),
         kythe_node(Vname, '/kythe/loc/end', ColorAll1.end), % TODO: not needed?
-        must_once(kythe_node(Vname, '/kythe/node/kind', 'anchor')), % TODO: remove this check
+        must_once(kythe_anchor(Vname)), % TODO: remove this check
         vname_vname0(Vname, Signature, Vname0),
         % There can be multiple edges with the same label (but
         % different targets), so leave as a list and don't combine
