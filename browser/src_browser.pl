@@ -533,6 +533,7 @@ json_response(json{anchor_xref: json{signature: Signature,
                    path: Path, language: Language,
                    semantics: SemanticVnamesJson,
                    semantic_node_values: SemanticNodeValuesJson,
+                   semantic_links: SemanticLinksJson,
                    edge_links: EdgeLinksJson}) :-
     !,
     AnchorVname = vname(Signature, Corpus, Root, Path, Language),
@@ -540,13 +541,15 @@ json_response(json{anchor_xref: json{signature: Signature,
     %       library(solution_sequences) for ordering, grouping
     anchor_to_line_chunks(AnchorVname, LineNo, LineChunks),
     debug(log, 'Xref ~q lineno: ~q', [[signature:Signature, corpus:Corpus, root:Root, path:Path, language:Language], LineNo]),
-    anchor_links_grouped(AnchorVname, SemanticNodeValues, EdgeLinks0),
+    anchor_links_grouped(AnchorVname, SemanticNodeValues, SemanticLinks, EdgeLinks0),
     maplist([Edge-PathAnchors, Edge-PathLines]>>
                 maplist(path_anchors_to_line_chunks, PathAnchors, PathLines),
             EdgeLinks0, EdgeLinks),
     setof_or_empty(S, anchor_semantic_json(AnchorVname, S), SemanticVnamesJson),
     maplist([Key-Value, json{kind:Key, value:Value}]>>true,
             SemanticNodeValues, SemanticNodeValuesJson),
+    maplist([Key-Value, json{kind:Key, value:Value}]>>true,
+            SemanticLinks, SemanticLinksJson),
     maplist([Edge-Links, json{edge: Edge, links: LinksJson}]>>
                 maplist(link_to_dict, Links, LinksJson),
             EdgeLinks, EdgeLinksJson).
@@ -566,10 +569,11 @@ json_response(json{src_file_tree: _}, PathTreeJson) :-
 file_path(Corpus:Root:Path) :-
     kythe_file(Corpus, Root, Path, _Language).
 
-%! anchor_links_grouped(+AnchorVname, -SemanticNodeValues, -GroupedLinks) is det.
+%! anchor_links_grouped(+AnchorVname, -SemanticNodeValues, -SemanticLinks, -GroupedLinks) is det.
 % Get the anchor links (grouped for an AnchorVname.
 % SemanticNodeValues gets the semantic nodes as a list of the form NodeName-Value
 %     (e.g., NodeName='(/kythe/edge/ref)/kythe/node/kind', Value=record)
+% SemanticLinks - TODO: document
 % GroupedLinks gets a list of links in the form NodeName-list(vname)
 %     (e.g., NodeName='/kythe/edge/ref').
 % TODO: Can we use library(solution_sequences) group_by/4?  It has
@@ -577,8 +581,8 @@ file_path(Corpus:Root:Path) :-
 %       bad thing, as it might show errors in the Kythe facts
 %       (although probably not -- duplicates should have been removed
 %       by the processing pipeline).
-anchor_links_grouped(AnchorVname, SemanticNodeValues, GroupedLinks) :-
-    anchor_links(AnchorVname, SemanticNodeValues, SortedLinks),
+anchor_links_grouped(AnchorVname, SemanticNodeValues, SemanticLinks, GroupedLinks) :-
+    anchor_links(AnchorVname, SemanticNodeValues, SemanticLinks, SortedLinks),
     group_pairs_by_key(SortedLinks, GroupedLinks0),
     maplist(group_edge_by_files, GroupedLinks0, GroupedLinks).
 
@@ -590,15 +594,17 @@ group_edge_by_files(Edge-Vnames, Edge-GroupVnamePaths) :-
 path_vname(Vname0-Signatures, Vname0-Vnames) :-
     maplist(vname0_join_signature(Vname0), Signatures, Vnames).
 
-%! anchor_links(+AnchorVname, -SemanticNodeValues, -SortedLinks) is det.
-anchor_links(AnchorVname, SemanticNodeValues, SortedLinks) :-
+%! anchor_links(+AnchorVname, -SemanticNodeValues, -SemanticLInks, -SortedLinks) is det.
+anchor_links(AnchorVname, SemanticNodeValues, SemanticLinks, SortedLinks) :-
     % TODO: filter Edge1 by type of link, e.g. semantic_edge_def/1?
     setof_or_empty(Edge2-AnchorVname2flipped,
                    anchor_link_anchor_sort_order(AnchorVname, Edge2, AnchorVname2flipped),
                    SortedLinks0),
     maplist(pair_vname_remove_start, SortedLinks0, SortedLinks),
     setof_or_empty(NodeKind-NodeValue,
-                   node_link_node_value(AnchorVname, NodeKind, NodeValue), SemanticNodeValues).
+                   node_link_node_value(AnchorVname, NodeKind, NodeValue), SemanticNodeValues),
+    setof_or_empty(NodeKind-NodeValue,
+                   node_link_semantic(AnchorVname, NodeKind, NodeValue), SemanticLinks).
 
 pair_vname_remove_start(Key-VnameSort, Key-Vname) :-
     vname_sort(Vname, VnameSort).
@@ -679,6 +685,13 @@ node_link_node_value(Vname, EdgeNodeKind, Value) :-
     \+ kythe_anchor(NodeVname),
     kythe_node(NodeVname, Name, Value),
     format(atom(EdgeNodeKind), '(~w)~w', [Edge, Name]).
+
+node_link_semantic(Anchor1, EdgeNodeKind, Semantic2Sig) :-
+    anchor_def_link_def_anchor(Anchor1, _Edge1, Semantic1, Edge2, Semantic2, _Edge3, _Anchor2),
+    % TODO: look up Anchor2 line
+    Semantic1 = vname(Semantic1Sig, _, _, _, _),
+    Semantic2 = vname(Semantic2Sig, _, _, _, _),
+    format(atom(EdgeNodeKind), '(~w)~w', [Semantic1Sig, Edge2]).
 
 anchor_def_link_def_anchor(Anchor1, Edge1, Semantic1, Edge2, Semantic2, Edge3, Anchor2) :-
     semantic_edge_def(Edge1),

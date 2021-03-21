@@ -429,6 +429,7 @@ function srcLineTextSimple(line_parts, txt_span, data_semantics) {
     for (const line_part of line_parts) {
         let span = document.createElement('span');
         span.setAttribute('class', token_css_color_class[line_part.token_color]);
+        // DO NOT SUBMIT - FIXME: not hilighting?
         if (is_token_name[line_part.token_color] &&
             (data_semantics || []).indexOf(g_anchor_to_semantics[line_part.signature]) >= 0) {
             span.classList.add('src_hilite');
@@ -526,6 +527,7 @@ function setXref(source_item, signature, data) {
     let table = document.createElement('table');
     setXrefItemHeader(table, signature, data.semantics);
     setXrefNodeValues(table, data.semantic_node_values);
+    setXrefSemanticLinks(table, data.semantic_links);
     setXrefEdgeLinks(table, data.edge_links, data.semantics, signature, source_item);
     setXrefBottom(table);
 }
@@ -546,7 +548,7 @@ function setXrefItemHeader(table, signature, data_semantics) {
 
 // In the xref area, display the node values
 function setXrefNodeValues(table, data_semantic_node_values) {
-    // console.log('setXrefNodeValues', data_semantic_node_values);
+    // console.log('setXrefNodeValues', data_semantic_node_values); // DO NOT SUBMIT
     for (const nv of data_semantic_node_values) {
         // TODO: use class attributes:
         tableInsertRowCellHTML(table, '&nbsp;&nbsp;<b>' +
@@ -556,8 +558,21 @@ function setXrefNodeValues(table, data_semantic_node_values) {
     }
 }
 
+// In the xref area, display the node semantic links
+function setXrefSemanticLinks(table, data_semantic_links) {
+    // console.log('stXrefSemanticLinks', data_semantic_links); // DO NOT SUBMIT
+    for (const link of data_semantic_links) {
+        // TODO: use class attributes:
+        tableInsertRowCellHTML(table, '&nbsp;&nbsp;<b><i><span style="color:violet">' +
+                               sanitizeText(link.kind) +
+                               '</span></i></b>: &nbsp;' +
+                               sanitizeText(link.value));
+    }
+}
+
 // In the xref area, add the xref links
 function setXrefEdgeLinks(table, data_edge_links, data_semantics, signature, source_item) {
+    // console.log('setXrefEdgeLinks', data_edge_links, data_semantics, signature); // DO NOT SUBMIT
     for (const edge_links of data_edge_links) {
         setXrefEdgeLinkHead(table, edge_links);
         for (const path_link of edge_links.links) {
