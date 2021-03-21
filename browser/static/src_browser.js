@@ -565,7 +565,7 @@ function setXrefSemanticLinks(table, data_semantic_links) {
         // TODO: use class attributes:
         tableInsertRowCellHTML(table, '&nbsp;&nbsp;<b><i><span style="color:violet">' +
                                sanitizeText(link.kind) +
-                               '</span></i></b>: &nbsp;' +
+                               '</span></i></b>:&nbsp;' +
                                sanitizeText(link.value));
     }
 }

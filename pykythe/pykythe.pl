@@ -306,7 +306,7 @@
                   eval_dot_op_unknown/8,
                   eval_single_type/7,
                   eval_single_type_error_msg/7,
-                  eval_single_type_import/9,
+                  eval_single_type_import/10,
                   eval_union_type/7,
                   expr_normalized/6,
                   extend_symtab_with_builtins/3,
@@ -517,7 +517,7 @@ pred_info_(eval_atom_subscr_binds_single, 2,       [kyfact,symrej,file_meta]).
 pred_info_(eval_atom_subscr_single, 2,             [kyfact,symrej,file_meta]).
 pred_info_(eval_dot_op_unknown, 3,                 [kyfact,symrej,file_meta]).
 pred_info_(eval_single_type, 2,                    [kyfact,symrej,file_meta]).
-pred_info_(eval_single_type_import, 4,             [kyfact,symrej,file_meta]).
+pred_info_(eval_single_type_import, 5,             [kyfact,symrej,file_meta]).
 pred_info_(eval_union_type, 2,                     [kyfact,symrej,file_meta]).
 pred_info_(log_possible_classes_from_attr, 3,      [kyfact,symrej,file_meta]).
 pred_info_(maplist_eval_assign_expr, 1,            [kyfact,symrej,file_meta]).
@@ -1729,8 +1729,8 @@ kynode('Func',
               parameters: Params,
               return_type: Return},
        [stmt(function(Fqn,ParamsTypes,ReturnType))]) -->> !,
-    kyedge_fqn_fqn(Fqn, '/kythe/edge/childof', ChildOf),
     % Similar to 'Method'{...}
+    kyedge_fqn_fqn(Fqn, '/kythe/edge/childof', ChildOf),
     kyanchor_node_kyedge_fqn(NameAstn, '/kythe/edge/defines/binding', Fqn),
     kyfact_signature_node(Fqn, '/kythe/node/kind', 'function'),
     maplist_kynode(Params, ParamsTypes),
@@ -2101,6 +2101,7 @@ kyImportDottedAsNamesFqn_top(DottedNameItems, BindsFqn, BindsNameAstn) -->>
                                    module_and_maybe_token: ModuleAndMaybeTokenAssignImport,
                                    modules_to_import: ModulesAndMaybeTokenToImport
                                   } },
+    % TODO: childof DO NOT SUBMIT
     kyanchor_node_kyedge_fqn(BindsNameAstn, '/kythe/edge/defines/binding', BindsFqn),
     [ AssignImport ]:expr.
 
@@ -2121,6 +2122,7 @@ kyImportDottedAsNamesFqn_as(FromDots, DottedNameItems, BindsFqn, BindsNameAstn) 
                                    module_and_maybe_token: FMP,
                                    modules_to_import: ModulesAndMaybeTokenToImport
                                   } },
+    % TODO: childof DO NOT SUBMIT
     kyanchor_node_kyedge_fqn(BindsNameAstn, '/kythe/edge/defines/binding', BindsFqn),
     [ AssignImport ]:expr.
 
@@ -2285,6 +2287,8 @@ anchor_signature_str('Astn'{start:Start, end:End, value:Token}, Signature) :-
 %! kyedge_fqn_fqn(+Fqn1:atom, +EdgeKind:atom, +Fqn2:atom)//[kyfact,file_meta] is det.
 % High-level create a Kythe edge fact from an FQN to a target
 % identified by an FQN.
+% If EdgeKind is '', do nothing
+kyedge_fqn_fqn(_, '', _) -->> [ ].  % For conditional output
 kyedge_fqn_fqn(Fqn1, EdgeKind, Fqn2) -->>
     signature_node(Fqn1, Source1),
     signature_node(Fqn2, Source2),
@@ -2483,6 +2487,7 @@ eval_assign_expr(assign_import_unknown{fqn_stack: FqnStack,
     !,
     maplist_kyfact_symrej(eval_assign_import, ModulesAndMaybeToken),
     resolve_unknown_fqn(FqnStack, BindsNameAstn, ResolvedBindsFqn, _Type),
+    % TODO: childof DO NOT SUBMIT
     kyanchor_node_kyedge_fqn(BindsNameAstn, '/kythe/edge/defines/binding', ResolvedBindsFqn).
 eval_assign_expr(Expr) -->> !,  % catch-all
     eval_single_type(Expr, _).
@@ -2547,6 +2552,7 @@ eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), _BindsLeft,
     % TODO: should subclasses that don't override this get anything?
     { join_fqn([ClassName, AttrName], BindsFqn) },
     [ BindsFqn-RightEval-_ ]:symrej,
+    kyedge_fqn_fqn(BindsFqn, '/kythe/edge/childof', ClassName),
     kyanchor_kyedge_fqn(Start, End, AttrName, '/kythe/edge/defines/binding', BindsFqn).
 eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), _BindsLeft, function_type(FunctionName,Params, Return)) -->> !,
     % TODO: use builtins.function's definition, if it exists,
@@ -2555,14 +2561,17 @@ eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), _BindsLeft,
     maplist_kyfact_symrej(eval_union_type, Params, _),
     { join_fqn([FunctionName, AttrName], BindsFqn) },
     [ BindsFqn-RightEval-_ ]:symrej,
+    kyedge_fqn_fqn(BindsFqn, '/kythe/edge/childof', FunctionName),
     kyanchor_kyedge_fqn(Start, End, AttrName, '/kythe/edge/defines/binding', BindsFqn).
 eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), _BindsLeft, module_type(module_alone(Module,_Path))) -->> !,
     { join_fqn([Module, AttrName], BindsFqn) },
     [ BindsFqn-RightEval-_ ]:symrej,
+    kyedge_fqn_fqn(BindsFqn, '/kythe/edge/childof', Module),
     kyanchor_kyedge_fqn(Start, End, AttrName, '/kythe/edge/defines/binding', BindsFqn).
 eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), _BindsLeft, module_type(module_and_token(Module,_Path,Token))) -->> !,
     { join_fqn([Module, Token, AttrName], BindsFqn) },
     [ BindsFqn-RightEval-_ ]:symrej,
+    kyedge_fqn_fqn(BindsFqn, '/kythe/edge/childof', Module), % TODO: verify this DO NOT SUBMIT
     kyanchor_kyedge_fqn(Start, End, AttrName, '/kythe/edge/defines/binding', BindsFqn).
 eval_assign_dot_op_binds_single(RightEval, AttrAstn, BindsLeft, import_ref_type(_Name, _Fqn, AtomType)) -->> !,
     eval_assign_dot_op_binds_single(RightEval, AttrAstn, BindsLeft, AtomType).
@@ -2592,6 +2601,7 @@ eval_assign_dot_op_binds_single(RightEval, Astn, BindsLeft, BindsLeftEval) -->>
 eval_assign_dot_op_binds_unknown(Source, AttrName, RightEval, class_type(ClassName,_)) -->>
     !,
     { join_fqn([ClassName, AttrName], FqnAttr) },
+    kyedge_fqn_fqn(FqnAttr, '/kythe/edge/childof', ClassName),
     kyedge_fqn(Source, '/kythe/edge/defines/binding', FqnAttr),
     [ FqnAttr-RightEval-_ ]:symrej.
 eval_assign_dot_op_binds_unknown(Source, AttrName, RightEval, import_ref_type(_Name, _Fqn, AtomType)) -->>
@@ -2601,6 +2611,7 @@ eval_assign_dot_op_binds_unknown(_Source, _AttrName, _RightEval, module_type(_Mo
 eval_assign_dot_op_binds_unknown(Source, AttrName, RightEval, function_type(Fqn,_Parms,_Return)) -->>
     !,
     { join_fqn([Fqn, AttrName], FqnAttr) },
+    kyedge_fqn_fqn(FqnAttr, '/kythe/edge/childof', Fqn),
     kyedge_fqn(Source, '/kythe/edge/defines/binding', FqnAttr),
     [ FqnAttr-RightEval-_ ]:symrej.
 eval_assign_dot_op_binds_unknown(_Source, _AttrName, _RightEval, _Class) -->>
@@ -2670,9 +2681,10 @@ eval_single_type(var_binds_lookup(FqnStack, NameAstn), Type) -->> !,
     resolve_unknown_fqn(FqnStack, NameAstn, ResolvedBindsFqn, Type),
     [ ResolvedBindsFqn-Type-_ ]:symrej,
     % DO NOT SUBMIT -- need test case -- is it the same as VAR_REF_LOOKUP?
+    % TODO: childof?
     (   { Type = [] }
-    ->  eval_single_type_import(NameAstn, ResolvedBindsFqn, '/kythe/edge/defines/binding', [])
-    ;   maplist_kyfact_symrej(eval_single_type_import(NameAstn, ResolvedBindsFqn, '/kythe/edge/defines/binding'), Type)
+    ->  eval_single_type_import(NameAstn, ResolvedBindsFqn, '/kythe/edge/defines/binding', '/kythe/edge/childof', [])
+    ;   maplist_kyfact_symrej(eval_single_type_import(NameAstn, ResolvedBindsFqn, '/kythe/edge/defines/binding', '/kythe/edge/childof'), Type)
     ).
 eval_single_type(var_ref_lookup(FqnStack, NameAstn), Type) -->> !,
     resolve_unknown_fqn(FqnStack, NameAstn, ResolvedRefFqn, Type),
@@ -2681,8 +2693,8 @@ eval_single_type(var_ref_lookup(FqnStack, NameAstn), Type) -->> !,
     % generate 'NameRefUnknown' (which creates var_ref_lookup).
     [ ResolvedRefFqn-Type-_ ]:symrej,
     (   { Type = [] }
-    ->  eval_single_type_import(NameAstn, ResolvedRefFqn, '/kythe/edge/ref', [])
-    ;   maplist_kyfact_symrej(eval_single_type_import(NameAstn, ResolvedRefFqn, '/kythe/edge/ref'), Type)
+    ->  eval_single_type_import(NameAstn, ResolvedRefFqn, '/kythe/edge/ref', '', [])
+    ;   maplist_kyfact_symrej(eval_single_type_import(NameAstn, ResolvedRefFqn, '/kythe/edge/ref', ''), Type)
     ).
 eval_single_type(class_type(ClassName, Bases0), [class_type(ClassName, Bases)]) -->> !,
     maplist_kyfact_symrej(eval_union_type, Bases0, Bases1),
@@ -2824,17 +2836,22 @@ eval_single_type_error_msg(FmtMessage, ArgsMessage, FmtDetails, ArgsDetails) -->
     kyanchor(0, AstnEnd, '-msg-', _AnchorSource),
     log_kyfact_msg(Astn, FmtMessage, ArgsMessage, FmtDetails, ArgsDetails).
 
-eval_single_type_import(NameAstn, _ResolvedFqn, Edge, import_ref_type(_Name, ImportFqn, _Type)) -->> !,
-    kyanchor_node_kyedge_fqn(NameAstn, Edge , ImportFqn).
-eval_single_type_import(NameAstn, _ResolvedFqn, Edge, class_type(ClassFqn, _)) -->> !,
-    kyanchor_node_kyedge_fqn(NameAstn, Edge, ClassFqn).
-eval_single_type_import(NameAstn, _ResolvedFqn, Edge, module_type(Module)) -->> !,
+% TODO: Do these CHildOfEdge facts do anything that isn't done elsewhere? DO NOT SUBMIT
+eval_single_type_import(NameAstn, _ResolvedFqn, BindsOrRefEdge, _ChildofEdge, import_ref_type(_Name, ImportFqn, _Type)) -->> !,
+    % TODO: childof DO NOT SUBMIT
+    kyanchor_node_kyedge_fqn(NameAstn, BindsOrRefEdge, ImportFqn).
+eval_single_type_import(NameAstn, _ResolvedFqn, BindsOrRefEdge, ChildofEdge, class_type(ClassFqn, _)) -->> !,
+    kyedge_fqn_fqn(NameAstn, ChildofEdge, ClassFqn),
+    kyanchor_node_kyedge_fqn(NameAstn, BindsOrRefEdge, ClassFqn).
+eval_single_type_import(NameAstn, _ResolvedFqn, BindsOrRefEdge, ChildofEdge, module_type(Module)) -->> !,
     { module_part(Module, ImportFqn) },
-    kyanchor_node_kyedge_fqn(NameAstn, Edge, ImportFqn).
-eval_single_type_import(NameAstn, ResolvedFqn, Edge, []) -->> !,
-    kyanchor_node_kyedge_fqn(NameAstn, Edge, ResolvedFqn).
-eval_single_type_import(NameAstn, ResolvedFqn, Edge, Type) -->> !,
-    { goal_failed(eval_single_type_import(NameAstn, ResolvedFqn, Edge, Type)) }.
+    kyedge_fqn_fqn(NameAstn, ChildofEdge, ImportFqn),
+    kyanchor_node_kyedge_fqn(NameAstn, BindsOrRefEdge, ImportFqn).
+eval_single_type_import(NameAstn, ResolvedFqn, BindsOrRefEdge, ChildofEdge, []) -->> !,
+    kyedge_fqn_fqn(NameAstn, ChildofEdge, ResolvedFqn), % TODO: verify DO NOT SUBMIT
+    kyanchor_node_kyedge_fqn(NameAstn, BindsOrRefEdge, ResolvedFqn).
+eval_single_type_import(NameAstn, ResolvedFqn, BindsOrRefEdge, ChildofEdge, Type) -->> !,
+    { goal_failed(eval_single_type_import(NameAstn, ResolvedFqn, BindsOrRefEdge, ChildofEdge, Type)) }.
 
 %! eval_atom_dot_single(+AttrAstn, +AtomSingleType:ordset, -EvalType:ordset)//[kyfact,symrej,file_meta] is det.
 % Helper for single type-dot-attr.

@@ -684,14 +684,17 @@ node_link_node_value(Vname, EdgeNodeKind, Value) :-
     kythe_edge(Vname, Edge, NodeVname),
     \+ kythe_anchor(NodeVname),
     kythe_node(NodeVname, Name, Value),
-    format(atom(EdgeNodeKind), '(~w)~w', [Edge, Name]).
+    shorten_edge(Edge, ShortEdge),
+    format(atom(EdgeNodeKind), '(~w)~w', [ShortEdge, Name]).
 
 node_link_semantic(Anchor1, EdgeNodeKind, Semantic2Sig) :-
-    anchor_def_link_def_anchor(Anchor1, _Edge1, Semantic1, Edge2, Semantic2, _Edge3, _Anchor2),
+    anchor_def_link_def_anchor(Anchor1, Edge1, _Semantic1, Edge2, Semantic2, Edge3, _Anchor2),
     % TODO: look up Anchor2 line
-    Semantic1 = vname(Semantic1Sig, _, _, _, _),
     Semantic2 = vname(Semantic2Sig, _, _, _, _),
-    format(atom(EdgeNodeKind), '(~w)~w', [Semantic1Sig, Edge2]).
+    shorten_edge(Edge1, ShortEdge1),
+    shorten_edge(Edge2, ShortEdge2),
+    shorten_edge(Edge3, ShortEdge3),
+    format(atom(EdgeNodeKind), '(~w)~w(~w)', [ShortEdge1, ShortEdge2, ShortEdge3]).
 
 anchor_def_link_def_anchor(Anchor1, Edge1, Semantic1, Edge2, Semantic2, Edge3, Anchor2) :-
     semantic_edge_def(Edge1),
@@ -704,6 +707,14 @@ anchor_semantic_link_semantic_anchor(Anchor1, Edge1, Semantic1, Edge2, Semantic2
     kythe_edge(Semantic1, Edge2, Semantic2),
     kythe_edge(Semantic2, Edge3, Anchor2),
     kythe_anchor(Anchor2).
+
+shorten_edge(Edge, ShortEdge) :-
+    (   atom_concat('/kythe/edge/', ShortEdge, Edge)
+    ->  true
+    ;   atom_concat('%/kythe/edge/', ShortEdge0, Edge)
+    ->  atom_concat('%', ShortEdge0, ShortEdge)
+    ;   ShortEdge = Edge
+    ).
 
 % Change the ordering of items in a vname, for sorting
 vname_flip(vname(Signature, Corpus, Root, Path, Language),
