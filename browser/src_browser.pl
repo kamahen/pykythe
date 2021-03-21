@@ -66,8 +66,27 @@
 :- use_module(library(aggregate)). % TODO: do we use all of these?
 :- use_module(library(solution_sequences), [distinct/1, distinct/2, order_by/2, group_by/4]). % TODO: do we use all of these?
 :- use_module(library(yall)).   % For [S,A]>>atom_string(A,S) etc.
-:- use_module('../pykythe/must_once.pl').
-:- use_module('../pykythe/pykythe_utils.pl').
+:- use_module('../pykythe/must_once').
+:- use_module('../pykythe/pykythe_utils').
+
+% For the kythe_edge_kind_/1 facts, adding the reverse edge:
+term_expansion(kythe_edge_kind_(Edge),
+                    [kythe_edge_kind(Edge),
+                     kythe_edge_kind(ReverseEdge)]) :-
+    atom_concat('%', Edge, ReverseEdge).
+
+% This expands kythe_edge/11 to also have the "reverse" edges:
+% (See read_and_assert_kythe_facts/0 for where the facts are read in).
+term_expansion(kythe_edge(Signature1, Corpus1, Root1, Path1, Language1,
+                          Edge,
+                          Signature2, Corpus2, Root2, Path2, Language2),
+               [kythe_edge(Signature1, Corpus1, Root1, Path1, Language1,
+                           Edge,
+                           Signature2, Corpus2, Root2, Path2, Language2),
+                kythe_edge(Signature2, Corpus2, Root2, Path2, Language2,
+                           ReverseEdge,
+                           Signature1, Corpus1, Root1, Path1, Language1)]) :-
+    atom_concat('%', Edge, ReverseEdge).
 
 % The "base" Kythe facts, which are dynamically loaded at start-up.
 :- dynamic kythe_node/7, kythe_edge/11, kythe_color_line/6.
@@ -100,23 +119,6 @@ kythe_edge(vname(Signature1, Corpus1, Root1, Path1, Language1),
     kythe_edge(Signature1, Corpus1, Root1, Path1, Language1,
                Edge,
                Signature2, Corpus2, Root2, Path2, Language2).
-% TODO: instead of using atom_concat/3 to create reverse edges,
-%       initialize reverse_edge/2 from
-%       src_browser:findall(E, kythe_edge(_,_,_,_,_,E,_,_,_,_,_), Edges0), sort(Edges0, Edges)
-%       ( aggregate(set(E), ...) might be faster )
-kythe_edge(vname(Signature1, Corpus1, Root1, Path1, Language1),
-           ReverseEdge,
-           vname(Signature2, Corpus2, Root2, Path2, Language2)) :-
-    (  var(ReverseEdge)
-    -> kythe_edge(Signature2, Corpus2, Root2, Path2, Language2,
-                  Edge,
-                  Signature1, Corpus1, Root1, Path1, Language1),
-       atom_concat('%', Edge, ReverseEdge)
-    ;  atom_concat('%', Edge, ReverseEdge),
-       kythe_edge(Signature2, Corpus2, Root2, Path2, Language2,
-                  Edge,
-                  Signature1, Corpus1, Root1, Path1, Language1)
-    ).
 
 % For validation, get all corpus and roots:
 kythe_corpus(Corpus) :- kythe_node(_Signature, Corpus, _Root, _Path, _Language, _FactName, _FactValue).
@@ -277,6 +279,8 @@ read_and_assert_kythe_facts :-
     %          (consult generates source locations, etc.)
     %       https://swi-prolog.discourse.group/t/quick-load-files/1239/2
     %       https://swi-prolog.discourse.group/t/quick-load-files/1239/8
+    % Note that term_expansio/2 takes effect on the kythe_edge/11 facts
+    % that are loaded here:
     catch(load_files([files('kythe_facts')],
                      [silent(false),
                       optimise(false), % Doesn't seem to have any effect
@@ -588,7 +592,7 @@ path_vname(Vname0-Signatures, Vname0-Vnames) :-
 
 %! anchor_links(+AnchorVname, -SemanticNodeValues, -SortedLinks) is det.
 anchor_links(AnchorVname, SemanticNodeValues, SortedLinks) :-
-    % TODO: filter Edge1 by anchor_out_edge?
+    % TODO: filter Edge1 by type of link, e.g. semantic_edge_def/1?
     setof_or_empty(Edge2-AnchorVname2flipped,
                    anchor_link_anchor_sort_order(AnchorVname, Edge2, AnchorVname2flipped),
                    SortedLinks0),
@@ -676,6 +680,18 @@ node_link_node_value(Vname, EdgeNodeKind, Value) :-
     kythe_node(NodeVname, Name, Value),
     format(atom(EdgeNodeKind), '(~w)~w', [Edge, Name]).
 
+anchor_def_link_def_anchor(Anchor1, Edge1, Semantic1, Edge2, Semantic2, Edge3, Anchor2) :-
+    semantic_edge_def(Edge1),
+    semantic_edge_def(Edge3),
+    anchor_semantic_link_semantic_anchor(Anchor1, Edge1, Semantic1, Edge2, Semantic2, Edge3, Anchor2).
+
+anchor_semantic_link_semantic_anchor(Anchor1, Edge1, Semantic1, Edge2, Semantic2, Edge3, Anchor2) :-
+    kythe_anchor(Anchor1),
+    kythe_edge(Anchor1, Edge1, Semantic1),
+    kythe_edge(Semantic1, Edge2, Semantic2),
+    kythe_edge(Semantic2, Edge3, Anchor2),
+    kythe_anchor(Anchor2).
+
 % Change the ordering of items in a vname, for sorting
 vname_flip(vname(Signature, Corpus, Root, Path, Language),
            vname_flip(Corpus, Root, Path, Signature, Language)).
@@ -701,46 +717,128 @@ do_not_submit2(SemanticJsonSet) :-
 
 anchor_semantic(AnchorVname, Semantic) :-
     kythe_anchor(AnchorVname),
-    kythe_edge(AnchorVname, Edge, Semantic),
-    semantic_edge(Edge).
+    kythe_edge(AnchorVname, _Edge, Semantic).
 
-% TODO: add all other appropriate edges from https://kythe.io/docs/schema/
-% TODO: consider defining this by what is *not* a semantic edge
-% semantic_edge/1 is for anchor->semantic edges that define semantics
-% so, for example, a diagnostic (/kythe/edge/tagged) would not be a
-% semantic edge.
-semantic_edge('/kythe/edge/childof').
-semantic_edge('/kythe/edge/defines').
-semantic_edge('/kythe/edge/defines/binding').
-semantic_edge('/kythe/edge/ref').
-semantic_edge('/kythe/edge/ref/call').
-semantic_edge('/kythe/edge/ref/call/implicit').
-semantic_edge('/kythe/edge/ref/doc'). % TODO: should this be a semantic edge?
-semantic_edge('/kythe/edge/ref/file').
-semantic_edge('/kythe/edge/ref/implicit').
-semantic_edge('/kythe/edge/ref/imports').
-semantic_edge('/kythe/edge/ref/includes').
-semantic_edge('/kythe/edge/ref/init').
+% The following are derived from kythe/kythe/go/util/schema/indexdata.go
 
-% anchor/out_edge/1 is generated manually by scanning pykythe.pl
-%    for /kythe/edge/
-% TODO: add all other edges from https://kythe.io/docs/schema/
-anchor_out_edge('/kythe/edge/childof').
-anchor_out_edge('/kythe/edge/defines').
-anchor_out_edge('/kythe/edge/defines/binding').
-anchor_out_edge('/kythe/edge/ref').
-anchor_out_edge('/kythe/edge/ref/call').
-anchor_out_edge('/kythe/edge/ref/file').
-anchor_out_edge('/kythe/edge/ref/imports').
-anchor_out_edge('/kythe/edge/tagged').
-anchor_out_edge('%/kythe/edge/childof').
-anchor_out_edge('%/kythe/edge/defines').
-anchor_out_edge('%/kythe/edge/defines/binding').
-anchor_out_edge('%/kythe/edge/ref').
-anchor_out_edge('%/kythe/edge/ref/call').
-anchor_out_edge('%/kythe/edge/ref/file').
-anchor_out_edge('%/kythe/edge/ref/imports').
-anchor_out_edge('%/kythe/edge/tagged').
+kythe_node_kind('abs').
+kythe_node_kind('absvar').
+kythe_node_kind('anchor').
+kythe_node_kind('constant').
+kythe_node_kind('diagnostic').
+kythe_node_kind('doc').
+kythe_node_kind('file').
+kythe_node_kind('function').
+kythe_node_kind('interface').
+kythe_node_kind('lookup').
+kythe_node_kind('macro').
+kythe_node_kind('meta').
+kythe_node_kind('name').
+kythe_node_kind('package').
+kythe_node_kind('process').
+kythe_node_kind('record').
+kythe_node_kind('sum').
+kythe_node_kind('symbol').
+kythe_node_kind('talias').
+kythe_node_kind('tapp').
+kythe_node_kind('tbuiltin').
+kythe_node_kind('tnominal').
+kythe_node_kind('tsigma').
+kythe_node_kind('variable').
+kythe_node_kind('vcs').
+
+kythe_node_subkind('category').
+kythe_node_subkind('class').
+kythe_node_subkind('constructor').
+kythe_node_subkind('destructor').
+kythe_node_subkind('enum').
+kythe_node_subkind('enumClass').
+kythe_node_subkind('field').
+kythe_node_subkind('implicit').
+kythe_node_subkind('import').
+kythe_node_subkind('initializer').
+kythe_node_subkind('local').
+kythe_node_subkind('local/parameter').
+kythe_node_subkind('method').
+kythe_node_subkind('namespace').
+kythe_node_subkind('struct').
+kythe_node_subkind('type').
+kythe_node_subkind('union').
+
+kythe_fact_name('/kythe/build/config').
+kythe_fact_name('/kythe/code').
+kythe_fact_name('/kythe/complete').
+kythe_fact_name('/kythe/context/url').
+kythe_fact_name('/kythe/details').
+kythe_fact_name('/kythe/doc/uri').
+kythe_fact_name('/kythe/label').
+kythe_fact_name('/kythe/loc/end').
+kythe_fact_name('/kythe/loc/start').
+kythe_fact_name('/kythe/message').
+kythe_fact_name('/kythe/node/kind').
+kythe_fact_name('/kythe/param/default').
+kythe_fact_name('/kythe/ruleclass').
+kythe_fact_name('/kythe/snippet/end').
+kythe_fact_name('/kythe/snippet/start').
+kythe_fact_name('/kythe/subkind').
+kythe_fact_name('/kythe/tag/deprecated').
+kythe_fact_name('/kythe/text').
+kythe_fact_name('/kythe/text/encoding').
+kythe_fact_name('/kythe/visibility').
+
+kythe_edge_kind_('/kythe/edge/aliases').
+kythe_edge_kind_('/kythe/edge/aliases/root').
+kythe_edge_kind_('/kythe/edge/annotatedby').
+kythe_edge_kind_('/kythe/edge/bounded/lower').
+kythe_edge_kind_('/kythe/edge/bounded/upper').
+kythe_edge_kind_('/kythe/edge/childof').
+kythe_edge_kind_('/kythe/edge/childof/context').
+kythe_edge_kind_('/kythe/edge/completes').
+kythe_edge_kind_('/kythe/edge/completes/uniquely').
+kythe_edge_kind_('/kythe/edge/defines').
+kythe_edge_kind_('/kythe/edge/defines/binding').
+kythe_edge_kind_('/kythe/edge/depends').
+kythe_edge_kind_('/kythe/edge/documents').
+kythe_edge_kind_('/kythe/edge/exports').
+kythe_edge_kind_('/kythe/edge/extends').
+kythe_edge_kind_('/kythe/edge/generates').
+kythe_edge_kind_('/kythe/edge/imputes').
+kythe_edge_kind_('/kythe/edge/instantiates').
+kythe_edge_kind_('/kythe/edge/instantiates/speculative').
+kythe_edge_kind_('/kythe/edge/named').
+kythe_edge_kind_('/kythe/edge/overrides').
+kythe_edge_kind_('/kythe/edge/overrides/root').
+kythe_edge_kind_('/kythe/edge/overrides/transitive').
+kythe_edge_kind_('/kythe/edge/param').
+kythe_edge_kind_('/kythe/edge/property/reads').
+kythe_edge_kind_('/kythe/edge/property/writes').
+kythe_edge_kind_('/kythe/edge/ref').
+kythe_edge_kind_('/kythe/edge/ref/call').
+kythe_edge_kind_('/kythe/edge/ref/call/implicit').
+kythe_edge_kind_('/kythe/edge/ref/doc').
+kythe_edge_kind_('/kythe/edge/ref/expands').
+kythe_edge_kind_('/kythe/edge/ref/expands/transitive').
+kythe_edge_kind_('/kythe/edge/ref/file').
+kythe_edge_kind_('/kythe/edge/ref/id').
+kythe_edge_kind_('/kythe/edge/ref/implicit').
+kythe_edge_kind_('/kythe/edge/ref/imports').
+kythe_edge_kind_('/kythe/edge/ref/includes').
+kythe_edge_kind_('/kythe/edge/ref/init').
+kythe_edge_kind_('/kythe/edge/ref/init/implicit').
+kythe_edge_kind_('/kythe/edge/ref/queries').
+kythe_edge_kind_('/kythe/edge/satisfies').
+kythe_edge_kind_('/kythe/edge/specializes').
+kythe_edge_kind_('/kythe/edge/specializes/speculative').
+kythe_edge_kind_('/kythe/edge/tagged').
+kythe_edge_kind_('/kythe/edge/typed').
+kythe_edge_kind_('/kythe/edge/undefines').
+
+% Added separately:
+
+semantic_edge_def('/kythe/edge/defines').
+semantic_edge_def('/kythe/edge/defines/binding').
+semantic_edge_def('%/kythe/edge/defines').
+semantic_edge_def('%/kythe/edge/defines/binding').
 
 %! kythe_anchor(?Vname) is nondet.
 kythe_anchor(Vname) :-
