@@ -321,6 +321,8 @@ index_kythe_facts :-
 %! validate_kythe_facts is det.
 % Run some consistency/validity checks on the Kythe facts. Throws
 % an exception on failure.
+% DO NOT SUBMIT - add check that all edges, facts conform to
+%      kythe_edge_kind/1, kythe_fact_name/1
 validate_kythe_facts :-
     statistics(walltime, [T0_ms_valid, _]),
     statistics(process_cputime, T0),
@@ -548,6 +550,7 @@ json_response(json{anchor_xref: json{signature: Signature,
     setof_or_empty(S, anchor_semantic_json(AnchorVname, S), SemanticVnamesJson),
     maplist([Key-Value, json{kind:Key, value:Value}]>>true,
             SemanticNodeValues, SemanticNodeValuesJson),
+    % debug(log, 'Xref-SemanticLinks: ~q', [SemanticLinks]),
     maplist([Key-Value, json{kind:Key, value:Value}]>>true,
             SemanticLinks, SemanticLinksJson),
     maplist([Edge-Links, json{edge: Edge, links: LinksJson}]>>
@@ -582,7 +585,16 @@ file_path(Corpus:Root:Path) :-
 %       (although probably not -- duplicates should have been removed
 %       by the processing pipeline).
 anchor_links_grouped(AnchorVname, SemanticNodeValues, SemanticLinks, GroupedLinks) :-
-    anchor_links(AnchorVname, SemanticNodeValues, SemanticLinks, SortedLinks),
+    setof_or_empty(NodeKind-NodeValue,
+                   node_link_node_value(AnchorVname, NodeKind, NodeValue), SemanticNodeValues),
+    setof_or_empty(NodeKind-NodeValue,
+                   node_link_semantic(AnchorVname, NodeKind, NodeValue), SemanticLinks),
+
+    % TODO: filter Edge1 by type of link, e.g. semantic_edge_def/1?
+    setof_or_empty(Edge2-AnchorVname2flipped,
+                   anchor_link_anchor_sort_order(AnchorVname, Edge2, AnchorVname2flipped),
+                   SortedLinks0),
+    maplist(pair_vname_remove_start, SortedLinks0, SortedLinks),
     group_pairs_by_key(SortedLinks, GroupedLinks0),
     maplist(group_edge_by_files, GroupedLinks0, GroupedLinks).
 
@@ -593,18 +605,6 @@ group_edge_by_files(Edge-Vnames, Edge-GroupVnamePaths) :-
 
 path_vname(Vname0-Signatures, Vname0-Vnames) :-
     maplist(vname0_join_signature(Vname0), Signatures, Vnames).
-
-%! anchor_links(+AnchorVname, -SemanticNodeValues, -SemanticLInks, -SortedLinks) is det.
-anchor_links(AnchorVname, SemanticNodeValues, SemanticLinks, SortedLinks) :-
-    % TODO: filter Edge1 by type of link, e.g. semantic_edge_def/1?
-    setof_or_empty(Edge2-AnchorVname2flipped,
-                   anchor_link_anchor_sort_order(AnchorVname, Edge2, AnchorVname2flipped),
-                   SortedLinks0),
-    maplist(pair_vname_remove_start, SortedLinks0, SortedLinks),
-    setof_or_empty(NodeKind-NodeValue,
-                   node_link_node_value(AnchorVname, NodeKind, NodeValue), SemanticNodeValues),
-    setof_or_empty(NodeKind-NodeValue,
-                   node_link_semantic(AnchorVname, NodeKind, NodeValue), SemanticLinks).
 
 pair_vname_remove_start(Key-VnameSort, Key-Vname) :-
     vname_sort(Vname, VnameSort).
@@ -687,26 +687,27 @@ node_link_node_value(Vname, EdgeNodeKind, Value) :-
     shorten_edge(Edge, ShortEdge),
     format(atom(EdgeNodeKind), '(~w)~w', [ShortEdge, Name]).
 
+% DO NOT SUBMIT -- this doesn't work at outer level, because there's
+%  no anchor for a module.
 node_link_semantic(Anchor1, EdgeNodeKind, Semantic2Sig) :-
-    anchor_def_link_def_anchor(Anchor1, Edge1, _Semantic1, Edge2, Semantic2, Edge3, _Anchor2),
-    % TODO: look up Anchor2 line
+    anchor_def_link(Anchor1, Edge1, _Semantic1, Edge2, Semantic2),
+    % TODO: look up Semantic2->Anchor2 line (but watch out for node/kind package)
     Semantic2 = vname(Semantic2Sig, _, _, _, _),
+    % Remove the edges that are handled elsewhere:
+    Edge2 \= '%/kythe/edge/defines/binding',
+    Edge2 \= '%/kythe/edge/ref',
     shorten_edge(Edge1, ShortEdge1),
     shorten_edge(Edge2, ShortEdge2),
-    shorten_edge(Edge3, ShortEdge3),
-    format(atom(EdgeNodeKind), '(~w)~w(~w)', [ShortEdge1, ShortEdge2, ShortEdge3]).
+    format(atom(EdgeNodeKind), '(~w)~w', [ShortEdge1, ShortEdge2]).
 
-anchor_def_link_def_anchor(Anchor1, Edge1, Semantic1, Edge2, Semantic2, Edge3, Anchor2) :-
+anchor_def_link(Anchor1, Edge1, Semantic1, Edge2, Semantic2) :-
     semantic_edge_def(Edge1),
-    semantic_edge_def(Edge3),
-    anchor_semantic_link_semantic_anchor(Anchor1, Edge1, Semantic1, Edge2, Semantic2, Edge3, Anchor2).
+    anchor_semantic_link_semantic(Anchor1, Edge1, Semantic1, Edge2, Semantic2).
 
-anchor_semantic_link_semantic_anchor(Anchor1, Edge1, Semantic1, Edge2, Semantic2, Edge3, Anchor2) :-
+anchor_semantic_link_semantic(Anchor1, Edge1, Semantic1, Edge2, Semantic2) :-
     kythe_anchor(Anchor1),
     kythe_edge(Anchor1, Edge1, Semantic1),
-    kythe_edge(Semantic1, Edge2, Semantic2),
-    kythe_edge(Semantic2, Edge3, Anchor2),
-    kythe_anchor(Anchor2).
+    kythe_edge(Semantic1, Edge2, Semantic2).
 
 shorten_edge(Edge, ShortEdge) :-
     (   atom_concat('/kythe/edge/', ShortEdge, Edge)

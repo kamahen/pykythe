@@ -7,6 +7,8 @@
 
 from typing import Optional
 
+#- // DO NOT SUBMIT: `one_global` generates two calls to kyanchor_binding//4
+#- //                but `two_global` doesn't
 #- { @one_global defines/binding OneGlobal }
 #- { OneGlobal childof Pkg }
 one_global: int
@@ -47,8 +49,8 @@ class C1:
         xf4 = f4 + 1
         self.xf4 = xf4
 
-    def get_f2(self):
-        return self.f2
+    def get_f2_plus_one_global(self):
+        return self.f2 + one_gobal
 
     def get_f4(self):
         def inside():
