@@ -14,6 +14,8 @@
     rdet_det/1      % +PredicateIndicator
 ]).
 
+:- set_prolog_flag(optimise, true).
+
 :- use_module(library(error)).
 :- use_module(library(debug), [debug/3]).
 :- use_module(library(prolog_code), [pi_head/2]).

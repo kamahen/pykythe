@@ -12,6 +12,7 @@
                       must_fail/1,
                       fail/1]).
 :- encoding(utf8).
+:- set_prolog_flag(optimise, true).
 % :- set_prolog_flag(autoload, false).  % TODO: breaks qsave
 
 :- meta_predicate

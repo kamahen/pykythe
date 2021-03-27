@@ -43,6 +43,7 @@
                           write_atomic_stream/2
                          ]).
 :- encoding(utf8).
+:- set_prolog_flag(optimise, true).
 % :- set_prolog_flag(autoload, false).  % TODO: seems to break plunit, qsave
 
 :- meta_predicate

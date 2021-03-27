@@ -26,6 +26,7 @@
 :- module(gen_builtins_symtab, [gen_builtins_symtab_main/0]).
 :- encoding(utf8).
 :- set_prolog_flag(autoload, false).
+:- set_prolog_flag(optimise, true).
 
 :- use_module(library(lists), [append/3, member/2]).
 :- use_module(library(apply), [convlist/3, exclude/3, maplist/3]).

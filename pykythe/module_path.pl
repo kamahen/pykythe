@@ -34,6 +34,7 @@
                         token_part/2
                        ]).
 :- encoding(utf8).
+:- set_prolog_flag(optimise, true).
 % :- set_prolog_flag(autoload, false).  % TODO: seems to break plunit, qsave
 
 :- use_module(library(apply), [maplist/2, maplist/3]).

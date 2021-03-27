@@ -187,6 +187,7 @@
 
 :- module(pykythe, [pykythe_main/0]).
 :- encoding(utf8).
+% :- set_prolog_flag(optimise, true).
 
 % :- set_prolog_flag(autoload, false).  % TODO: Seems to break plunit
 % :- use_module(library(apply_macros).  % TODO: for performance (also maplist_kyfact_symrej etc)
@@ -2081,7 +2082,7 @@ kyImportFromStmt(FromDots,
                               as_name:'NameBindsFqn'{fqn: BindsFqn, name: AsNameAstn, childof: Childof}},
                  unused_import('AsNameNode',BindsFqn)) -->>
     % From "from foo import baz [as zot]" and many variations
-    { append(DottedNameItems, [BareNameAstn], DottedNameItemsComb) -> true ; fail, DottedNameItemsComb = '***' },
+    { append(DottedNameItems, [BareNameAstn], DottedNameItemsComb) -> true }, % else fail
     kyImportDottedAsNamesFqn_as(FromDots,
                                 DottedNameItemsComb, BindsFqn, AsNameAstn).
 kyImportFromStmt(FromDots,
@@ -2091,7 +2092,7 @@ kyImportFromStmt(FromDots,
                               as_name:'NameBindsUnknown'{fqn_stack: FqnStack, name: AsNameAstn, childof: Childof}},
                  unused_import('AsNameNode',AsNameAstn)) -->>
     % From "global zot; from foo import baz as zot" and many variations
-    { append(DottedNameItems, [BareNameAstn], DottedNameItemsComb) -> true ; fail, DottedNameItemsComb = '***' },
+    { append(DottedNameItems, [BareNameAstn], DottedNameItemsComb) -> true }, % else fail
     kyImportDottedAsNamesFqn_as_unknown(FromDots,
                                         DottedNameItemsComb, FqnStack, AsNameAstn).
 
@@ -2158,7 +2159,7 @@ kyImportDottedAsNamesFqn_from_part(NameItems, FromDots, ModulesAndMaybeTokenToIm
 kyImportDottedAsNamesFqn_from_part2([], _FromDots, _SoFar, []) -->> [ ].
 kyImportDottedAsNamesFqn_from_part2(['NameBareNode'{name:Astn}|NameItems], FromDots, SoFar,
                                    [ModuleAndMaybeToken|MAMTs]) -->>
-    { append(SoFar, [Name], SoFar2) -> true ; fail, [Name, SoFar2] = '***' },
+    { append(SoFar, [Name], SoFar2) -> true }, % else fail
     { node_astn(Astn, Start, End, Name) },
     kyImport_path_pieces_to_module(FromDots,
                                    SoFar2, ModuleAndMaybeToken, FullModulePieces),

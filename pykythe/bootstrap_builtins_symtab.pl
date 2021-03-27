@@ -9,6 +9,7 @@
 %       expansions appear to be not needed.
 
 :- encoding(utf8).
+:- set_prolog_flag(optimise, true).
 
 % :- set_prolog_flag(autoload, false). % DO NOT SUBMIT: Restore this: https://github.com/SWI-Prolog/swipl-devel/issues/622
 
