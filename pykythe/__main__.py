@@ -251,7 +251,7 @@ class ParseError(CompilationError):
 
     msg: str
     type: str  # pytree.type_repr(type)
-    value: Optional[str]
+    value: str
     context: str  # str(context)
     srcpath: str
     __slots__ = ['msg', 'type', 'value', 'context', 'srcpath']

@@ -339,8 +339,8 @@
                   kyfile/4,
                   kyImport_path_dots/6,
                   kyImport_path_pieces_to_module/9,
-                  kynode/7,
-                  % kynode/8, % handled by kynode/7
+                  % ==>> kynode/7,
+                  % ==>> % kynode/8, % handled by kynode/7
                   kynode_add_items/6,
                   kynode_if_stmt/7,
                   kythe_kinds/4,
@@ -1537,7 +1537,7 @@ var_token('<VAR_REF>').
 % Prolog compiler can't tell that they're disjoint. Also, there's a
 % catch-all at the end for in case one has been missed.
 
-kynode(Node, Type) -->>
+kynode(Node, Type) ==>>
     { is_dict(Node, Tag) },         % extract an atom for indexing
     % TODO: using the Tag for indexing doesn't seem to improve performance.
     %       (jiti_list shows that it is used for indexing).
@@ -1545,7 +1545,8 @@ kynode(Node, Type) -->>
 
 kynode('AnnAssignStmt',
        'AnnAssignStmt'{left_annotation: LeftAnnotation, expr: Right, left: Left},
-       [stmt(annassign(Left, LeftAnnotation, Right))]) -->> !,
+       Type) ==>>
+    { Type = [stmt(annassign(Left, LeftAnnotation, Right))] },
     % Corresponds to `expr_stmt: testlist_star_expr annassign`.
     % TODO: combine this with 'TypedArgNode' and add test cases
     % TODO: see also 'AssignExprStmt'
@@ -1553,7 +1554,8 @@ kynode('AnnAssignStmt',
     assign_normalized(Left, Right).
 kynode('ArgumentNode',
        'ArgumentNode'{name: NameAstn, arg: Arg},
-       [todo_arg(Name, ArgType)]) -->> !,
+       Type) ==>>
+    { Type = [todo_arg(Name, ArgType)] },
     % Corresponds to `argument: test '=' test`.  ast_raw creates
     % ArgumentNode only for `test '=' test`; all other cases just
     % generate the expr (or similar)
@@ -1562,25 +1564,30 @@ kynode('ArgumentNode',
     kynode(Arg, ArgType).
 kynode('AssertStmt',
        'AssertStmt'{items: Items},
-       [stmt(assert)]) -->> !,
+       Type) ==>>
+     { Type = [stmt(assert)] },
      % Corresponds to `assert_stmt`.
      maplist_kyfact_expr(expr_normalized, Items).
 kynode('AssignExprStmt',
        'AssignExprStmt'{expr: Expr, left: Left},
-       [stmt(assign)]) -->> !,
+       Type) ==>>
+    { Type = [stmt(assign)] },
     assign_normalized(Left, Expr).
 kynode('AtomCallNode',
        'AtomCallNode'{args: Args, atom: Atom},
-       [call(AtomType, ArgsTypes)]) -->> !,
+       Type) ==>>
+    { Type = [call(AtomType, ArgsTypes)] },
     kynode(Atom, AtomType),
     maplist_kynode(Args, ArgsTypes).
 kynode('OpNode',
        'OpNode'{args: Args, op_astns: OpAstns},
-       [call_op(OpAstns, ArgsTypes)]) -->> !,
+       Type) ==>>
+    { Type = [call_op(OpAstns, ArgsTypes)] },
     maplist_kynode(Args, ArgsTypes).
 kynode('AtomDotNode',
        'AtomDotNode'{atom: Atom, binds: bool('False'), attr_name: AttrNameAstn},
-       [dot_op(AtomType, astn(Start, End, AttrName))]) -->> !,
+       Type) ==>>
+    { Type = [dot_op(AtomType, astn(Start, End, AttrName))] },
     % TODO: eval_atom_dot_single//3 creates /kythe/edge/ref ...
     %       the edge probably should be created here and added to the
     %       dot_op term.
@@ -1588,7 +1595,8 @@ kynode('AtomDotNode',
     kynode(Atom, AtomType).
 kynode('AtomDotNode',
        'AtomDotNode'{atom: Atom, binds: bool('True'), attr_name: AttrNameAstn},
-       [dot_op_binds(AtomType, astn(Start,End,AttrName))]) -->> !,
+       Type) ==>>
+    { Type = [dot_op_binds(AtomType, astn(Start,End,AttrName))] },
     % TODO: eval_atom_dot_binds_single//3 creates
     %       /kythe/edge/defines/binding ...  the edge probably should
     %       be created here and added to the dot_op_binds term.
@@ -1598,28 +1606,33 @@ kynode('AtomSubscriptNode',
        'AtomSubscriptNode'{atom: Atom,
                            binds: bool('False'),
                            subscripts: Subscripts},
-       [subscr_op(AtomType,SubscriptsTypes)]) -->> !,
+       Type) ==>>
+    { Type = [subscr_op(AtomType,SubscriptsTypes)] },
     kynode(Atom, AtomType),
     maplist_kynode(Subscripts, SubscriptsTypes).
 kynode('AtomSubscriptNode',
        'AtomSubscriptNode'{atom: Atom,
                            binds: bool('True'),
                            subscripts: Subscripts},
-       [subscr_op_binds(AtomType,SubscriptsTypes)]) -->> !,
+       Type) ==>>
+    { Type = [subscr_op_binds(AtomType,SubscriptsTypes)] },
     kynode(Atom, AtomType),
     maplist_kynode(Subscripts, SubscriptsTypes).
 kynode('AugAssignStmt',
        'AugAssignStmt'{augassign: _OpAstn, expr: Expr, left: Left},
-       [stmt(augassign)]) -->> !,
+       Type) ==>>
+    { Type = [stmt(augassign)] },
     % { node_astn(OpAstn, _, _, _Op) },
     expr_normalized(Left),
     expr_normalized(Expr).
 kynode('BreakStmt',
        'BreakStmt'{},
-       [stmt(break)]) -->> !, [ ].
+       Type) ==>>
+    { Type = [stmt(break)] }.
 kynode('Class',
        'Class'{bases: Bases, fqn: Fqn, childof: Childof, name: NameAstn},
-        [class_type(Fqn, BaseTypes)]) -->> !,
+       Type) ==>>
+    { Type = [class_type(Fqn, BaseTypes)] },
     kyanchor_binding(NameAstn, Fqn, Childof, 'kynode_Class'),
     kyfacts_signature_node(Fqn,
                            ['/kythe/node/kind'-'record',
@@ -1630,59 +1643,71 @@ kynode('CompFor',
        'CompFor'{for_exprlist: ForExprlist,
                  in_testlist: InTestlist,
                  comp_iter: CompIter},
-       [todo_compfor(iter:CompIterType,
-                     for:ForExprlistType,
-                     in:InTestlistType)]) -->> !,
+       Type) ==>>
+    { Type = [todo_compfor(iter:CompIterType,
+                           for:ForExprlistType,
+                           in:InTestlistType)] },
     % DO NOT SUBMIT - see 'ForStmt' expansion
     kynode(ForExprlist, ForExprlistType),
     kynode(InTestlist, InTestlistType),
     kynode(CompIter, CompIterType).
 kynode('CompIfCompIterNode',
        'CompIfCompIterNode'{value_expr: ValueExpr, comp_iter: CompIter},
-       [todo_compifcompiter(ValueExprType, CompIterType)]) -->> !,
+       Type) ==>>
+    { Type = [todo_compifcompiter(ValueExprType, CompIterType)] },
     kynode(ValueExpr, ValueExprType),
     kynode(CompIter, CompIterType).
 kynode('ContinueStmt',
        'ContinueStmt'{},
-       [stmt(continue)]) -->> !, [ ].
+       Type) ==>>
+    { Type = [stmt(continue)] }.
 kynode('DecoratedStmt',
        'DecoratedStmt'{items: Items},
-       [todo_decorated(ItemsTypes)]) -->> !,
+       Type) ==>>
+    { Type = [todo_decorated(ItemsTypes)] },
     maplist_kynode(Items, ItemsTypes).
 kynode('DecoratorDottedNameNode',
        'DecoratorDottedNameNode'{items: Items},
-       [todo_decorator_dottedname(ItemsTypes)]) -->> !,
+       Type) ==>>
+    { Type = [todo_decorator_dottedname(ItemsTypes)] },
     { maplist('NameBareNode_astn_and_name', Items, _, ItemsTypes) }.
 kynode('DecoratorsNode',
        'DecoratorsNode'{items: Items},
-       [todo_decorators(ItemsTypes)]) -->> !,
+       Type) ==>>
+    { Type = [todo_decorators(ItemsTypes)] },
     maplist_kynode(Items, ItemsTypes).
 kynode('DelStmt',
        'DelStmt'{items: Items},
-       [stmt(del)]) -->> !,
+       Type) ==>>
+    { Type = [stmt(del)] },
     maplist_kyfact_expr(expr_normalized, Items).
 kynode('DictGenListSetMakerCompFor',
        'DictGenListSetMakerCompFor'{value_expr: ValueExpr, comp_for: CompFor},
-       [todo_dictgen(ValueExprType, CompForType)]) -->> !,
+       Type) ==>>
+    { Type = [todo_dictgen(ValueExprType, CompForType)] },
     % DO NOT SUBMIT - see 'ForStmt' expansion
     kynode(ValueExpr, ValueExprType),
     kynode(CompFor, CompForType).
 kynode('DictKeyValue',
        'DictKeyValue'{items: Items},
-       [todo_dictkeyvaluelist(ItemsTypes)]) -->> !,
+       Type) ==>>
+    { Type = [todo_dictkeyvaluelist(ItemsTypes)] },
     maplist_kynode(Items, ItemsTypes).
 kynode('DictSetMakerNode',
        'DictSetMakerNode'{items: Items},
        % TODO: evaluate the items and create dictset_make of union of items' values' types
-       [dictset_make(ItemsTypes)]) -->> !,
+       Type) ==>>
+    { Type = [dictset_make(ItemsTypes)] },
     % DO NOT SUBMIT - see 'ForStmt' expansion
     maplist_kynode(Items, ItemsTypes).
 kynode('EllipsisNode',
        'EllipsisNode'{},
-       [ellipsis]) -->> !, [ ].
+       Type) ==>>
+    { Type = [ellipsis] }.
 kynode('ExceptClauseNode',
        'ExceptClauseNode'{expr: Expr, as_item: AsItem},
-       [stmt(except)]) -->> !,
+       Type) ==>>
+    { Type = [stmt(except)] },
     kynode(Expr, ExprType),
     kynode(AsItem, AsItemType),
     (   { type_omitted(AsItemType) }
@@ -1691,21 +1716,25 @@ kynode('ExceptClauseNode',
     ).
 kynode('ExprListNode',
        'ExprListNode'{items: Items, binds: bool('False')},
-       [exprlist(ItemsTypes)]) -->> !,
+       Type) ==>>
+    { Type = [exprlist(ItemsTypes)] },
     maplist_kynode(Items, ItemsTypes).
 kynode('ExprListNode',
        'ExprListNode'{items: Items, binds: bool('True')},
-       [exprlist_binds(ItemsTypes)]) -->> !,
+       Type) ==>>
+    { Type = [exprlist_binds(ItemsTypes)] },
     % TODO: exprlist_binds and list_of_type_binds should be the same?
     maplist_kynode(Items, ItemsTypes).
 kynode('ExprStmt',
        'ExprStmt'{expr: Expr},
-       [stmt(assign)]) -->> !,
+       Type) ==>>
+    { Type = [stmt(assign)] },
     kynode(Expr, ExprType),
     [ expr(ExprType) ]:expr.
 kynode('FileInput',
        'FileInput'{scope_bindings: _ScopeBindings, stmts: Stmts, path: _Path},
-       [stmt(file)]) -->> !,
+       Type) ==>>
+    { Type = [stmt(file)] },
     % kynode(ScopeBindings, _),
     maplist_kynode(Stmts, _).
 kynode('ForStmt',
@@ -1713,16 +1742,16 @@ kynode('ForStmt',
                  in_testlist: InTestlist,
                  suite: Suite,
                  else_suite: ElseSuite},
-       [stmt(for)]) -->> !,
-    % DO NOT SUBMIT - do similar for 'CompFor'
-kynode('AssignExprStmt',
-       'AssignExprStmt'{
-               expr:'AtomSubscriptNode'{atom: InTestlist,
-                                        binds: bool('False'),
-                                        subscripts: ['NumberIntNode'{}]},
-               left: ForExprlist},
+       Type) ==>>
+    { Type = [stmt(for)] },
+    kynode('AssignExprStmt',
+           'AssignExprStmt'{
+                   expr:'AtomSubscriptNode'{atom: InTestlist,
+                                            binds: bool('False'),
+                                            subscripts: ['NumberIntNode'{}]},
+                   left: ForExprlist},
            _),
-    kynode(ElseSuite, _), % kynode(ElseSuite, [stmt(_)])
+    kynode(ElseSuite, _),
     kynode(Suite, _).
 kynode('Func',
        'Func'{fqn: Fqn,
@@ -1730,7 +1759,8 @@ kynode('Func',
               childof: Childof,
               parameters: Params,
               return_type: Return},
-       [stmt(function(Fqn,ParamsTypes,ReturnType))]) -->> !,
+       Type) ==>>
+    { Type = [stmt(function(Fqn,ParamsTypes,ReturnType))] },
     % Similar to 'Method'{...}
     kyanchor_binding(NameAstn, Fqn, Childof, 'kynode_Func'),
     kyfact_signature_node(Fqn, '/kythe/node/kind', 'function'),
@@ -1739,19 +1769,21 @@ kynode('Func',
     [ function_type(Fqn,ParamsTypes,ReturnType) ]:expr.
 kynode('GlobalStmt',
        'GlobalStmt'{items: Items},
-       [stmt(global)]) -->> !,
+       Type) ==>>
+    { Type = [stmt(global)] },
     maplist_kyfact_expr(expr_normalized, Items).
 kynode('IfStmt',
        'IfStmt'{eval_results: EvalResults, items: Items},
-       [stmt(if)]) -->> !,
+       Type) ==>>
+    { Type = [stmt(if)] },
     kynode_if_stmt(EvalResults, Items).
 kynode('ImportFromStmt',
        'ImportFromStmt'{from_dots: FromDots,
                         import_part: ImportPart,
                         childof: Childof},
-       Type) -->> !,
-    % The parser doesn't output a field if it's None, so add
-    % from_name and recurse.
+       Type) ==>>
+    % The parser doesn't output a field if it's None, so add from_name
+    % and recurse.
     kynode('ImportFromStmt',
            'ImportFromStmt'{from_dots: FromDots,
                             from_name: 'DottedNameNode'{items:[]},
@@ -1763,14 +1795,15 @@ kynode('ImportFromStmt',
                         from_name: FromName,
                         import_part: 'ImportAsNamesNode'{items: ImportPartItems},
                         childof: Childof},
-       [unused_import('ImportFromStmt',Types)]) -->> !,
+       Type) ==>>
+    { Type = [unused_import('ImportFromStmt',Types)] },
     maplist_kyfact_expr(kyImportFromStmt(FromDots, FromName, Childof), ImportPartItems, Types).
 kynode('ImportFromStmt',
        'ImportFromStmt'{from_dots: FromDots,
                         from_name: FromName,
                         import_part: 'StarFqn'{star:StarAstn, fqn:StarFqn},
                         childof: Childof},
-       Type) -->> !,
+       Type) ==>>
     % TODO: process this properly
     % For the '*' part, set up binds for __all__ variables.
     % We need to record this information so that var_binds_lookup etc behave
@@ -1787,21 +1820,25 @@ kynode('ImportFromStmt',
            Type).
 kynode('ImportNameFqn',
        'ImportNameFqn'{dotted_as_names: 'ImportDottedAsNamesFqn'{items: DottedAsNames}},
-       [unused_import('ImportNameFqn',DottedAsNamesTypes)]) -->> !,
+       Type) ==>>
+    { Type = [unused_import('ImportNameFqn',DottedAsNamesTypes)] },
     maplist_kyfact_expr(kyImportDottedAsNamesFqn, DottedAsNames, DottedAsNamesTypes).
 kynode('IfExpr',
        'IfExpr'{cond_expr: CondExpr, then_expr: ThenExpr, else_expr: ElseExpr},
-       [if_expr(CondType,ThenType,ElseType)]) -->> !,
+       Type) ==>>
+    { Type = [if_expr(CondType,ThenType,ElseType)] },
     kynode(CondExpr, CondType),
     kynode(ThenExpr, ThenType),
     kynode(ElseExpr, ElseType).
 kynode('ListMakerNode',
        'ListMakerNode'{items: Items, binds: bool('False')},
-       [list_make(ItemsTypes)]) -->> !,
+       Type) ==>>
+    { Type = [list_make(ItemsTypes)] },
     maplist_kynode(Items, ItemsTypes).
 kynode('ListMakerNode',
        'ListMakerNode'{items: Items, binds: bool('True')},
-       [list_make_binds(ItemsTypes)]) -->> !,
+       Type) ==>>
+    { Type = [list_make_binds(ItemsTypes)] },
     maplist_kynode(Items, ItemsTypes).
 kynode('Method',
        'Method'{fqn: Fqn,
@@ -1809,7 +1846,8 @@ kynode('Method',
                 childof: Childof,
                 parameters: Params,
                 return_type: Return},
-       [stmt(method(Fqn,ParamsTypes,ReturnType))]) -->> !,
+       Type) ==>>
+    { Type = [stmt(method(Fqn,ParamsTypes,ReturnType))] },
     % Similar to 'Func'{...}
     kyanchor_binding(NameAstn, Fqn, Childof, 'kynode_Method'),
     kyfact_signature_node(Fqn, '/kythe/node/kind', 'function'),
@@ -1826,72 +1864,90 @@ kynode('Method',
 % TODO: special case this within processing of AssignExprStmt?
 kynode('NameBindsFqn',
        'NameBindsFqn'{fqn: Fqn, name: NameAstn, childof: Childof},
-       [var_binds(Fqn)]) -->> !,  % result is same as NameRefFqn
+       Type) ==>>
+    { Type = [var_binds(Fqn)] },  % result is same as NameRefFqn
     kyanchor_binding(NameAstn, Fqn, Childof, 'kynode_NameBindsFqn'), % only difference from NameRef
     kyfact_signature_node(Fqn, '/kythe/node/kind', 'variable').
 kynode('NameBindsUnknown',
        'NameBindsUnknown'{fqn_stack: FqnStack, name: NameAstn, childof: _Childof},
-       [var_binds_lookup(FqnStack, NameAstn)]) -->> !,
+       Type) ==>>
+    { Type = [var_binds_lookup(FqnStack, NameAstn)] },
     % kyedge_fqn_fqn(Fqn, '/kythe/edge/childof', Childof),
     [ ].  % /kythe/edge/ref edge will be added in eval_single_type//2.
 kynode('NameRefFqn',
        'NameRefFqn'{fqn: Fqn, name: NameAstn},
-       [var_ref(Fqn)]) -->> !,  % result is same as NameBinds
+       Type) ==>>
+    { Type = [var_ref(Fqn)] },  % result is same as NameRefFqn
     kyanchor_node_kyedge_fqn(NameAstn, '/kythe/edge/ref', Fqn). % only difference from NameBindsFqn
 kynode('NameRefGenerated',
        'NameRefGenerated'{fqn: Fqn},
-       [var_ref(Fqn)]) -->> !,  % result is same as NameBinds
+       Type) ==>>
+    { Type = [var_ref(Fqn)] },  % result is same as NameBinds
     % TODO: This occurs inside TypedArgNode, which needs to be implemented.
     [ ].  % E.g., the implicit type for `self`.
 kynode('NameRefUnknown',
        'NameRefUnknown'{fqn_stack: FqnStack, name: NameAstn},
-       [var_ref_lookup(FqnStack, NameAstn)]) -->> !,
+       Type) ==>>
+    { Type = [var_ref_lookup(FqnStack, NameAstn)] },
     [ ].  % The /kythe/edge/ref edge will be added in eval_single_type//2.
 kynode('NonLocalStmt',
        'NonLocalStmt'{items: Items},
-       [stmt(nonlocal)]) -->> !,
+       Type) ==>>
+    { Type = [stmt(nonlocal)] },
     maplist_kyfact_expr(expr_normalized, Items).
 kynode('NumberComplexNode',
-       'NumberComplexNode'{astn: _Astn}, ComplexType) -->> !,
+       'NumberComplexNode'{astn: _Astn},
+       ComplexType) ==>>
     { builtins_symtab_primitive(complex, ComplexType) }.
 kynode('NumberFloatNode',
-       'NumberFloatNode'{astn: _Astn}, FloatType) -->> !,
+       'NumberFloatNode'{astn: _Astn},
+       FloatType) ==>>
     { builtins_symtab_primitive(float, FloatType) }.
 kynode('NumberIntNode',
-       'NumberIntNode'{astn: _Astn}, IntType) -->> !,
+       'NumberIntNode'{astn: _Astn},
+       IntType) ==>>
     { builtins_symtab_primitive(int, IntType) }.
 kynode('NumberIntNode',
-       'NumberIntNode'{}, IntType) -->> !, % from ForStmt etc
+       'NumberIntNode'{},
+       IntType) ==>>  % from ForStmt etc
     { builtins_symtab_primitive(int, IntType) }.
 kynode('OmittedNode',
        'OmittedNode'{},
-       [omitted]) -->> !, [ ].
+       Type) ==>>
+    { Type = [omitted] }.
 kynode('PassStmt',
        'PassStmt'{},
-       [stmt(break)]) -->> !, [ ].
+       Type) ==>>
+    { Type = [stmt(break)] }.
 kynode('RaiseStmt',
        'RaiseStmt'{items: Items},
-       [stmt(raise)]) -->> !,
+       Type) ==>>
+    { Type = [stmt(raise)] },
     maplist_kynode(Items, _).
 kynode('StarNode',
        'StarNode'{},
-       [star]) -->> !, [ ]. % TODO: can we get rid of this in ast_cooked?
+       Type) ==>>  % TODO: can we get rid of this in ast_cooked?
+    { Type = [star] }.
 kynode('Stmts',
        'Stmts'{items: Items},
-       [stmt(stmts)]) -->> !,
+       Type) ==>>
+    { Type = [stmt(stmts)] },
     maplist_kynode(Items, ItemsTypes),
     kynode_add_items(ItemsTypes).
 kynode('StringNode',
-       'StringNode'{astns: _Astns}, StrType) -->> !,
+       'StringNode'{astns: _Astns},
+       StrType) ==>>
     { builtins_symtab_primitive(str, StrType) }.
 kynode('StringBytesNode',
-       'StringBytesNode'{astns: _Astns}, BytesType) -->> !,
+       'StringBytesNode'{astns: _Astns},
+       BytesType) ==>>
     { builtins_symtab_primitive(bytes, BytesType) }.
 % subscript only occurs inside subscr_op or subscr_op_binds and is
 % ignored (we only care about the resulting type)
 kynode('SubscriptNode',
        'SubscriptNode'{expr1: Expr1, expr2: Expr2, expr3: Expr3},
-       [subscript(Expr1Type, Expr2Type, Expr3Type)]) -->> !,
+       Type) ==>>
+    { Type = [subscript(Expr1Type, Expr2Type, Expr3Type)] },
     kynode(Expr1, Expr1Type),
     kynode(Expr2, Expr2Type),
     kynode(Expr3, Expr3Type).
@@ -1899,12 +1955,14 @@ kynode('SubscriptNode',
 % because it's always inside TypedArgNode.
 kynode('TryStmt',
        'TryStmt'{items: Items},
-       [stmt(try)]) -->> !,
+       Type) ==>>
+    { Type = [stmt(try)] },
     maplist_kynode(Items, _).
 kynode('TypedArgNode',
        'TypedArgNode'{tname: 'TnameNode'{name: Name, type_expr: TypeExpr},
                       expr: Expr},
-       []) -->> !,
+       Type) ==>>
+    { Type = [] },
     % TODO: is this correct? Need test cases with all variants
     %       PROBABLY should be union of TypeExpr, Expr
     %       but for now, just output [] (Any)
@@ -1915,13 +1973,15 @@ kynode('WhileStmt',
        'WhileStmt'{else_suite: ElseSuite,
                    suite: Suite,
                    test: Test},
-       [stmt(while)]) -->> !,
+       Type) ==>>
+    { Type = [stmt(while)] },
     kynode(ElseSuite, _),
     kynode(Suite, _),
     kynode(Test, _).
 kynode('WithItemNode',
        'WithItemNode'{item: Item, as_item: AsItem},
-       [stmt(with_item)]) -->> !,
+       Type) ==>>
+    { Type = [stmt(with_item)] },
     kynode(Item, ItemType),
     kynode(AsItem, AsItemType),
     (   { type_omitted(AsItemType) }
@@ -1930,28 +1990,26 @@ kynode('WithItemNode',
     ).
 kynode('WithStmt',
        'WithStmt'{items: Items, suite: Suite},
-       [stmt(with)]) -->> !,
+       Type) ==>>
+    { Type = [stmt(with)] },
     maplist_kynode(Items, _),   % handled by WithItemNode
     kynode(Suite, _).
 % The following are error results:
 kynode('ParseError',
-       'ParseError'{context: Context, msg: Msg, type: Type, value: Value, srcpath: SrcPath},
-       [parse_error(Node)]) -->> !,
-    { Node = 'ParseError'{context: Context, msg: Msg, type: Type, value: Value, srcpath: SrcPath} },
-    [ parse_error(Node) ]:expr.
+       ParseError, % 'ParseError'{context: Context, msg: Msg, type: Type, value: Value, srcpath: SrcPath}
+       Type) ==>>
+    { Type = [parse_error(ParseError)] },
+    [ parse_error(ParseError) ]:expr.
 kynode('DecodeError',
-       'DecodeError'{encoding:Encoding, start:Start, end:End, reason:Reason, srcpath: SrcPath},
-       [decode_error(Node)]) -->> !,
-    { Node = 'DecodeError'{encoding:Encoding, start:Start, end:End, reason:Reason, srcpath: SrcPath} },
-    [ decode_error(Node) ]:expr.
+       DecodeError, % 'DecodeError'{encoding:Encoding, start:Start, end:End, reason:Reason, srcpath: SrcPath}
+       Type) ==>>
+    { Type = [decode_error(DecodeError)] },
+    [ decode_error(DecodeError) ]:expr.
 kynode('Crash',
-       'Crash'{repr: Repr, str: Str, srcpath: SrcPath},
-       [crash(Node)]) -->> !,
-    { Node = 'Crash'{repr: Repr, str: Str, srcpath: SrcPath} },
-    [ crash(Node) ]:expr.
-% And a catch-all - TODO: delete this?
-kynode(Tag, X, Ty) -->>
-    { goal_failed(kynode(Tag,X,Ty)) }.
+       CrashError, % 'Crash'{repr: Repr, str: Str, srcpath: SrcPath}
+       Type) ==>>
+    { Type = [crash(CrashError)] },
+    [ crash(CrashError) ]:expr.
 
 %! kynode_add_items(Items:list)//[kyfact,expr,file_meta] is det.
 kynode_add_items([]) -->> [ ].
