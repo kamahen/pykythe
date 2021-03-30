@@ -150,7 +150,7 @@ impossible and I really don't feel like becoming a git guru.
 
 
 * Install [SWI-Prolog](http://www.swi-prolog.org/Download.html). You
-  need at least version 8.3.19, so as of 2021-02-12, this means
+  need at least version 8.3.21, so as of 2021-03-30, this means
   using the "devel" download or PPA.
   For Ubuntu, Debian, and similar (following the instructions at https://www.swi-prolog.org/build/PPA.html):
   *  `sudo apt install software-properties-common`
