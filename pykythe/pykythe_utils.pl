@@ -102,12 +102,12 @@
                  ]).
 :- endif.
 
-validate_prolog_version :-
+validate_prolog_version =>
     current_prolog_flag(version, PrologVersion),
     % Sync this with README.md and demo.sh:
-    must_once_msg(PrologVersion >= 80319, 'SWI-Prolog version is too old'),
+    must_once_msg(PrologVersion >= 80321, 'SWI-Prolog version is too old'),
     pack_property(edcg, version(EdcgVersion)),
-    must_once_msg(EdcgVersion @>= '0.9.1.5', 'pack(edcg) is missing or version is too old').
+    must_once_msg(EdcgVersion @>= '0.9.1.6', 'pack(edcg) is missing or version is too old').
 
 %! absolute_file_name_rel(+File, -Absolute) is det.
 % For now, this is the same as absolute_file_name/2.  However, it is
@@ -127,23 +127,20 @@ absolute_file_name_rel(File, Absolute, Options) :-
 %! absolute_dir(+Path0:atom, -AbsPath:atom) is det.
 %  Apply absolute_file_name_rel to Path0, giving AbsPath, ensuring it's a
 %  directory and appending '/' to the name.
-absolute_dir(/, /) :- !. % Special case for root dir, which otherwise would become '//'
-absolute_dir(Path0, AbsPath) :-
+absolute_dir('/', AbsPath) => AbsPath = '/'. % Special case for root dir, which otherwise would become '//'
+absolute_dir(Path0, AbsPath) =>
     remove_suffix_star(Path0, '/', Path),
     absolute_file_name_rel(Path, AbsPath0, [access(read), file_type(directory), file_errors(fail)]),
     atomic_list_concat([AbsPath0, '/'], AbsPath).
 
 %! do_if(:Cond, :Pred) is det.
 % A handy meta-predicate for turning debug stuff on/off, according to Cond
-do_if(Cond, Pred) :-
-    (   call(Cond)
-    ->  call(Pred)
-    ;   true
-    ).
+do_if(Cond, Pred), call(Cond) => call(Pred).
+do_if(_Cond, _Pred) => true.
 
 %! dump_term(+Msg:atom, +Term) is det.
 % TODO: delete this debugging code
-dump_term(Msg, Term) :-
+dump_term(Msg, Term) =>
     dump_term(Msg, Term, [tab_width(0),
                           indent_arguments(2),
                           right_margin(120)]).
@@ -151,23 +148,18 @@ dump_term(Msg, Term) :-
 %! dump_term(+Msg:atom, +Term, +Options:list) is det.
 % TODO: use debug/3, etc. instead (also print_message/2).
 % TODO: Delete this debugging code
-dump_term(Msg, Term, Options) :-
-    must_once(dump_term_impl(Msg, Term, Options)).
-
-%! dump_term_impl(+Msg:atom, +Term, +Options:list) is det.
-dump_term_impl(Msg, Term, Options) :-
-    (   Msg = ''
-    ->  true
-    ;   log_if(true, '% === ~w ===~n', [Msg])
-    ),
+dump_term(Msg, Term, Options) =>
     print_term_cleaned(Term, Options, TermStr),
-    (   Msg = ''
-    ->  log_if(true, '~s.', [TermStr])
-    ;   log_if(true, '~s.~n', [TermStr]),
-        log_if(true, '% === end ~w ===~n', [Msg])
-    ).
+    dump_term2(Msg, TermStr).
 
-%! ensure_dict_fact(+Dict, +Attr, ?Value) is semidet.
+dump_term2('', TermStr) =>
+    log_if(true, '~s.', [TermStr]).
+dump_term2(Msg, TermStr) =>
+    log_if(true, '% === ~w ===~n', [Msg]),
+    log_if(true, '~s.~n', [TermStr]),
+    log_if(true, '% === end ~w ===~n', [Msg]).
+
+%! ensure_dict_fact(+Dict, +Attr, ?Value) is det/error.
 % Die with an error message if Dict.Attr != Value
 % (Can also be used to get Dict.Attr into Value).
 ensure_dict_fact(Dict, Attr, Value) :-
@@ -175,7 +167,7 @@ ensure_dict_fact(Dict, Attr, Value) :-
                   'Invalid JSON, expecting ~q=~q in ~q',
                   [Attr, Value, Dict]).
 
-%! ensure_dict_fact_base64_ascii(+Dict, +Attr, ?Value) is semidet.
+%! ensure_dict_fact_base64_ascii(+Dict, +Attr, ?Value) is det/error.
 % Die with an error message if base64_ascii(Dict.Attr) != Value
 % (Can also be used to get Dict.Attr into Value).
 ensure_dict_fact_base64_ascii(Dict, Attr, Value) :-
@@ -184,7 +176,7 @@ ensure_dict_fact_base64_ascii(Dict, Attr, Value) :-
                   'Invalid JSON, expecting base64 ~q=~q in ~q',
                   [Attr, Value, Dict]).
 
-%! ensure_dict_fact_base64_utf8(+Dict, +Attr, ?Value) is semidet.
+%! ensure_dict_fact_base64_utf8(+Dict, +Attr, ?Value) is det/error
 % Die with an error message if base64_utf8(Dict.Attr) != Value
 % (Can also be used to get Dict.Attr into Value).
 ensure_dict_fact_base64_utf8(Dict, Attr, Value) :-
@@ -193,7 +185,7 @@ ensure_dict_fact_base64_utf8(Dict, Attr, Value) :-
                   'Invalid JSON, expecting base64 ~q=~q in ~q',
                   [Attr, Value, Dict]).
 
-get_dict_default(Key, Dict, Default, Value) :-
+get_dict_default(Key, Dict, Default, Value) =>
     (   get_dict(Key, Dict, Value)
     ->  true
     ;   Value = Default
@@ -209,7 +201,7 @@ get_dict_default(Key, Dict, Default, Value) :-
 % (SHA-1 is 20 digits (40 chars),  SHA-224 is 28 digits, SHA-384 is 48 digits.
 % TODO: incorporate the encoding in this? (Note that
 %       Python's hashlib.sha1 requires bytes, not text.)
-hash_hex(Text, Hex) :-
+hash_hex(Text, Hex) =>
     sha_hash(Text, Hash, []),   % Default option is algorithm(sha1)
     hash_atom(Hash, Hex).
 
@@ -217,13 +209,13 @@ hash_hex(Text, Hex) :-
 % Read a JSON "term" from KytheInputStream, verify that fact_name is
 % FactName and unify the entire term with Dict) - throws an error if
 % validation fails.
-json_read_dict_validate(KytheInputStream, FactName, Dict) :-
+json_read_dict_validate(KytheInputStream, FactName, Dict) =>
     pykythe_json_read_dict(KytheInputStream, Dict),
     ensure_dict_fact(Dict, fact_name, FactName).
 
 %! pykythe_json_write_dict_nl(+KytheStream:stream, +JsonAsDict:json_dict) is det.
 % Output a single Kythe fact.
-pykythe_json_write_dict_nl(KytheStream, JsonAsDict) :-
+pykythe_json_write_dict_nl(KytheStream, JsonAsDict) =>
     % The tags are ignored unless option tag(type) is specified
     % (which it isn't). All dicts should have the tag 'json', for
     % simplicity.
@@ -231,16 +223,14 @@ pykythe_json_write_dict_nl(KytheStream, JsonAsDict) :-
                     [width(0),true(#(true)),false(#(false)),null(#(null))]),
     nl(KytheStream).
 
-log_if(Cond, Fmt) :- log_if(Cond, Fmt, []).
+log_if(Cond, Fmt) => log_if(Cond, Fmt, []).
 
 %! log_if(Cond:atom, Fmt:atom, Args:list) is det.
-log_if(Cond, Fmt, Args) :-
-    (   call(Cond)
-    ->  atomic_list_concat(['~` t~3f~8|: ', Fmt, '~n'], '', Fmt2),
-        statistics(process_cputime, Time),
-        format(user_error, Fmt2, [Time|Args])
-    ;   true
-    ).
+log_if(Cond, Fmt, Args), call(Cond) =>
+    atomic_list_concat(['~` t~3f~8|: ', Fmt, '~n'], '', Fmt2),
+    statistics(process_cputime, Time),
+    format(user_error, Fmt2, [Time|Args]).
+log_if(_Cond, _Fmt, _Args) => true.
 
 %! maybe_open_read(+Path, -InputStream) is semidet.
 % Open Path for read or fail.
@@ -268,14 +258,14 @@ maybe_file_sha1(SrcPath, SrcSha1Hex) :-
 % dict tags to 'json' (json_read_dict/2 leaves the tag as an
 % uninstantiated variable).  And gets strings as atoms. And
 % handles true/false.
-pykythe_json_read_dict(Stream, Dict) :-
+pykythe_json_read_dict(Stream, Dict) =>
     json_read_dict(Stream, Dict,
                    [value_string_as(atom), end_of_file(@(end)), default_tag(json),
                     true(#(true)),false(#(false)),null(#(null))]).
 
 %! print_term_cleaned(+Term, +Options, -TermStr) is det.
 % print_term, cleaned up
-print_term_cleaned(Term, Options, TermStr) :-
+print_term_cleaned(Term, Options, TermStr) =>
     % print_term leaves trailing whitespace, so remove it
     with_output_to(
             string(TermStr0),
@@ -285,7 +275,7 @@ print_term_cleaned(Term, Options, TermStr) :-
 
 %! remove_suffix_star(+Full:atom, +Suffix:atom, -NoSuffix:atom) is det.
 % Repeatedly removes suffix if present.
-remove_suffix_star(Full, Suffix, NoSuffix) :-
+remove_suffix_star(Full, Suffix, NoSuffix) =>
     (   remove_suffix(Full, Suffix, NoSuffix0)
     ->  remove_suffix_star(NoSuffix0, Suffix, NoSuffix)
     ;   NoSuffix = Full
@@ -293,13 +283,13 @@ remove_suffix_star(Full, Suffix, NoSuffix) :-
 
 %! safe_delete_file(?Path) is det.
 % delete file, catching any errors.
-safe_delete_file(Path) :-
+safe_delete_file(Path) =>
     % The most common error is: error(existence_error(file, Path), _)
     % but other errors are possible, such as
     % error(instantiation_error, _).
     catch(delete_file(Path), _Error, true).
 
-safe_hard_link_file(OldPath, NewPath) :-
+safe_hard_link_file(OldPath, NewPath) =>
     % TODO: DO NOT SUBMIT - there's a race condition here; need
     %       to retry if error thrown from link_file/3
     safe_delete_file(NewPath),
@@ -311,7 +301,7 @@ safe_hard_link_file(OldPath, NewPath) :-
 % TODO: compare OldPath, NewPath (which could also end up with
 %       another race condition if a 3rd process was trying to
 %       create the same output file).
-safe_hard_link_file_dup_ok(OldPath, NewPath) :-
+safe_hard_link_file_dup_ok(OldPath, NewPath) =>
     safe_delete_file(NewPath),
     catch(link_file(OldPath, NewPath, hard),
           error(system_error, context(_, 'File exists')),
@@ -332,13 +322,13 @@ maybe_absolute_dir(Path0, AbsPath) :-
 %! term_canonical_atom(+Term, -Atom) is det.
 % Like term_to_atom/2 if Term is instantiated, but generates
 % an atom in canonical form (no operators).
-term_to_canonical_atom(Term, Atom) :-
+term_to_canonical_atom(Term, Atom) =>
     format(atom(Atom), '~k', [Term]).
 
 %! pykythe_tmp_file_stream(+Dir, -FileName, -Stream, +Options) is det.
 % Like tmp_file_stream/3, but allows specifying a directory rather
 % than using TMPDIR or similar. Also creates Dir if needed.
-pykythe_tmp_file_stream(Dir, FileName, Stream, Options) :-
+pykythe_tmp_file_stream(Dir, FileName, Stream, Options) =>
     make_directory_path(Dir),
     % {set,current}_prolog_flag is copied to a thread, so
     % no need to use a mutex.
@@ -356,7 +346,7 @@ pykythe_tmp_file_stream(Dir, FileName, Stream, Options) :-
 % If needed, directories to Path are created.
 % WritePred must take the stream as its last argument.
 % TODO: contribute this as a SWI-Prolog package.
-write_atomic_stream(WritePred, Path) :-
+write_atomic_stream(WritePred, Path) =>
     % TODO: See '$stage_file' in /usr/lib/swi-prolog/boot/init.pl
     %       and setup_call_catcher_cleanup
     % TODO: the tmpfile/rename trick doesn't work if the tmp file is
@@ -396,7 +386,7 @@ write_atomic_stream(WritePred, Path) :-
 % Similar to write_atomic_stream, except it passes a path to Pred
 % instead of a stream.
 % WritePred must take the path as its last argument.
-write_atomic_file(WritePred, Path) :-
+write_atomic_file(WritePred, Path) =>
     directory_file_path(PathDir, _, Path),
     pykythe_tmp_file_stream(PathDir, TmpPath, Stream, [encoding(utf8)]), % implies open [type(binary)]
     % TODO: instead of setting up at_halt, use setup_call_cleanup/3
@@ -410,7 +400,7 @@ write_atomic_file(WritePred, Path) :-
     ).
 
 %! remove_suffix(+Atom, +Suffix, -FirstPart) is semidet.
-remove_suffix(Atom, Suffix, FirstPart) :-
+remove_suffix(Atom, Suffix, FirstPart) =>
     % TODO: compare with:
     %       sub_atom(Atom, Before, _, 0, Suffix),
     %       Before0 is Before - 1,
@@ -418,14 +408,14 @@ remove_suffix(Atom, Suffix, FirstPart) :-
     atom_concat(FirstPart, Suffix, Atom).
 
 %! remove_prefix(+Atom, +Prefix, -SecondPart) is semidet.
-remove_prefix(Atom, Prefix, SecondPart) :-
+remove_prefix(Atom, Prefix, SecondPart) =>
     sub_atom(Atom, 0, Len, After, Prefix),
     sub_atom(Atom, Len, After, 0, SecondPart).
 
-has_suffix(Atom, Suffix) :-
+has_suffix(Atom, Suffix) =>
     sub_atom(Atom, _, _, 0, Suffix).
 
-has_prefix(Atom, Prefix) :-
+has_prefix(Atom, Prefix) =>
     sub_atom(Atom, 0, _, _, Prefix).
 
 % Tests for atom_utf8_bytes are in pykythe.pl
@@ -434,7 +424,7 @@ has_prefix(Atom, Prefix) :-
 %! base64_utf8(+Atom, -BytesBase64) is det.
 % in Python: BytesBase64 = base64.b64encode(Atom.encode('utf8'))
 %            Atom = base64.b64decode(BytesBase64).decode('utf8')
-base64_utf8(Atom, BytesBase64) :-
+base64_utf8(Atom, BytesBase64) =>
     % TODO: use the DCG forms of library(base64), to
     %       avoid extra atom_codes/2 calls
     (   var(BytesBase64)
@@ -443,27 +433,25 @@ base64_utf8(Atom, BytesBase64) :-
     ).
 
 %! atom_to_utf8_to_b64(+Atom, -BytesBase64) is det.
-atom_to_utf8_to_b64(Atom, BytesBase64) :-
+atom_to_utf8_to_b64(Atom, BytesBase64) =>
     atom_codes(Atom, Codes),
     phrase(utf8_codes(Codes), Utf8codes),
     atom_codes(Utf8, Utf8codes),
     base64_ascii(Utf8, BytesBase64).
 
 %! b64_to_utf8_to_atom(+BytesBase64, -Atom) is det.
-b64_to_utf8_to_atom(BytesBase64, Atom) :-
+b64_to_utf8_to_atom(BytesBase64, Atom) =>
     base64_ascii(Utf8, BytesBase64),
     atom_codes(Utf8, Utf8codes),
     phrase(utf8_codes(Codes), Utf8codes),
     atom_codes(Atom, Codes).
 
 %! at_most(+List, +Length, -TruncatedList) is det.
-% Takes the first Length items from List; if there are
-% fewer then TruncatedList = List
-at_most([], _, []).
-at_most([X|Xs], Length, TruncatedList) :-
-    (   Length > 0
-    ->  TruncatedList = [X|Ys],
-        Length2 is Length - 1,
-        at_most(Xs, Length2, Ys)
-    ;   TruncatedList = []
-    ).
+% Takes the first Length items from List; if there are fewer, then
+% TruncatedList = List
+at_most([X|Xs], Length, TruncatedList),
+        Length > 0 =>
+    TruncatedList = [X|Ys],
+    Length2 is Length - 1,
+    at_most(Xs, Length2, Ys).
+at_most(_Xs, _Length, TruncatedList) => TruncatedList = [].
