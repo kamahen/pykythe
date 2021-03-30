@@ -1,8 +1,8 @@
 % -*- mode: Prolog -*-
 
 %% Taken from library(rdet) - https://github.com/rla/rdet.git
-%% And modified to provide a back-tracking version and also
-%% a version that throw an exception if there are choicepoints left.
+%% and modified to provide a back-tracking version and also
+%% a version that throws an exception if there are choicepoints left.
 
 %% TODO: merge into https://github.com/kamahen/rdet.git
 %% TODO: add test cases.
@@ -46,7 +46,7 @@ rdet_semidet(PredicateIndicator) :-
     debug(rdet, 'rdet_semidet: adding goal: ~w', [PredicateIndicator]),
     wrap_predicate(Head, rdet_semidet_wrapper, Closure,
                    (setup_call_cleanup(true, Closure, Det=yes),
-                    (Det==yes -> true ;  throw(error(goal_not_det, context(_, PredicateIndicator)))))).
+                    (Det==yes -> true ; throw(error(goal_not_det, context(_, PredicateIndicator)))))).
 
 %! rdet_det(:PredicateIndicator) is det.
 % Mark PredicateIndicator as det (throw exception if choicepoint or failure)
