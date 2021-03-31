@@ -57,6 +57,7 @@ symtab_empty(Symtab) :-
 ord_list_to_symtab(Pairs, Symtab) :-
     ord_list_to_rbtree(Pairs, Symtab),
     must_once(is_rbtree(Symtab)).  % Ensures no dup keys
+
 list_to_symtab(Pairs, Symtab) :-
     list_to_rbtree(Pairs, Symtab),
     must_once(is_rbtree(Symtab)).  % Ensure no dup keys
@@ -65,11 +66,11 @@ symtab_insert(Key, Symtab0, Value, Symtab) :-
     % This weird ordering of params is the same as put_dict/4.
     rb_insert(Symtab0, Key, Value, Symtab).
 
-symtab_lookup(Key, Symtab, Value) :-
-    (   ground(Key)
-    ->  rb_lookup(Key, Value, Symtab)
-    ;   instantiation_error(Key)
-    ).
+symtab_lookup(Key, Symtab, Value),
+        ground(Key) =>
+    rb_lookup(Key, Value, Symtab).
+symtab_lookup(Key, _Symtab, _Value) =>
+    instantiation_error(Key).
 
 symtab_size(Symtab, Size) :-
     rb_size(Symtab, Size).
@@ -95,17 +96,17 @@ conv_symtab_pairs(Pred, Symtab, Pairs) :-
 
 % rb_visit_pairs is derived from rb_visit/2 and convlist/3.
 % TODO: add this to library(rbtrees)
-rb_conv_pairs(t(_,T), Pred, Lf) :-
+rb_conv_pairs(t(_,T), Pred, Lf) =>
     rb_conv_pairs_(T, Pred, [], Lf).
 
-rb_conv_pairs_(black('',_,_,_), _Pred, L, L) :- !.
-rb_conv_pairs_(red(L,K,V,R), Pred, L0, Lf) :-
+rb_conv_pairs_(black('',_,_,_), _Pred, L0, L) => L0 = L.
+rb_conv_pairs_(red(L,K,V,R), Pred, L0, Lf) =>
     (   call(Pred, K-V, K2V2)
     ->  rb_conv_pairs_(L, Pred, [K2V2|L1], Lf)
     ;   rb_conv_pairs_(L, Pred, L1, Lf)
     ),
     rb_conv_pairs_(R, Pred, L0, L1).
-rb_conv_pairs_(black(L,K,V,R), Pred, L0, Lf) :-
+rb_conv_pairs_(black(L,K,V,R), Pred, L0, Lf) =>
     (   call(Pred, K-V, K2V2)
     ->  rb_conv_pairs_(L, Pred, [K2V2|L1], Lf)
     ;   rb_conv_pairs_(L, Pred, L1, Lf)
@@ -140,8 +141,8 @@ maybe_read_symtab_from_cache(OptsVersion, PykytheSymtabInputStream, SrcPath, Sym
     read_term(PykytheSymtabInputStream, SymtabFromCacheKVs, []),
     foldl_rb_insert(SymtabFromCacheKVs, Symtab0, NewSymtab).
 
-foldl_rb_insert([], Rb, Rb).
-foldl_rb_insert([K-V|KVs], Rb0, Rb) :-
+foldl_rb_insert([], Rb0, Rb) => Rb0 = Rb.
+foldl_rb_insert([K-V|KVs], Rb0, Rb) =>
     rb_insert(Rb0, K, V, Rb1),
     foldl_rb_insert(KVs, Rb1, Rb).
 

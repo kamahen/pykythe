@@ -406,6 +406,7 @@ test_data_tests:
 	@# (large files such as py3_test_grammar.py dominate)
 	$(MAKE) -j$(NPROC) --output-sync=line $(TESTOUT_TARGETS) \
 		$(KYTHEOUTDIR)$(PWD_REAL)/pykythe/__main__.kythe.entries
+	find $(TESTOUTDIR) -name '*.verifier' | xargs file | grep -v empty | sed 's/:.*$$//' | xargs head -30
 
 .PHONY: test_leo
 test_leo:

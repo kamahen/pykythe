@@ -370,9 +370,9 @@
                   output_kythe/7,
                   parse_and_get_meta/6,
                   path_with_suffix/4,
-                  % process_module_cached_or_from_src/6,  % wrapped in must_once
-                  % process_module_from_src/5,  % DO NOT SUBMIT - is this det? (I think it is)
-                  % process_module_from_src_impl/5,  % DO NOT SUBMIT - ditto
+                  process_module_cached_or_from_src/6,  % wrapped in must_once
+                  process_module_from_src/5,  % DO NOT SUBMIT - is this det? (I think it is)
+                  process_module_from_src_impl/5,  % DO NOT SUBMIT - ditto
                   process_src/2,
                   % ==>> possible_classes_from_attr/5,
                   process_nodes/5,
@@ -702,8 +702,7 @@ process_src(Opts, SrcPath) :-
     log_if(true, 'Start ~w', [SrcPath]),
     path_to_module_fqn_or_unknown(SrcPath, SrcFqn),
     builtins_symtab(Symtab0),
-    must_once(
-        process_module_cached_or_from_src(Opts, 'from src ok', SrcPath, SrcFqn, Symtab0, _Symtab)).
+    process_module_cached_or_from_src(Opts, 'from src ok', SrcPath, SrcFqn, Symtab0, _Symtab).
 
 %! path_with_suffix(+Opts:dict, +SrcPath:atom, +Suffix:atom, -Path:atom) is det.
 % Create Path from SrcPath's base and Opts.Suffix.
@@ -885,9 +884,10 @@ maybe_process_module_cached_batch(Opts, SrcPath, Symtab0, Symtab) :-
         log_if(true, 'Cannot reuse batch cache (different version) ~q for ~q', [PykytheBatchPath, SrcPath]),
         log_if(true, 'Cannot reuse cache (different source) ~q for ~q', [PykytheBatchPath, SrcPath])).
 
-%! foldl_process_module_cached_or_from_src(+Opts:list, +FromSrcOk:{'from src ok','cached only'}, +Modules:list, -Symtab0:dict, +Symtab:dict) is semidet.
-foldl_process_module_cached_or_from_src(_Opts, _FromSrcOk, [], Symtab, Symtab).
-foldl_process_module_cached_or_from_src(Opts, FromSrcOk, [M|Modules], Symtab0, Symtab) :-
+%! foldl_process_module_cached_or_from_src(+Opts:list, +FromSrcOk:{'from src ok','cached only'}, +Modules:list, +Symtab0:dict, -Symtab:dict) is det.
+foldl_process_module_cached_or_from_src(_Opts, _FromSrcOk, [], Symtab0, Symtab) =>
+    Symtab = Symtab0.
+foldl_process_module_cached_or_from_src(Opts, FromSrcOk, [M|Modules], Symtab0, Symtab) =>
     % TODO: handle module_star, merging its names into the symtab
     (   M = module_type(Module),
         path_part(Module, SrcPath), % TODO: fix failure for "import *"
@@ -902,7 +902,7 @@ foldl_process_module_cached_or_from_src(Opts, FromSrcOk, [M|Modules], Symtab0, S
     foldl_process_module_cached_or_from_src(Opts, FromSrcOk, Modules, Symtab1, Symtab).
 
 % DO NOT SUBMIT - s/semidet/det/?
-%! process_module_from_src(+Opts:list, +FromSrcOk, +SrcFqn:atom, +Symtab0, -Symtab) is semidet.
+%! process_module_from_src(+Opts:list, +FromSrcOk, +SrcFqn:atom, +Symtab0, -Symtab) is det.
 % Read in a single file (JSON output from running --parsecmd, which
 % encodes the AST nodes with FQNs), output Kythe JSON to current
 % output stream. SrcPath must be in absolute form (leading '/').
@@ -956,12 +956,9 @@ process_module_from_src_impl(Opts, SrcPath, SrcFqn, Symtab0, Symtab) :-
     output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFactsFromNodes),
     stats(Stats3b),
     log_if(true, 'Pass 3b: output for ~q ~w', [Meta.path, Stats3b]),
-    !.
-process_module_from_src_impl(Opts, SrcPath, SrcFqn, _Symtab0, _Symtab) :-
-    % TODO: delete this catch-all clause
-    goal_failed(process_module_from_src_impl(Opts, SrcPath, SrcFqn)).
+    !. % DO NOT SUBMIT - needed?
 
-%! output_kythe(+Opts:list, +Meta:dict, +SrcPath:atom, +SrcFqn:atom, +Symtab, +KytheFactsFromExprs:list, +KytheFactsFromNodes:list) :-
+%! output_kythe(+Opts:list, +Meta:dict, +SrcPath:atom, +SrcFqn:atom, +Symtab, +KytheFactsFromExprs:list, +KytheFactsFromNodes:list) is det.
 output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFactsFromNodes) :-
     validate_symtab(Symtab),
     % Output /pykythe/type facts, for debugging.
@@ -1001,8 +998,8 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
 %! transform_kythe_fact(+Fact0, -Fact1) is det.
 % TODO: Note that this also changes fact_value to base64 and has special
 %       cases for symtab, text, colors
-transform_kythe_fact(json{source:Source0, fact_name:FactName, fact_value:FactValue},
-                     json{source:Source1, fact_name:FactName, fact_value:FactValueBase64}) :- !,
+transform_kythe_fact(json{source:Source0, fact_name:FactName, fact_value:FactValue}, Fact1) =>
+    Fact1 = json{source:Source1, fact_name:FactName, fact_value:FactValueBase64},
     % text is alread in base64 (from Meta.contents_base64)
     (   FactName == '/kythe/text'
     ->  FactValueBase64 = FactValue
@@ -1017,28 +1014,24 @@ transform_kythe_fact(json{source:Source0, fact_name:FactName, fact_value:FactVal
 %       effects (e.g., some code that depends on the derived module
 %       FQN starting with ".", so that split_atom(Fqn, '.', '',
 %       [''|_]) is assumed.
-transform_kythe_fact(json{source:Source0, fact_name:'/', edge_kind:EdgeKind, target:Target0},
-                     json{source:Source1, fact_name:'/', edge_kind:EdgeKind, target:Target1}) :- !,
+transform_kythe_fact(json{source:Source0, fact_name:'/', edge_kind:EdgeKind, target:Target0}, Fact1) =>
+    Fact1 =          json{source:Source1, fact_name:'/', edge_kind:EdgeKind, target:Target1},
     transform_kythe_vname(Source0, Source1),
     transform_kythe_vname(Target0, Target1).
-transform_kythe_fact(Fact, Fact) :-
-    domain_error(json, Fact).
 
-transform_kythe_vname(json{corpus:Corpus, root:Root},
-                      json{corpus:Corpus, root:Root}) :- !.
-transform_kythe_vname(json{corpus:Corpus, root:Root, path:Path0},
-                      json{corpus:Corpus, root:Root, path:Path1}) :- !,
+transform_kythe_vname(json{corpus:Corpus, root:Root}, Fact1) =>
+    Fact1 =           json{corpus:Corpus, root:Root}.
+transform_kythe_vname(json{corpus:Corpus, root:Root, path:Path0}, Fact1) =>
+    Fact1 =           json{corpus:Corpus, root:Root, path:Path1},
     transform_kythe_path(Path0, Path1).
-transform_kythe_vname(json{corpus:Corpus, root: Root, path:Path0, language:Language},
-                      json{corpus:Corpus, root: Root, path:Path1, language:Language}) :- !,
+transform_kythe_vname(json{corpus:Corpus, root: Root, path:Path0, language:Language}, Fact1) =>
+    Fact1 =           json{corpus:Corpus, root: Root, path:Path1, language:Language},
     transform_kythe_path(Path0, Path1).
-transform_kythe_vname(json{corpus:Corpus, root:Root, language:Language, signature:Signature},
-                      json{corpus:Corpus, root:Root, language:Language, signature:Signature}) :- !.
-transform_kythe_vname(json{corpus:Corpus, root:Root, language:Language, signature:Signature, path:Path0},
-                      json{corpus:Corpus, root:Root, language:Language, signature:Signature, path:Path1}) :- !,
+transform_kythe_vname(json{corpus:Corpus, root:Root, language:Language, signature:Signature}, Fact1) =>
+    Fact1 =           json{corpus:Corpus, root:Root, language:Language, signature:Signature}.
+transform_kythe_vname(json{corpus:Corpus, root:Root, language:Language, signature:Signature, path:Path0}, Fact1) =>
+    Fact1 =           json{corpus:Corpus, root:Root, language:Language, signature:Signature, path:Path1},
     transform_kythe_path(Path0, Path1).
-transform_kythe_vname(Source, Source) :-
-    domain_error(json-source, Source).
 
 transform_kythe_path(AbsPath, RelPath) :-
     % Strip off the leading '/' - equivalent to atom_concat('/', RelPath, AbsPath)
@@ -1067,7 +1060,7 @@ parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes, ColorTexts) :-
     must_once(SrcPath == Meta.path),
     Meta.src_fqn = SrcFqn.
 
-%! extend_symtab_with_builtins(+Symtab0, +Meta:dict, -Symtab) :-
+%! extend_symtab_with_builtins(+Symtab0, +Meta:dict, -Symtab) is det.
 extend_symtab_with_builtins(Symtab0, Meta, Symtab) :-
     builtins_pairs(BuiltinsPairs),
     builtins_symtab_extend(BuiltinsPairs, Meta.src_fqn, Meta.builtins_module, Symtab0, Symtab0a),
@@ -1079,12 +1072,13 @@ extend_symtab_with_builtins(Symtab0, Meta, Symtab) :-
 % The msg{...} items are generated by log_kyfact_msg//5.
 % TODO: preserve the messages in the Kythe facts: https://kythe.io/docs/schema/#diagnostic
 %       Needs an anchor with each fact.
-log_kythe_fact_msgs([], []).
-log_kythe_fact_msgs([msg{message:MessageMsg,details:DetailsMsg,astn:Astn}|KytheFacts], KytheFactsOut) :- !,
+log_kythe_fact_msgs([], KytheFactsOut) => KytheFactsOut = [].
+log_kythe_fact_msgs([msg{message:MessageMsg,details:DetailsMsg,astn:Astn}|KytheFacts], KytheFactsOut) =>
     log_if(true, 'MESSAGE ~w: ~w ... ~w', [Astn, MessageMsg, DetailsMsg]),
     log_kythe_fact_msgs(KytheFacts, KytheFactsOut).
-log_kythe_fact_msgs([Fact|KytheFacts], [Fact|KytheFactsOut]) :-
-    log_kythe_fact_msgs(KytheFacts, KytheFactsOut).
+log_kythe_fact_msgs([Fact|KytheFacts], KytheFactsOut) =>
+    KytheFactsOut = [Fact|KytheFactsOut2],
+    log_kythe_fact_msgs(KytheFacts, KytheFactsOut2).
 
 %! nonredundant_pytype_fact(+Symtab, +Fact) is semidet.
 % Succeeds if this is either a non-/pykythe/type fact or if it's a
@@ -1105,8 +1099,8 @@ nonredundant_pytype_fact(_Symtab, _Fact).
 
 %! builtins_symtab_extend(+FqnType:list(pair), +SrcFqn:atom, BuiltinsFqn, Symtab0:dict, +Symtab:dict) is det.
 % Add the builtins to the symtab with the current SrcFqn.
-builtins_symtab_extend([], _SrcFqn, _BuiltinsFqn, Symtab, Symtab).
-builtins_symtab_extend([Name-Type|FqnTypes], SrcFqn, BuiltinsFqn, Symtab0, Symtab) :-
+builtins_symtab_extend([], _SrcFqn, _BuiltinsFqn, Symtab0, Symtab) => Symtab = Symtab0.
+builtins_symtab_extend([Name-Type|FqnTypes], SrcFqn, BuiltinsFqn, Symtab0, Symtab) =>
     join_fqn([SrcFqn, Name], NameExt),
     join_fqn([BuiltinsFqn, Name], BuiltinsName),
     maplist(wrap_import_ref(Name,BuiltinsName), Type, WrappedType0),
@@ -1115,23 +1109,24 @@ builtins_symtab_extend([Name-Type|FqnTypes], SrcFqn, BuiltinsFqn, Symtab0, Symta
     builtins_symtab_extend(FqnTypes, SrcFqn, BuiltinsFqn, Symtab1, Symtab).
 
 %! wrap_import_ref(+Name:atom, +Fqn:atom, +Type, -WrappedType) is det.
-wrap_import_ref(Name, Fqn, Type, import_ref_type(Name,Fqn,Type)).
+wrap_import_ref(Name, Fqn, Type, WrappedType) =>
+    WrappedType = import_ref_type(Name,Fqn,Type).
 
 %! single_type_fqn(+Type, -Fqn:atom) is det.
 % See also eval_atom_call_single//3, class_no_base/2, normalize_type2/2.
-single_type_fqn(class_type(Fqn,_), Fqn).
-single_type_fqn(module_type(Module), Fqn) :-
+single_type_fqn(class_type(Fqn,_), Fqn2) => Fqn2 = Fqn.
+single_type_fqn(module_type(Module), Fqn) =>
     full_module_part(Module, Fqn).
-single_type_fqn(function_type(Fqn,_,_), Fqn).
-single_type_fqn(import_ref_type(_,Fqn,_Type), Fqn).
+single_type_fqn(function_type(Fqn,_,_), Fqn2) => Fqn2 = Fqn.
+single_type_fqn(import_ref_type(_,Fqn,_Type), Fqn2) => Fqn2 = Fqn.
 
 % See also single_type_fqn/2, eval_atom_call_single//3, normalize_type2/2.
-class_no_base(class_type(Class,_), Class) :- !.
-class_no_base(module_type(M0), M) :- !,
+class_no_base(class_type(Class,_), Class2) => Class2 = Class.
+class_no_base(module_type(M0), M) =>
     full_module_part(M0, M).
-class_no_base(import_ref_type(_Name, _Fqn, Type), TypeNoBase) :- !,
+class_no_base(import_ref_type(_Name, _Fqn, Type), TypeNoBase) =>
     class_no_base(Type, TypeNoBase).
-class_no_base(X, X).
+class_no_base(X, X2) => X2 = X.
 
 %! valid_symtab(+Symtab) is det.
 validate_symtab(Symtab) :-      % TODO: remove this
@@ -1139,7 +1134,7 @@ validate_symtab(Symtab) :-      % TODO: remove this
     maplist(validate_symtab_pair, SymtabPairs).
 
 %! validate_symtab_pair(+FqnType:pair) is det.
-validate_symtab_pair(Fqn-Type) :-
+validate_symtab_pair(Fqn-Type) =>
     must_be(atom, Fqn),
     must_be(list, Type).
 
@@ -1160,25 +1155,28 @@ clean_kythe_facts(KytheFacts0, KytheFacts) :-
 % for some "special" facts: anchor, package, file).  The `Kindsout`
 % dict is keyed by the `Source` values of the 'kind' facts and
 % contains a set of all the fact_values.
-kythe_kinds([], Kinds, [], Kinds).
+kythe_kinds([], Kinds, FactsOut, Kinds2) =>
+    FactsOut = [],
+    Kinds2 = Kinds.
 kythe_kinds([json{fact_name:'/kythe/node/kind', fact_value:KindValue, source:Source}|Facts],
-            KindsIn, FactsOut, KindsOut) :-
-    KindValue \= 'anchor',  % should never have another kind
-    KindValue \= 'package', % should never have another kind
-    KindValue \= 'file',    % This is special (see maybe_read_symtab_from_cache/5)
-    !,
+            KindsIn, FactsOut, KindsOut),
+        KindValue \= 'anchor',  % should never have another kind
+        KindValue \= 'package', % should never have another kind
+        KindValue \= 'file'     % This is special (see maybe_read_symtab_from_cache/5)
+  =>
     term_to_canonical_atom(Source, SourceAtom),
     get_dict_default(SourceAtom, KindsIn, [], KindSeen),
     type_add_element(KindSeen, KindValue, KindSeen2),
     put_dict(SourceAtom, KindsIn, KindSeen2, Kinds2),
     kythe_kinds(Facts, Kinds2, FactsOut, KindsOut).
-kythe_kinds([Fact|Facts], Kinds, [Fact|FactsOut], KindsOut) :-
-    kythe_kinds(Facts, Kinds, FactsOut, KindsOut).
+kythe_kinds([Fact|Facts], Kinds, FactsOut, KindsOut) =>
+    FactsOut = [Fact|FactsOut2],
+    kythe_kinds(Facts, Kinds, FactsOut2, KindsOut).
 
 %! clean_kind(+SourceAtom-Kinds:pair, -Fact:dict) is det.
 % Clean a single item, creating its JSON representation.
-clean_kind(SourceAtom-Kinds,
-           json{source:Source, fact_name:'/kythe/node/kind', fact_value:Kind}) :-
+clean_kind(SourceAtom-Kinds, Cleaned) =>
+    Cleaned = json{source:Source, fact_name:'/kythe/node/kind', fact_value:Kind},
     % See kyfact//3.
     term_to_atom(Source, SourceAtom),
     (   Kinds = [Kind]
@@ -1190,7 +1188,8 @@ clean_kind(SourceAtom-Kinds,
 
 %! precedence_and_kind(+Kind, -PrecedenceKind:pair) is det.
 % Map each kind to a pair with it precedence (for keysort)
-precedence_and_kind(Kind, Precedence-Kind) :-
+precedence_and_kind(Kind, PrecedenceKind) :-
+    PrecedenceKind = Precedence-Kind,
     must_once(kind_precedence(Kind, Precedence)).
 
 %! kind_prededence(+Kind, -Precedence) is det.
@@ -1198,15 +1197,15 @@ precedence_and_kind(Kind, Precedence-Kind) :-
 % "disambiguating" when there are multiple 'kind's for a node, with
 % the lowest (most negative) precedence being chosen).  See also
 % https://github.com/kythe/kythe/issues/2381
-kind_precedence(file, -100).
-kind_precedence(package, -99).
-kind_precedence(anchor, -98).
-kind_precedence(variable, -80).
-kind_precedence(record, -50).
-kind_precedence(function, -49).
+kind_precedence(file,     Precedence) => Precedence = -100.
+kind_precedence(package,  Precedence) => Precedence =  -99.
+kind_precedence(anchor,   Precedence) => Precedence =  -98.
+kind_precedence(variable, Precedence) => Precedence =  -80.
+kind_precedence(record,   Precedence) => Precedence =  -50.
+kind_precedence(function, Precedence) => Precedence =  -49.
 
 %! write_kythe_facts(+KytheFacts, +KytheOutStream) is det.
-write_kythe_facts(KytheFacts,KytheOutStream) :-
+write_kythe_facts(KytheFacts, KytheOutStream) :-
     % write(KytheOutStream, "%% === Kythe ==="), nl(KytheOutStream),
     maplist(transform_and_write_kythe_fact(KytheOutStream), KytheFacts).
 
@@ -1283,12 +1282,12 @@ link_src_file(SrcPath, OutPath) :- % TODO: delete
 
 %! version_as_kyfact(+Version, +Meta, -KytheFactsAsJsonDict) is det.
 % Convert the version into a Kythe fact.
-version_as_kyfact(Version, Meta,
-                  json{source: json{language: Meta.language,
-                                    corpus: Meta.kythe_corpus,
-                                    root: Meta.kythe_root},
-                       fact_name: '/pykythe/version',
-                       fact_value: Version}).
+version_as_kyfact(Version, Meta, KytheFactsAsJsonDict) =>
+    KytheFactsAsJsonDict = json{source: json{language: Meta.language,
+                                             corpus: Meta.kythe_corpus,
+                                             root: Meta.kythe_root},
+                                fact_name: '/pykythe/version',
+                                fact_value: Version}.
 
 %! symtab_pykythe_types(+Symtab)//[kyfact,file_meta] is det.
 % Generate /pykythe/type facts from the symtab (for debugging).
@@ -1346,21 +1345,22 @@ simplify_meta(
             contents_bytes: ContentsBytes, % TODO: delete (for debugging only)
             sha1: Sha1,
             encoding: Encoding}},
-    meta{
-         kythe_corpus: KytheCorpus,
-         kythe_root: KytheRoot,
-         path: CanonicalPath,
-         language: Language,
-         encoding: Encoding,
-         contents_base64: ContentsBase64,
-         contents_str: ContentsStr,
-         contents_bytes: ContentsBytes,
-         sha1: Sha1,
-         src_fqn: _,
-         pythonpath: _,
-         builtins_module: _,
-         opts: _,
-         version: _}) :-
+    Meta) =>
+    Meta = meta{
+               kythe_corpus: KytheCorpus,
+               kythe_root: KytheRoot,
+               path: CanonicalPath,
+               language: Language,
+               encoding: Encoding,
+               contents_base64: ContentsBase64,
+               contents_str: ContentsStr,
+               contents_bytes: ContentsBytes,
+               sha1: Sha1,
+               src_fqn: _,
+               pythonpath: _,
+               builtins_module: _,
+               opts: _,
+               version: _},
     % For debugging, might want to use contents_base64:"LS0t",
     %     derived from:
     %     base64_ascii('---', 'LS0t').
@@ -1371,28 +1371,29 @@ simplify_meta(
 % Simplify the JSON term into more specific dicts, each one
 % distinguished by its tag. The input dicts for base types (str, int,
 % etc.) are turned into simpler functors.
-simplify_ast([], []).
-simplify_ast([V|Vs], Values) :-
+simplify_ast([], Prolog) => Prolog = [].
+simplify_ast([V|Vs], Values) =>
     maplist(simplify_ast, [V|Vs], Values).
 % Originally, pod._as_json_dict_full output str, int as wrapped items
 % (like bool), but removing the wrapper gave an overall 10%
 % performance improvement.
-simplify_ast(Value, Value) :- atom(Value), !.
-simplify_ast(Value, Value) :- integer(Value), !.
-simplify_ast(json{kind: 'bool', value: Value}, bool(Value)) :- !.
-simplify_ast(json{kind: 'None'}, none) :- !. % Shouldn't be generated by pod.PlainOldDataExtended.as_json_dict
-simplify_ast(json{kind: 'dict', items: Items}, Value) :- !,
+simplify_ast(Value, Value2), atom(Value) => Value2 = Value.
+simplify_ast(Value, Value2), integer(Value) => Value2 = Value.
+simplify_ast(json{kind: 'bool', value: Value}, Value2) => Value2 = bool(Value).
+simplify_ast(json{kind: 'None'}, Value2) => Value2 = none.  % Shouldn't be generated by pod.PlainOldDataExtended.as_json_dict
+simplify_ast(json{kind: 'dict', items: Items}, Value) =>
     dict_pairs(Items, _, ItemPairs),
     maplist(simplify_ast_slot_pair, ItemPairs, ItemPairs2),
     dict_pairs(Value, dict, ItemPairs2).
-simplify_ast(json{kind: 'Exception', value:ValueStr}, exception(ValueStr)) :- !.
-simplify_ast(json{kind: Kind, slots: Slots}, Value) :- !,
+simplify_ast(json{kind: 'Exception', value:ValueStr}, Value2) => Value2 = exception(ValueStr).
+simplify_ast(json{kind: Kind, slots: Slots}, Value) =>
     dict_pairs(Slots, _, SlotPairs),
     maplist(simplify_ast_slot_pair, SlotPairs, SlotPairs2),
     dict_pairs(Value, Kind, SlotPairs2).
 
 %! simplify_ast_slot_pair(+KeyValue:pair, -KeyValue2:pair) is det.
-simplify_ast_slot_pair(Key-Value, Key-Value2) :-
+simplify_ast_slot_pair(Key-Value, KV2) =>
+    KV2 = Key-Value2,
     simplify_ast(Value, Value2).
 
 %! simplify_color(+ColorDictJson:dict, -Color:dict) is det.
@@ -1409,9 +1410,10 @@ simplify_color(json{ kind:'Color',
                                  token_color:TokenColor
                                }
                    },
-              color{start:Start, end:End, value:Value,
-                    lineno:Lineno, column:Column,
-                    token_color:TokenColor}).
+               Color) =>
+    Color = color{start:Start, end:End, value:Value,
+                  lineno:Lineno, column:Column,
+                  token_color:TokenColor}.
 
 %! process_nodes(+Nodes, +SrcInfo:dict, -KytheFacts:list, -Exprs:list, +Meta:dict) is det.
 % Wrapper for process_nodes//[kyfact,expr,file_meta].
@@ -1470,12 +1472,14 @@ kyfact_color_text_as_single_fact(ColorText) ==>>
            '/pykythe/color_all', ColorFactText).
 
 key_color(color{column:Column, end:End, lineno:Lineno, start:Start, token_color:TokenColor, value:Value},
-          color{column:Column, end:End, lineno:Lineno, start:Start, token_color:TokenColor, value:Value, signature:Signature}) :-
+          ColorWithSignature) =>
+    ColorWithSignature = color{column:Column, end:End, lineno:Lineno, start:Start, token_color:TokenColor, value:Value, signature:Signature},
     (   var_token(TokenColor)
     ->  anchor_signature_str(Start, End, Value, Signature)
     ;   Signature = ''
     ).
 
+%! var_token(Str:atom) is semidet.
 % If the below changes, also change src_browser:var_token
 % and src_browser.js token_css_color_class
 var_token('<ATTR_BINDING>').
@@ -2043,10 +2047,11 @@ kynode_if_stmt(['EvalResult'{exception:_Exc}|Results], [Cond,Item|Items]) ==>> %
 
 %! if_stmt_elses(+Items, -ElseItems) is det.
 % Extract the "conds" from an IfStmt (removing the "then"s and "else"s)
-if_stmt_elses([], []).
-if_stmt_elses([_ElseItem], []).
-if_stmt_elses([Cond,_ThenItem|ElseItems], [Cond|ElseItemsConds]) :-
-    if_stmt_elses(ElseItems, ElseItemsConds).
+if_stmt_elses([], ElseItems) => ElseItems = [].
+if_stmt_elses([_ElseItem], ElseItems) => ElseItems = [].
+if_stmt_elses([Cond,_ThenItem|ElseItems0], ElseItems) =>
+    ElseItems = [Cond|ElseItemsConds],
+    if_stmt_elses(ElseItems0, ElseItemsConds).
 
 kyanchor_binding(NameAstn, Fqn, Childof, DebugInfo) ==>>
     log_if_file('KYANCHOR_BINDING(~w) ~p ~q ~q', [DebugInfo, NameAstn, Fqn, Childof]),
@@ -2178,8 +2183,8 @@ kyImportDottedAsNamesFqn_top(DottedNameItems, BindsFqn, BindsNameAstn) ==>>
     kyanchor_node_kyedge_fqn(BindsNameAstn, '/kythe/edge/defines/binding', BindsFqn),
     [ AssignImport ]:expr.
 
-add_up_dirs([], SrcParts, SrcParts).
-add_up_dirs([FromDot|FromDots], SrcParts0, SrcParts) :-
+add_up_dirs([], SrcParts0, SrcParts) => SrcParts = SrcParts0.
+add_up_dirs([FromDot|FromDots], SrcParts0, SrcParts) =>
     kyImportDotNode_to_astn(FromDot, _, _), % verify it's what we expect
     append(SrcParts0, ['..'], SrcParts1),
     add_up_dirs(FromDots, SrcParts1, SrcParts).
@@ -2257,12 +2262,13 @@ kyImport_path_dots([FromDot0|FromDots]) ==>>
 
 %! 'NameBareNode_astn_and_name'(+DottedNameItem, -DottedName) is det.
 % Process a NameBareNode node into a name
-'NameBareNode_astn_and_name'('NameBareNode'{name: NameAstn}, NameAstn, Name) :-
+'NameBareNode_astn_and_name'('NameBareNode'{name: NameAstn}, NameAstn, Name) =>
     node_astn(NameAstn, _, _, Name).
 
 %! kyImportDotNode(+Node, -Astn, -Name:atom) is det.
-kyImportDotNode_to_astn('ImportDotNode'{dot:DotAstn}, astn(Start, End, Dot), Dot) :-
-    node_astn(DotAstn, Start, End, Dot).
+kyImportDotNode_to_astn('ImportDotNode'{dot:DotAstn}, Astn, Name) =>
+    Astn = astn(Start, End, Name),
+    node_astn(DotAstn, Start, End, Name).
 
 %! maplist_kynode(+Nodes, -NodesTypes:list)//[kyfact,expr,file_meta] is det.
 % equivalent to: maplist_kyfact_expr(kynode, Nodes, NodesTypes)
@@ -2358,7 +2364,7 @@ anchor_signature_str(Start, End, Token, Signature) :-
     format(atom(Signature), '@~d:~d<~w>', [Start, End, Token]).  % DO NOT SUBMIT (this format is for debugging)
     % format(atom(Signature), '@~d', [Start]).
 
-anchor_signature_str('Astn'{start:Start, end:End, value:Token}, Signature) :-
+anchor_signature_str('Astn'{start:Start, end:End, value:Token}, Signature) =>
     anchor_signature_str(Start, End, Token, Signature).
 
 %! kyedge_fqn_fqn(+Fqn1:atom, +EdgeKind:atom, +Fqn2:atom)//[kyfact,file_meta] is det.
@@ -3105,18 +3111,18 @@ clean_class(ClassName, Bases, BasesCleaned) :-
     exclude(is_object_type, Bases2, BasesCleaned).
 
 %! normalize_base_class(+Type, -NormalizedType) is det.
-normalize_base_class(import_ref_type(_Name,_Fqn,Type0), Type) :- !,
+normalize_base_class(import_ref_type(_Name,_Fqn,Type0), Type) =>
     normalize_base_class(Type0, Type).
-normalize_base_class(class_type(Fqn, Bases0), class_type(Fqn, Bases)) :- !,
+normalize_base_class(class_type(Fqn, Bases0), Type) =>
+    Type = class_type(Fqn, Bases),
     % TODO: the next step probably isn't needed because any included
     %       base classes should have already been cleaned:
     maplist(maplist(normalize_base_class), Bases0, Bases).
 % ModuleType can occur if an invalid module path has been given.
-normalize_base_class(module_type(ModuleType), module_type(ModuleType)) :- !.
-normalize_base_class(Type, Type) :-
-    domain_error(class_type, Type).
+normalize_base_class(module_type(ModuleType), Type) =>
+    Type = module_type(ModuleType).
 
-%! remove_class_cycles(+Bases:list(list), +Seen:dict, +BasesCleaned:List(list)) is det.
+%! remove_class_cycles(+Bases:list(list), +Seen:dict, -BasesCleaned:list(list)) is det.
 % Ensure that there are no cycles in the base classes of a class (see
 % test cases for examples). Bases0 is the original list of bases;
 % Bases gets the cycle-free bases. Seen is a dict (used as a set) of
@@ -3126,26 +3132,29 @@ normalize_base_class(Type, Type) :-
 % "Any"; the assumption is that the caller will remove them.
 % (Hint for understanding this code -- each Base is a union (list) of
 % types.)
-remove_class_cycles([], _Seen, []).
-remove_class_cycles([Base|Bases], Seen, [Base2|Bases2]) :-
+remove_class_cycles([], _Seen, BasesCleaned) => BasesCleaned = [].
+remove_class_cycles([Base|Bases], Seen, BasesCleaned) =>
+    BasesCleaned = [Base2|Bases2],
     remove_class_cycles_one(Base, Base2, Seen, Seen2),
     remove_class_cycles(Bases, Seen2, Bases2).
 
 %! remove_class_cycles_one(+Types:list, -TypesOut:list, +Seen:dict, -SeenOut:dict) is det.
 % Remove cycles for a single base.
 % Seen is a dict (set) of already seen class names.
-remove_class_cycles_one([], [], Seen, Seen).
-remove_class_cycles_one([Type|Types], TypesOut, Seen, SeenOut) :-
-    (   Type = class_type(ClassName, _)
-    ->  (   get_dict(ClassName, Seen, _)
-        ->  remove_class_cycles_one(Types, TypesOut, Seen, SeenOut)
-        ;   TypesOut = [Type|Types2],
-            put_dict(ClassName, Seen, '', Seen2),
-            remove_class_cycles_one(Types, Types2, Seen2, SeenOut)
-        )
-    ;   TypesOut = [Type|Types2],
-        remove_class_cycles_one(Types, Types2, Seen, SeenOut)
-    ).
+remove_class_cycles_one([], TypesOut, Seen, SeenOut) => TypesOut = [], SeenOut = Seen.
+remove_class_cycles_one([Type|Types], TypesOut, Seen, SeenOut),
+        Type = class_type(ClassName, _),
+        key_in_dict(ClassName, Seen) =>
+    remove_class_cycles_one(Types, TypesOut, Seen, SeenOut).
+remove_class_cycles_one([Type|Types], TypesOut, Seen, SeenOut) =>
+    TypesOut = [Type|Types2],
+    (   Type = class_type(ClassName)
+    ->  put_dict(ClassName, Seen, '', Seen2)
+    ;   Seen2 = Seen
+    ),
+    remove_class_cycles_one(Types, Types2, Seen2, SeenOut).
+
+key_in_dict(Key, Dict) :- get_dict(Key, Dict, _).
 
 %%%%%%              %%%%%%%
 %%%%%% Accumulators %%%%%%%
@@ -3153,12 +3162,12 @@ remove_class_cycles_one([Type|Types], TypesOut, Seen, SeenOut) :-
 
 %! add_rej_to_symtab(+FqnRejType:pair, +Symtab0, -Symtab) is det.
 % For Fqn-RejType pairs in FqnRejTypes, add to symtab.
-add_rej_to_symtab(Fqn-RejType, Symtab0, Symtab) :-
+add_rej_to_symtab(Fqn-RejType, Symtab0, Symtab) =>
     symtab_lookup(Fqn, Symtab0, FqnType),
     type_union(FqnType, RejType, UnionType),
     symtab_insert(Fqn, Symtab0, UnionType, Symtab).
 
-%! symrej_accum(+FqnType:triple, +Symtab0Rej0Mod0, +SymtabRejMod) is det.
+%! symrej_accum(+FqnType:triple, +Symtab0Rej0Mod0, -SymtabRejMod) is det.
 % The accumulator for 'symrej'.
 % FqnType = Key-Type-TypeSymtab.
 % Tries to unify Key-Type with what's already in symtab; if that
@@ -3175,7 +3184,8 @@ add_rej_to_symtab(Fqn-RejType, Symtab0, Symtab) :-
 % TODO: can we eliminate the "(Type=[]->true;true)" ?
 %       One way would be to do an initial pass that
 %       enters all the identifiers into symtab (with type=[]).
-symrej_accum(Fqn-Type-TypeSymtab, sym_rej(Symtab0,Rej0), sym_rej(Symtab,Rej)) :-
+symrej_accum(Fqn-Type-TypeSymtab, sym_rej(Symtab0,Rej0), SymtabRejMod) =>
+    SymtabRejMod = sym_rej(Symtab,Rej),
     (   symtab_lookup(Fqn, Symtab0, TypeSymtab)
     ->  symrej_accum_found(Fqn, Type, TypeSymtab, Symtab0, Symtab, Rej0, Rej)
     ;   % ensure Type is instantiated (defaults to []), if this is a lookup
@@ -3238,20 +3248,21 @@ possible_classes_from_attr(AttrName, Classes) ==>>
 %       sources that have lots of unresolved attributes, so better to
 %       first concentrate on resolving as many attrs as possible.
 % TODO: https://github.com/kamahen/pykythe/issues/38
-classes_from_attr_(Symtab, AttrName, Classes) :-
-    (   common_attr(AttrName)
-    ->  Classes = []
-    ;   atomic_list_concat(['.', AttrName], DotAttrName),
-        conv_symtab_pairs(attr_candidate(Symtab, DotAttrName), Symtab, Candidates),
-        pairs_values(Candidates, Classes)
-    ).
+classes_from_attr_(_Symtab, AttrName, Classes),
+        common_attr(AttrName) =>
+    Classes = [].
+classes_from_attr_(Symtab, AttrName, Classes) =>
+    atomic_list_concat(['.', AttrName], DotAttrName),
+    conv_symtab_pairs(attr_candidate(Symtab, DotAttrName), Symtab, Candidates),
+    pairs_values(Candidates, Classes).
 
-attr_candidate(Symtab, DotAttrName, Fqn-_, ClassFqn-Class) :-
-     remove_suffix(Fqn, DotAttrName, ClassFqn),
-     % There are some corner cases that the following doesn't handle,
-     % such as a class defined within a function but they're rare:
-     \+ sub_atom(ClassFqn, _, _, _, '<'), % doesn't contain '<local>', '<comp_for>', etc.
-     symtab_lookup(ClassFqn, Symtab, Class).
+attr_candidate(Symtab, DotAttrName, Fqn-_, ClassFqnClass) =>
+    ClassFqnClass = ClassFqn-Class,
+    remove_suffix(Fqn, DotAttrName, ClassFqn),
+    % There are some corner cases that the following doesn't handle,
+    % such as a class defined within a function but they're rare:
+    \+ sub_atom(ClassFqn, _, _, _, '<'), % doesn't contain '<local>', '<comp_for>', etc.
+    symtab_lookup(ClassFqn, Symtab, Class).
 
 %! log_possible_classes_from_attr(+BindsOrRef:atom, +AttrAstn, +Classes, +AtomType)//[kyfact,symrej,file_meta] is nondet.
 log_possible_classes_from_attr(BindsOrRef, astn(Start,End,AttrName), Classes, AtomType) ==>>
@@ -3315,10 +3326,12 @@ common_attr('__init__'). % Occurs when people use a class's __init__ instead of 
 type_union(Type1, Type2, UnionType) :-
     ord_union(Type1, Type2, UnionType0),
     normalize_type(UnionType0, UnionType).
+
 %! type_add_element(+Set1, +Element, ?Set2) is det.
 type_add_element(Type0, Element, Type) :-
     ord_add_element(Type0, Element, Type1),
     normalize_type(Type1, Type).
+
 %! list_to_union_type(+List, -OrdSet) is det.
 list_to_union_type(List, Type) :-
     list_to_ord_set(List, Type0),
@@ -3347,20 +3360,23 @@ normalize_type2(Type0, Type) :-
     select(class_type(C, []), Type0, Type1),
     (  memberchk(class_type(C, _), Type1)
     ;  memberchk(import_ref_type(_, _, class_type(C, _)), Type1)
-    ), !,
+    ),
+    !,
     normalize_type2(Type1, Type).
 normalize_type2(Type0, Type) :-
     select(function_type(F, _, []), Type0, Type1),
     (  memberchk(function_type(F, _, _), Type1)
     ;  memberchk(import_ref_type(_, _, function_type(F, _, _)), Type1)
-    ), !,
+    ),
+    !,
     normalize_type2(Type1, Type).
 normalize_type2(Type0, Type) :-
     select(import_ref_type(_Name, _Fqn, T), Type0, Type1),
-    memberchk(import_ref_type(_, _, T), Type1), !,
+    memberchk(import_ref_type(_, _, T), Type1),
+    !,
     normalize_type2(Type1, Type).
 % DO NOT SUBMIT -- module -> class + simplify base classes
-normalize_type2(Type, Type).     % TODO: this probably is unsufficient.
+normalize_type2(Type0, Type) :- Type = Type0. % TODO: this probably is unsufficient.
 
 %! is_object_type(+Type) is semidet.
 is_object_type([]) :- !.
@@ -3392,8 +3408,6 @@ user:portray(Term) :-
 
 %! pykythe_portray is semidet.
 %  TODO: change all to use pykythe_portray_unify (see 1st clause).
-%    DO NOT SUBMIT -- use Picat pattern matching (=>).
-%                     requires swipl version 8.3.19
 pykythe_portray(Astn) :-
     node_astn(Astn0, Start, End, Value),
     pykythe_portray_unify(Astn0, Astn),
@@ -3489,8 +3503,8 @@ pykythe_portray(Symtab) :-
 pykythe_portray_dict_entries(Entries) :-
     pykythe_portray_dict_entries(Entries, '').
 
-pykythe_portray_dict_entries([], _Sep).
-pykythe_portray_dict_entries([K-V|KVs], Sep) :-
+pykythe_portray_dict_entries([], _Sep) => true.
+pykythe_portray_dict_entries([K-V|KVs], Sep) =>
     format('~w~q:~q', [Sep, K, V]),
     pykythe_portray_dict_entries(KVs, ', ').
 
@@ -3603,7 +3617,8 @@ symtab_if_file(Msg) ==>>    % DO NOT SUBMIT - replace this with something that u
 %! starts_with_fqn(+Prefix:atom, +Fqn-Type:pair(atom), -Fqn2-Type2:pair(atom)) is semidet.
 % If Fqn has Prefix as a prefix, and the result isn't in the builtins,
 % return the de-prefixed FQN with its type.
-starts_with_fqn_type(Prefix, Fqn-Type, Fqn2-Type) :-
+starts_with_fqn_type(Prefix, Fqn-Type, Fqn2Type) =>
+    Fqn2Type = Fqn2-Type,
     (   remove_prefix(Fqn, Prefix, Fqn2a)
     ->  join_fqn(['<>', Fqn2a], Fqn2)
     % For debugging, the following can be used to show additional symtab entries:
@@ -3616,7 +3631,8 @@ starts_with_fqn_type(Prefix, Fqn-Type, Fqn2-Type) :-
 stats(Stats) :-
     maplist(statistic_kv, [atoms,cputime,globalused,localused,trail,stack], Stats).
 
-statistic_kv(Key, Key:Value) :-
+statistic_kv(Key, KeyValue) =>
+    KeyValue = Key:Value,
     statistics(Key, Value).
 
 end_of_file.

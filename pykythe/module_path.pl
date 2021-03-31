@@ -82,10 +82,10 @@
 % checked.
 % - "from .. import i5" has FromImportPath='i5' and FromDots=[_,_]
 % - "from os.path import sep" has FromImportPath='os/path/sep' and FromDots=[]
-full_path([], Path, Pythonpaths, _CurrModulePath, ModuleAndMaybeToken, ModulePieces) :-
+full_path([], Path, Pythonpaths, _CurrModulePath, ModuleAndMaybeToken, ModulePieces) =>
     full_path_prefixed(Path, Pythonpaths, ModuleAndMaybeToken),
     full_module_pieces(ModuleAndMaybeToken, ModulePieces).
-full_path([_|Dots], Path, _Pythonpaths, CurrModulePath, ModuleAndMaybeToken, ModulePieces) :-
+full_path([_|Dots], Path, _Pythonpaths, CurrModulePath, ModuleAndMaybeToken, ModulePieces) =>
     directory_file_path(CurrModulePathDir, _, CurrModulePath),
     add_up_dots(Dots, [Path], DotsPath),
     join_path([CurrModulePathDir|DotsPath], FromImportPath2),
@@ -106,8 +106,8 @@ full_path([_|Dots], Path, _Pythonpaths, CurrModulePath, ModuleAndMaybeToken, Mod
     ),
     full_module_pieces(ModuleAndMaybeToken, ModulePieces).
 
-add_up_dots([], Path, Path).
-add_up_dots([_|Dots], Path, DotsPath) :-
+add_up_dots([], Path, DotsPath) => DotsPath = Path.
+add_up_dots([_|Dots], Path, DotsPath) =>
     add_up_dots(Dots, ['..'|Path], DotsPath).
 
 %! module_fqn_path(+ModuleFqn:atom, -Path:atom) is nondet.

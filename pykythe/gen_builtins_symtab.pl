@@ -83,14 +83,14 @@ gen_builtins_symtab_main :-
     atom_concat(PackageDot, 'object', ObjectFqn),
     ObjectType = [class_type(ObjectFqn, [])],
     maplist(clean_symtab_pair(ObjectType), BuiltinsPairs0, BuiltinsPairs1),
-    replace_key_value(BuiltinsPairs1, 'object', ObjectType, BuiltinsPairs),
+    must_once(replace_key_value(BuiltinsPairs1, 'object', ObjectType, BuiltinsPairs)),
     conv_symtab(clean_symtab_pair(ObjectType), Symtab0, Symtab1),
     symtab_insert('object', Symtab1, ObjectType, Symtab),
     memberchk('object'-ObjectType, BuiltinsPairs),
     log_if(true, 'ObjectType: ~q', [ObjectType]),
     must_once(symtab_lookup('object', Symtab, ObjectType)),
     list_to_symtab(BuiltinsPairs, BuiltinsSymtab),
-    conv_symtab(is_module, Symtab, SymtabModules),
+    conv_symtab(is_module_sym_type, Symtab, SymtabModules),
     log_if(true, 'Package: ~q', [Package]),
     builtins_module(BuiltinsModule),
     write_atomic_stream(write_symtab_fact(
@@ -99,14 +99,18 @@ gen_builtins_symtab_main :-
     log_if(true, 'Finished gen_builtins_symtab'),
     halt.
 
+%! replace_key_value(+List0, +Key, +Value, -List) is nondet.
+%  Succceeds if Key-_ in List0 and replaced with Key-Value; backtracks
+%  for more solutions.
 replace_key_value(List0, Key, Value, List) :-
-    ( append(Before, [Key-_|After], List0) -> true ; fail ),
+    append(Before, [Key-_|After], List0),
     append(Before, [Key-Value|After], List).
 
 %! strip_sym(+PackageDot:atom, +SymType:(atom-atom), -SymStrippedType:(atom-atom))) is det.
 % Strip PackageDot from beginning of Sym (if there), succeed if there
 % are no '.'s in the result or it isn't in extra/1.
-strip_sym(PackageDot, Sym-Type, SymStripped-Type) :-
+strip_sym(PackageDot, Sym-Type, SymStrippedType) =>
+    SymStrippedType = SymStripped-Type,
     % SymStripped = Sym without leading PackageDot (or fail)
     atom_concat(PackageDot, SymStripped, Sym),
     \+ extra(SymStripped),
@@ -117,7 +121,9 @@ strip_sym(PackageDot, Sym-Type, SymStripped-Type) :-
     %   ( \+ atom_concat('_', _, SymStripped);
     %     ( atom_concat('__', _, SymStripped), atom_concat(SymStripped, '__d', _) ) ).
 
-is_module(Sym-Type, Sym-Type) :-
+%! is_module_sym_type(+SymType, -SymType) is semidet
+is_module_sym_type(Sym-Type, SymType) =>
+    SymType = Sym-Type,
     memberchk(module_type(_), Type).
 
 write_symtab_fact(Opts, BuiltinsModule, Symtab, BuiltinsSymtab, BuiltinsPairs, SymtabModules, Stream) :-
@@ -164,18 +170,21 @@ ensure_no_more_package_facts(KytheInputStream, Package) :-
     ;   ensure_no_more_package_facts(KytheInputStream, Package)
     ).
 
-clean_symtab_pair(ObjectType, Name-Type, Name-CleanedType) :-
+clean_symtab_pair(ObjectType, Name-Type, NameCleanedType) =>
+    NameCleanedType = Name-CleanedType,
     maplist(clean_type(ObjectType), Type, CleanedType).
 
-clean_type(ObjectType, class_type(Fqn,Bases), class_type(Fqn,CleanedBases)) :- !,
+clean_type(ObjectType, class_type(Fqn,Bases), Type) =>
+    Type = class_type(Fqn,CleanedBases),
     % similar to pykythe:clean_class/3 (no need to remove cycles),
     % and doesn't use global builtins_symtab_primitive/2.
     exclude(is_object_type(ObjectType), Bases, CleanedBases).
-clean_type(_ObjectType, Type, Type).
+clean_type(_ObjectType, Type0, Type) => Type0 = Type.
 
-is_object_type(_ObjectType, []) :- !.
-is_object_type(ObjectType, ObjectType) :- !.
-is_object_type(ObjectType, [ObjectType]) :- !.
+is_object_type(_ObjectType, []) => true.
+is_object_type(ObjectType, ObjectType) => true.
+is_object_type(ObjectType, [ObjectType]) => true.
+is_object_type(_, _) => fail.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

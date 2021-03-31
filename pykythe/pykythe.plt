@@ -22,19 +22,20 @@ pykythe_run_tests :-
 
 :- use_module(library(lists), [subtract/3]).
 
-test_meta(meta{kythe_corpus: 'CORPUS',
-               kythe_root: 'ROOT',
-               path: SrcPath,
-               language: python,
-               encoding: 'utf-8',
-               contents_base64: '',
-               contents_str: _,
-               contents_bytes: _,
-               sha1: '',
-               src_fqn: SrcFqn,
-               pythonpath: Pythonpath,
-               opts: Opts,
-               version: ''}) :-
+test_meta(Meta) =>
+    Meta = meta{kythe_corpus: 'CORPUS',
+                kythe_root: 'ROOT',
+                path: SrcPath,
+                language: python,
+                encoding: 'utf-8',
+                contents_base64: '',
+                contents_str: _,
+                contents_bytes: _,
+                sha1: '',
+                src_fqn: SrcFqn,
+                pythonpath: Pythonpath,
+                opts: Opts,
+                version: ''},
     pykythe_test:opts(Opts),
     pykythe_test:src_paths([SrcPath]),
     Pythonpath = Opts.pythonpath,
@@ -45,12 +46,13 @@ kyfact_edge(EdgeKind, Tag, Json, Out) :-
     EdgeKind0 == EdgeKind,
     Out = Tag{source: Json.source.signature, target: Json.target.signature}.
 
-find_anchor(Line, I-Match, Astn) :-
+find_anchor(Line, I-Match, Astn) =>
     %% setof guarantees ordering of find_anchor results
     setof(Astn, find_anchor_match(Line, Match, Astn), Astns),
     nth0(I, Astns, Astn).
 
-find_anchor_match(Line, Match, 'Astn'{start:Start, end:End, value:Match}) :-
+find_anchor_match(Line, Match, AstnMatch) :-
+    AstnMatch = 'Astn'{start:Start, end:End, value:Match},
     sub_atom(Line, Start, Len, _After, Match),
     End is Start + Len.
 
