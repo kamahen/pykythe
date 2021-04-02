@@ -53,7 +53,8 @@
 %   __package__: Optional[str]
 % (and ignore __build_class__, __import__, __loader__, __spec__)
 
-gen_builtins_symtab_main :-
+:- det(gen_builtins_symtab_main/0).
+gen_builtins_symtab_main =>
     % set_prolog_flag(color_term, false),        % TODO: remove (to ~/.plrc)
     % allow --versions but don't use it (for now)
     OptsSpec =
@@ -68,22 +69,22 @@ gen_builtins_symtab_main :-
     must_once_msg(PositionalArgs = [PykytheSymtabInputPath, KytheJsonInputPath, SymtabOutputPath],
                   'Missing/extra positional args'),
 
-    must_once(read_symtab_from_cache_no_check(PykytheSymtabInputPath, Symtab0)),
+    read_symtab_from_cache_no_check(PykytheSymtabInputPath, Symtab0),
     log_if(true, '~q', [done-read_symtab_from_cache(PykytheSymtabInputPath)]),
 
     open(KytheJsonInputPath, read, KytheJsonInputStream, [type(binary)]),
-    must_once(read_package_from_cache(KytheJsonInputStream, Package)),
+    read_package_from_cache(KytheJsonInputStream, Package),
     log_if(true, '~q', [done-read_package_from_cache(KytheJsonInputPath, Package)]),
 
     atom_concat(Package, '.', PackageDot),
-    must_once(conv_symtab_pairs(strip_sym(PackageDot), Symtab0, BuiltinsPairs0)),
+    conv_symtab_pairs(maybe_strip_sym(PackageDot), Symtab0, BuiltinsPairs0),
 
     % object is special: it needs the 'object' type whereas for all
     % other classes, 'object' is implied.
     atom_concat(PackageDot, 'object', ObjectFqn),
     ObjectType = [class_type(ObjectFqn, [])],
     maplist(clean_symtab_pair(ObjectType), BuiltinsPairs0, BuiltinsPairs1),
-    must_once(replace_key_value(BuiltinsPairs1, 'object', ObjectType, BuiltinsPairs)),
+    replace_first_key_value(BuiltinsPairs1, 'object', ObjectType, BuiltinsPairs),
     conv_symtab(clean_symtab_pair(ObjectType), Symtab0, Symtab1),
     symtab_insert('object', Symtab1, ObjectType, Symtab),
     memberchk('object'-ObjectType, BuiltinsPairs),
@@ -99,17 +100,18 @@ gen_builtins_symtab_main :-
     log_if(true, 'Finished gen_builtins_symtab'),
     halt.
 
-%! replace_key_value(+List0, +Key, +Value, -List) is nondet.
-%  Succceeds if Key-_ in List0 and replaced with Key-Value; backtracks
-%  for more solutions.
-replace_key_value(List0, Key, Value, List) :-
-    append(Before, [Key-_|After], List0),
+:- det(replace_first_key_value/4).
+%! replace_first_key_value(+List0, +Key, +Value, -List) is det/error.
+%  Succceeds with the first instance of Key-_ in List0 replaced with Key-Value.
+%  Errors if Key is not in List0 (via the det/1 declaration).
+replace_first_key_value(List0, Key, Value, List) =>
+    append(Before, [Key-_|After], List0), $,
     append(Before, [Key-Value|After], List).
 
-%! strip_sym(+PackageDot:atom, +SymType:(atom-atom), -SymStrippedType:(atom-atom))) is det.
+%! maybe_strip_sym(+PackageDot:atom, +SymType:(atom-atom), -SymStrippedType:(atom-atom))) is semidet.
 % Strip PackageDot from beginning of Sym (if there), succeed if there
-% are no '.'s in the result or it isn't in extra/1.
-strip_sym(PackageDot, Sym-Type, SymStrippedType) =>
+% are no '.'s in the result or if it isn't in extra/1.
+maybe_strip_sym(PackageDot, Sym-Type, SymStrippedType) =>
     SymStrippedType = SymStripped-Type,
     % SymStripped = Sym without leading PackageDot (or fail)
     atom_concat(PackageDot, SymStripped, Sym),
@@ -126,15 +128,16 @@ is_module_sym_type(Sym-Type, SymType) =>
     SymType = Sym-Type,
     memberchk(module_type(_), Type).
 
-write_symtab_fact(Opts, BuiltinsModule, Symtab, BuiltinsSymtab, BuiltinsPairs, SymtabModules, Stream) :-
+:- det(write_symtab_fact/7).
+write_symtab_fact(Opts, BuiltinsModule, Symtab, BuiltinsSymtab, BuiltinsPairs, SymtabModules, Stream) =>
     format(Stream, '~k.~n', [builtins_version(Opts.version)]),
     format(Stream, '~k.~n', [builtins_module(BuiltinsModule)]), % TODO: needed?
     format(Stream, '~k.~n', [builtins_symtab(Symtab)]),
     format(Stream, '~k.~n', [builtins_pairs(BuiltinsPairs)]),
     format(Stream, '~k.~n', [builtins_symtab_modules(SymtabModules)]),
-    must_once(full_path([], 'typing', Opts.pythonpath, '', TypingModule0, _)),
-    must_once(module_part(TypingModule0, TypingModule)),
-    must_once(\+ token_part(TypingModule0, _)),
+    full_path([], 'typing', Opts.pythonpath, '', TypingModule0, _),
+    module_part(TypingModule0, TypingModule),
+    must_once(\+ maybe_token_part(TypingModule0, _)),
     log_if(false, 'TYPING module: ~q (from ~q)', [TypingModule, TypingModule0]), % TODO: delete
     module_file_exists(TypingModule0),
     % TODO: delete the following, which are for eventually adding
@@ -151,7 +154,8 @@ write_symtab_fact(Opts, BuiltinsModule, Symtab, BuiltinsSymtab, BuiltinsPairs, S
             symtab_lookup(Primitive, BuiltinsSymtab, Builtin)),
            format(Stream, '~k.~n', [builtins_symtab_primitive(Primitive, Builtin)])).
 
-read_package_from_cache(KytheJsonInputStream, Package) :-
+:- det(read_package_from_cache/2).
+read_package_from_cache(KytheJsonInputStream, Package) =>
     pykythe_json_read_dict(KytheJsonInputStream, JsonDict),
     (   JsonDict.fact_name == '/kythe/node/kind',
         base64_utf8(package, JsonDict.fact_value)
@@ -160,7 +164,8 @@ read_package_from_cache(KytheJsonInputStream, Package) :-
     ;   read_package_from_cache(KytheJsonInputStream, Package)
     ).
 
-ensure_no_more_package_facts(KytheInputStream, Package) :-
+:- det(ensure_no_more_package_facts/2).
+ensure_no_more_package_facts(KytheInputStream, Package) =>
     pykythe_json_read_dict(KytheInputStream, JsonDict),
     (   JsonDict == @(end)
     ->  true
@@ -170,10 +175,12 @@ ensure_no_more_package_facts(KytheInputStream, Package) :-
     ;   ensure_no_more_package_facts(KytheInputStream, Package)
     ).
 
+:- det(clean_symtab_pair/3).
 clean_symtab_pair(ObjectType, Name-Type, NameCleanedType) =>
     NameCleanedType = Name-CleanedType,
     maplist(clean_type(ObjectType), Type, CleanedType).
 
+:- det(clean_type/3).
 clean_type(ObjectType, class_type(Fqn,Bases), Type) =>
     Type = class_type(Fqn,CleanedBases),
     % similar to pykythe:clean_class/3 (no need to remove cycles),
@@ -181,6 +188,8 @@ clean_type(ObjectType, class_type(Fqn,Bases), Type) =>
     exclude(is_object_type(ObjectType), Bases, CleanedBases).
 clean_type(_ObjectType, Type0, Type) => Type0 = Type.
 
+%! is_object_type(+ObjectType, +Type) is semidet.
+% Succeed if Type is one of the variants that's equivalent to ObjectType.
 is_object_type(_ObjectType, []) => true.
 is_object_type(ObjectType, ObjectType) => true.
 is_object_type(ObjectType, [ObjectType]) => true.

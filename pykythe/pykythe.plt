@@ -12,7 +12,8 @@
     pykythe_test:src_paths/1,
     pykythe_test:opts/1.
 
-pykythe_run_tests :-
+:- det(pykythe_run_tests/0).
+pykythe_run_tests =>
     pykythe:pykythe_opts(SrcPaths, Opts),
     assertz(pykythe_test:src_paths(SrcPaths)),
     assertz(pykythe_test:opts(Opts)),
@@ -114,7 +115,7 @@ test(kyImportDottedAsNamesFqn_top) :-
     module_path:full_module_part(Module_os_path_sep, ModuleModule_os_path_sep),
     pykythe_utils:remove_suffix(ModuleModule_os_path_sep, '.stdlib.os.path.sep', TypeshedFqn),
     assertion(pykythe_utils:has_suffix(TypeshedFqn, '.typeshed')),
-    assertion(module_path:token_part(Module_os_path_sep, sep)),
+    assertion(module_path:maybe_token_part(Module_os_path_sep, sep)),
 
     %% Module_os_path = module_alone('___.typeshed.stdlib.os.path', '___/typeshed/stdlib/os/path.pyi')
     module_path:full_module_part(Module_os_path, ModuleModule_os_path),

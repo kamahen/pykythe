@@ -32,7 +32,7 @@
 %! mro(:Bases, +Class:atom, -Mro:list(atom)) is semidet.
 % Failure means an inconsistent hierarchy
 % Requres bases/2 facts, each mapping a class name to a list of base class names
-mro(Bases, Class, Mro) :-
+mro(Bases, Class, Mro) =>
     call(Bases, Class, ClassDirectBases),
     maplist(mro(Bases), ClassDirectBases, ClassMro),
     append([[[Class]], ClassMro, [ClassDirectBases]], ToMerge),

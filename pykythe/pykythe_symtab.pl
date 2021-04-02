@@ -23,6 +23,7 @@
                            symtab_scope_pairs/3,
                            symtab_size/2,
                            symtab_values/2,
+                           validate_symtab/1,
                            write_symtab/4
                           ]).
 
@@ -54,25 +55,31 @@ is_symtab(Symtab) :-
 symtab_empty(Symtab) :-
     rb_empty(Symtab).
 
-ord_list_to_symtab(Pairs, Symtab) :-
+:- det(ord_list_to_symtab/2).
+ord_list_to_symtab(Pairs, Symtab) =>
     ord_list_to_rbtree(Pairs, Symtab),
-    must_once(is_rbtree(Symtab)).  % Ensures no dup keys
+    is_rbtree(Symtab). % Ensures no dup keys - failure will trigger determinism_error
 
-list_to_symtab(Pairs, Symtab) :-
+:- det(list_to_symtab/2).
+list_to_symtab(Pairs, Symtab) =>
     list_to_rbtree(Pairs, Symtab),
-    must_once(is_rbtree(Symtab)).  % Ensure no dup keys
+    is_rbtree(Symtab). % Ensures no dup keys - failure will trigger determinism_error
 
-symtab_insert(Key, Symtab0, Value, Symtab) :-
+:- det(symtab_insert/4).
+symtab_insert(Key, Symtab0, Value, Symtab) =>
     % This weird ordering of params is the same as put_dict/4.
     rb_insert(Symtab0, Key, Value, Symtab).
 
+%! symtab_lookup(+Key, +Symtab, -Value) is semidet.
+% Fails if Key isn't in Symtab
 symtab_lookup(Key, Symtab, Value),
         ground(Key) =>
     rb_lookup(Key, Value, Symtab).
 symtab_lookup(Key, _Symtab, _Value) =>
     instantiation_error(Key).
 
-symtab_size(Symtab, Size) :-
+:- det(symtab_size/2).
+symtab_size(Symtab, Size) =>
     rb_size(Symtab, Size).
 
 symtab_pairs(Symtab, Pairs) :-
@@ -84,21 +91,25 @@ symtab_values(Symtab, Values) :-
     rb_visit(Symtab, Pairs),
     pairs_values(Pairs, Values).
 
-conv_symtab(Pred, Symtab0, Symtab) :-
+:- det(conv_symtab/3).
+conv_symtab(Pred, Symtab0, Symtab) =>
     % TODO: see conv_symtab_pairs and do something similar
     %       (might not be worth it; only used in gen_builtins_symtab)
     rb_visit(Symtab0, Pairs0),
     convlist(Pred, Pairs0, Pairs),
     ord_list_to_rbtree(Pairs, Symtab).
 
+:- det(conv_symtab_pairs/3).
 conv_symtab_pairs(Pred, Symtab, Pairs) :-
     rb_conv_pairs(Symtab, Pred, Pairs).
 
+:- det(rb_conv_pairs/3).
 % rb_visit_pairs is derived from rb_visit/2 and convlist/3.
 % TODO: add this to library(rbtrees)
 rb_conv_pairs(t(_,T), Pred, Lf) =>
     rb_conv_pairs_(T, Pred, [], Lf).
 
+:- det(rb_conv_pairs_/3).
 rb_conv_pairs_(black('',_,_,_), _Pred, L0, L) => L0 = L.
 rb_conv_pairs_(red(L,K,V,R), Pred, L0, Lf) =>
     (   call(Pred, K-V, K2V2)
@@ -115,7 +126,7 @@ rb_conv_pairs_(black(L,K,V,R), Pred, L0, Lf) =>
 
 %! maybe_read_symtab_from_cache(+OptsVersion:atom, +PykytheSymtabInputStream, +SrcPath, +Symtab0, -NewSymtab, :IfCacheFail, :IfSha1Fail) is semidet.
 % Also merges Symtab0 with SymtabFromCache to create NewSymtab
-maybe_read_symtab_from_cache(OptsVersion, PykytheSymtabInputStream, SrcPath, Symtab0, NewSymtab, IfCacheFail, IfSha1Fail) :-
+maybe_read_symtab_from_cache(OptsVersion, PykytheSymtabInputStream, SrcPath, Symtab0, NewSymtab, IfCacheFail, IfSha1Fail) =>
     % See write_batch/2 for how these were output.
     read_term(PykytheSymtabInputStream, CacheVersion, []),
     % short-circuit other tests if version mismatch
@@ -131,6 +142,7 @@ maybe_read_symtab_from_cache(OptsVersion, PykytheSymtabInputStream, SrcPath, Sym
     ;   call(IfSha1Fail),
         fail
     ),
+    $,
     % TODO - DO NOT SUBMIT
     % The JSON read is slow (1.6 sec) and probably the write is
     % also slow ... use fast_read/2, fast_write/2.
@@ -141,14 +153,16 @@ maybe_read_symtab_from_cache(OptsVersion, PykytheSymtabInputStream, SrcPath, Sym
     read_term(PykytheSymtabInputStream, SymtabFromCacheKVs, []),
     foldl_rb_insert(SymtabFromCacheKVs, Symtab0, NewSymtab).
 
+:- det(foldl_rb_insert/3).
 foldl_rb_insert([], Rb0, Rb) => Rb0 = Rb.
 foldl_rb_insert([K-V|KVs], Rb0, Rb) =>
     rb_insert(Rb0, K, V, Rb1),
     foldl_rb_insert(KVs, Rb1, Rb).
 
+:- det(read_symtab_from_cache_no_check/2).
 % The following is a cut-down version of maybe_read_symtab_from_cache/6
 % used by gen_builtins_symtab.pl
-read_symtab_from_cache_no_check(PykytheSymtabInputPath, Symtab) :-
+read_symtab_from_cache_no_check(PykytheSymtabInputPath, Symtab) =>
     setup_call_cleanup(
         open(PykytheSymtabInputPath, read, PykytheSymtabInputStream, [type(binary)]),
         (   read_term(PykytheSymtabInputStream, _Version, []),
@@ -160,8 +174,20 @@ read_symtab_from_cache_no_check(PykytheSymtabInputPath, Symtab) :-
     must_be(ground, SymtabKVs),
     ord_list_to_rbtree(SymtabKVs, Symtab).
 
+:- det(validate_symtab/1).
+%! valid_symtab(+Symtab) is det/error.
+validate_symtab(Symtab) :-      % TODO: remove this
+    must_once(symtab_pairs(Symtab, SymtabPairs)),
+    maplist(validate_symtab_pair, SymtabPairs).
+
+%! validate_symtab_pair(+FqnType:pair) is det.
+validate_symtab_pair(Fqn-Type) =>
+    must_be(atom, Fqn),
+    must_be(list, Type).
+
+:- det(write_symtab/4).
 %! write_symtab(+Symtab, +Version, +Sha1, +PykytheBatchOutStream) is det.
-write_symtab(Symtab, Version, Sha1, PykytheBatchOutStream) :-
+write_symtab(Symtab, Version, Sha1, PykytheBatchOutStream) =>
     rb_visit(Symtab, SymtabKVs),
     % DO NOT SUBMIT - fast-serialize
     format(PykytheBatchOutStream, '~k.~n~k.~n~k.~n', [Version, Sha1, SymtabKVs]).
@@ -169,15 +195,17 @@ write_symtab(Symtab, Version, Sha1, PykytheBatchOutStream) :-
 % DO NOT SUBMIT:
 % Need to add a portray -- see pykythe:pykythe_portray(Symtab)
 
+:- det(symtab_scope_pairs/3).
 %! symtab_scope_pairs(+FqnScope:atom, +Symtab, -SymtabPairsScope) is det.
 % For debugging: extract only entries that start with FqnScope + '.'
 % This isn't very useful because all the builgins are added to the
 % local scope, so it matches a lot of entries.
-symtab_scope_pairs(FqnScope, Symtab, SymtabPairsScope) :-
+symtab_scope_pairs(FqnScope, Symtab, SymtabPairsScope) =>
     symtab_pairs(Symtab, SymtabPairs),
     include(symtab_entry_starts_with(FqnScope), SymtabPairs, SymtabPairsScope).
 
-symtab_entry_starts_with(FqnScope, Key-_Type) :-
+:- det(symtab_entry_starts_with/2).
+symtab_entry_starts_with(FqnScope, Key-_Type) =>
     (  FqnScope = Key
     ;  atom_concat(FqnScope, '.', FqnScopeDot),
        atom_concat(FqnScopeDot, _, Key)

@@ -1,5 +1,7 @@
 % -*- mode: Prolog -*-
 
+% TODO: replace this code with $/1 when it becomes available.
+
 :- module(must_once, [must_once/1,
                       must_once_msg/2,
                       must_once_msg/3,

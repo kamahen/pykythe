@@ -14,12 +14,13 @@
 % TODO: get rid of Path's in module types.
 
 :- module(module_path, [append_fqn_dot/2,
-                        canonical_path/2,
                         full_module_part/2,
                         full_path/6,
                         full_path_prefixed/3,
                         join_fqn/2,
                         join_path/2,
+                        maybe_canonical_path/2,
+                        maybe_token_part/2,
                         module_file_exists/1,
                         module_to_module_alone/3,
                         module_part/2,
@@ -30,8 +31,7 @@
                         path_to_module_fqn_or_unknown/2,
                         split_fqn/2,
                         split_path/2,
-                        src_base/2,
-                        token_part/2
+                        src_base/2
                        ]).
 :- encoding(utf8).
 :- set_prolog_flag(optimise, true).
@@ -43,7 +43,6 @@
 :- style_check(-var_branches).
 :- use_module(library(pcre), [re_matchsub/4, re_replace/4]).
 :- style_check(+var_branches).
-:- use_module(rdet2, [rdet/1]).
 :- use_module(must_once, [must_once/1, must_once_msg/2, must_once_msg/3, fail/1]).
 :- use_module(pykythe_utils).
 
@@ -54,26 +53,7 @@
 % :- set_prolog_flag(generate_debug_info, false).
 
 
-:- if(true).  % Turning off rdet can sometimes make debugging easier.
-
-:- maplist(rdet, [
-                  append_fqn_dot/2,
-                  full_path/6,
-                  % module_fqn_path/2,
-                  join_fqn/2,
-                  join_path/2,
-                  module_part/2,
-                  module_to_module_alone/3,
-                  path_part/2,
-                  path_to_module_fqn_or_unknown/2,
-                  remove_last_component/3,
-                  src_base/2,
-                  simple_path_module_fqn/2,
-                  split_fqn/2,
-                  split_path/2
-                  ]).
-:- endif.
-
+:- det(full_path/6).
 %! full_path(+FromDots, +Path, +Pythonpaths, +CurrModulePath, -ModuleAndMaybeToken, -ModulePieces:list(atom)) is det.
 % Derive a module (and maybe token) for an "import" or
 % "from ... import" statement.
@@ -97,7 +77,7 @@ full_path([_|Dots], Path, _Pythonpaths, CurrModulePath, ModuleAndMaybeToken, Mod
         % TODO: AbsFromImportPath2 starts with '.', so this ends up
         %       with '<unknown>..' at the beginning; but fixing needs
         %       to deal with other code that converts to/from list.
-        absolute_file_name_rel(FromImportPath2, AbsFromImportPath2),
+        absolute_file_name_rel(FromImportPath2, AbsFromImportPath2), % potentially backtracks & doesn't check existence
         % The '{...}' in the following is because there could be
         % a ".<id>" following, which would be confused with an extension
         % in a file path.
@@ -106,10 +86,12 @@ full_path([_|Dots], Path, _Pythonpaths, CurrModulePath, ModuleAndMaybeToken, Mod
     ),
     full_module_pieces(ModuleAndMaybeToken, ModulePieces).
 
+:- det(add_up_dots/3).
 add_up_dots([], Path, DotsPath) => DotsPath = Path.
 add_up_dots([_|Dots], Path, DotsPath) =>
     add_up_dots(Dots, ['..'|Path], DotsPath).
 
+:- det(module_fqn_path/2).
 %! module_fqn_path(+ModuleFqn:atom, -Path:atom) is nondet.
 %! module_fqn_path(-ModuleFqn:atom, +Path:atom) is nondet.
 % Convert a module ('path.to.module') to a path ('path/to/module.py').
@@ -117,60 +99,66 @@ add_up_dots([_|Dots], Path, DotsPath) =>
 % addition. Backtracks through all solutions. At least one of
 % ModuleFqn and Path must be instantiated.
 % TODO: harmonize this with path_to_module_fqn / path_to_module_fqn_or_unknown.
-module_fqn_path(ModuleFqn, Path) :-
-    (   var(ModuleFqn)
-    ->  py_ext(Path0, Path2),
-        simple_path_module_fqn(Path0, ModuleFqn)
-    ;   simple_path_module_fqn(Path0, ModuleFqn),
-        py_ext(Path0, Path2)
-    ),
-    canonical_path(Path2, Path).
+module_fqn_path(ModuleFqn, Path),
+        var(ModuleFqn) =>
+    py_ext(Path0, Path2),
+    simple_path_module_fqn(Path0, ModuleFqn),
+    maybe_canonical_path(Path2, Path).
+module_fqn_path(ModuleFqn, Path) =>
+    simple_path_module_fqn(Path0, ModuleFqn),
+    py_ext(Path0, Path2),
+    maybe_canonical_path(Path2, Path).
 
+:- det(simple_path_module_fqn/2).
 %! simple_path_module_fqn(+Path:atom, -ModuleFqn:atom) is det.
 %! simple_path_module_fqn(-Path:atom, +ModuleFqn:atom) is det.
 % TODO: use library(pcre) re_replace?
-simple_path_module_fqn(Path, ModuleFqn) :-
-    (   var(ModuleFqn)
-    ->  split_path_to_module_parts(Path, ModuleFqnParts),
-        join_fqn(ModuleFqnParts, ModuleFqn)
-    ;   split_module_atom(ModuleFqn, ModuleFqnParts),
-        join_path(ModuleFqnParts, Path)
-    ).
+simple_path_module_fqn(Path, ModuleFqn),
+        var(ModuleFqn) =>
+    split_path_to_module_parts(Path, ModuleFqnParts),
+    join_fqn(ModuleFqnParts, ModuleFqn).
+simple_path_module_fqn(Path, ModuleFqn) =>
+    split_module_atom(ModuleFqn, ModuleFqnParts),
+    join_path(ModuleFqnParts, Path).
 
-split_path_to_module_parts(Path, ModuleFqnParts) :-
+:- det(split_path/2).
+split_path_to_module_parts(Path, ModuleFqnParts) =>
     split_path(Path, ModuleFqnParts0),
     maplist(fix_dot, ModuleFqnParts0, ModuleFqnParts).
 
-fix_dot(In, Out) :-
+:- det(fix_dot/2).
+fix_dot(In, Out) =>
     re_replace('\\.'/g, ':', In, Out0),
     atom_string(Out, Out0).
 
-unfix_dot(In, Out) :-
+:- det(unfix_dot/2).
+unfix_dot(In, Out) =>
     re_replace(':'/g, '.', In, Out0),
     atom_string(Out, Out0).
 
+:- det(path_to_module_fqn_or_unknown/2).
 %! path_to_module_fqn_or_unknown(+Path:atom, -ModuleFqn:atom) is det.
 % Get the FQN for the Python module corresponding to Path or
 % a '<unknown>...' atom.
 % TODO: harmonize with path_module_fqn/2.
 path_to_module_fqn_or_unknown(Path, ModuleFqn) :-
-    (   path_to_module_fqn(Path, ModuleFqn)
-    ->  true
-    ;   % Make sure the result conforms with FQN dotted name, so that
-        % match_reversed_module_and_dotted_names/3 works properly
-        split_path_to_module_parts(Path, PathParts),
-        (   PathParts = [''|PathParts2] % root ('/') -- DO NOT SUBMIT - absolute_file_name
-        ->  join_fqn(['<unknown>'|PathParts2], ModuleFqn)
-        ;   join_fqn(['<unknown>'|PathParts], ModuleFqn)
-        )
+    maybe_path_to_module_fqn(Path, ModuleFqn),
+    !.
+path_to_module_fqn_or_unknown(Path, ModuleFqn) :-
+    % Make sure the result conforms with FQN dotted name, so that
+    % match_reversed_module_and_dotted_names/3 works properly
+    split_path_to_module_parts(Path, PathParts),
+    (   PathParts = [''|PathParts2] % root ('/') -- DO NOT SUBMIT - absolute_file_name
+    ->  join_fqn(['<unknown>'|PathParts2], ModuleFqn)
+    ;   join_fqn(['<unknown>'|PathParts], ModuleFqn)
     ).
 
-%! path_to_module_fqn(+Path:atom, -ModuleFqn:atom) is semidet.
+%! maybe_path_to_module_fqn(+Path:atom, -ModuleFqn:atom) is semidet.
 % Get the FQN for the Python module corresponding to Path or fail.
 %  TODO: harmonize with module_fqn_path/2
 %  TODO: use directory_file_path/3 instead of concat, to allow removing trailing '/'.
-path_to_module_fqn(Path, ModuleFqn) :-
-    (   canonical_path(Path, CanonicalPath),
+maybe_path_to_module_fqn(Path, ModuleFqn) :-
+    (   maybe_canonical_path(Path, CanonicalPath),
         py_ext(CanonicalPath0, CanonicalPath)
     ->  true
     ;   absolute_dir(Path, CanonicalPath),
@@ -181,10 +169,10 @@ path_to_module_fqn(Path, ModuleFqn) :-
     ),
     simple_path_module_fqn(CanonicalPath0, ModuleFqn).
 
-%! canonical_path(+Path, -CanonicalPath) is semidet.
+%! maybe_canonical_path(+Path, -CanonicalPath) is semidet.
 % Get a Path (file or directory) into a canonical (absolute) form.
 % Fails if the file or directory doesn't exist.
-canonical_path(Path, CanonicalPath) :-
+maybe_canonical_path(Path, CanonicalPath) :-
     (   absolute_file_name_rel(Path, AbsPath, [access(read), file_errors(fail)])
     ->  true
     % DO NOT SUBUMIT - delete the following?
@@ -192,10 +180,11 @@ canonical_path(Path, CanonicalPath) :-
     ),
     atom_string(CanonicalPath, AbsPath).
 
+:- det(full_path_prefixed/3).
 %! full_path_prefixed(+DeprefixedPath, +Pythonpaths:list, -ModuleAndMaybeToken) is det.
 % ModuleAndMaybeToken is either module_alone or module_and_token functor.
 %  TODO: use directory_file_path/3 instead of concat, to allow removing trailing '/'.
-full_path_prefixed(DeprefixedPath, Pythonpaths, ModuleAndMaybeToken) :-
+full_path_prefixed(DeprefixedPath, Pythonpaths, ModuleAndMaybeToken) =>
     (   member(Prefix, Pythonpaths),
         atom_concat(Prefix, DeprefixedPath, Path0),
         path_expand(Path0, ModuleFqn, ModuleAndMaybeToken)
@@ -213,7 +202,7 @@ full_path_prefixed(DeprefixedPath, Pythonpaths, ModuleAndMaybeToken) :-
 %! path_pieces_expand(PathPieces:list(atom), -ModuleAndMaybeToken) is semidet.
 % path_expand(Path, ModuleFqn, ModuleAndMaybeToken), where Path and
 % ModuleFqn are constructed from PathPieces.
-path_pieces_expand(PathPieces, ModuleAndMaybeToken) :-
+path_pieces_expand(PathPieces, ModuleAndMaybeToken) =>
     join_path(PathPieces, Path),
     join_fqn(PathPieces, ModuleFqn),
     path_expand(Path, ModuleFqn, ModuleAndMaybeToken).
@@ -222,19 +211,19 @@ path_pieces_expand(PathPieces, ModuleAndMaybeToken) :-
 % ModuleAndMaybeToken is either module_alone or module_and_token
 % functor. ModuleFqn can be a logical variable that gets filled in
 % later.
-path_expand(Path0, ModuleFqn, ModuleAndMaybeToken) :-
+path_expand(Path0, ModuleFqn, ModuleAndMaybeToken) =>
     (   Path1 = Path0,
         ModuleAndMaybeToken = module_alone(ModuleFqn, Expanded)
     ;   remove_last_component(Path0, Path1, Token),
         ModuleAndMaybeToken = module_and_token(ModuleFqn, Expanded, Token)
     ),
     (   py_ext(Path1, Path),
-        canonical_path(Path, Expanded)
+        maybe_canonical_path(Path, Expanded)
     ->  true % 'foo.bar' can produce
              %    module_alone('foo.bar', 'foo/bar.py' and
              %    module_and_token('foo.bar', 'foo/__init__.py', 'bar')
              % so prevent the 2nd one if the first one succeeds
-             % (canonical_path/2 checks the validity of files but
+             % (maybe_canonical_path/2 checks the validity of files but
              % there's nothing for checking whether a token exists
               % within a file).
     ;   Path1 = Path0          % module_alone and not module_and_token
@@ -242,11 +231,12 @@ path_expand(Path0, ModuleFqn, ModuleAndMaybeToken) :-
     ;   fail
     ).
 
+:- det(remove_last_component/3).
 %! remove_last_component(+Path, -AllButLast, -Last) is semidet.
 % e.g.: Path='foo/bar/zot', AllButLast='foo/bar', Last=zot
 % Fails if no '/' in Path.
 %  TODO: use directory_file_path/3 instead?
-remove_last_component(Path, AllButLast, Last) :-
+remove_last_component(Path, AllButLast, Last) =>
     split_path(Path, Split),
     Split = [_,_|_],            % at least two components
     (   append(FirstPathPieces, [Last], Split)
@@ -254,6 +244,7 @@ remove_last_component(Path, AllButLast, Last) :-
     ;   fail
     ).
 
+:- det(path_part/2).
 %! path_part(+ModuleAndMaybeToken, -Path) is det.
 % Extract Path from ModuleAndMaybeToken.
 path_part(module_alone(_ModuleFqn,Path), Path).
@@ -268,44 +259,50 @@ module_file_exists(ModuleAndMaybeToken) :-
     absolute_file_name(Path, AbsPath, [access(read), file_errors(error)]),
     must_once(Path == AbsPath).
 
+:- det(module_part/2).
 %! module_part(+ModuleAndMaybeToken, -ModuleFqn:atom) is det.
 % Extract ModuleFqn from ModuleAndMaybeToken. Any Token is ignored.
 module_part(module_alone(ModuleFqn,_Path), ModuleFqn).
 module_part(module_and_token(ModuleFqn,_Path,_Token), ModuleFqn).
 module_part(module_star(ModuleFqn,_Path), ModuleFqn).
 
+:- det(full_module_part/2).
 %! full_module_part(+ModuleAndMaybeToken, -ModuleFqn:atom) is det.
 % Extract ModuleFqn from ModuleAndMaybeToken.
 % If there is a Token, it is added to the ModuleFqn name.
-full_module_part(module_alone(ModuleFqn,_Path), ModuleFqn).
-full_module_part(module_and_token(ModuleFqn,_Path,Token), ModuleDotToken) :-
+full_module_part(module_alone(ModuleFqn,_Path), ModuleFqn2) => ModuleFqn = ModuleFqn2.
+full_module_part(module_and_token(ModuleFqn,_Path,Token), ModuleDotToken) =>
     join_fqn([ModuleFqn, Token], ModuleDotToken).
 % Shouldn't happen:
 % full_module_part(module_star(ModuleFqn,_Path), ModuleFqn).
 
-%! token_part(+ModuleAndMaybeToken, -Token) is semidet.
+%! maybe_token_part(+ModuleAndMaybeToken, -Token) is semidet.
 % If ModuleAndMaybeToken has a Token, get it (else fail).
-token_part(module_and_token(_ModuleFqn,_Path,Token), Token).
+maybe_token_part(module_and_token(_ModuleFqn,_Path,Token), Token).
 
+:- det(full_module_pieces/2).
 %! full_module_pieces(+ModuleAndMaybeToken, -ModulePieces:list(atom)) is det.
 % Extract ModuleFqn (as a list of pieces) from ModuleAndMaybeToken.
-full_module_pieces(module_alone(ModuleFqn,_Path), ModulePieces) :-
+full_module_pieces(module_alone(ModuleFqn,_Path), ModulePieces) =>
     split_module_atom(ModuleFqn, ModulePieces).
-full_module_pieces(module_and_token(ModuleFqn,_Path,Token), ModulePieces) :-
-    split_module_atom(ModuleFqn, ModulePieces0),
-    ( append(ModulePieces0, [Token], ModulePieces) -> true ; fail ).
-full_module_pieces(module_star(ModuleFqn,_Path), ModulePieces) :-
-    split_module_atom(ModuleFqn, ModulePieces0),
-    ( append(ModulePieces0, ['*'], ModulePieces) -> true ; fail ). % TODO: need something better here
+full_module_pieces(module_and_token(ModuleFqn,_Path,Token), ModulePieces) =>
+    split_module_atom(ModuleFqn, ModulePieces0), $,
+    append(ModulePieces0, [Token], ModulePieces).
+full_module_pieces(module_star(ModuleFqn,_Path), ModulePieces) =>
+    split_module_atom(ModuleFqn, ModulePieces0), $,
+    append(ModulePieces0, ['*'], ModulePieces).
 
+:- det(module_to_module_alone/3).
 %! module_to_module_alone(+ModuleAndMaybeToken, -Module, -ModuleFqn:atom) is det.
-module_to_module_alone(ModuleAndMaybeToken, module_alone(ModuleFqn, Path), ModuleFqn) :-
+module_to_module_alone(ModuleAndMaybeToken, ModuleAlone, ModuleFqn) =>
+    ModuleAlone = module_alone(ModuleFqn, Path),
     module_part(ModuleAndMaybeToken, ModuleFqn),
     path_part(ModuleAndMaybeToken, Path).
 
+:- det(split_module_atom/2).
 %! split_module_atom(+ModuleFqn:atom, -ModulePieces:list(atom) is det.
 % Split module into pieces on '.', with special handling for '<unknown>'
-split_module_atom(ModuleFqn, ModulePiecesFixed) :-
+split_module_atom(ModuleFqn, ModulePiecesFixed) =>
     (   re_matchsub('<unknown>\\.{([^}]*)}$', ModuleFqn, Sub, [anchored(true)])
     ->  % filename is in absolute form, so the first part of the result
         % is ''. If we want to get rid of that, then the following
@@ -343,9 +340,10 @@ py_ext_ext('.pyi').
 py_ext_ext('/__init__.py').
 py_ext_ext('/__init__.pyi').
 
+:- det(src_base/2).
 %! src_base(+SrcPath: atom, -SrcPathBase) is det.
 % Remove extension (.py, .pyi, /__init__.{py,pyi}) from a source path.
-src_base(SrcPath, SrcPathBase) :-
+src_base(SrcPath, SrcPathBase) =>
     (   py_ext_ext(Ext),
         atom_concat(SrcPathBase, Ext, SrcPath)
     ->  true
@@ -355,27 +353,33 @@ src_base(SrcPath, SrcPathBase) :-
         % type_error(file_name_not_ending_in_py_or_pyi, SrcPath)
     ).
 
+:- det(path_part_to_python_module_or_unknown/2).
 %! path_part_to_python_module_or_unknown(+ModuleAndMaybeToken, -ModuleFqn:atom) is det.
 % Convenience predicate mapping ModuleAndMaybeToken to ModuleFqn.
-path_part_to_python_module_or_unknown(ModuleAndMaybeToken, ModuleFqn) :-
+path_part_to_python_module_or_unknown(ModuleAndMaybeToken, ModuleFqn) =>
     path_part(ModuleAndMaybeToken, ResolvedPath),
     path_to_module_fqn_or_unknown(ResolvedPath, ModuleFqn).
 
-split_fqn(Fqn, FqnParts) :-
+:- det(split_fqn/2).
+split_fqn(Fqn, FqnParts) =>
     split_atom(Fqn, '.', '', FqnParts).
 
 % TODO: there should be something like Python's path-join
 %       in library(filesex).
-split_path(Path, PathParts) :-
+:- det(split_path/2).
+split_path(Path, PathParts) =>
     split_atom(Path, '/', '', PathParts).
 
-join_fqn(FqnParts, Fqn) :-
+:- det(join_fqn/2).
+join_fqn(FqnParts, Fqn) =>
     atomic_list_concat(FqnParts, '.', Fqn).
 
-join_path(PathParts, Path) :-
+:- det(join_path/2).
+join_path(PathParts, Path) =>
     atomic_list_concat(PathParts, '/', Path).
 
-append_fqn_dot(Fqn, FqnDot) :-
+:- det(append_fqn_dot/2).
+append_fqn_dot(Fqn, FqnDot) =>
     atomic_list_concat([Fqn, '.'], FqnDot).
 
 end_of_file.
