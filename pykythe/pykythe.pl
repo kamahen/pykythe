@@ -745,7 +745,6 @@ foldl_process_module_cached_or_from_src(Opts, FromSrcOk, [M|Modules], Symtab0, S
         process_module_cached_or_from_src(Opts, FromSrcOk, SrcPath, SrcFqn, Symtab0, Symtab1)
     ;   Symtab1 = Symtab0
     ),
-    !,       % "cut" for memory usage % DO NOT SUBMIT -- still needed?
     foldl_process_module_cached_or_from_src(Opts, FromSrcOk, Modules, Symtab1, Symtab).
 
 :- det(process_module_from_src/5).
@@ -795,10 +794,8 @@ process_module_from_src_impl(Opts, SrcPath, SrcFqn, Symtab0, Symtab) =>
     stats(Stats2),
     log_if(true, 'Pass 2: process exprs for ~q ~w', [Meta.path, Stats2]),
     assign_exprs(Opts, Exprs, Meta, Symtab1WithImports, Symtab, KytheFactsFromExprs0),
-    !,       % "cut" for memory usage % DO NOT SUBMIT -- still needed?
     log_kythe_fact_msgs(KytheFactsFromExprs0, KytheFactsFromExprs1),
     include(is_nonredundant_pytype_fact(Symtab), KytheFactsFromExprs1, KytheFactsFromExprs),
-    !, % "cut" for memory usage  *** THIS ONE IS IMPORTANT ***  % DO NOT SUBMIT -- still needed?
     stats(Stats3a),
     log_if(true, 'Pass 3a: output for ~q ~w', [Meta.path, Stats3a]),
     output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFactsFromNodes),
@@ -814,7 +811,6 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
     symtab_pykythe_types(Symtab, SymtabPykytheTypes, [], Meta), % phrase(symtab_pykythe_types(Symtab), SymtabPYkytheTypes, Meta)
     append([KytheFactsFromNodes, KytheFactsFromExprs, SymtabPykytheTypes], KytheFactsUncleaned),
     clean_kythe_facts(KytheFactsUncleaned, KytheFactsCleaned),
-    !,      % "cut" for memory usage  % DO NOT SUBMIT -- still needed?
     % TODO: don't preserve order (for debugging) - use sort/2 to dedup:
     list_to_set(KytheFactsCleaned, KytheFacts),
     log_if(true, 'Writing Kythe facts for ~q', [Meta.path]),
@@ -841,8 +837,7 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
     log_if(true, 'Converting to Kythe protobuf'),
     path_with_suffix(Opts, SrcPath, Opts.kytheentries_suffix, KytheEntriesPath),
     write_atomic_file(write_to_protobuf(Opts.entriescmd, SrcPath, KytheJsonPath), KytheEntriesPath),
-    log_if(true, 'Finished output ~q (~q) to ~q (~q)', [SrcPath, SrcFqn, KytheEntriesPath, KytheJsonPath]),
-    !.       % "cut" for memory usage % DO NOT SUBMIT -- still needed?
+    log_if(true, 'Finished output ~q (~q) to ~q (~q)', [SrcPath, SrcFqn, KytheEntriesPath, KytheJsonPath]).
 
 :- det(transform_kythe_fact/2).
 %! transform_kythe_fact(+Fact0, -Fact1) is det.
@@ -2174,7 +2169,6 @@ maplist_kynode([], NodeTypesOut) ==>>
 maplist_kynode([Node|Nodes], NodeTypesOut) ==>>
     { NodeTypesOut = [NodeType|NodesTypes] },
     kynode(Node, NodeType),
-    !,  % "cut" for memory usage % DO NOT SUBMIT - not needed: remove?
     maplist_kynode(Nodes, NodesTypes).
 
 :- det(assign_normalized/7).
@@ -2438,7 +2432,7 @@ maplist_eval_assign_expr([]) ==>> [ ].
 maplist_eval_assign_expr([Assign|Assigns]) ==>>
     do_if_file(dump_term('(EVAL_ASSIGN_EXPR)', Assign)),
     eval_assign_expr(Assign),
-    !, % "cut" for memory usage *** THIS ONE IS IMPORTANT *** DO NOT SUBMIT - still needed?
+    !, % "cut" for memory usage *** THIS ONE IS IMPORTANT ***
     % symtab_if_file('SYMTAB'),   % TODO: delete
     maplist_eval_assign_expr(Assigns).
 
@@ -3484,7 +3478,6 @@ maplist_kyfact(Pred, L) ==>> maplist_kyfact_(L, Pred).
 maplist_kyfact_([], _Pred) ==>> [ ].
 maplist_kyfact_([X|Xs], Pred) ==>>
     call(Pred, X):[kyfact,file_meta],
-    !,                          % "cut" for memory usage
     maplist_kyfact_(Xs, Pred).
 
 :- det(maplist_kyfact/6).
@@ -3498,7 +3491,6 @@ maplist_kyfact_([], _Pred, Out) ==>>
 maplist_kyfact_([X|Xs], Pred, Out) ==>>
     { Out = [Y|Ys] },
     call(Pred, X, Y):[kyfact,file_meta],
-    !,                          % "cut" for memory usage
     maplist_kyfact_(Xs, Pred, Ys).
 
 :- det(maplist_kyfact_symrej/7).
@@ -3510,7 +3502,6 @@ maplist_kyfact_symrej(Pred, L) ==>> maplist_kyfact_symrej_(L, Pred).
 maplist_kyfact_symrej_([], _Pred) ==>> [ ].
 maplist_kyfact_symrej_([X|Xs], Pred) ==>>
     call(Pred, X):[kyfact,symrej,file_meta],
-    !,                          % "cut" for memory usage
     maplist_kyfact_symrej_(Xs, Pred).
 
 :- det(maplist_kyfact_symrej/8).
@@ -3524,7 +3515,6 @@ maplist_kyfact_symrej_([], _Pred, Out) ==>>
 maplist_kyfact_symrej_([X|Xs], Pred, Out) ==>>
     { Out = [Y|Ys] },
     call(Pred, X, Y):[kyfact,symrej,file_meta],
-    !,                          % "cut" for memory usage
     maplist_kyfact_symrej_(Xs, Pred, Ys).
 
 :- det(maplist_kyfact_expr/7).
@@ -3536,7 +3526,6 @@ maplist_kyfact_expr(Pred, L) ==>> maplist_kyfact_expr_(L, Pred).
 maplist_kyfact_expr_([], _Pred) ==>> [ ].
 maplist_kyfact_expr_([X|Xs], Pred) ==>>
     call(Pred, X):[kyfact,expr,file_meta],
-    !,                          % "cut" for memory usage
     maplist_kyfact_expr_(Xs, Pred).
 
 :- det(maplist_kyfact_expr/8).
@@ -3550,7 +3539,6 @@ maplist_kyfact_expr_([], _Pred, Out) ==>>
 maplist_kyfact_expr_([X|Xs], Pred, Out) ==>>
     { Out = [Y|Ys] },
     call(Pred, X, Y):[kyfact,expr,file_meta], !,
-    !,                          % "cut" for memory usage
     maplist_kyfact_expr_(Xs, Pred, Ys).
 
 trace_file(this_will_never_match).
