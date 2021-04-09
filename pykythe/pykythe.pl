@@ -800,8 +800,7 @@ process_module_from_src_impl(Opts, SrcPath, SrcFqn, Symtab0, Symtab) =>
     log_if(true, 'Pass 3a: output for ~q ~w', [Meta.path, Stats3a]),
     output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFactsFromNodes),
     stats(Stats3b),
-    log_if(true, 'Pass 3b: output for ~q ~w', [Meta.path, Stats3b]),
-    !. % DO NOT SUBMIT - needed?
+    log_if(true, 'Pass 3b: output for ~q ~w', [Meta.path, Stats3b]).
 
 :- det(output_kythe/7).
 %! output_kythe(+Opts:list, +Meta:dict, +SrcPath:atom, +SrcFqn:atom, +Symtab, +KytheFactsFromExprs:list, +KytheFactsFromNodes:list) is det.
@@ -905,7 +904,7 @@ parse_and_get_meta(Opts, SrcPath, SrcFqn, Meta, Nodes, ColorTexts) =>
     Meta.builtins_module = Opts.builtins_module,
     Meta.opts = Opts,
     Meta.version = Opts.version,
-    must_once(SrcPath == Meta.path),
+    $(SrcPath == Meta.path),
     Meta.src_fqn = SrcFqn.
 
 :- det(extend_symtab_with_builtins/3).
@@ -1028,7 +1027,7 @@ clean_kind(SourceAtom-Kinds, Cleaned) =>
     term_to_atom(Source, SourceAtom),
     (   Kinds = [Kind]
     ->  true
-    ;   must_once(maplist(precedence_and_kind, Kinds, PKs)),
+    ;   $(maplist(precedence_and_kind, Kinds, PKs)),
         keysort(PKs, [_-Kind|_]),
         log_if(true, 'INFO: Cleaned kind: ~q->~q for ~q', [Kinds, Kind, Source])
     ).
@@ -1305,7 +1304,7 @@ kyfile(SrcInfo) ==>>
     % TODO: output x-numlines, x-html ?
     Meta/file_meta,
     { Meta_path = Meta.path, SrcInfo_src_path = SrcInfo.src_path },
-    { must_once(Meta_path == SrcInfo_src_path) },
+    { $(Meta_path == SrcInfo_src_path) },
     { Source = json{corpus: Meta.kythe_corpus, root: Meta.kythe_root, path: Meta.path} },
     % If the following is changed, also change the validation
     % in process_module_cached_impl/7.
@@ -2051,8 +2050,8 @@ kyImportDottedAsNamesFqn_top(DottedNameItems, BindsFqn, BindsNameAstn) ==>>
     kyImportDottedAsNamesFqn_from_part(DottedNameItems,
                                        [], % FromDots,
                                        ModulesAndMaybeTokenToImport),
-    { must_once(DottedNameItems = ['NameBareNode'{name:BindsNameAstn}|_]) },
-    { must_once(node_astn(BindsNameAstn, _, _, TopName)) },
+    { $(DottedNameItems = ['NameBareNode'{name:BindsNameAstn}|_]) },
+    { $(node_astn(BindsNameAstn, _, _, TopName)) },
     kyImport_path_pieces_to_module([], % FromDots
                                    [TopName], ModuleAndMaybeTokenAssignImport, _TopModulePieces),
     { AssignImport = assign_import{binds_fqn: BindsFqn,
@@ -2250,7 +2249,7 @@ kyanchor_node(Astn, Source, Token) ==>>
 kyanchor(Start, End, Token, Source) ==>>
     % The following is only true for pure ascii input; with utf8,
     % the Start is in *bytes*, so the substring test isn't necessarily true
-    % { must_once(sub_string(Meta.contents_str, Start, Len, _, Token)) },
+    % { $(sub_string(Meta.contents_str, Start, Len, _, Token)) },
     { anchor_signature_str(Start, End, Token, Signature) },
     signature_source(Signature, Source),
     % https://github.com/kythe/kythe/issues/1725
@@ -2423,7 +2422,7 @@ assign_exprs_count_impl(Exprs, Meta, Symtab0, SymtabWithRej, Rej, KytheFacts) :-
     % TODO: is the following needed? The accumulator should have
     %       already added the types to the symtab.
     foldl(add_rej_to_symtab, Rej, SymtabAfterEval, SymtabWithRej),
-    must_once(SymtabAfterEval == SymtabWithRej). % TODO: delete if this is always true.
+    $(SymtabAfterEval == SymtabWithRej). % TODO: delete if this is always true.
 
 :- det(maplist_eval_assign_expr/6).
 %! maplist_assign_exprs_eval(+Assign:list)//[kyfact,symrej,file_meta] is det.
@@ -3538,7 +3537,7 @@ maplist_kyfact_expr_([], _Pred, Out) ==>>
     { Out = [] }.
 maplist_kyfact_expr_([X|Xs], Pred, Out) ==>>
     { Out = [Y|Ys] },
-    call(Pred, X, Y):[kyfact,expr,file_meta], !,
+    call(Pred, X, Y):[kyfact,expr,file_meta],
     maplist_kyfact_expr_(Xs, Pred, Ys).
 
 trace_file(this_will_never_match).

@@ -87,9 +87,9 @@
 validate_prolog_version =>
     current_prolog_flag(version, PrologVersion),
     % Sync this with README.md and demo.sh:
-    must_once_msg(PrologVersion >= 80321, 'SWI-Prolog version is too old'),
+    must_once_msg(PrologVersion >= 80322, 'SWI-Prolog version is too old'),
     pack_property(edcg, version(EdcgVersion)),
-    must_once_msg(EdcgVersion @>= '0.9.1.6', 'pack(edcg) is missing or version is too old').
+    must_once_msg(EdcgVersion @>= '0.9.1.7', 'pack(edcg) is missing or version is too old').
 
 %! absolute_file_name_rel(+File, -Absolute) is semidet.
 % For now, this is the same as absolute_file_name/2.  However, it is
@@ -164,7 +164,7 @@ ensure_dict_fact(Dict, Attr, Value) =>
 % Die with an error message if base64_ascii(Dict.Attr) != Value
 % (Can also be used to get Dict.Attr into Value).
 ensure_dict_fact_base64_ascii(Dict, Attr, Value) =>
-    must_once(get_dict(Attr, Dict, Value64)),
+    $(get_dict(Attr, Dict, Value64)),
     must_once_msg(base64_ascii(Value, Value64),
                   'Invalid JSON, expecting base64 ~q=~q in ~q',
                   [Attr, Value, Dict]).
@@ -174,7 +174,7 @@ ensure_dict_fact_base64_ascii(Dict, Attr, Value) =>
 % Die with an error message if base64_utf8(Dict.Attr) != Value
 % (Can also be used to get Dict.Attr into Value).
 ensure_dict_fact_base64_utf8(Dict, Attr, Value) =>
-    must_once(get_dict(Attr, Dict, Value64)),
+    $(get_dict(Attr, Dict, Value64)),
     must_once_msg(base64_utf8(Value, Value64),
                   'Invalid JSON, expecting base64 ~q=~q in ~q',
                   [Attr, Value, Dict]).

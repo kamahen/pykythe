@@ -150,7 +150,7 @@ impossible and I really don't feel like becoming a git guru.
 
 
 * Install [SWI-Prolog](http://www.swi-prolog.org/Download.html). You
-  need at least version 8.3.21, so as of 2021-03-30, this means
+  need at least version 8.3.22, so as of 2021-04-08, this means
   using the "devel" download or PPA.
   For Ubuntu, Debian, and similar (following the instructions at https://www.swi-prolog.org/build/PPA.html):
   *  `sudo apt install software-properties-common`
@@ -167,7 +167,7 @@ impossible and I really don't feel like becoming a git guru.
   <!-- `echo 'pack_install(rdet, [interactive(false), upgrade(true)]).' | swipl` -->
 
   Check that you have the correct versions (`echo 'forall(pack_property(N, version(V)), writeln(N:V)).' | swipl`):
-  * edcg 0.9.0
+  * edcg 0.9.1.7
   <!--  * rdet 1.0.3 -->
 
 * Optional (htis is now a submodule of `ptype`):

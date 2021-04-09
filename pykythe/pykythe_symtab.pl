@@ -44,7 +44,6 @@
 :- use_module(library(error), [must_be/2]).
 :- use_module(library(pairs), [pairs_values/2]).
 :- use_module(library(rbtrees), [is_rbtree/1, list_to_rbtree/2, ord_list_to_rbtree/2, rb_insert/4, rb_lookup/3, rb_visit/2]).
-:- use_module(must_once).
 :- use_module(pykythe_utils).
 
 is_symtab(Symtab) :-
@@ -177,7 +176,7 @@ read_symtab_from_cache_no_check(PykytheSymtabInputPath, Symtab) =>
 :- det(validate_symtab/1).
 %! valid_symtab(+Symtab) is det/error.
 validate_symtab(Symtab) :-      % TODO: remove this
-    must_once(symtab_pairs(Symtab, SymtabPairs)),
+    $(symtab_pairs(Symtab, SymtabPairs)),
     maplist(validate_symtab_pair, SymtabPairs).
 
 %! validate_symtab_pair(+FqnType:pair) is det.

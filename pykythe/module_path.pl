@@ -43,7 +43,6 @@
 :- style_check(-var_branches).
 :- use_module(library(pcre), [re_matchsub/4, re_replace/4]).
 :- style_check(+var_branches).
-:- use_module(must_once, [must_once/1, must_once_msg/2, must_once_msg/3, fail/1]).
 :- use_module(pykythe_utils).
 
 :- style_check(+singleton).
@@ -195,8 +194,8 @@ full_path_prefixed(DeprefixedPath, Pythonpaths, ModuleAndMaybeToken) =>
         ModuleAndMaybeToken = module_alone(ModuleFqn, UnknownPath)
     ),
     path_part(ModuleAndMaybeToken, PathPart),
-    must_once(atom_concat(Prefix, _, PathPart)), % Prefix must be first part of PathPart
-    must_once(atom_concat(_, '/', Prefix)), % Prefix must end with '/'.
+    $(atom_concat(Prefix, _, PathPart)), % Prefix must be first part of PathPart
+    $(atom_concat(_, '/', Prefix)), % Prefix must end with '/'.
     path_part_to_python_module_or_unknown(ModuleAndMaybeToken, ModuleFqn).
 
 %! path_pieces_expand(PathPieces:list(atom), -ModuleAndMaybeToken) is semidet.
@@ -257,7 +256,7 @@ path_part(module_star(_ModuleFqn,Path), Path).
 module_file_exists(ModuleAndMaybeToken) :-
     path_part(ModuleAndMaybeToken, Path),
     absolute_file_name(Path, AbsPath, [access(read), file_errors(error)]),
-    must_once(Path == AbsPath).
+    $(Path == AbsPath).
 
 :- det(module_part/2).
 %! module_part(+ModuleAndMaybeToken, -ModuleFqn:atom) is det.

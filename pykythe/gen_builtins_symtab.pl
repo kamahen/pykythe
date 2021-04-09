@@ -89,7 +89,7 @@ gen_builtins_symtab_main =>
     symtab_insert('object', Symtab1, ObjectType, Symtab),
     memberchk('object'-ObjectType, BuiltinsPairs),
     log_if(true, 'ObjectType: ~q', [ObjectType]),
-    must_once(symtab_lookup('object', Symtab, ObjectType)),
+    $(symtab_lookup('object', Symtab, ObjectType)),
     list_to_symtab(BuiltinsPairs, BuiltinsSymtab),
     conv_symtab(is_module_sym_type, Symtab, SymtabModules),
     log_if(true, 'Package: ~q', [Package]),
@@ -137,7 +137,7 @@ write_symtab_fact(Opts, BuiltinsModule, Symtab, BuiltinsSymtab, BuiltinsPairs, S
     format(Stream, '~k.~n', [builtins_symtab_modules(SymtabModules)]),
     full_path([], 'typing', Opts.pythonpath, '', TypingModule0, _),
     module_part(TypingModule0, TypingModule),
-    must_once(\+ maybe_token_part(TypingModule0, _)),
+    $(\+ maybe_token_part(TypingModule0, _)),
     log_if(false, 'TYPING module: ~q (from ~q)', [TypingModule, TypingModule0]), % TODO: delete
     module_file_exists(TypingModule0),
     % TODO: delete the following, which are for eventually adding
