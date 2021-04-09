@@ -262,7 +262,8 @@ $(PYKYTHE_EXE): pykythe/*.pl pykythe_test $(SWIPL_EXE)
 	$(SWIPL_EXE) --version
 	@# The following line was used for debugging https://github.com/SWI-Prolog/swipl-devel/commit/0a0d9800134b361eb2344f29cece8b0a4b571666
 	@# echo "['pykythe/pykythe.pl']. qsave_program('$@', [stand_alone(true), undefined(error), foreign(save)])." | $(SWIPL_EXE)
-	$(SWIPL_EXE) -O --stand_alone=true --undefined=error --verbose=false --foreign=save -o $@ -c pykythe/pykythe.pl
+	@# TODO: add -O to compile to remove assertion/1 etc.
+	$(SWIPL_EXE) --stand_alone=true --undefined=error --verbose=false --foreign=save -o $@ -c pykythe/pykythe.pl
 	@# To find the .so files and packages:
 	@# ldd $@ | grep '=>' | cut -f3 -d' ' | sort | xargs -L1 dpkg-query -S | grep -v libc6:amd64
 
