@@ -22,7 +22,7 @@
 
 :- module(c3, [mro/2, mro/3]).
 
-:- set_prolog_flag(optimise, true).
+:- use_module(library(debug)). % explicit load to activate optimise_debug/0.
 
 :- use_module(library(apply), [include/3, maplist/3]).
 :- use_module(library(lists), [append/2, member/2]).

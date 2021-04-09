@@ -34,7 +34,7 @@
                         src_base/2
                        ]).
 :- encoding(utf8).
-:- set_prolog_flag(optimise, true).
+:- use_module(library(debug)). % explicit load to activate optimise_debug/0.
 % :- set_prolog_flag(autoload, false).  % TODO: seems to break plunit, qsave
 
 :- use_module(library(apply), [maplist/2, maplist/3]).
@@ -44,6 +44,7 @@
 :- use_module(library(pcre), [re_matchsub/4, re_replace/4]).
 :- style_check(+var_branches).
 :- use_module(pykythe_utils).
+:- use_module(must_once, [must_once/1]).
 
 :- style_check(+singleton).
 :- style_check(+var_branches).
@@ -90,7 +91,6 @@ add_up_dots([], Path, DotsPath) => DotsPath = Path.
 add_up_dots([_|Dots], Path, DotsPath) =>
     add_up_dots(Dots, ['..'|Path], DotsPath).
 
-:- det(module_fqn_path/2).
 %! module_fqn_path(+ModuleFqn:atom, -Path:atom) is nondet.
 %! module_fqn_path(-ModuleFqn:atom, +Path:atom) is nondet.
 % Convert a module ('path.to.module') to a path ('path/to/module.py').
@@ -256,7 +256,7 @@ path_part(module_star(_ModuleFqn,Path), Path).
 module_file_exists(ModuleAndMaybeToken) :-
     path_part(ModuleAndMaybeToken, Path),
     absolute_file_name(Path, AbsPath, [access(read), file_errors(error)]),
-    $(Path == AbsPath).
+    must_once(Path == AbsPath).  % assertion
 
 :- det(module_part/2).
 %! module_part(+ModuleAndMaybeToken, -ModuleFqn:atom) is det.

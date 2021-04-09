@@ -43,7 +43,7 @@
                           write_atomic_stream/2
                          ]).
 :- encoding(utf8).
-:- set_prolog_flag(optimise, true).
+:- use_module(library(debug)). % explicit load to activate optimise_debug/0.
 % :- set_prolog_flag(autoload, false).  % TODO: seems to break plunit, qsave
 
 :- meta_predicate
@@ -164,7 +164,7 @@ ensure_dict_fact(Dict, Attr, Value) =>
 % Die with an error message if base64_ascii(Dict.Attr) != Value
 % (Can also be used to get Dict.Attr into Value).
 ensure_dict_fact_base64_ascii(Dict, Attr, Value) =>
-    $(get_dict(Attr, Dict, Value64)),
+    get_dict(Attr, Dict, Value64),
     must_once_msg(base64_ascii(Value, Value64),
                   'Invalid JSON, expecting base64 ~q=~q in ~q',
                   [Attr, Value, Dict]).
@@ -174,7 +174,7 @@ ensure_dict_fact_base64_ascii(Dict, Attr, Value) =>
 % Die with an error message if base64_utf8(Dict.Attr) != Value
 % (Can also be used to get Dict.Attr into Value).
 ensure_dict_fact_base64_utf8(Dict, Attr, Value) =>
-    $(get_dict(Attr, Dict, Value64)),
+    get_dict(Attr, Dict, Value64),
     must_once_msg(base64_utf8(Value, Value64),
                   'Invalid JSON, expecting base64 ~q=~q in ~q',
                   [Attr, Value, Dict]).

@@ -28,7 +28,7 @@
                           ]).
 
 :- encoding(utf8).
-:- set_prolog_flag(optimise, true).
+:- use_module(library(debug)). % explicit load to activate optimise_debug/0.
 % :- set_prolog_flag(autoload, false).  % TODO: seems to break plunit, qsave
 
 :- use_module(pykythe_utils).
@@ -170,7 +170,7 @@ read_symtab_from_cache_no_check(PykytheSymtabInputPath, Symtab) =>
         ),
         close(PykytheSymtabInputStream)
     ),
-    must_be(ground, SymtabKVs),
+    assertion(must_be(ground, SymtabKVs)),
     ord_list_to_rbtree(SymtabKVs, Symtab).
 
 :- det(validate_symtab/1).
