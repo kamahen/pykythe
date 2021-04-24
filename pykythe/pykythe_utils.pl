@@ -39,8 +39,8 @@
                           term_to_canonical_atom/2,
                           % update_dict/3,
                           validate_prolog_version/0,
-                          write_atomic_file/2,
-                          write_atomic_stream/2
+                          write_atomic_file/3,
+                          write_atomic_stream/3
                          ]).
 :- encoding(utf8).
 :- use_module(library(debug)). % explicit load to activate optimise_debug/0.
@@ -50,8 +50,8 @@
        do_if(0, 0),
        log_if(0, +),
        log_if(0, +, +),
-       write_atomic_stream(1, +),
-       write_atomic_file(1, +).
+       write_atomic_stream(1, +, +),
+       write_atomic_file(1, +, +).
 
 :- style_check(+singleton).
 :- style_check(+var_branches).
@@ -244,7 +244,7 @@ maybe_open_read(Path, InputStream) :-
     ).
 
 maybe_open_read_impl(Path, InputStream) :-
-    catch(open(Path, read, InputStream, [type(binary)]),
+    catch(open(Path, read, InputStream, [encoding(octet)]),
           error(existence_error(source_sink, Path), _),
           fail).
 
@@ -349,8 +349,8 @@ pykythe_tmp_file_stream(Dir, FileName, Stream, Options) =>
     tmp_file_stream(FileName, Stream, Options),
     set_prolog_flag(tmp_dir, SaveTmpDir).
 
-:- det(write_atomic_stream/2).
-%! write_atomic_stream(:WritePred, +Path:atom) is semidet.
+:- det(write_atomic_stream/3).
+%! write_atomic_stream(:WritePred, +Path:atom, +OpenOptions:list) is semidet.
 % Write to a file "atomically" -- that is, if another process is
 % trying to write to the same file, there will be no collision (it is
 % undetermined which process will "win"; presumably they both are
@@ -359,7 +359,7 @@ pykythe_tmp_file_stream(Dir, FileName, Stream, Options) =>
 % If needed, directories to Path are created.
 % WritePred must take the stream as its last argument.
 % TODO: contribute this as a SWI-Prolog package.
-write_atomic_stream(WritePred, Path) =>
+write_atomic_stream(WritePred, Path, OpenOptions) =>
     % TODO: See '$stage_file' in /usr/lib/swi-prolog/boot/init.pl
     %       and setup_call_catcher_cleanup
     % TODO: the tmpfile/rename trick doesn't work if the tmp file is
@@ -381,7 +381,7 @@ write_atomic_stream(WritePred, Path) =>
     % (see swipl-devel/src/os/pl-os.c), and that doesn't happen if
     % we roll our own.
     directory_file_path(PathDir, _, Path),
-    pykythe_tmp_file_stream(PathDir, TmpPath, Stream, [encoding(utf8)]), % implies open [type(binary)]
+    pykythe_tmp_file_stream(PathDir, TmpPath, Stream, OpenOptions),
     % TODO: instead of at_halt/1, use setup_call_cleanup/3
     at_halt(pykythe_utils:safe_delete_file(TmpPath)), % in case WritePred crashes or fails
     (   call(WritePred, Stream)
@@ -395,14 +395,14 @@ write_atomic_stream(WritePred, Path) =>
         fail
     ).
 
-:- det(write_atomic_file/2).
-%! write_atomic_file(+WritePred, +Path) is semidet.
+:- det(write_atomic_file/3).
+%! write_atomic_file(+WritePred, +Path, OpenOptions:list) is semidet.
 % Similar to write_atomic_stream, except it passes a path to Pred
 % instead of a stream.
 % WritePred must take the path as its last argument.
-write_atomic_file(WritePred, Path) =>
+write_atomic_file(WritePred, Path, OpenOptions) =>
     directory_file_path(PathDir, _, Path),
-    pykythe_tmp_file_stream(PathDir, TmpPath, Stream, [encoding(utf8)]), % implies open [type(binary)]
+    pykythe_tmp_file_stream(PathDir, TmpPath, Stream, OpenOptions),
     % TODO: instead of setting up at_halt, use setup_call_cleanup/3
     at_halt(pykythe_utils:safe_delete_file(TmpPath)), % in case WritePred crashes or fails
     (   call(WritePred, TmpPath)

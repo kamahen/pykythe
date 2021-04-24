@@ -29,6 +29,7 @@
 
 :- encoding(utf8).
 :- use_module(library(debug)). % explicit load to activate optimise_debug/0.
+:- use_module(library(fastrw), [fast_read/2, fast_write/2]).
 % :- set_prolog_flag(autoload, false).  % TODO: seems to break plunit, qsave
 
 :- use_module(pykythe_utils).
@@ -127,14 +128,14 @@ rb_conv_pairs_(black(L,K,V,R), Pred, L0, Lf) =>
 % Also merges Symtab0 with SymtabFromCache to create NewSymtab
 maybe_read_symtab_from_cache(OptsVersion, PykytheSymtabInputStream, SrcPath, Symtab0, NewSymtab, IfCacheFail, IfSha1Fail) =>
     % See write_batch/2 for how these were output.
-    read_term(PykytheSymtabInputStream, CacheVersion, []),
+    fast_read(PykytheSymtabInputStream, CacheVersion),
     % short-circuit other tests if version mismatch
     (   CacheVersion == OptsVersion
     ->  true
     ;   call(IfCacheFail),
         fail
     ),
-    read_term(PykytheSymtabInputStream, Sha1Hex, []),
+    fast_read(PykytheSymtabInputStream, Sha1Hex),
     (   maybe_file_sha1(SrcPath, SrcSha1Hex),
         SrcSha1Hex == Sha1Hex   % succeed if SHA1 is expected value.
     ->  true
@@ -142,14 +143,7 @@ maybe_read_symtab_from_cache(OptsVersion, PykytheSymtabInputStream, SrcPath, Sym
         fail
     ),
     $,
-    % TODO - DO NOT SUBMIT
-    % The JSON read is slow (1.6 sec) and probably the write is
-    % also slow ... use fast_read/2, fast_write/2.
-    % term_string->term: 155ms (27K entries in 7.2MB)
-    % term_string->str:  105ms
-    % fast_term->term:    25ms
-    % fast_term->str:     12ms
-    read_term(PykytheSymtabInputStream, SymtabFromCacheKVs, []),
+    fast_read(PykytheSymtabInputStream, SymtabFromCacheKVs),
     foldl_rb_insert(SymtabFromCacheKVs, Symtab0, NewSymtab).
 
 :- det(foldl_rb_insert/3).
@@ -163,10 +157,10 @@ foldl_rb_insert([K-V|KVs], Rb0, Rb) =>
 % used by gen_builtins_symtab.pl
 read_symtab_from_cache_no_check(PykytheSymtabInputPath, Symtab) =>
     setup_call_cleanup(
-        open(PykytheSymtabInputPath, read, PykytheSymtabInputStream, [type(binary)]),
-        (   read_term(PykytheSymtabInputStream, _Version, []),
-            read_term(PykytheSymtabInputStream, _Sha1, []),
-            read_term(PykytheSymtabInputStream, SymtabKVs, [])
+        open(PykytheSymtabInputPath, read, PykytheSymtabInputStream, [encoding(octet)]),
+        (   fast_read(PykytheSymtabInputStream, _Version),
+            fast_read(PykytheSymtabInputStream, _Sha1),
+            fast_read(PykytheSymtabInputStream, SymtabKVs)
         ),
         close(PykytheSymtabInputStream)
     ),
@@ -188,8 +182,15 @@ validate_symtab_pair(Fqn-Type) =>
 %! write_symtab(+Symtab, +Version, +Sha1, +PykytheBatchOutStream) is det.
 write_symtab(Symtab, Version, Sha1, PykytheBatchOutStream) =>
     rb_visit(Symtab, SymtabKVs),
-    % DO NOT SUBMIT - fast-serialize
-    format(PykytheBatchOutStream, '~k.~n~k.~n~k.~n', [Version, Sha1, SymtabKVs]).
+    % The JSON read was slow (1.6 sec)
+    % term_string->term: 155ms (27K entries in 7.2MB)
+    % term_string->str:  105ms
+    % fast_term->str:     12ms
+    % (This optimization wasn't worth the effort, but replacing JSON I/O
+    % elsewhere might be)
+    fast_write(PykytheBatchOutStream, Version),
+    fast_write(PykytheBatchOutStream, Sha1),
+    fast_write(PykytheBatchOutStream, SymtabKVs).
 
 % DO NOT SUBMIT:
 % Need to add a portray -- see pykythe:pykythe_portray(Symtab)

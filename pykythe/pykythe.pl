@@ -819,12 +819,12 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
     path_with_suffix(Opts, SrcPath, Opts.pykythecolor_suffix, PykytheColorPath),
     partition([Fact]>>get_dict(fact_name, Fact, '/pykythe/color_all'),
               KytheFacts, ColorFacts, KytheFacts2),
-    write_atomic_stream(write_kythe_facts(KytheFacts2), KytheJsonPath),
-    write_atomic_stream(write_kythe_facts(ColorFacts), PykytheColorPath),
-    write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheSymtabPath),
+    write_atomic_stream(write_kythe_facts(KytheFacts2), KytheJsonPath, [encoding(utf8)]),
+    write_atomic_stream(write_kythe_facts(ColorFacts), PykytheColorPath, [encoding(utf8)]),
+    write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheSymtabPath, [encoding(octet)]),
     (   PykytheSymtabPath = PykytheBatchPath
     ->  log_if(true, 'Not writing to kythebatch: ~w', KytheJsonPath)
-    ;   % write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheBatchPath)
+    ;   % write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheBatchPath, [encoding(octet)])
         % Assume that if a race condition occurs while linking, the
         % other process would have generated the same file contents.
         % TODO: should re-process this file in case the race condition
@@ -835,7 +835,7 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
     ),
     log_if(true, 'Converting to Kythe protobuf'),
     path_with_suffix(Opts, SrcPath, Opts.kytheentries_suffix, KytheEntriesPath),
-    write_atomic_file(write_to_protobuf(Opts.entriescmd, SrcPath, KytheJsonPath), KytheEntriesPath),
+    write_atomic_file(write_to_protobuf(Opts.entriescmd, SrcPath, KytheJsonPath), KytheEntriesPath, [encoding(utf8)]),
     log_if(true, 'Finished output ~q (~q) to ~q (~q)', [SrcPath, SrcFqn, KytheEntriesPath, KytheJsonPath]).
 
 :- det(transform_kythe_fact/2).
@@ -1172,7 +1172,7 @@ add_kyfact_types(Prefix, Fqn-Type) ==>>
 % Read the JSON node tree (with FQNs) into Nodes and file meta-data into Meta.
 read_nodes(FqnExprPath, Nodes, Meta, ColorTexts) =>
     setup_call_cleanup(
-        open(FqnExprPath, read, FqnExprStream, [type(binary)]),
+        open(FqnExprPath, read, FqnExprStream, [encoding(octet)]),
         (   read_term(FqnExprStream, MetaJson, []),
             read_term(FqnExprStream, NodesJson, []),
             read_term(FqnExprStream, ColorTextsJson, [])

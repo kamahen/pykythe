@@ -72,7 +72,7 @@ gen_builtins_symtab_main =>
     read_symtab_from_cache_no_check(PykytheSymtabInputPath, Symtab0),
     log_if(true, '~q', [done-read_symtab_from_cache(PykytheSymtabInputPath)]),
 
-    open(KytheJsonInputPath, read, KytheJsonInputStream, [type(binary)]),
+    open(KytheJsonInputPath, read, KytheJsonInputStream, [encoding(octet)]),
     read_package_from_cache(KytheJsonInputStream, Package),
     log_if(true, '~q', [done-read_package_from_cache(KytheJsonInputPath, Package)]),
 
@@ -96,7 +96,7 @@ gen_builtins_symtab_main =>
     builtins_module(BuiltinsModule),
     write_atomic_stream(write_symtab_fact(
                             Opts, BuiltinsModule, Symtab, BuiltinsSymtab, BuiltinsPairs, SymtabModules),
-                        SymtabOutputPath),
+                        SymtabOutputPath, [encoding(octet)]),
     log_if(true, 'Finished gen_builtins_symtab'),
     halt.
 
