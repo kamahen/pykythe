@@ -244,7 +244,7 @@ maybe_open_read(Path, InputStream) :-
     ).
 
 maybe_open_read_impl(Path, InputStream) :-
-    catch(open(Path, read, InputStream, [encoding(octet)]),
+    catch(open(Path, read, InputStream, [encoding(octet),type(binary)]),
           error(existence_error(source_sink, Path), _),
           fail).
 

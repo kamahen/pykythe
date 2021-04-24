@@ -821,10 +821,10 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
               KytheFacts, ColorFacts, KytheFacts2),
     write_atomic_stream(write_kythe_facts(KytheFacts2), KytheJsonPath, [encoding(utf8)]),
     write_atomic_stream(write_kythe_facts(ColorFacts), PykytheColorPath, [encoding(utf8)]),
-    write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheSymtabPath, [encoding(octet)]),
+    write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheSymtabPath, [encoding(octet),type(binary)]),
     (   PykytheSymtabPath = PykytheBatchPath
     ->  log_if(true, 'Not writing to kythebatch: ~w', KytheJsonPath)
-    ;   % write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheBatchPath, [encoding(octet)])
+    ;   % write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheBatchPath, [encoding(octet),type(binary)])
         % Assume that if a race condition occurs while linking, the
         % other process would have generated the same file contents.
         % TODO: should re-process this file in case the race condition
@@ -1172,7 +1172,7 @@ add_kyfact_types(Prefix, Fqn-Type) ==>>
 % Read the JSON node tree (with FQNs) into Nodes and file meta-data into Meta.
 read_nodes(FqnExprPath, Nodes, Meta, ColorTexts) =>
     setup_call_cleanup(
-        open(FqnExprPath, read, FqnExprStream, [encoding(octet)]),
+        open(FqnExprPath, read, FqnExprStream, [encoding(octet),type(binary)]),
         (   read_term(FqnExprStream, MetaJson, []),
             read_term(FqnExprStream, NodesJson, []),
             read_term(FqnExprStream, ColorTextsJson, [])

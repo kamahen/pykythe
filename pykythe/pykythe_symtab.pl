@@ -157,7 +157,7 @@ foldl_rb_insert([K-V|KVs], Rb0, Rb) =>
 % used by gen_builtins_symtab.pl
 read_symtab_from_cache_no_check(PykytheSymtabInputPath, Symtab) =>
     setup_call_cleanup(
-        open(PykytheSymtabInputPath, read, PykytheSymtabInputStream, [encoding(octet)]),
+        open(PykytheSymtabInputPath, read, PykytheSymtabInputStream, [encoding(octet),type(binary)]),
         (   fast_read(PykytheSymtabInputStream, _Version),
             fast_read(PykytheSymtabInputStream, _Sha1),
             fast_read(PykytheSymtabInputStream, SymtabKVs)
