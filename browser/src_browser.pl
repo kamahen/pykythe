@@ -296,7 +296,7 @@ read_and_assert_kythe_facts :-
 %! index_kythe_facts is det.
 % Build the indexes in parallel.
 index_kythe_facts :-
-    concurrent_count(10 * Cores, Cores, % will reduced to length of goals
+    concurrent_count(10 * Cores, Cores, % will reduce to length of goals
         concurrent_maplist(index_pred,
                        [kythe_node(sig,_,_,_,_,_,_),                       % kythe_node/7 1
                       % kythe_node(sig,corpus,root,path,lang,_,_),         % kythe_node/7 1+4
@@ -1237,6 +1237,9 @@ corpus_root_path_to_str([Corpus,Root|Path], Corpus, Root, PathStr) :-
 :- if(false). % TODO: redo the unit test for the new file/dir structures
 
 :- use_module(library(plunit)).
+
+% TODO: set_test_options([load(never)])
+%       so that these tests aren't in the normal runtime.
 
 :- begin_tests(file_tree).
 
