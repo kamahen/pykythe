@@ -187,6 +187,24 @@
 %       and generate all the Kythe information from the second pass
 
 :- module(pykythe, [pykythe_main/0]).
+
+% Trap syntax errors and halt. Normally, pykythe.pl is compiled to a
+% qpc format; the standard behavior of `swipl -c` can give a zero
+% return code when there's a syntax error, so we do the standard
+% behavior and then halt with a nasty error code. Note that this
+% applies to all loaded modules.
+% TODO: additional errors that don't cause the compiler to give
+%       a non-zero return code.
+% See discussion at
+% https://swi-prolog.discourse.group/t/automatic-tests-can-succeed-with-syntax-errors/3891
+% and https://github.com/SWI-Prolog/swipl-devel/issues/826
+:- multifile user:message_hook/3.
+:- dynamic user:message_hook/3.
+user:message_hook(Term, error, Lines) :-
+    Term = error(syntax_error(_Msg), _Details),
+    print_message_lines(user_error, 'ERROR: ', Lines),
+    halt(1).
+
 :- encoding(utf8).
 :- use_module(library(debug)). % explicit load to activate optimise_debug/0.
 
