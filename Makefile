@@ -53,6 +53,7 @@ SWIPL_EXE_GITHUB:=$(abspath ../swipl-devel/build/src/swipl)
 # SWIPL_EXE_GITHUB:=$(abspath ../swipl-devel/build.nlr/src/swipl)
 # SWIPL_EXE:=$(abspath $(SWIPL_EXE_GITHUB))
 SWIPL_EXE:=$(abspath $(SWIPL_EXE_GLBL))
+SWIPL_ERR:= --on_error=status --on_warning=status
 COVERAGE=$(shell type -p coverage)      # /usr/local/bin/coverage
 # For running parallel(1) - by experiment this works (2x the number of CPUs)
 # (larger numbers smooth things out for processing large/small source files):
@@ -254,16 +255,18 @@ pykythe_test: $(SWIPL_EXE) FORCE # $(TESTOUTDIR)/KYTHE/builtins_symtab.pl tests/
 	@# "test_data/imports1.py" is used in the test suite and must be a real file
 	@# because absolute_file resolution uses the existence of the file.
 	$(SWIPL_EXE) --version
-	$(SWIPL_EXE) -g run_tests -t halt tests/c3_tests.pl
-	$(SWIPL_EXE) --threads=yes -g 'plunit:load_test_files([])' -g plunit:pykythe_run_tests -t halt -l pykythe/pykythe.pl -- $(PYTHONPATH_OPT) test_data/dummy_dir/dummy_file.py
+	$(SWIPL_EXE) $(SWIPL_ERR) -g run_tests -t halt tests/c3_tests.pl
+	$(SWIPL_EXE) --threads=yes $(SWIPL_ERR) -g 'plunit:load_test_files([])' -g plunit:pykythe_run_tests -t halt -l pykythe/pykythe.pl -- $(PYTHONPATH_OPT) test_data/dummy_dir/dummy_file.py
 
 $(PYKYTHE_EXE): pykythe/*.pl pykythe_test $(SWIPL_EXE)
 	mkdir -p $(dir $@)
 	$(SWIPL_EXE) --version
 	@# The following line was used for debugging https://github.com/SWI-Prolog/swipl-devel/commit/0a0d9800134b361eb2344f29cece8b0a4b571666
-	@# echo "['pykythe/pykythe.pl']. qsave_program('$@', [stand_alone(true), undefined(error), foreign(save)])." | $(SWIPL_EXE)
+	@# echo "['pykythe/pykythe.pl']. qsave_program('$@', [stand_alone(true), undefined(error), foreign(save)])." | $(SWIPL_EXE) $(SWIPL_ERR)
 	@# TODO: add -O to compile to remove assertion/1 etc.
-	$(SWIPL_EXE) --stand_alone=true --undefined=error --verbose=false --foreign=save -o $@ -c pykythe/pykythe.pl
+	$(SWIPL_EXE) --stand_alone=true --undefined=error --verbose=false \
+		$(SWIPL_ERR) \
+		--foreign=save -o $@ -c pykythe/pykythe.pl
 	@# To find the .so files and packages:
 	@# ldd $@ | grep '=>' | cut -f3 -d' ' | sort | xargs -L1 dpkg-query -S | grep -v libc6:amd64
 
@@ -333,7 +336,7 @@ $(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/builtins.kythe.entries: \
 	    "$(SUBSTDIR_PWD_REAL)/pykythe/bootstrap_builtins.py"
 	@# instead of input from "$(KYTHEOUTDIR)$(TYPESHED_REAL)/stdlib/builtins.kythe.json"
 	@# use "$(KYTHEOUTDIR)$(PYTHONPATH_BUILTINS)/builtins.kythe.json":
-	$(SWIPL_EXE) pykythe/gen_builtins_symtab.pl \
+	$(SWIPL_EXE) $(SWIPL_ERR) pykythe/gen_builtins_symtab.pl \
 	    -- $(VERSION_OPT) $(PYTHONPATH_OPT) \
 	    $(KYTHEOUTDIR)$(PYTHONPATH_BUILTINS)/builtins.pykythe.symtab \
 	    $(KYTHEOUTDIR)$(PYTHONPATH_BUILTINS)/builtins.kythe.json \
@@ -418,7 +421,7 @@ test_leo:
 test_python_lib: # Also does some other source files I have lying around
 	$(MAKE) $(PYKYTHE_EXE) $(BUILTINS_SYMTAB_FILE)
 	@# TODO: too many args causes "out of file resources":
-	@#     $(TIME) $(PYKYTHE_EXE_) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) $$(find /usr/lib/python3.7 -name '*.py' | sort)
+	@#     $(TIME) $(PYKYTHE_EXE_) $(SWIPL_ERR) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) $$(find /usr/lib/python3.7 -name '*.py' | sort)
 	@# "sort" in the following is to make results more reproducible
 	@# "--group" probably slows things down a bit - there's a noticable dip
 	@#           in the CPU history every so often, which presumably is when
@@ -442,7 +445,7 @@ test_python_lib: # Also does some other source files I have lying around
 	  parallel -v --will-cite --keep-order --group -L80 -j$(NPROC) \
 	  --joblog=$(TESTOUTDIR)/joblog-$$(date +%Y-%m-%d-%H-%M) \
 	  '/usr/bin/time -f "\t%E real\t%U user\t%S sys\t%I-%O file" \
-	    $(PYKYTHE_EXE_) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) {}'
+	    $(PYKYTHE_EXE_) $(SWIPL_ERR) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) {}'
 
 .PHONY: test_single_src
 # This is an example of running on a single source
@@ -450,8 +453,8 @@ SINGLE_SRC=/usr/lib/python3.7/multiprocessing/connection.py
 SINGLE_SRC=/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/a10.py
 test_single_src:
 	$(MAKE) $(SINGLE_SRC)
-	$(MAKE) $(PYKYTHE_EXE_) $(BUILTINS_SYMTAB_FILE)
-	$(TIME) $(PYKYTHE_EXE_) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) $(SINGLE_SRC)
+	$(MAKE) $(PYKYTHE_EXE_) $(SWIPL_ERR) $(BUILTINS_SYMTAB_FILE)
+	$(TIME) $(PYKYTHE_EXE_) $(SWIPL_ERR) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) $(SINGLE_SRC)
 
 # Reformat all the source code (uses .style.yapf)
 .PHONY: pyformat
@@ -580,11 +583,12 @@ make-json: browser/kythe_json_to_prolog.pl FORCE
 	@# The following creates $(KYTHE_FACTS_PL)
 	set -o pipefail; \
 	    find $(KYTHEOUTDIR) -name '*.kythe.json' -o -name '*.pykythe.color.json' | \
-	    time $(SWIPL_EXE) -g main -t halt \
+	    time $(SWIPL_EXE) $(SWIPL_ERR) \
+		-g main -t halt \
 		browser/kythe_json_to_prolog.pl -- \
 		--filesdir=$(KYTHE_FACTS_DIR)
 	@# see run-src-browser, which forces a compile on first load
-	@# time $(SWIPL_EXE) -g "qcompile('$(KYTHE_FACTS_PL)')" -t halt
+	@# time $(SWIPL_EXE) $(SWIPL_ERR) -g "qcompile('$(KYTHE_FACTS_PL)')" -t halt
 	@# kythe_facts.pl is 114MB, so don't copy it.
 	@# cp --preserve=timestamps $(KYTHE_FACTS_PL) browser/examples/
 

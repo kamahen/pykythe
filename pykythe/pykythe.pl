@@ -188,23 +188,6 @@
 
 :- module(pykythe, [pykythe_main/0]).
 
-% Trap syntax errors and halt. Normally, pykythe.pl is compiled to a
-% qpc format; the standard behavior of `swipl -c` can give a zero
-% return code when there's a syntax error, so we do the standard
-% behavior and then halt with a nasty error code. Note that this
-% applies to all loaded modules.
-% TODO: additional errors that don't cause the compiler to give
-%       a non-zero return code.
-% See discussion at
-% https://swi-prolog.discourse.group/t/automatic-tests-can-succeed-with-syntax-errors/3891
-% and https://github.com/SWI-Prolog/swipl-devel/issues/826
-:- multifile user:message_hook/3.
-:- dynamic user:message_hook/3.
-user:message_hook(Term, error, Lines) :-
-    Term = error(syntax_error(_Msg), _Details),
-    print_message_lines(user_error, 'ERROR: ', Lines),
-    halt(1).
-
 :- encoding(utf8).
 :- use_module(library(debug)). % explicit load to activate optimise_debug/0.
 
@@ -830,16 +813,19 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
     clean_kythe_facts(KytheFactsUncleaned, KytheFactsCleaned),
     % TODO: don't preserve order (for debugging) - use sort/2 to dedup:
     list_to_set(KytheFactsCleaned, KytheFacts),
-    log_if(true, 'Writing Kythe facts for ~q', [Meta.path]),
     path_with_suffix(Opts, SrcPath, Opts.kythejson_suffix, KytheJsonPath),
     path_with_suffix(Opts, SrcPath, Opts.pykythesymtab_suffix, PykytheSymtabPath),
     path_with_suffix(Opts, SrcPath, Opts.pykythebatch_suffix, PykytheBatchPath),
     path_with_suffix(Opts, SrcPath, Opts.pykythecolor_suffix, PykytheColorPath),
     partition([Fact]>>get_dict(fact_name, Fact, '/pykythe/color_all'),
               KytheFacts, ColorFacts, KytheFacts2),
+    log_if(true, 'Writing Kythe facts for ~q', [Meta.path]),
     write_atomic_stream(write_kythe_facts(KytheFacts2), KytheJsonPath, [encoding(utf8)]),
+    log_if(true, '   Done writing ~q', [KytheJsonPath]),
     write_atomic_stream(write_kythe_facts(ColorFacts), PykytheColorPath, [encoding(utf8)]),
+    log_if(true, '   Done writing ~q', [PykytheColorPath]),
     write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheSymtabPath, [encoding(octet),type(binary)]),
+    log_if(true, '   Done writing ~q', [PykytheSymtabPath]),
     (   PykytheSymtabPath = PykytheBatchPath
     ->  log_if(true, 'Not writing to kythebatch: ~w', KytheJsonPath)
     ;   % write_atomic_stream(write_symtab(Symtab, Opts.version, Meta.sha1), PykytheBatchPath, [encoding(octet),type(binary)])
@@ -851,9 +837,9 @@ output_kythe(Opts, Meta, SrcPath, SrcFqn, Symtab, KytheFactsFromExprs, KytheFact
               error(existence_error(file, _), _), % context(_, 'No such file or directory')
               log_if(true, 'Failed to hard-link (file does not exist) ~q to ~q', [PykytheSymtabPath, PykytheBatchPath]))
     ),
-    log_if(true, 'Converting to Kythe protobuf'),
     path_with_suffix(Opts, SrcPath, Opts.kytheentries_suffix, KytheEntriesPath),
     write_atomic_file(write_to_protobuf(Opts.entriescmd, SrcPath, KytheJsonPath), KytheEntriesPath, [encoding(utf8)]),
+    log_if(true, '   Done writing ~q', [KytheEntriesPath]),
     log_if(true, 'Finished output ~q (~q) to ~q (~q)', [SrcPath, SrcFqn, KytheEntriesPath, KytheJsonPath]).
 
 :- det(transform_kythe_fact/2).

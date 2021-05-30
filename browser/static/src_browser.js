@@ -489,7 +489,7 @@ function mouseoverAnchor(mouse_target, class_action, class_id, source_item) {
                     g_anchor_to_anchors[signature], mouse_target.id);
 }
 
-// Highlight on/off (class_action={'add','remove}) on an anchor.
+// Highlight on/off (class_action={'add','remove'}) on an anchor.
 function mouseoverHilite(class_action, class_id, anchors, debug_item) {
     for (const anchor of anchors || []) {
         const sig = document.getElementById(signature_prefix + anchor);

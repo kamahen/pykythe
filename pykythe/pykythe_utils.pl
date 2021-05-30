@@ -87,7 +87,7 @@
 validate_prolog_version =>
     current_prolog_flag(version, PrologVersion),
     % Sync this with README.md and demo.sh:
-    must_once_msg(PrologVersion >= 80322, 'SWI-Prolog version is too old'),
+    must_once_msg(PrologVersion >= 80324, 'SWI-Prolog version is too old'),
     pack_property(edcg, version(EdcgVersion)),
     must_once_msg(EdcgVersion @>= '0.9.1.7', 'pack(edcg) is missing or version is too old').
 
@@ -139,7 +139,7 @@ dump_term(Msg, Term) =>
 % TODO: use debug/3, etc. instead (also print_message/2).
 % TODO: Delete this debugging code
 dump_term(Msg, Term, Options) =>
-    print_term_cleaned(Term, Options, TermStr),
+    print_term_cleaned(Term, [indent_arguments(4)|Options], TermStr),
     dump_term2(Msg, TermStr).
 
 :- det(dump_term2/2).
@@ -274,7 +274,8 @@ print_term_cleaned(Term, Options, TermStr) =>
             string(TermStr0),
             (current_output(TermStream),
              print_term(Term, [output(TermStream)|Options]))),
-    re_replace(" *\n"/g, "\n", TermStr0, TermStr).
+    re_replace(" +\n"/g, "\n", TermStr0, TermStr1),
+    re_replace("\t"/g, "        ", TermStr1, TermStr).
 
 :- det(remove_suffix_star/3).
 %! remove_suffix_star(+Full:atom, +Suffix:atom, -NoSuffix:atom) is det.
