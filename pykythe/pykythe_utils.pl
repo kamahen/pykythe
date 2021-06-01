@@ -270,10 +270,8 @@ pykythe_json_read_dict(Stream, Dict) =>
 % print_term, cleaned up
 print_term_cleaned(Term, Options, TermStr) =>
     % print_term leaves trailing whitespace, so remove it
-    with_output_to(
-            string(TermStr0),
-            (current_output(TermStream),
-             print_term(Term, [output(TermStream)|Options]))),
+    with_output_to(string(TermStr0),
+                   print_term(Term, [output(current_output)|Options])),
     re_replace(" +\n"/g, "\n", TermStr0, TermStr1),
     re_replace("\t"/g, "        ", TermStr1, TermStr).
 
@@ -330,7 +328,7 @@ maybe_absolute_dir(Path0, AbsPath) :-
         fail
     ).
 
-:- det(term_canonical_atom/2).
+:- det(term_to_canonical_atom/2).
 %! term_canonical_atom(+Term, -Atom) is det.
 % Like term_to_atom/2 if Term is instantiated, but generates
 % an atom in canonical form (no operators).
