@@ -15,7 +15,7 @@
 # ("clean" shouldn't be necessary, but the dependencies are fairly
 # complicated, so it's possible that "make test" doesn't run
 # everything.  In particular, pykythe doesn't check its "version" when
-# reusing an import.
+# reusing an import.)
 
 # Assumes that ../kythe has been cloned from
 # https://github.com/google/kythe and has been built with `bazel build
@@ -27,6 +27,7 @@
 # - download the latest Kythe build from https://github.com/kythe/kythe/releases
 # - unpack it and link it into ~/kythe (e.g., so that ~/kythe/tools/http_server exists)
 # - make -C ~/src/pykythe add-index-pykythe run-kythe-server
+#   or: make run-src-browser
 #   (if you use Emacs, you can't do "make run-kythe-server" in the *compilation*
 #    window because Emacs will kill the process; instead, run it in a shell)
 # Because of some pre-processing, $HOME/src/pykythe/* files show in
@@ -43,8 +44,10 @@
 
 TESTOUTDIR:=$(abspath /tmp/pykythe_test)
 SHELL:=/bin/bash
+# Must be python 3.7.11 - there's a validation test in the ast_raw.parse()
 # Assume that type -p returns an abspath ...
-PYTHON3_EXE:=$(shell type -p python3.7)  # TODO: 3.9 doesn't have lib2to3
+PYTHON3_EXE:=$(shell type -p python3.7)  # TODO: 3.10 doesn't have lib2to3
+# PYTHON3_EXE:=/usr/bin/python3.7
 FIND_EXE:=$(shell type -p find)          # /usr/bin/find The following
 # /usr/bin/swipl:
 SWIPL_EXE_GLBL:=$(shell type -p swipl)
@@ -417,6 +420,11 @@ test_leo:
 	$(MAKE) $(PYKYTHE_EXE) $(BUILTINS_SYMTAB_FILE)
 	$(PYKYTHE_EXE_) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) ../leo-editor/leo/core/leoAst.py
 
+.PHONY: test_asttokens
+test_asttokens:
+	$(MAKE) $(PYKYTHE_EXE) $(BUILTINS_SYMTAB_FILE)
+	$(PYKYTHE_EXE_) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) ../six/six.py ../asttokens/asttokens/asttokens.py ../asttokens/tests/test_asttokens.py ../asttokens/tests/test_mark_tokens.py ../asttokens/tests/tools.py ../swiplserver/swiplserver/prologserver.py
+
 .PHONY: test_python_lib
 test_python_lib: # Also does some other source files I have lying around
 	$(MAKE) $(PYKYTHE_EXE) $(BUILTINS_SYMTAB_FILE)
@@ -461,6 +469,7 @@ test_single_src:
 pyformat:
 	find . -type f -name '*.py' | \
 		grep -v $(TEST_DATA_DIR) | grep -v /typeshed/ | \
+		grep -v /six/ | grep -v /asttokens/ | \
 		xargs yapf -i
 
 .PHONY: yapf
@@ -895,7 +904,7 @@ upgrade-emacs:
 		git clean -dxf && \
 		git pull --recurse && \
 		./autogen.sh && \
-		./configure --prefix=$$HOME/.local && \
+		./configure --prefix=$$HOME/.local --withgnutls=ifavailable && \
 		make -j $(NPROC_BAZEL) bootstrap && \
 		make install
 

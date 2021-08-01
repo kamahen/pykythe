@@ -5,3 +5,9 @@
 	fetchRecurseSubmodules = true
         update = rebase
         branch = .
+[submodule "pykythe/asttokens"]
+	path = pykythe/asttokens
+	url = git@github.com:gristlabs/asttokens.git
+[submodule "pykythe/six"]
+	path = pykythe/six
+	url = git@github.com:benjaminp/six.git

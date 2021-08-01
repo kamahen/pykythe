@@ -3352,8 +3352,6 @@ goal_failed(Goal) :-
     fail.
 
 user:portray(Term) :-
-    nonvar(Term),  % Shouldn't be needed, but just in case.
-    % fail,  % uncomment this line to turn off pykythe_portray/1
     % in the following, format/2 is used because
     % print_message(warning, E) gives an infinite recursion.
     E = error(ErrorTerm, _Context), % avoid trapping abort, timeout, etc.
@@ -3412,12 +3410,11 @@ pykythe_portray(astn(Start, End, String)) :- !,
 pykythe_portray('*list*'(List)) :- !, % To make print_term output more compact
     format('~p', [List]).
 pykythe_portray(Meta) :-
-    is_dict(Meta, MetaTag),
-    MetaTag == meta,        % ==/2 in case dict has uninstantiated tag
-    get_dict(kythe_corpus, Meta, KytheCorpus),
-    get_dict(kythe_root, Meta, KytheRoot),
-    get_dict(path, Meta, Path),
-    get_dict(src_fqn, Meta, SrcFqn),
+    is_dict(Meta),
+    meta{kythe_corpus: KytheCorpus,
+         kythe_root: KytheRoot,
+         path: Path,
+         src_fqn: SrcFqn} :< Meta,
     !,
     dict_pairs(Meta, _, MetaPairs),
     pairs_keys(MetaPairs, MetaKeys),

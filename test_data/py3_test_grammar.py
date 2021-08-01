@@ -8,6 +8,9 @@ TODO: needs tests for at least the following (extended iterable unpacking):
       PEP 3132 (Python 3.0)
       PEP 448 (Python 3.5)
       slices on left-hand-side
+      walrus operator (":=")
+      single star in arg lists
+TODO: update to latest version when ast_raw handles Python3.9
 
 The "{...}"s in verifier goals are to avoid unnecessary backtracking
 in the verifier (it *eventually* terminates without them, but takes a

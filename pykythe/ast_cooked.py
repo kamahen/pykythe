@@ -53,6 +53,8 @@ semantic node, identified by `C.f1`). For the latter, we capture that
 we can therefore deduce that `c` is also of type `class(C)`.
 """
 
+# TODO: change to using asttokens -- see the "#-#" comments
+
 # from __future__ import annotations  # TODO: this upsets pytype, which can't handle Python 3.7
 #       we can't make this conditional on sys.version_info > (3,7):
 #       SyntaxError: from __future__ imports must occur at the beginning of the file
@@ -424,6 +426,7 @@ class AssignExprStmt(BaseNoFqnProcessing):
     Disallows reprocessing, which could change things if a `left`
     contains something that's in the `expr`.
     """
+    # TODO: is this used? - see AssignMultipleExprStmt
 
     left: Base
     expr: Base
@@ -609,7 +612,11 @@ class Class(BaseNoFqnProcessing):
 
 
 @dataclass(frozen=True)
-class ClassDefStmt(Base):
+class ClassDefStmt(Base):  #-# ClassDef(identifier name,
+                           #-#         expr* bases,
+                           #-#          keyword* keywords,
+                           #-#          stmt* body,
+                           #-#          expr* decorator_list)
     """Corresponds to `classdef`."""
 
     name: Union['NameBindsNode', 'NameBindsGlobalNode']
@@ -983,7 +990,11 @@ class Func(BaseNoFqnProcessing):
 
 
 @dataclass(frozen=True)
-class FuncDefStmt(Base):
+class FuncDefStmt(Base):  #-# FunctionDef(identifier name, arguments args,
+                          #-#             stmt* body, expr* decorator_list, expr? returns)
+                          #-# AsyncFunctionDef(identifier name, arguments args,
+                          #-#                  stmt* body, expr* decorator_list, expr? returns,
+                          #-#                  string? type_comment)
     """Corresponds to `funcdef` / `async_funcdef` or lambdadef.
 
     If it's a lambda, the `name` points to the `lambda` keyword and
