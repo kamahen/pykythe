@@ -78,8 +78,11 @@ with associated BUILD files, or ninja, to run in parallel.
   * `sudo add-apt-repository ppa:deadsnakes/ppa`
   * `sudo apt install python3.7`
 
+* If you're going to use the Makefile:
+  * `sudo apt install parallel`
+
 * Run `scripts/demo.sh` (it produces about 5000 lines of log
-  messages). When it gets the end, it starts a server, which you can
+  messages). When it gets to the end, it starts a server, which you can
   access by:
   *  http://localhost:9999
   *  or http://localhost:9999/static/src_browser.html?corpus=CORPUS&root=ROOT&path=home/peter/src/pykythe/pykythe/ast_raw.py&line=81

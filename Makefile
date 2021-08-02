@@ -72,8 +72,7 @@ KYTHE_GENFILES:=$(KYTHE)/bazel-genfiles
 BROWSE_PORT_PYKYTHE:=8080  # underhood assumes port 8080: underhood/treetide/underhood/ui/webpack.config.js
 BROWSE_PORT_PYTYPE:=8089
 SRC_BROWSER_PORT:=9999
-# (VERIFIER_EXE is defined below, using the version built from source)
-# VERIFIER_EXE:=/opt/kythe/tools/verifier
+VERIFIER_EXE:=/opt/kythe/tools/verifier
 # TODO: Something happened with v0.0.31 or later that is incompatible
 #       with older servers (which support the UI).
 #       See also https://github.com/TreeTide/underhood/issues/12
@@ -93,7 +92,7 @@ HTTP_SERVER_EXE:=/opt/kythe/tools/http_server
 HTTP_SERVER_RESOURCES:=/opt/kythe/web/ui
 
 # If Kythe built from source:
-VERIFIER_EXE:=$(KYTHE_BIN)/kythe/cxx/verifier/verifier
+# VERIFIER_EXE:=$(KYTHE_BIN)/kythe/cxx/verifier/verifier
 # ENTRYSTREAM_EXE:=$(KYTHE_BIN)/kythe/go/platform/tools/entrystream/entrystream
 # WRITE_ENTRIES_EXE:=$(KYTHE_BIN)/kythe/go/storage/tools/write_entries/write_entries
 # WRITE_TABLES_EXE:=$(KYTHE_BIN)/kythe/go/serving/tools/write_tables/write_tables
