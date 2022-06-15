@@ -1,7 +1,7 @@
 """Define PlainOldData class.
 
 The name of this module is misleading -- its original use has been
-superseded by Python 3.7's dataclasses. Instead, it acts as a kind of
+superseded by Python 3.9's dataclasses. Instead, it acts as a kind of
 mixin class for adding a few common methods for dealing with
 serialization to Prolog terms.
 """

@@ -74,9 +74,9 @@ with associated BUILD files, or ninja, to run in parallel.
   directory (you can also change the Kythe version but I haven't
   tested with a more recent version).
 
-* If you need to install python3.7:
+* If you need to install python3.9:
   * `sudo add-apt-repository ppa:deadsnakes/ppa`
-  * `sudo apt install python3.7`
+  * `sudo apt install python3.9`
 
 * If you're going to use the Makefile:
   * `sudo apt install parallel`
@@ -129,25 +129,25 @@ impossible and I really don't feel like becoming a git guru.
   * The `build-kythe` rule in the `pykythe` Makefile will build Kythe from scratch,
     but the rule often breaks with new releases.
 
-* Install `python3.7`
+* Install `python3.9`
 
-  This needs the *latest* version of Python 3.7. On Ubuntu, you might
+  This needs the *latest* version of Python 3.9. On Ubuntu, you might
   need to first run `sudo add-apt-repository ppa:deadsnakes/ppa`, then
-  `sudo apt install python3.7`. More choices are given in
+  `sudo apt install python3.9`. More choices are given in
   [this tutorial](https://linuxize.com/post/how-to-install-python-3-7-on-ubuntu-18-04/).
 
   If you get an error in `DISPATCH[node.type]`, then it probably means
   that there's a conflict with Ubuntu package `python3-lib2to3`. The
   easiest way to fix this is to clone `cprolog` from github and then
   `sudo cp -r --preserve=mode,timestamps cpython/Lib/lib2to3/*
-  /usr/lib/python3.7/lib2to3/`. Alternatively, `sudo apt install
+  /usr/lib/python3.9/lib2to3/`. Alternatively, `sudo apt install
   2to3 python3-lib2to3 python3-toolz`.
 
 * Install `lib2to3` for Python.
 
   This might not be needed, depending on the exact state of Python3.x tools
 
-  `sudo apt install python3.7-lib2to3`
+  `sudo apt install python3.9-lib2to3`
   or
   `sudo apt install 2to3 python3-lib2to3 python3-toolz`
 
@@ -173,6 +173,10 @@ impossible and I really don't feel like becoming a git guru.
   * edcg 0.9.1.7
   <!--  * rdet 1.0.3 -->
 
+* Install mypy_extensions:
+  `python3.9 -mpip install mypy`
+  `python3.9 -mpip install mypy_extensions`
+
 * Optional (htis is now a submodule of `ptype`):
   `git clone https://github.com/python/typeshed.git`
 
@@ -183,7 +187,7 @@ impossible and I really don't feel like becoming a git guru.
     --upgrade .`) (`pytype` is special -- see its installation
     instructions).
     * You might need to symlink `mypy_extensions` into
-      `/usr/local/lib/python3.7/dist-packages`.
+      `/usr/local/lib/python3.9/dist-packages`.
 
 * Optional:
 
@@ -252,9 +256,6 @@ See also https://www.swi-prolog.org/FAQ/GnuEmacs.html
 The code is processed with `mypy` (using the `Makefile` rule `mypy`)
 and `pylint`. It is intended to also be processed by `pytype`.
 
-  * Currently this doesn't work because `mypy` doesn't support Python
-    3.7 `dataclasses`
-
 ## Implementation notes
 
 ## Grammar
@@ -262,11 +263,11 @@ and `pylint`. It is intended to also be processed by `pytype`.
 Pykythe depends on the deprecated `lib2to3` parser, and the details of
 the `Grammar.txt` file.
 
-TODO: This requires Python version 3.7.5.
-You can create this in `$HOME/.local/bin/python3.7` by the following:
+TODO: This requires Python version 3.9.13.
+You can create this in `$HOME/.local/bin/python3.9` by the following:
 ```
 git clone git@github.com:python/cpython.git
-git checkout v3.7.5
+git checkout v3.9.13
 ./configure --prefix=$HOME/.local --enable-optimizations
 make -j
 make -j test
@@ -516,17 +517,17 @@ UTF8 everywhere).
 
   * Doesn't yet handle Python 3.8 "walrus" operator.
 
-* Requires Python 3.7
-   * On Ubuntu: `sudo apt install python3.7`
+* Requires Python 3.9
+   * On Ubuntu: `sudo apt install python3.9`
    * You also might have to do something like this: `cd /usr/lib/python3/dist-packages &&
 sudo ln -s apt_pkg.cpython-36m-x86_64-linux-gnu.so apt_pkg.cpython-37m-x86_64-linux-gnu.so`
 
-* Requires Python 3.7 `2to3`
+* Requires Python 3.9 `2to3`
    * (See above with "Install `lib2to3` for Python", although that
      might not be needed any more.)
 
 * Requires `mypy_extensions`:
-   * `python3.7 -m pip install mypy_extensions`
+   * `python3.9 -m pip install mypy_extensions`
 
 * Outputs JSON and uses `entrystream --read_format=json` to convert
   to the form that `write_tables` expects (it would be more efficient

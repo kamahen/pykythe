@@ -206,9 +206,7 @@
 :- use_module(library(optparse), [opt_arguments/3]).
 :- use_module(library(ordsets), [list_to_ord_set/2, ord_empty/1, ord_union/2, ord_union/3, ord_add_element/3]).
 :- use_module(library(pairs), [pairs_keys/2, pairs_values/2, pairs_keys_values/3]).
-:- style_check(-var_branches).
 :- use_module(library(pcre), [re_replace/4]).
-:- style_check(+var_branches).
 :- use_module(library(prolog_stack)).  % For catch_with_backtrace
 :- use_module(library(utf8), [utf8_codes/3]).
 
@@ -219,6 +217,7 @@
 :- use_module(pykythe_symtab).
 
 % TODO: use_module(library(fastrw), [fast_read/2, fast_write/2, fast_term_serialized/2]).
+%       for the generated facts (see also ../browser/src_browser.pl)
 
 :- meta_predicate
        maplist_kyfact(4, +, +, -, +),
@@ -642,6 +641,7 @@ pykythe_opts(SrcPaths, Opts) =>
 % imports, so a module's entry in the symtab is used to prevent an
 % infinite recursion.
 process_module_cached_or_from_src(Opts, FromSrcOk, SrcPath, SrcFqn, Symtab0, Symtab) :-
+    assertion(var(Symtab)),  % TODO: remove
     (   symtab_lookup(SrcFqn, Symtab0, _ModuleValue)
     ->  % Module in symtab (possibly recursive import): skip it.
         Symtab = Symtab0,
@@ -658,6 +658,7 @@ process_module_cached_or_from_src(Opts, FromSrcOk, SrcPath, SrcFqn, Symtab0, Sym
 modules_in_symtab(Symtab, Modules) =>
     symtab_values(Symtab, SymtabValues),
     append(SymtabValues, AllTypes),
+    % TODO: Need the equivalent of convlist for rbtrees
     include(is_module, AllTypes, Modules0),
     list_to_union_type(Modules0, Modules).
 
@@ -689,6 +690,7 @@ maybe_assign_import(Term, module_type(Module)) :-
 %     this can fail if the cached file isn't valid (e.g., older than the source)
 %   [ensure that any open file is closed]
 maybe_process_module_cached(Opts, FromSrcOk, SrcPath, Symtab0, Symtab) =>
+    assertion(var(Symtab)),  % TODO: remove
     path_with_suffix(Opts, SrcPath, Opts.pykythesymtab_suffix, PykytheSymtabPath),
     setup_call_cleanup(
         maybe_open_read(PykytheSymtabPath, PykytheSymtabInputStream),
@@ -699,6 +701,7 @@ maybe_process_module_cached(Opts, FromSrcOk, SrcPath, Symtab0, Symtab) =>
 %! maybe_process_module_cached_impl(+Opts:list, +FromSrcOk:{'from src ok','cached only'}, +PykytheSymtabInputStream, +SrcPath:atom, +Symtab0, -Symtab) is semidet.
 % See README.md's section on caching for an explanation.
 maybe_process_module_cached_impl(Opts, FromSrcOk, PykytheSymtabInputStream, PykytheSymtabPath, SrcPath, Symtab0, Symtab)  =>
+    assertion(var(Symtab)),  % TODO: remove
     (   maybe_process_module_cached_batch(Opts, SrcPath, Symtab0, Symtab)
     ->  path_with_suffix(Opts, SrcPath, Opts.pykythebatch_suffix, PykytheBatchPath),
         log_if(true, 'Reused/batch(~w) ~q for ~q', [FromSrcOk, PykytheBatchPath, SrcPath])
@@ -715,8 +718,8 @@ maybe_process_module_cached_impl(Opts, FromSrcOk, PykytheSymtabInputStream, Pyky
         % the cached result).
         % TODO: modules_in_symtab not needed because foldl_process_module_cached_or_from_src/5
         %       skips non-modules.
-        modules_in_symtab(Symtab, ModulesInSymtab),
-        foldl_process_module_cached_or_from_src(Opts, 'cached only', ModulesInSymtab, Symtab1, Symtab),
+        modules_in_symtab(Symtab1, ModulesInSymtab1),
+        foldl_process_module_cached_or_from_src(Opts, 'cached only', ModulesInSymtab1, Symtab1, Symtab),
         path_with_suffix(Opts, SrcPath, Opts.kythejson_suffix, KytheJsonPath),
         log_if(true, 'Reused/cache(~w) ~q for ~q', [FromSrcOk, KytheJsonPath, SrcPath])
     ).
@@ -734,15 +737,17 @@ maybe_process_module_cached_batch(Opts, SrcPath, Symtab0, Symtab) =>
 :- det(foldl_process_module_cached_or_from_src/5).
 %! foldl_process_module_cached_or_from_src(+Opts:list, +FromSrcOk:{'from src ok','cached only'}, +Modules:list, +Symtab0:dict, -Symtab:dict) is det.
 foldl_process_module_cached_or_from_src(_Opts, _FromSrcOk, [], Symtab0, Symtab) =>
+    assertion(var(Symtab)),  % TODO: remove
     Symtab = Symtab0.
 foldl_process_module_cached_or_from_src(Opts, FromSrcOk, [M|Modules], Symtab0, Symtab) =>
+    assertion(var(Symtab)),  % TODO: remove
     % TODO: handle module_star, merging its names into the symtab
     (   M = module_type(Module),
         path_part(Module, SrcPath), % TODO: fix failure for "import *"
         module_part(Module, SrcFqn)
     ->  % TODO: don't do this if module_and_token and module != module_path
-        % or something like that (although it'll just fail
-        % because the file doesn't exist)
+        % or something like that
+        % (although it'll just fail because the file doesn't exist)
         process_module_cached_or_from_src(Opts, FromSrcOk, SrcPath, SrcFqn, Symtab0, Symtab1)
     ;   Symtab1 = Symtab0
     ),
@@ -768,6 +773,7 @@ process_module_from_src(Opts, 'from src ok', SrcFqn, Symtab0, Symtab) =>
 :- det(process_module_from_src_impl/5).
 %! process_module_from_src_impl(+Opts:list, +SrcPath:atom, +SrcFqn:atom, +Symtab0, -Symtab) is det.
 process_module_from_src_impl(Opts, SrcPath, SrcFqn, Symtab0, Symtab) =>
+    assertion(var(Symtab)),  % TODO: remove
     stats(Stats0),
     path_with_suffix(Opts, SrcPath, Opts.kythejson_suffix, KytheJsonPath),
     log_if(true,
@@ -1977,7 +1983,7 @@ kyanchor_binding(Start, End, AttrName, Fqn, Childof, DebugInfo) ==>>
 %     @foo  defines/binding  $FQN.foo
 %     @zot  defines/binding  $FQN.zot  [$FQN.qqsv]
 % NOTE: there are some weird corner cases ... for example, "import
-%       os.path" gets a name in /usr/lib/python3.7/os.py that happens
+%       os.path" gets a name in /usr/lib/python3.9/os.py that happens
 %       to be a module but alternatively gets
 %       typeshed/stdlib/os/path.pyi ... we therefore have to allow
 %       for module_alone and module_and_token everywhere.
@@ -2400,10 +2406,10 @@ assign_exprs_count(Count, Opts, Exprs, Meta, Symtab0, Symtab, KytheFacts) :-
         % (These will eventually get fixed, of course.)
         with_output_to(
             string(RejStr),
-            ( current_output(RejStream),
-              write_term(RejStream, Rej,
-                         [quoted(true), portray(true), max_depth(10), attributes(portray)]))),
-        log_if(Rej \= [], 'Max pass count exceeded: ~d leaving ~d unprocessed: ~q -- ~w', [CountIncr, RejLen, RejKeysSorted, RejStr])
+            write_term(current_output, Rej,
+                       [quoted(true), portray(true), max_depth(10), attributes(portray)])),
+        log_if(Rej \= [], 'Max pass count exceeded: ~d leaving ~d unprocessed: ~q -- ~w',
+                          [CountIncr, RejLen, RejKeysSorted, RejStr])
         % log_if(Rej \= [], 'Rejected: ~q', [Rej])
     ;   log_if(trace_file(Meta.path), 'REJ: ~q', [Rej]),
         pairs_values(Rej, RejTypes0),
@@ -2539,7 +2545,7 @@ eval_assign_subscr_op_binds_single(RightEval, var_ref(BindsFqn)) ==>>
     %       cycles, e.g. caused by this (from functools._lru_cache_wrapper):
     %       `root = []; root[:] = [root, root]`
     % TODO: Circular list_of_type([list_of_type([]),...) seems to come
-    %       from somewhere else also; see /usr/lib/python3.7/typing.py
+    %       from somewhere else also; see /usr/lib/python3.9/typing.py
     %       and show the Rej in the "Max pass count exceeded" message.
     (   symtab_lookup(BindsFqn, Type), % TODO: remove this hack
         { member(list_of_type(Type2), Type) },
@@ -3561,7 +3567,7 @@ do_if_file(Goal) ==>>
     Meta/file_meta,
     { do_if(trace_file(Meta.path), Goal) }.
 
-:- det(symtab_if_file/1).
+:- det(symtab_if_file/4).
 %! Dump the symtab if trace_file/1 matches Meta.path. (for debugging)
 symtab_if_file(Msg) ==>>    % DO NOT SUBMIT - replace this with something that uses pykythe_symtab predicates.
     Meta/file_meta,

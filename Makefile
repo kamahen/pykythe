@@ -44,10 +44,10 @@
 
 TESTOUTDIR:=$(abspath /tmp/pykythe_test)
 SHELL:=/bin/bash
-# Must be python 3.7.11 - there's a validation test in the ast_raw.parse()
+# Must be python 3.9.13 - there's a validation test in the ast_raw.parse()
 # Assume that type -p returns an abspath ...
-PYTHON3_EXE:=$(shell type -p python3.7)  # TODO: 3.10 doesn't have lib2to3
-# PYTHON3_EXE:=/usr/bin/python3.7
+PYTHON3_EXE:=$(shell type -p python3.9)  # TODO: 3.10 doesn't have lib2to3
+# PYTHON3_EXE:=/usr/bin/python3.9
 FIND_EXE:=$(shell type -p find)          # /usr/bin/find The following
 # /usr/bin/swipl:
 SWIPL_EXE_GLBL:=$(shell type -p swipl)
@@ -171,12 +171,12 @@ ifeq ($(BATCH_ID),)
 else
     BATCH_OPT:=--pykythebatch_suffix='.pykythe.batch-$(BATCH_ID)'
 endif
-# TODO: parameterize following for python3.7, etc.:
+# TODO: parameterize following for python3.9, etc.:
 # TODO: Verify how typeshed/stubs works
 #       For example stdlib/array.pyi has "from typing_extensions import Literal",
 #       but the relevant file is in stubs/typing-extensions/typing_extensions.pyi
-PYTHONPATH_OPT:=--pythonpath='$(PYTHONPATH_DOT):$(PYTHONPATH_BUILTINS):$(TYPESHED_REAL)/stdlib:$(TYPESHED_REAL)/stubs:/usr/lib/python3.7'
-PYTHONPATH_OPT_NO_SUBST:=--pythonpath='$(PYTHONPATH_DOT):$(TYPESHED_REAL)/stdlib:$(TYPESHED_REAL)/stubs:/usr/lib/python3.7'
+PYTHONPATH_OPT:=--pythonpath='$(PYTHONPATH_DOT):$(PYTHONPATH_BUILTINS):$(TYPESHED_REAL)/stdlib:$(TYPESHED_REAL)/stubs:/usr/lib/python3.9'
+PYTHONPATH_OPT_NO_SUBST:=--pythonpath='$(PYTHONPATH_DOT):$(TYPESHED_REAL)/stdlib:$(TYPESHED_REAL)/stubs:/usr/lib/python3.9'
 PYKYTHE_OPTS0=$(VERSION_OPT) $(BATCH_OPT) \
 	--builtins_symtab=$(BUILTINS_SYMTAB_FILE) \
 	--builtins_path=$(BUILTINS_PATH) \
@@ -410,6 +410,7 @@ test_c3_a:  # run c3_a, to ensure it behaves as expected
 test_data_tests:
 	@# running in parallel gains ~30%, it seems
 	@# (large files such as py3_test_grammar.py dominate)
+	@# TODO: Some error messages seem to disappear with -j
 	$(MAKE) -j$(NPROC) --output-sync=line $(TESTOUT_TARGETS) \
 		$(KYTHEOUTDIR)$(PWD_REAL)/pykythe/__main__.kythe.entries
 	find $(TESTOUTDIR) -name '*.verifier' | xargs file | grep -v empty | sed 's/:.*$$//' | xargs head -30
@@ -428,18 +429,18 @@ test_asttokens:
 test_python_lib: # Also does some other source files I have lying around
 	$(MAKE) $(PYKYTHE_EXE) $(BUILTINS_SYMTAB_FILE)
 	@# TODO: too many args causes "out of file resources":
-	@#     $(TIME) $(PYKYTHE_EXE_) $(SWIPL_ERR) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) $$(find /usr/lib/python3.7 -name '*.py' | sort)
+	@#     $(TIME) $(PYKYTHE_EXE_) $(SWIPL_ERR) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) $$(find /usr/lib/python3.9 -name '*.py' | sort)
 	@# "sort" in the following is to make results more reproducible
 	@# "--group" probably slows things down a bit - there's a noticable dip
 	@#           in the CPU history every so often, which presumably is when
 	@#           the outputs are gathered and printed
 
-	@# There are roughly 1300 files in /usr/lib/python3.7 (6900 in the whole test),
+	@# There are roughly 1300 files in /usr/lib/python3.9 (6900 in the whole test),
 	@#     so batches of 50-150 are reasonable.
 	@# parallel(1) seems to spawn too many jobs, which causes paging,
 	@#     so limit it with the "-j" option
 	@#     (could also use the --semaphore --fg option)
-	@# TODO: /usr has more *.py files than /usr/lib/python3.7 but takes 3x longer
+	@# TODO: /usr has more *.py files than /usr/lib/python3.9 but takes 3x longer
 	@# TODO: use annotate-output (from package devscripts) to add the timestamps
 	@#       and remove the timestamps from pykytype's logging.
 	@# Note: ./typeshed not here because it's in mypy and pytype
@@ -447,7 +448,7 @@ test_python_lib: # Also does some other source files I have lying around
 	@#       parameterize this on NPROC?
 	@#       Also: use --jobs=200% rather than NPROC?
 	set -o pipefail; \
-	find /usr/lib/python3.7 ../mypy ../pytype ../yapf ../importlab ../kythe . \
+	find /usr/lib/python3.9 ../mypy ../pytype ../yapf ../importlab ../kythe . \
 	  -name '*.py' -o -name '*.pyi' | sort | \
 	  parallel -v --will-cite --keep-order --group -L80 -j$(NPROC) \
 	  --joblog=$(TESTOUTDIR)/joblog-$$(date +%Y-%m-%d-%H-%M) \
@@ -456,7 +457,7 @@ test_python_lib: # Also does some other source files I have lying around
 
 .PHONY: test_single_src
 # This is an example of running on a single source
-SINGLE_SRC=/usr/lib/python3.7/multiprocessing/connection.py
+SINGLE_SRC=/usr/lib/python3.9/multiprocessing/connection.py
 SINGLE_SRC=/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/a10.py
 test_single_src:
 	$(MAKE) $(SINGLE_SRC)
@@ -491,7 +492,7 @@ pyflakes:
 		grep -v snippets.py | xargs -L1 pyflakes
 
 PYTYPE_DIR=/tmp/pykythe_pytype
-PYTYPE_V=3.7
+PYTYPE_V=3.9
 # Can't do the following because need to compile
 # things like parser_ext:
 #   PYTYPE=PYTHONPATH=$$(pwd)/../pytype ../pytype/scripts/pytype
@@ -505,7 +506,7 @@ PYTYPE=$(shell type -p pytype)
 #       but that seems to upset pytype's imnport mechanism.
 
 # Anyway, mypy doesn't yet have a plugin for dataclasses. :(
-MYPY:=$(shell type -p mypy) --python-version=3.7 --strict-optional --check-untyped-defs --warn-incomplete-stub --warn-no-return --no-incremental --disallow-any-unimported --show-error-context --implicit-optional --strict --disallow-incomplete-defs
+MYPY:=$(shell type -p mypy) --python-version=3.9 --strict-optional --check-untyped-defs --warn-incomplete-stub --warn-no-return --no-incremental --disallow-any-unimported --show-error-context --implicit-optional --strict --disallow-incomplete-defs
 # TODO: --disallow-incomplete-defs  https://github.com/python/mypy/issues/4603
 # TODO: --disallow-any-generics
 
@@ -546,7 +547,8 @@ clean-batch clean_batch:
 
 .PHONY: tkdiff
 tkdiff:
-	git difftool --no-prompt --tool=tkdiff
+	@# git difftool --no-prompt --tool=tkdiff
+	git difftool --no-prompt --tool=meld
 
 # .nq.gz files are for Cayley
 
@@ -644,12 +646,12 @@ kythe-kythe:
 
 .PHONY: build_kythe build-kythe
 build_kythe build-kythe:
-	cd ../kythe && git remote show origin && git pull --recurse-submodules
+	cd ../kythe && git remote show origin && git pull --jobs=8 --recurse-submodules
 	cd ../kythe && nice bazel build --jobs=$(NPROC_BAZEL) @local_config_cc//:toolchain
 	cd ../kythe && nice bazel build --jobs=$(NPROC_BAZEL) //...
 	cd ../kythe && nice bazel test -k --jobs=$(NPROC_BAZEL) //...
 	@# TODO: don't need LEIN_JAVA_CMD any more?
-	cd ../kythe && LEIN_JAVA_CMD=/usr/lib/jvm/java-8-openjdk-amd64/bin/java nice bazel build //kythe/web/ui
+	cd ../kythe && LEIN_JAVA_CMD=/usr/lib/jvm/java-8-openjdk-amd64/bin/java nice bazel build --sandbox_debug //kythe/web/ui
 	cd ../kythe && bazel shutdown
 
 .PHONY: web_ui
@@ -685,7 +687,7 @@ snapshot:
 		--exclude=swipl-devel \
 		--bzip2 --file \
 		$(HOME)/Downloads/pykythe_$$(date +%Y-%m-%d-%H-%M).tjz pykythe
-	@# ls -lh $(HOME)/Downloads/pykythe_*.tgz
+	@# ls -lh $(HOME)/Downloads/pykythe_*.tjz
 
 #@#@# PHONY: ls_uris
 #@#@# ls_uris:
@@ -720,7 +722,7 @@ pytype:
 	cd pykythe && \
 	for i in $$(ls *.py | fgrep -v bootstrap_builtins.py); do \
 	    set -x; \
-	    time pyxref --protocols --python_version=3.7 --imports_info=$$(pwd)/.pytype/imports/pykythe.pykythe.$$(basename $$i .py).imports $$i >/tmp/$$(basename $$i .py).pyxref.json;  \
+	    time pyxref --protocols --python_version=3.9 --imports_info=$$(pwd)/.pytype/imports/pykythe.pykythe.$$(basename $$i .py).imports $$i >/tmp/$$(basename $$i .py).pyxref.json;  \
 	done
 	@# if there are problems with above, add --debug option >/tmp/$$(basename $$i .py).pyxref.debug
 	@# TODO: modify $(MAKE) make-tables to use /tmp/*.pyxref.json
@@ -818,7 +820,7 @@ lint-logtalk:
 # 	@# TODO: need a more complete set of source files
 # 	@#   before ninja:
 # 	@#       ../script/pgo-compile.sh
-# 	cd swipl-devel && \
+# 	cd ../swipl-devel && \
 # 		mkdir -p build && \
 # 		cd build && \
 # 		cmake -G Ninja .. && \
@@ -828,10 +830,10 @@ lint-logtalk:
 #     https://www.swi-prolog.org/build/guidelines.html
 .PHONY: build-swipl-full
 build-swipl-full:
-	@# cd swipl-devel && git pull --recurse
+	@# cd ../swipl-devel && git pull --jobs=8 --recurse
 	@# TODO: before ninja:
 	@#   ../script/pgo-compile.sh
-	cd swipl-devel && \
+	cd ../swipl-devel && \
 		rm -rf build && \
 		mkdir -p build && \
 		cd build && \
@@ -851,6 +853,7 @@ upgrade-pkgs:
 	sudo apt --with-new-pkgs --assume-yes upgrade  # dist-upgrade?
 	sudo apt --assume-yes full-upgrade
 	sudo apt autoremove
+	rustup update
 	@# And an old incantation from decades ago
 	sudo sync
 	sudo sync
@@ -860,13 +863,13 @@ upgrade-pkgs:
 	@# echo sudo time fstrim --all -v
 
 pull-swipl:
-	cd ../swipl-devel && git pull --recurse
+	cd ../swipl-devel && git pull --jobs=8 --recurse
 
 upgrade-swipl:
 	@# See ../swipl-devel/CMAKE.md
 	@# For PGO, run ../script/pgo-compile.sh after cmake
 	cd ../swipl-devel && \
-		git pull --recurse && \
+		git pull --jobs=8 --recurse && \
 		git submodule update && \
 		mkdir -p build && \
 		cd build && \
@@ -877,7 +880,7 @@ upgrade-swipl:
 
 upgrade-swipl-full:
 	cd ../swipl-devel && \
-		git pull --recurse && \
+		git pull --jobs=8 --recurse && \
 		git submodule update && \
 		rm -rf build && \
 		mkdir  build && \
@@ -899,13 +902,14 @@ swipl-sanitize:
 upgrade-emacs:
 	@# https://www.emacswiki.org/emacs/EmacsSnapshotAndDebian
 	@# The "git clean -dxf" probably isn't needed, but it's safe
+	@#  ? ./configure --withgnutls=ifavailable -- apt install libgnutls28-dev
 	cd ../emacs && \
 		git clean -dxf && \
-		git pull --recurse && \
+		git pull --jobs=8 --recurse && \
 		./autogen.sh && \
-		./configure --prefix=$$HOME/.local --withgnutls=ifavailable && \
+		./configure --prefix=$$HOME/.local && \
 		make -j $(NPROC_BAZEL) bootstrap && \
-		make install
+		echo make install
 
 rsync-backup:
 	rsync -va --delete -e ssh 192.168.1.79:src/pykythe /home/peter/src_backup/

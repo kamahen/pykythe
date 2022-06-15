@@ -54,7 +54,6 @@
        write_atomic_file(1, +, +).
 
 :- style_check(+singleton).
-:- style_check(+var_branches).
 :- style_check(+no_effect).
 :- style_check(+discontiguous).
 
@@ -67,19 +66,14 @@
 :- use_module(library(readutil), [read_file_to_string/3]).
 :- use_module(library(sha), [sha_hash/3, hash_atom/2]).
 :- use_module(library(yall)).   % For [S,A]>>atom_string(A,S) etc.
-:- style_check(-var_branches).  % TODO: fix the library code
 :- use_module(library(http/json), [json_read_dict/3, json_write_dict/3]).
-:- style_check(+var_branches).
-:- style_check(-var_branches).
 :- use_module(library(pcre), [re_replace/4]).
-:- style_check(+var_branches).
+:- use_module(library(prolog_pack), [pack_property/2]).
 
 :- use_module(must_once, [must_once/1, must_once_msg/2, must_once_msg/3, fail/1]).
 
-:- style_check(+singleton).
 :- style_check(+var_branches).
-:- style_check(+no_effect).
-:- style_check(+discontiguous).
+
 % :- set_prolog_flag(generate_debug_info, false).
 
 
@@ -130,8 +124,7 @@ do_if(_Cond, _Pred) => true.
 %! dump_term(+Msg:atom, +Term) is det.
 % TODO: delete this debugging code
 dump_term(Msg, Term) =>
-    dump_term(Msg, Term, [tab_width(0),
-                          indent_arguments(2),
+    dump_term(Msg, Term, [indent_arguments(2),
                           right_margin(120)]).
 
 :- det(dump_term/3).
@@ -267,13 +260,13 @@ pykythe_json_read_dict(Stream, Dict) =>
 
 :- det(print_term_cleaned/3).
 %! print_term_cleaned(+Term, +Options, -TermStr) is det.
-% print_term, cleaned up
+% print_term, cleaned up (tabs->blanks; remove trailing whitespace)
 print_term_cleaned(Term, Options, TermStr) =>
-    % print_term leaves trailing whitespace, so remove it
     with_output_to(string(TermStr0),
-                   print_term(Term, [output(current_output)|Options])),
-    re_replace(" +\n"/g, "\n", TermStr0, TermStr1),
-    re_replace("\t"/g, "        ", TermStr1, TermStr).
+                   print_term(Term, [tab_width(0),output(current_output)|Options])),
+    re_replace(" +\n"/g, "\n", TermStr0, TermStr1),    % remove trailing whitespace
+    % TODO: tab expansion should only be at beginning of line
+    re_replace("\t"/g, "        ", TermStr1, TermStr). % tabs to blanks
 
 :- det(remove_suffix_star/3).
 %! remove_suffix_star(+Full:atom, +Suffix:atom, -NoSuffix:atom) is det.

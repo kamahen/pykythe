@@ -3,9 +3,9 @@
 %% Module/path manipulation routines.
 
 %% '.' in a directory name causes problems
-%%    ... e.g. /usr/lib/python3.7/test/support/__init__.py
+%%    ... e.g. /usr/lib/python3.9/test/support/__init__.py
 %%    doesn't roundtrip:
-%%             /usr/lib/python3/7/test/support/__init__.py
+%%             /usr/lib/python3/9/test/support/__init__.py
 %%                             ^ <====
 %%    so change all '.'s to ':' -- this is generally safe
 %%    because --pythonpath uses ':' to separate items.
@@ -40,9 +40,7 @@
 :- use_module(library(apply), [maplist/2, maplist/3]).
 :- use_module(library(filesex), [directory_file_path/3]).
 :- use_module(library(lists), [append/3, member/2]).
-:- style_check(-var_branches).
 :- use_module(library(pcre), [re_matchsub/4, re_replace/4]).
-:- style_check(+var_branches).
 :- use_module(pykythe_utils).
 :- use_module(must_once, [must_once/1]).
 
