@@ -41,10 +41,10 @@
        rb_conv_pairs_(+, 2, +, -),
        maybe_read_symtab_from_cache(+, +, +, +, -, 0, 0).
 
-:- use_module(library(apply), [convlist/3]).
-:- use_module(library(error), [must_be/2]).
+:- use_module(library(apply), [convlist/3, include/3, maplist/2]).
+:- use_module(library(error), [must_be/2, instantiation_error/1]).
 :- use_module(library(pairs), [pairs_values/2]).
-:- use_module(library(rbtrees), [is_rbtree/1, list_to_rbtree/2, ord_list_to_rbtree/2, rb_insert/4, rb_lookup/3, rb_visit/2]).
+:- use_module(library(rbtrees), [is_rbtree/1, list_to_rbtree/2, ord_list_to_rbtree/2, rb_insert/4, rb_lookup/3, rb_visit/2, rb_empty/1, rb_size/2]).
 :- use_module(pykythe_utils).
 
 is_symtab(Symtab) :-
@@ -58,12 +58,12 @@ symtab_empty(Symtab) :-
 :- det(ord_list_to_symtab/2).
 ord_list_to_symtab(Pairs, Symtab) =>
     ord_list_to_rbtree(Pairs, Symtab),
-    is_rbtree(Symtab). % Ensures no dup keys - failure will trigger determinism_error
+    is_symtab(Symtab). % Ensures no dup keys - failure will trigger determinism_error
 
 :- det(list_to_symtab/2).
 list_to_symtab(Pairs, Symtab) =>
     list_to_rbtree(Pairs, Symtab),
-    is_rbtree(Symtab). % Ensures no dup keys - failure will trigger determinism_error
+    is_symtab(Symtab). % Ensures no dup keys - failure will trigger determinism_error
 
 :- det(symtab_insert/4).
 symtab_insert(Key, Symtab0, Value, Symtab) =>
@@ -88,6 +88,10 @@ symtab_pairs(Symtab, Pairs) :-
 %! symtab_values(+Symtab, -Values) is det.
 %  True when Values is an ordered set of the values appearing in Symtab.
 symtab_values(Symtab, Values) :-
+    assertion(nonvar(Symtab)),  % TODO: remove
+    % If Symtab is var, we get this bad behavior:
+    %     ?- rb_visit(Symtab, Pairs).
+    %        Symtab = t(_, black('', _, _, _)), Pairs = []
     rb_visit(Symtab, Pairs),
     pairs_values(Pairs, Values).
 
@@ -109,7 +113,7 @@ conv_symtab_pairs(Pred, Symtab, Pairs) :-
 rb_conv_pairs(t(_,T), Pred, Lf) =>
     rb_conv_pairs_(T, Pred, [], Lf).
 
-:- det(rb_conv_pairs_/3).
+:- det(rb_conv_pairs_/4).
 rb_conv_pairs_(black('',_,_,_), _Pred, L0, L) => L0 = L.
 rb_conv_pairs_(red(L,K,V,R), Pred, L0, Lf) =>
     (   call(Pred, K-V, K2V2)

@@ -55,8 +55,8 @@ we can therefore deduce that `c` is also of type `class(C)`.
 
 # TODO: change to using asttokens -- see the "#-#" comments
 
-# from __future__ import annotations  # TODO: this upsets pytype, which can't handle Python 3.7
-#       we can't make this conditional on sys.version_info > (3,7):
+# from __future__ import annotations  # TODO: this upsets pytype, which can't handle Python 3.9
+#       we can't make this conditional on sys.version_info > (3,9):
 #       SyntaxError: from __future__ imports must occur at the beginning of the file
 # The following needed to be quoted:
 #    'Base'

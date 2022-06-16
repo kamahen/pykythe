@@ -135,16 +135,21 @@ write_symtab_fact(Opts, BuiltinsModule, Symtab, BuiltinsSymtab, BuiltinsPairs, S
     format(Stream, '~k.~n', [builtins_symtab(Symtab)]),
     format(Stream, '~k.~n', [builtins_pairs(BuiltinsPairs)]),
     format(Stream, '~k.~n', [builtins_symtab_modules(SymtabModules)]),
-    full_path([], 'typing', Opts.pythonpath, '', TypingModule0, _),
-    module_part(TypingModule0, TypingModule),
-    $(\+ maybe_token_part(TypingModule0, _)),
-    log_if(false, 'TYPING module: ~q (from ~q)', [TypingModule, TypingModule0]), % TODO: delete
-    module_file_exists(TypingModule0),
-    % TODO: delete the following, which are for eventually adding
-    %       support for mypy-style type declarations
-    atomic_list_concat([TypingModule, 'Dict'], '.', TypingDict),
-    symtab_lookup(TypingDict, Symtab, TypingDictType),
-    log_if(true, 'TYPING-Dict: ~q', [TypingDictType]), % TODO: delete
+
+    % TODO: The following code needs to be updated; Dict is now
+    %       in typeshed/stdlib/_ast.pyi, as
+    %         class_type('.home.peter.src.pykythe.typeshed.stdlib._ast.Dict')
+    % full_path([], 'typing', Opts.pythonpath, '', TypingModule0, _),
+    % module_part(TypingModule0, TypingModule),
+    % $(\+ maybe_token_part(TypingModule0, _)),
+    % log_if(false, 'TYPING module: ~q (from ~q)', [TypingModule, TypingModule0]), % TODO: delete
+    % module_file_exists(TypingModule0),
+    % % TODO: delete the following, which are for eventually adding
+    % %       support for mypy-style type declarations
+    % atomic_list_concat([TypingModule, 'Dict'], '.', TypingDict),
+    % symtab_lookup(TypingDict, Symtab, TypingDictType),
+    % log_if(true, 'TYPING-Dict: ~q', [TypingDictType]), % TODO: delete
+
     do_if(false,
           forall(member(K-V, BuiltinsPairs), % TODO: delete
                  format('BUILTIN ~q: ~q~n', [K, V]))),

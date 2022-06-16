@@ -1,8 +1,10 @@
 """Exercise all the syntactic structures in Python.
 
-This is derived from Python3.9
+This is derived from Python3.7
    Lib/lib2to3/tests/data/py3_test_grammar.py
 with some Kythe verifier rules added.
+
+TODO: upgrade to Python3.9
 
 TODO: needs tests for at least the following (extended iterable unpacking):
       PEP 3132 (Python 3.0)
@@ -41,11 +43,11 @@ TODO: remove all "#- //" lines (these are "to be implemented" syntactic items).
 #- { File.text/encoding "utf-8" }
 
 
-#- { @#0test ref/imports vname(".usr.lib.python3.7.test", _, _, _, python) }
-#- { @support ref/imports vname(".usr.lib.python3.7.test.support", _, _, _, python) }
-#- { @run_unittest ref/imports vname(".usr.lib.python3.7.test.support.run_unittest", _, _, _, python) }
+#- { @#0test ref/imports vname(".usr.lib.python3.9.test", _, _, _, python) }
+#- { @support ref/imports vname(".usr.lib.python3.9.test.support", _, _, _, python) }
+#- { @run_unittest ref/imports vname(".usr.lib.python3.9.test.support.run_unittest", _, _, _, python) }
 #- { @run_unittest defines/binding _ }
-#- { @check_syntax_error ref/imports vname(".usr.lib.python3.7.test.support.check_syntax_error", _, _, _, python) }
+#- { @check_syntax_error ref/imports vname(".usr.lib.python3.9.test.support.check_syntax_error", _, _, _, python) }
 #- { @check_syntax_error defines/binding _ }
 from test.support import run_unittest, check_syntax_error
 #- { @unittest ref/imports vname("${TYPESHED_FQN}.stdlib.unittest", _, _, _, python) }

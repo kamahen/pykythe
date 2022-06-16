@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.7
+#!/usr/bin/env python3.9
 """Main program for Python parser that outputs AST as Prolog term.
 
 This is called by pykythe.pl, which further processes the AST.

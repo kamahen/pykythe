@@ -94,7 +94,7 @@ test(base64_utf8) :-
              '├',
              '網目錦蛇 = 1  # アミメニシキヘビ 《網目錦蛇》 【あみめにしきへび】 (n) (uk) reticulated python (Python reticulatus)']).
 
-test(kyImportDottedAsNamesFqn_top) :-
+test(kyImportDottedAsNamesFqn_top, nondet) :- % TODO: why nondet?
     %% This test is not exhaustive -- it's mainly for developing the code.
     %% Additional tests are done using the Kythe verifier.
     %% Note that this imports a variable (os.path.sep) whereas comb_as test imports
@@ -162,7 +162,7 @@ test(kyImportDottedAsNamesFqn_top) :-
                                                          Module_os_path,
                                                          Module_os_path_sep]}]).
 
-test(kyImportDottedAsNamesFqn_as) :-
+test(kyImportDottedAsNamesFqn_as, nondet) :- % TODO: why nondet?
     %% This test is not exhaustive -- it's mainly for developing the code.
     %% Additional tests are done using the Kythe verifier.
     %% Note that this imports a file (os.path) whereas comb_top test imports
