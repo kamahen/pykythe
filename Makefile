@@ -46,8 +46,9 @@ TESTOUTDIR:=$(abspath /tmp/pykythe_test)
 SHELL:=/bin/bash
 # Must be python 3.9.13 - there's a validation test in the ast_raw.parse()
 # Assume that type -p returns an abspath ...
-PYTHON3_EXE:=$(shell type -p python3.9)  # TODO: 3.10 doesn't have lib2to3
-# PYTHON3_EXE:=/usr/bin/python3.9
+PYTHON_VERSION=3.9
+PYTHON3_EXE:=$(shell type -p python${PYTHON_VERSION})  # TODO: 3.10 doesn't have lib2to3
+# PYTHON3_EXE:=/usr/bin/python${PYTHON_VERSION}
 FIND_EXE:=$(shell type -p find)          # /usr/bin/find The following
 # /usr/bin/swipl:
 SWIPL_EXE_GLBL:=$(shell type -p swipl)
@@ -171,12 +172,12 @@ ifeq ($(BATCH_ID),)
 else
     BATCH_OPT:=--pykythebatch_suffix='.pykythe.batch-$(BATCH_ID)'
 endif
-# TODO: parameterize following for python3.9, etc.:
+# TODO: parameterize following for python${PYTHON_VERSION}, etc.:
 # TODO: Verify how typeshed/stubs works
 #       For example stdlib/array.pyi has "from typing_extensions import Literal",
 #       but the relevant file is in stubs/typing-extensions/typing_extensions.pyi
-PYTHONPATH_OPT:=--pythonpath='$(PYTHONPATH_DOT):$(PYTHONPATH_BUILTINS):$(TYPESHED_REAL)/stdlib:$(TYPESHED_REAL)/stubs:/usr/lib/python3.9'
-PYTHONPATH_OPT_NO_SUBST:=--pythonpath='$(PYTHONPATH_DOT):$(TYPESHED_REAL)/stdlib:$(TYPESHED_REAL)/stubs:/usr/lib/python3.9'
+PYTHONPATH_OPT:=--pythonpath='$(PYTHONPATH_DOT):$(PYTHONPATH_BUILTINS):$(TYPESHED_REAL)/stdlib:$(TYPESHED_REAL)/stubs:/usr/lib/python${PYTHON_VERSION}'
+PYTHONPATH_OPT_NO_SUBST:=--pythonpath='$(PYTHONPATH_DOT):$(TYPESHED_REAL)/stdlib:$(TYPESHED_REAL)/stubs:/usr/lib/python${PYTHON_VERSION}'
 PYKYTHE_OPTS0=$(VERSION_OPT) $(BATCH_OPT) \
 	--builtins_symtab=$(BUILTINS_SYMTAB_FILE) \
 	--builtins_path=$(BUILTINS_PATH) \
@@ -376,8 +377,12 @@ etags: pykythe/TAGS
 pykythe/TAGS: pykythe/TAGS-py pykythe/TAGS-pl
 	cat pykythe/TAGS-pl pykythe/TAGS-py >$@
 
-pykythe/TAGS-pl: pykythe/*.pl browser/*.pl scripts/*.pl /usr/lib/swi-prolog/library/*.pl /usr/lib/swi-prolog/library/http/*.pl
-	cd pykythe ; etags -l prolog -o ../$@ *.pl ../browser/*.pl ../scripts/*.pl ../tests/test_pykythe.py /usr/lib/swi-prolog/library/*.pl /usr/lib/swi-prolog/library/http/*.pl
+# Less safe (and tricker because eval is a bash-builtin and there's a blank line to remove):
+#   eval $(swipl --dump-runtime-variables) && echo $PLBASE
+PLBASE:=$(shell $(SWIPL_EXE) --dump-runtime-variables=sh | grep PLBASE= | sed -e 's/^PLBASE="//' -e 's/";'//)
+
+pykythe/TAGS-pl: pykythe/*.pl browser/*.pl scripts/*.pl $(PLBASE)/library/*.pl $(PLBASE)/library/http/*.pl
+	cd pykythe ; etags -l prolog -o ../$@ *.pl ../browser/*.pl ../scripts/*.pl ../tests/test_pykythe.py $(PLBASE)/library/*.pl $(PLBASE)/library/http/*.pl
 
 pykythe/TAGS-py: pykythe/*.py tests/test_pykythe.py
 	cd pykythe ; etags -l python -o ../$@ *.py ../tests/test_pykythe.py
@@ -429,18 +434,18 @@ test_asttokens:
 test_python_lib: # Also does some other source files I have lying around
 	$(MAKE) $(PYKYTHE_EXE) $(BUILTINS_SYMTAB_FILE)
 	@# TODO: too many args causes "out of file resources":
-	@#     $(TIME) $(PYKYTHE_EXE_) $(SWIPL_ERR) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) $$(find /usr/lib/python3.9 -name '*.py' | sort)
+	@#     $(TIME) $(PYKYTHE_EXE_) $(SWIPL_ERR) $(PYKYTHE_OPTS0) $(PYTHONPATH_OPT_NO_SUBST) $$(find /usr/lib/python${PYTHON_VERSION} -name '*.py' | sort)
 	@# "sort" in the following is to make results more reproducible
 	@# "--group" probably slows things down a bit - there's a noticable dip
 	@#           in the CPU history every so often, which presumably is when
 	@#           the outputs are gathered and printed
 
-	@# There are roughly 1300 files in /usr/lib/python3.9 (6900 in the whole test),
+	@# There are roughly 1300 files in /usr/lib/python${PYTHON_VERSION} (6900 in the whole test),
 	@#     so batches of 50-150 are reasonable.
 	@# parallel(1) seems to spawn too many jobs, which causes paging,
 	@#     so limit it with the "-j" option
 	@#     (could also use the --semaphore --fg option)
-	@# TODO: /usr has more *.py files than /usr/lib/python3.9 but takes 3x longer
+	@# TODO: /usr has more *.py files than /usr/lib/python${PYTHON_VERSION} but takes 3x longer
 	@# TODO: use annotate-output (from package devscripts) to add the timestamps
 	@#       and remove the timestamps from pykytype's logging.
 	@# Note: ./typeshed not here because it's in mypy and pytype
@@ -448,7 +453,7 @@ test_python_lib: # Also does some other source files I have lying around
 	@#       parameterize this on NPROC?
 	@#       Also: use --jobs=200% rather than NPROC?
 	set -o pipefail; \
-	find /usr/lib/python3.9 ../mypy ../pytype ../yapf ../importlab ../kythe . \
+	find /usr/lib/python${PYTHON_VERSION} ../mypy ../pytype ../yapf ../importlab ../kythe . \
 	  -name '*.py' -o -name '*.pyi' | sort | \
 	  parallel -v --will-cite --keep-order --group -L80 -j$(NPROC) \
 	  --joblog=$(TESTOUTDIR)/joblog-$$(date +%Y-%m-%d-%H-%M) \
@@ -457,7 +462,7 @@ test_python_lib: # Also does some other source files I have lying around
 
 .PHONY: test_single_src
 # This is an example of running on a single source
-SINGLE_SRC=/usr/lib/python3.9/multiprocessing/connection.py
+SINGLE_SRC=/usr/lib/python${PYTHON_VERSION}/multiprocessing/connection.py
 SINGLE_SRC=/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/a10.py
 test_single_src:
 	$(MAKE) $(SINGLE_SRC)
@@ -492,7 +497,7 @@ pyflakes:
 		grep -v snippets.py | xargs -L1 pyflakes
 
 PYTYPE_DIR=/tmp/pykythe_pytype
-PYTYPE_V=3.9
+PYTYPE_V=${PYTHON_VERSION}
 # Can't do the following because need to compile
 # things like parser_ext:
 #   PYTYPE=PYTHONPATH=$$(pwd)/../pytype ../pytype/scripts/pytype
@@ -506,7 +511,7 @@ PYTYPE=$(shell type -p pytype)
 #       but that seems to upset pytype's imnport mechanism.
 
 # Anyway, mypy doesn't yet have a plugin for dataclasses. :(
-MYPY:=$(shell type -p mypy) --python-version=3.9 --strict-optional --check-untyped-defs --warn-incomplete-stub --warn-no-return --no-incremental --disallow-any-unimported --show-error-context --implicit-optional --strict --disallow-incomplete-defs
+MYPY:=$(shell type -p mypy) --python-version=${PYTHON_VERSION} --strict-optional --check-untyped-defs --warn-incomplete-stub --warn-no-return --no-incremental --disallow-any-unimported --show-error-context --implicit-optional --strict --disallow-incomplete-defs
 # TODO: --disallow-incomplete-defs  https://github.com/python/mypy/issues/4603
 # TODO: --disallow-any-generics
 
@@ -722,7 +727,7 @@ pytype:
 	cd pykythe && \
 	for i in $$(ls *.py | fgrep -v bootstrap_builtins.py); do \
 	    set -x; \
-	    time pyxref --protocols --python_version=3.9 --imports_info=$$(pwd)/.pytype/imports/pykythe.pykythe.$$(basename $$i .py).imports $$i >/tmp/$$(basename $$i .py).pyxref.json;  \
+	    time pyxref --protocols --python_version=${PYTHON_VERSION} --imports_info=$$(pwd)/.pytype/imports/pykythe.pykythe.$$(basename $$i .py).imports $$i >/tmp/$$(basename $$i .py).pyxref.json;  \
 	done
 	@# if there are problems with above, add --debug option >/tmp/$$(basename $$i .py).pyxref.debug
 	@# TODO: modify $(MAKE) make-tables to use /tmp/*.pyxref.json
