@@ -263,22 +263,18 @@ and `pylint`. It is intended to also be processed by `pytype`.
 Pykythe depends on the deprecated `lib2to3` parser, and the details of
 the `Grammar.txt` file.
 
-TODO: This requires Python version 3.9.13.
-You can create this in `$HOME/.local/bin/python3.9` by the following:
+This requires Python version 3.9.13.
+
+If you can't install it, you can create it in
+`$HOME/.local/bin/python3.9` by the following:
 ```
-git clone git@github.com:python/cpython.git
+git clone --depth=1 git@github.com:python/cpython.git
 git checkout v3.9.13
 ./configure --prefix=$HOME/.local --enable-optimizations
 make -j
 make -j test
 make install
 ```
-
-TODO: A test has been added to ast_raw.parse
-
-DO NOT SUBMIT - FIXME - TODO
-Use a later version.
-
 
 
 ### Processing a single source file
@@ -307,7 +303,7 @@ A source file is processed in the following steps:
   "expressions" in the AST.
 
 * Each "import" is recursively processed (if there is a circular import,
-  this is detected and the recursive import is skipped).
+  this is detected and the recursive import is treated as a no-op).
   * This includes outputting the `.kythe.json`, `.kythe.entries`, and
     `.pykythe.symtab` files.  (The `.pykythe.symtab` file can be
     reused as a "cache" to avoid reprocessing the source file.)
@@ -319,7 +315,7 @@ A source file is processed in the following steps:
   attribute's type).
 
   * When a symtab entry is updated with additional information, it is
-    recorded in "rejected" list.
+    recorded in the "rejected" list.
 
   * If the "rejected" list is non-empty after symbolically evaluating
     the expressions, the process is repeated. Generally, no more than
@@ -483,7 +479,7 @@ UTF-8). Unfortunately, Prolog's base64 support isn't super fast, nor
 is its UTF-8 encoding/decoding (the latter is needed because base64
 works on ASCII only, so encoding/decoding from Unicode is needed).
 
-For performance reasons, the Kythe facts are all crated as regular
+For performance reasons, the Kythe facts are all created as regular
 strings (or atoms), and converted to base64 only on output. This is
 because each pass over the AST creates Kythe facts, and there's a
 significant saving by only doing the base64 translation once. (Some
