@@ -4199,8 +4199,8 @@ the life of an Emacs session."
 (add-hook 'prolog-mode-hook 'prolog-menu)
 (add-hook 'prolog-inferior-mode-hook 'prolog-inferior-menu)
 
-(add-hook 'prolog-mode-hook '(lambda () (font-lock-mode 1)))
-(add-hook 'prolog-inferior-mode-hook '(lambda () (font-lock-mode 1)))
+(add-hook 'prolog-mode-hook (lambda () (font-lock-mode 1))) ;; TODO: or #'(lambda ...) ?
+(add-hook 'prolog-inferior-mode-hook (lambda () (font-lock-mode 1)))
 
 
 (defun prolog-mode-version ()
