@@ -5,6 +5,8 @@
 // For the overall structure of this client code, see
 // https://github.com/kamahen/swipl-server-js-client/blob/master/static/simple_client.js
 
+// src_browser.html defines renderPage() as what gets calle when the page is loaded.
+
 // A URL such as
 //   http://localhost:9999?corpus=CORPUS&root=ROOT&path=home/peter/src/pykythe/pykythe/ast_raw.py#L81
 // does a redirect to:
@@ -153,7 +155,7 @@ const path_type_to_class = {
 };
 
 // Callback from <body onload="renderPage();">
-// Fetches the file tree from the server and schedules continuation
+// Fetches the file tree from the server and schedules a continuation
 // that displays the file selector dropdown(s).
 async function renderPage() {
     initDrag('initial');
@@ -249,7 +251,7 @@ function setFileTree(file_tree_from_server, source_item) {
 async function displayFileTree(source_item) {
     deleteAllChildren(fileNavElement());
     await displayFileTreeItems(g_file_tree, 0, source_item.pathItems(),
-                               source_item.options);
+                               source_item.options());
 }
 
 const line_in_menu = '—————'; // multiple Unicode em-dashes

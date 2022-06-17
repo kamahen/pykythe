@@ -377,9 +377,8 @@ etags: pykythe/TAGS
 pykythe/TAGS: pykythe/TAGS-py pykythe/TAGS-pl
 	cat pykythe/TAGS-pl pykythe/TAGS-py >$@
 
-# Less safe (and tricker because eval is a bash-builtin and there's a blank line to remove):
-#   eval $(swipl --dump-runtime-variables) && echo $PLBASE
-PLBASE:=$(shell $(SWIPL_EXE) --dump-runtime-variables=sh | grep PLBASE= | sed -e 's/^PLBASE="//' -e 's/";'//)
+# We trust swipl to not do nasty things:
+PLBASE:=$(shell eval $$(swipl --dump-runtime-variables) && echo $$PLBASE)
 
 pykythe/TAGS-pl: pykythe/*.pl browser/*.pl scripts/*.pl $(PLBASE)/library/*.pl $(PLBASE)/library/http/*.pl
 	cd pykythe ; etags -l prolog -o ../$@ *.pl ../browser/*.pl ../scripts/*.pl ../tests/test_pykythe.py $(PLBASE)/library/*.pl $(PLBASE)/library/http/*.pl
@@ -621,7 +620,7 @@ make-json-pretty:
 run_src_browser run-src-browser:
 	@mkdir -p $(KYTHE_FACTS_DIR)
 	@# if .qlf doesn't exist, make an empty one, which
-	@# will cause recompilation when it's loaded
+	@# will cause recompilation when loaded
 	[ -e $(KYTHE_FACTS_QLF) ] || touch $(KYTHE_FACTS_QLF)
 	@# TODO: remove "-g src_browser:main -l" (which are for debugging)  DO NOT SUBMIT
 	@# TODO: compile src_browser.pl and use src_browser.qlf
@@ -655,7 +654,7 @@ build_kythe build-kythe:
 	cd ../kythe && nice bazel build --jobs=$(NPROC_BAZEL) @local_config_cc//:toolchain
 	cd ../kythe && nice bazel build --jobs=$(NPROC_BAZEL) //...
 	cd ../kythe && nice bazel test -k --jobs=$(NPROC_BAZEL) //...
-	@# TODO: don't need LEIN_JAVA_CMD any more?
+	@# TODO: do we need LEIN_JAVA_CMD any more?
 	cd ../kythe && LEIN_JAVA_CMD=/usr/lib/jvm/java-8-openjdk-amd64/bin/java nice bazel build --sandbox_debug //kythe/web/ui
 	cd ../kythe && bazel shutdown
 

@@ -48,3 +48,12 @@ import pykythe.test_data.imports_dir1.i7 as import_7
 #- // { @loc ref LOC? }
 # #  { LOC./pykythe/type @LOC_type? }
 print(import7.loc)
+
+
+### from six.py that gave signature to lambda and also didn't highlight __str__
+# Also: click on klass.__str__ gives a server error
+
+def fbar(klass):
+    klass.__unicode__ = klass.__str__
+    klass.__str__ = lambda self: self.__unicode__().encode('utf-8')
+    return klass
