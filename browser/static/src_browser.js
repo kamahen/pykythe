@@ -706,8 +706,14 @@ async function fetchFromServer(request, callback) {
              redirect: 'follow',            // Don't need?
              referrerPolicy: 'no-referrer', // Don't need?
             });
-        callback(await response.json());
+        if (response.ok) { // response.status in range 200-299
+            callback(await response.json());
+        } else {
+            console.error('Fetch response:', response, 'request:', request);
+            alert('*** fetch ' + JSON.stringify(request) + ': HTTP status: ' + response.status);
+        }
     } catch(err) {
+        console.error('Fetch error:', err, 'request:', request);
         alert('fetch ' + JSON.stringify(request) + ': ' + err);
     }
 }
