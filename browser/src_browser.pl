@@ -27,6 +27,16 @@
 %% and starts the server. For performance, the facts are pre-indexed
 %% (index_kythe_facts/0).
 
+% Memory usage notes (ran gc before each one):
+% loading kythe_facts.pl 151M (1 058 422 lines), qlf=77M ... bzip2 compresses .pl to 8.5MB (qlf doesn't compress)
+%  before/after
+%     VSZ    RSS  (in Kb)
+%   40636  17728          9,219 atoms, 7,288 functors, 6,495 predicates, 109 modules,    295,076 VM-codes
+%  589456 462216        320,773 atoms, 7,309 functors, 6,527 predicates, 110 modules, 29,409,360 VM-codes
+%    delta VSZ = 548 820
+%    delta RSS = 444 488
+% So, roughly 450-550MB for the facts
+
 :- module(src_browser, [src_browser_main/0, src_browser_main2/0]).
 
 % :- set_prolog_flag(autoload, false).  % TODO: Seems to break plunit, qsave
@@ -43,6 +53,7 @@
                                           http_redirect/3
                                          ]).
 :- use_module(library(http/http_files), [http_reply_from_files/3]).
+:- use_module(library(http/http_ssl_plugin)). % don't forget this, otherwise it's only an http server
 % TODO: if using daemon, then: swipl src_browser.pl --port=.... --pidfile=/var/run/src_browser.pid
 %       and kill $(cat /var/run/src_browser.pid)
 % TODO: Support HTTPS: https://www.swi-prolog.org/pldoc/man?section=ssl-https-server
@@ -200,6 +211,8 @@ src_browser_main :-
     % See also library(main):main/0
     debug(log, 'Starting REPL ...', []),
     prolog.  % REPL
+    % TODO: use at_halt/1 to schedule http_stop_server(Opts.port, [])
+    %       after a short time-out.
 
 %! src_browser_main2 is det.
 % For interactive testing - loads facts and starts server.
@@ -214,6 +227,11 @@ src_browser_main2 :-
                  % ssl([certificate_file('cacert.pem'), % or cert.csr?
                  %      key_file('privkey.pem')]),
                  workers(5)]).
+
+                % ?? sudo apt install certbot  (letsencrypt.org points to this)
+                % ssl([  certificate_file('/tmp/fullchain.pem'), % letsencrypt gives you this file
+                %        key_file('/tmp/privkey.pem'), % letsencrypt gives you this file
+                %        cacerts([file('/etc/ssl/certs/ca-certificates.crt'),
 
 %! browser_opts(-Opts:dict) is det.
 % Use opt_arguments/3 to get the command-line options, andput them into a dict.
@@ -279,7 +297,7 @@ read_and_assert_kythe_facts :-
     %          (consult generates source locations, etc.)
     %       https://swi-prolog.discourse.group/t/quick-load-files/1239/2
     %       https://swi-prolog.discourse.group/t/quick-load-files/1239/8
-    % Note that term_expansio/2 takes effect on the kythe_edge/11 facts
+    % Note that term_expansion/2 takes effect on the kythe_edge/11 facts
     % that are loaded here:
     catch(load_files([files('kythe_facts')],
                      [silent(false),
@@ -371,21 +389,28 @@ kythe_node_kind_kythe(Vname) :-
     sub_atom(Kind, 0, _, _, '/kythe/').
 
 valid_kythe_node(Vname) :-
+    % In most cases, there's just one "kind" per node, but there are
+    % cases where a node can be both a "package" and a "variable"
+    % (e.g., if there's some kind of "if" around definining one).
     % distinct(Vname, kythe_node(Vname, _, _)),
-    bagof(K, kythe_node(Vname, '/kythe/node/kind', K), [Kind]), % must be unique
-    valid_node_kind(Kind, Vname).
+    must_once(bagof(K, kythe_node(Vname, '/kythe/node/kind', K), Ks)),
+    must_once(Ks = [_|_]), % Always true for bagof/3; not true for findall/3
+    maplist(valid_node_kind(Vname), Ks).
 
-valid_node_kind('anchor',     Vname) :- valid_anchor_vname(Vname).
-valid_node_kind('diagnostic', Vname) :- valid_anchor_vname(Vname).
-valid_node_kind('file',       Vname) :-
+valid_node_kind(Vname, Kind) :-
+    valid_node_kind_(Kind, Vname).
+
+valid_node_kind_('anchor',     Vname) :- valid_anchor_vname(Vname).
+valid_node_kind_('diagnostic', Vname) :- valid_anchor_vname(Vname).
+valid_node_kind_('file',       Vname) :-
     kythe_node(Vname, '/kythe/language', Language),
     Language \== '',
     kythe_node(Vname, '/kythe/text', _),
     kythe_node(Vname, '/kythe/text/encoding', _).
-valid_node_kind('function',   Vname) :- valid_semantic_vname(Vname).
-valid_node_kind('package',    Vname) :- valid_semantic_vname(Vname).
-valid_node_kind('record',     Vname) :- valid_semantic_vname(Vname).
-valid_node_kind('variable',   Vname) :- valid_semantic_vname(Vname).
+valid_node_kind_('function',   Vname) :- valid_semantic_vname(Vname).
+valid_node_kind_('package',    Vname) :- valid_semantic_vname(Vname).
+valid_node_kind_('record',     Vname) :- valid_semantic_vname(Vname).
+valid_node_kind_('variable',   Vname) :- valid_semantic_vname(Vname).
 
 valid_semantic_vname(vname(Signature, _Corpus, _Root, Path, Language)) :-
     Signature \== '',
@@ -422,17 +447,24 @@ index_pred(Goal) :-
     ( Goal -> true ; true ),
     statistics(process_cputime, T1),
     T is T1 - T0,
-    debug(log, 'Indexed ~q in ~3f sec', [Goal, T]).
+    debug(log, 'Indexed ~k in ~3f sec', [Goal, T]).
 
 %! show_jiti is det.
 show_jiti :-
     strip_module(kythe_node(_,_,_), Module, _),
     jiti_list(Module:_),
-    findall(S, kythe_node(S,_,_,_,_,_,_), Sigs),
-    length(Sigs, LenSigs),
-    sort(Sigs, SigsSorted),
-    length(SigsSorted, LenSigsSorted),
-    debug(log, 'kythe_node(Signature) in ~q: ~d entries, ~d unique.', [Module, LenSigs, LenSigsSorted]).
+    aggregate_all(count, kythe_node(_A1,_A2,_A3,_A4,_A5,_A6,_A7), LenSigs),
+    aggregate_all(count, kythe_node( A1, A2, A3, A4, A5, A6, A7),
+                         kythe_node( A1, A2, A3, A4, A5, A6, A7), LenSigsUnique),
+    aggregate_all(count, kythe_edge(_B1,_B2,_B3,_B4,_B5,_B6,_B7,_B8,_B9,_B10,_B11), LenEdges),
+    aggregate_all(count, kythe_edge( B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11),
+                         kythe_edge( B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11), LenEdgesUnique),
+    aggregate_all(count, kythe_color_line(_C1,_C2,_C3,_C4,_C5,_C6), LenColorLines),
+    aggregate_all(count, kythe_color_line( C1, C2, C3, C4, C5, C6),
+                         kythe_color_line( C1, C2, C3, C4, C5, C6), LenColorLinesUnique),
+    debug(log, 'kythe_node(Signature) in ~q: ~d (~d unique).', [Module, LenSigs, LenSigsUnique]),
+    debug(log, 'kythe_edge in ~q: ~d (~d unique), color lines: ~d (~d unique).', [Module, LenEdges, LenEdgesUnique, LenColorLines, LenColorLinesUnique]).
+
 
 %%%%%% HTTP handlers %%%%%%%%
 

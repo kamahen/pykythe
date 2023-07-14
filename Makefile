@@ -267,7 +267,7 @@ $(PYKYTHE_EXE): pykythe/*.pl pykythe_test $(SWIPL_EXE)
 	@# The following line was used for debugging https://github.com/SWI-Prolog/swipl-devel/commit/0a0d9800134b361eb2344f29cece8b0a4b571666
 	@# echo "['pykythe/pykythe.pl']. qsave_program('$@', [stand_alone(true), undefined(error), foreign(save)])." | $(SWIPL_EXE) $(SWIPL_ERR)
 	@# TODO: add -O to compile to remove assertion/1 etc.
-	$(SWIPL_EXE) --stand_alone=true --undefined=error --verbose=false \
+	$(SWIPL_EXE) --stand_alone=true --no-pce --undefined=error --verbose=false \
 		$(SWIPL_ERR) \
 		--foreign=save -o $@ -c pykythe/pykythe.pl
 	@# To find the .so files and packages:
@@ -908,12 +908,12 @@ upgrade-emacs:
 	@# The "git clean -dxf" probably isn't needed, but it's safe
 	@#  ? ./configure --withgnutls=ifavailable -- apt install libgnutls28-dev
 	cd ../emacs && \
-		git clean -dxf && \
+		echo MAYBE git clean -dxf && \
 		git pull --jobs=8 --recurse && \
 		./autogen.sh && \
-		./configure --prefix=$$HOME/.local && \
+		./configure --prefix=$$HOME/.local --with-harfbuzz && \
 		make -j $(NPROC_BAZEL) bootstrap && \
-		echo make install
+		make install
 
 rsync-backup:
 	rsync -va --delete -e ssh 192.168.1.79:src/pykythe /home/peter/src_backup/
