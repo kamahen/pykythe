@@ -103,7 +103,7 @@ impossible and I really don't feel like becoming a git guru.
 
 * `git clone --recursive https://github.com/google/kythe.git`
   * This requires git 2.23 or newer (`sudo add-apt-repository
-    ppa:git-core/ppa`). Otherwise: `git clone --recursive`, and if you
+    ppa:git-core/ppa`). Otherwise: `git pull --recursive`, and if you
     have something older, you also need `git submodule update --init
     --recursive --depth 1` (you will also need to do this each time
     you do `git pull` on the `pykythe` respository).
