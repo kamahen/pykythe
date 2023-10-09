@@ -13,7 +13,7 @@
     <link href="https://fonts.googleapis.com/css?family=Inconsolata" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css?family=Source Code Pro" rel="stylesheet"/>
     <link rel="stylesheet" href="src_browser.css"/>
-    <! -- TODO: remove jquery (only used for debugging) -->
+    <!-- jquery is only used for debugging -->
     <!-- script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script -->
     <script src="src_browser.js" defer="defer"></script>
 
@@ -21,21 +21,22 @@
 
     <!-- The convention is that id 'foo' gets a different ID for each instance,
          and all the instances have the same CLASS 'sel-foo'. -->
+    <!-- The individual <div>s below are filled in by the renderPage() function -->
     <body onload="renderPage();" class="noscroll">
       <noscript>
         <h1>You need to enable JavaScript to run this app!!!</h1>
       </noscript>
-      <div id="file_nav">
+      <div id="file_nav"> <!-- filled in by function displayFileTree() -->
         File navigation goes here.
       </div>
-      <div id="src">
+      <div id="src"> <!-- filled in by function displaySrcContents -->
         <div><i>Contents of source file will go here when you click on a file in the list above.</i>
         </div>
       </div>
-      <div id="splitter">
+      <div id="splitter"> <!-- see function initDrag() -->
       </div>
-      <div id="xref">
-        <table class="src_table"><!-- Created and filled in by src_browser.js -->
+      <div id="xref"> <!-- filled in by function setXref() -->
+        <table class="src_table">
         </table>
       </div>
     </body>

@@ -2,30 +2,34 @@
 
 // Implementation of annotated source browser, using nodes defined by
 // src_browser.html.
+
 // For the overall structure of this client code, see
 // https://github.com/kamahen/swipl-server-js-client/blob/master/static/simple_client.js
 
-// src_browser.html defines renderPage() as what gets calle when the page is loaded.
+// src_browser.html calls renderPage() when the page is loaded, which
+// dynamically fills in the various <div>s on the page.
 
 // A URL such as
 //   http://localhost:9999?corpus=CORPUS&root=ROOT&path=home/peter/src/pykythe/pykythe/ast_raw.py#L81
 // does a redirect to:
-//   http://localhost:999/static/src_browser.html?corpus=...
+//   http://localhost:9999/static/src_browser.html?corpus=...
 // and we depend on the server to handle redirections transparently,
 // per the HTTP specs.
+
 // A more complete (redirected) URL is:
 //   http://localhost:9999/static/src_browser.html?corpus=CORPUS&root=ROOT&path=tmp%2Fpykythe_test%2FSUBST%2Fhome%2Fpeter%2Fsrc%2Fpykythe%2Ftest_data%2Fc3_a.py#L40
 
-// All the IDs have defined prefixes (e.g., filetree_prefix, signature_prefix, lineno_prefix),
+// All the IDs have defined prefixes (e.g., see consts filetree_prefix, signature_prefix, lineno_prefix),
 // or a few from <div>s (file_nav, src, xref).
-// To check that all the IDs in the page are as expected:
+
+// To check that all the IDs in the page are as expected, run this in the debug console:
 //     Array.from(document.querySelectorAll('[id]')).sort();
 
 // SourceItem class encapsulates corpus/root/path/lineno/hilite into a
 // single object (lineno is optional and defaults to 1; hilite is
 // semantic object and defaults to null), with some convenience
 // methods and constructors.
-//   options has these fields (added to SourceItem):
+// - options has these fields (added to SourceItem):
 //     hilite: hilite semantic object (signature)
 //     lineno: lineno
 //     src_height: CSS .src.height used by <div class="src">
@@ -47,13 +51,12 @@ class SourceItem {
         // https://developers.google.com/web/updates/2016/01/urlsearchparams
         const params = new URLSearchParams(location.search);
         const lineno = location.hash ? idLineno(location.hash) : 1;
-        return new SourceItem(
-            params.get('corpus'),
-            params.get('root'),
-            params.get('path'),
-            {lineno:lineno,
-             hilite:params.get('hilite'),
-             src_height:parseInt(params.get('src_ht'))});
+        return new SourceItem(params.get('corpus'),
+                              params.get('root'),
+                              params.get('path'),
+                              {lineno:lineno,
+                               hilite:params.get('hilite'),
+                               src_height:parseInt(params.get('src_ht'))});
     }
 
     toUriParams() {
@@ -89,14 +92,14 @@ class SourceItem {
     }
 }
 
-// TODO: some of these might not be needed; all the elements that use
-//       a particular class can be found by
+// TODO: some of these globals might not be needed; all the elements
+//       that use a particular class can be found by
 //       document.getElementsByClassName('className') which returns an
 //       array-like object.  See also document.querySelectorAll().
 
 // Global mapping anchor signature to anchor signatures that is used to
 // highlight when the mouse moves over an anchor. An anchor always maps
-// to itself, plus possibly some more.
+// to itself, plus possibly some more elements.
 var g_anchor_to_anchors = {};
 
 // Global mapping anchor signature to semantic signatures.
@@ -161,11 +164,10 @@ async function renderPage() {
     initDrag('initial');
     // TODO: figure out new proportional height from resize
     window.onresize = () => initDrag('resize');
-    await fetchFromServer(
-        {src_file_tree: ''},
-        file_tree_from_server => setFileTree(
-            file_tree_from_server,
-            SourceItem.newFromSearch()));
+    await fetchFromServer({src_file_tree: ''},
+                          file_tree_from_server => setFileTree(
+                              file_tree_from_server,
+                              SourceItem.newFromSearch()));
 }
 
 function initDrag(debug_reason) {
@@ -192,10 +194,10 @@ function initDrag(debug_reason) {
             const nav_elem = document.getElementById('file_nav');
             console.log(
                 'Heights:', window.innerHeight,
-                {'1_nav':       {top:nav_elem.offsetTop,       height:nav_elem.offsetHeight       },
-                 '2_src':       {top:src_elem.offsetTop,       height:src_elem.offsetHeight       },
-                 '3_splitter':  {top:splitter_elem.offsetTop,  height:splitter_elem.offsetHeight  },
-                 '4_xref':      {top:xref_elem.offsetTop,      height:xref_elem.offsetHeight      },
+                {'1_nav':       {top:nav_elem.offsetTop,      height:nav_elem.offsetHeight     },
+                 '2_src':       {top:src_elem.offsetTop,      height:src_elem.offsetHeight     },
+                 '3_splitter':  {top:splitter_elem.offsetTop, height:splitter_elem.offsetHeight},
+                 '4_xref':      {top:xref_elem.offsetTop,     height:xref_elem.offsetHeight    },
                  'md': md,
                 });
         }
@@ -357,10 +359,10 @@ function addDropdownOption(dropdown, tree_item) {
 // See setXrefEdgeLinkItem() for how the URL is created.
 function updateBrowserUrl(source_item) {
     // TODO: is there a better choice for the 1st arg to replaceState?
-    history.replaceState(
-        {}, 'Pykythe Browser',
-        location.origin + location.pathname + '?' +
-            source_item.toUriParams());
+    history.replaceState({},
+                         'Pykythe Browser',
+                         location.origin + location.pathname + '?' +
+                             source_item.toUriParams());
 }
 
 // Callback from file tree navigation click, to load a file into the
