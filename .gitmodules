@@ -11,3 +11,6 @@
 [submodule "pykythe/six"]
 	path = pykythe/six
 	url = git@github.com:benjaminp/six.git
+[submodule "rocks-predicates"]
+	path = rocks-predicates
+	url = git@github.com:JanWielemaker/rocks-predicates.git
