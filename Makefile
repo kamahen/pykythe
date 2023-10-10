@@ -259,7 +259,7 @@ pykythe_test: $(SWIPL_EXE) FORCE # $(TESTOUTDIR)/KYTHE/builtins_symtab.pl tests/
 	@# because absolute_file resolution uses the existence of the file.
 	$(SWIPL_EXE) --version
 	$(SWIPL_EXE) $(SWIPL_ERR) -g run_tests -t halt tests/c3_tests.pl
-	$(SWIPL_EXE) --threads=yes $(SWIPL_ERR) -g 'plunit:load_test_files([])' -g plunit:pykythe_run_tests -t halt -l pykythe/pykythe.pl -- $(PYTHONPATH_OPT) test_data/dummy_dir/dummy_file.py
+	$(SWIPL_EXE) --threads=yes $(SWIPL_ERR) -g 'use_module(library(plunit))' -g 'plunit:load_test_files([])' -g plunit:pykythe_run_tests -t halt -l pykythe/pykythe.pl -- $(PYTHONPATH_OPT) test_data/dummy_dir/dummy_file.py
 
 $(PYKYTHE_EXE): pykythe/*.pl pykythe_test $(SWIPL_EXE)
 	mkdir -p $(dir $@)
@@ -909,9 +909,9 @@ upgrade-emacs:
 	@#  ? ./configure --withgnutls=ifavailable -- apt install libgnutls28-dev
 	cd ../emacs && \
 		echo MAYBE git clean -dxf && \
-		git pull --jobs=8 --recurse && \
+		git pull --jobs=8 --recurse --rebase=no && \
 		./autogen.sh && \
-		./configure --prefix=$$HOME/.local --with-harfbuzz && \
+		./configure --prefix=$$HOME/.local --with-harfbuzz --with-native-compilation && \
 		make -j $(NPROC_BAZEL) bootstrap && \
 		make install
 

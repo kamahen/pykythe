@@ -17,10 +17,19 @@
 %  json:json_read_dict/3 takes 41%
 %  json:json_string_codes/3 takes 15% (most of it in utf8_codes/3).
 
+:- set_prolog_flag(warn_autoload, true).
+% :- set_prolog_flag(autoload, false). % TODO: enable
+
 :- use_module(library(error), [must_be/2]).
 :- use_module(library(http/json), [atom_json_dict/3, json_read_dict/3]).
 :- use_module(library(base64), [base64/2]).
 :- use_module(library(pairs)).
+:- use_module(library(lists), [reverse/2, member/2]).
+:- use_module(library(error), [must_be/2]).
+:- use_module(library(readutil), [read_line_to_string/2]).
+:- use_module(library(apply), [maplist/2]).
+:- use_module(library(thread), [concurrent_maplist/2]).
+:- use_module(library(filesex), [make_directory_path/1]).
 
 % debugging: main('/tmp/pykythe_test/KYTHE/tmp/pykythe_test/SUBST/home/peter/src/pykythe/test_data/t10.kythe.json').
 

@@ -4,9 +4,14 @@
 %% few tests are here, as they were used for developing the code, so
 %% why not keep them?
 
-%% :- set_prolog_flag(autoload, false).  % TODO: seems to break plunit
+:- set_prolog_flag(autoload, false).
+:- set_prolog_flag(warn_autoload, true).
 
 :- use_module(library(plunit)).
+:- use_module(library(utf8), [utf8_codes/3]).
+:- use_module(library(debug), [assertion/1]).
+:- use_module(library(lists), [nth0/3, list_to_set/2]).
+:- use_module(library(apply), [convlist/3]).
 
 :- dynamic
     pykythe_test:src_paths/1,

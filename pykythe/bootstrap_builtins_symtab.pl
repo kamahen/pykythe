@@ -11,7 +11,8 @@
 :- encoding(utf8).
 :- set_prolog_flag(optimise, true).
 
-% :- set_prolog_flag(autoload, false). % DO NOT SUBMIT: Restore this: https://github.com/SWI-Prolog/swipl-devel/issues/622
+:- set_prolog_flag(warn_autoload, true).
+:- set_prolog_flag(autoload, false).
 
 builtins_version('${VERSION}').
 

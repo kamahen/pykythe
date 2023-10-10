@@ -56,6 +56,7 @@
 :- style_check(+singleton).
 :- style_check(+no_effect).
 :- style_check(+discontiguous).
+:- set_prolog_flag(warn_autoload, true).
 
 :- use_module(library(apply), [maplist/2, maplist/3]).
 :- use_module(library(error)).

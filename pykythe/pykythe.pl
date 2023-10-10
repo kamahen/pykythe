@@ -191,7 +191,8 @@
 :- encoding(utf8).
 :- use_module(library(debug)). % explicit load to activate optimise_debug/0.
 
-% :- set_prolog_flag(autoload, false).  % TODO: Seems to break plunit
+:- set_prolog_flag(warn_autoload, true).
+:- set_prolog_flag(autoload, false).
 % :- use_module(library(apply_macros).  % TODO: for performance (also maplist_kyfact_symrej etc)
 :- use_module(c3, [mro/2]).
 :- use_module(library(aggregate), [aggregate_all/3, foreach/2]).
@@ -238,6 +239,7 @@
 :- style_check(+var_branches).
 :- style_check(+no_effect).
 :- style_check(+discontiguous).
+:- set_prolog_flag(warn_autoload, true).
 
 :- multifile
     edcg:acc_info/5,

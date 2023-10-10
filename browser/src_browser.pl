@@ -39,7 +39,8 @@
 
 :- module(src_browser, [src_browser_main/0, src_browser_main2/0]).
 
-% :- set_prolog_flag(autoload, false).  % TODO: Seems to break plunit, qsave
+:- set_prolog_flag(warn_autoload, true).
+% :- set_prolog_flag(autoload, false). % TODO: enable
 
 :- use_module(library(lists), [append/3, member/2]).
 :- use_module(library(error), [must_be/2, domain_error/2]).
@@ -77,6 +78,7 @@
 :- use_module(library(aggregate)). % TODO: do we use all of these?
 :- use_module(library(solution_sequences), [distinct/1, distinct/2, order_by/2, group_by/4]). % TODO: do we use all of these?
 :- use_module(library(yall)).   % For [S,A]>>atom_string(A,S) etc.
+:- use_module(library(plunit), [run_tests/0]).
 :- use_module('../pykythe/must_once').
 :- use_module('../pykythe/pykythe_utils').
 

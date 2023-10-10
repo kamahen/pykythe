@@ -35,7 +35,9 @@
                        ]).
 :- encoding(utf8).
 :- use_module(library(debug)). % explicit load to activate optimise_debug/0.
-% :- set_prolog_flag(autoload, false).  % TODO: seems to break plunit, qsave
+
+:- set_prolog_flag(warn_autoload, true).
+:- set_prolog_flag(autoload, false).
 
 :- use_module(library(apply), [maplist/2, maplist/3]).
 :- use_module(library(filesex), [directory_file_path/3]).
