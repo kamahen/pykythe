@@ -28,9 +28,9 @@
 :- use_module(library(debug)). % explicit load to activate optimise_debug/0.
 :- set_prolog_flag(autoload, false).
 
-:- use_module(library(lists), [append/3, member/2]).
 :- use_module(library(apply), [convlist/3, exclude/3, maplist/3]).
 :- use_module(library(base64), [base64/2 as base64_ascii]).
+:- use_module(library(lists), [append/3, member/2]).
 :- use_module(library(optparse), [opt_arguments/3]).
 
 :- use_module(module_path).
@@ -101,14 +101,14 @@ gen_builtins_symtab_main =>
     halt.
 
 :- det(replace_first_key_value/4).
-%! replace_first_key_value(+List0, +Key, +Value, -List) is det/error.
+%! replace_first_key_value(+List0, +Key, +Value, -List) is det.
 %  Succceeds with the first instance of Key-_ in List0 replaced with Key-Value.
 %  Errors if Key is not in List0 (via the det/1 declaration).
 replace_first_key_value(List0, Key, Value, List) =>
     append(Before, [Key-_|After], List0), $,
     append(Before, [Key-Value|After], List).
 
-%! maybe_strip_sym(+PackageDot:atom, +SymType:(atom-atom), -SymStrippedType:(atom-atom))) is semidet.
+%! maybe_strip_sym(+PackageDot:atom, +SymType:pair(atom,atom), -SymStrippedType:pair(atom,atom)) is semidet.
 % Strip PackageDot from beginning of Sym (if there), succeed if there
 % are no '.'s in the result or if it isn't in extra/1.
 maybe_strip_sym(PackageDot, Sym-Type, SymStrippedType) =>

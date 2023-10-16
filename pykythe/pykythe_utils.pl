@@ -59,17 +59,17 @@
 :- set_prolog_flag(warn_autoload, true).
 
 :- use_module(library(apply), [maplist/2, maplist/3]).
-:- use_module(library(error)).
 :- use_module(library(base64), [base64/2 as base64_ascii]).
-:- use_module(library(utf8), [utf8_codes//1]).
+:- use_module(library(error)).
 :- use_module(library(filesex), [make_directory_path/1, directory_file_path/3, link_file/3]).
-:- use_module(library(pprint), [print_term/2]).
-:- use_module(library(readutil), [read_file_to_string/3]).
-:- use_module(library(sha), [sha_hash/3, hash_atom/2]).
-:- use_module(library(yall)).   % For [S,A]>>atom_string(A,S) etc.
 :- use_module(library(http/json), [json_read_dict/3, json_write_dict/3]).
 :- use_module(library(pcre), [re_replace/4]).
+:- use_module(library(pprint), [print_term/2]).
 :- use_module(library(prolog_pack), [pack_property/2]).
+:- use_module(library(readutil), [read_file_to_string/3]).
+:- use_module(library(sha), [sha_hash/3, hash_atom/2]).
+:- use_module(library(utf8), [utf8_codes//1]).
+:- use_module(library(yall)).   % For [S,A]>>atom_string(A,S) etc.
 
 :- use_module(must_once, [must_once/1, must_once_msg/2, must_once_msg/3, fail/1]).
 
@@ -145,7 +145,7 @@ dump_term2(Msg, TermStr) =>
     log_if(true, '% === end ~w ===~n', [Msg]).
 
 :- det(ensure_dict_fact/3).
-%! ensure_dict_fact(+Dict, +Attr, ?Value) is det/error.
+%! ensure_dict_fact(+Dict, +Attr, ?Value) is det.
 % Die with an error message if Dict.Attr != Value
 % (Can also be used to get Dict.Attr into Value).
 ensure_dict_fact(Dict, Attr, Value) =>
@@ -154,7 +154,7 @@ ensure_dict_fact(Dict, Attr, Value) =>
                   [Attr, Value, Dict]).
 
 :- det(ensure_dict_fact_base64_ascii/3).
-%! ensure_dict_fact_base64_ascii(+Dict, +Attr, ?Value) is det/error.
+%! ensure_dict_fact_base64_ascii(+Dict, +Attr, ?Value) is det.
 % Die with an error message if base64_ascii(Dict.Attr) != Value
 % (Can also be used to get Dict.Attr into Value).
 ensure_dict_fact_base64_ascii(Dict, Attr, Value) =>
@@ -164,7 +164,7 @@ ensure_dict_fact_base64_ascii(Dict, Attr, Value) =>
                   [Attr, Value, Dict]).
 
 :- det(ensure_dict_fact_base64_utf8/3).
-%! ensure_dict_fact_base64_utf8(+Dict, +Attr, ?Value) is det/error
+%! ensure_dict_fact_base64_utf8(+Dict, +Attr, ?Value) is det
 % Die with an error message if base64_utf8(Dict.Attr) != Value
 % (Can also be used to get Dict.Attr into Value).
 ensure_dict_fact_base64_utf8(Dict, Attr, Value) =>
@@ -196,7 +196,7 @@ hash_hex(Text, Hex) =>
     hash_atom(Hash, Hex).
 
 :- det(json_read_dict_validate/3).
-%! json_read_dict_validate(+KytheInputStream, +FactName, -Dict) is det/error.
+%! json_read_dict_validate(+KytheInputStream, +FactName, -Dict) is det.
 % Read a JSON "term" from KytheInputStream, verify that fact_name is
 % FactName and unify the entire term with Dict) - throws an error if
 % validation fails.
@@ -377,6 +377,12 @@ write_atomic_stream(WritePred, Path, OpenOptions) =>
     pykythe_tmp_file_stream(PathDir, TmpPath, Stream, OpenOptions),
     % TODO: instead of at_halt/1, use setup_call_cleanup/3
     at_halt(pykythe_utils:safe_delete_file(TmpPath)), % in case WritePred crashes or fails
+    % TODO: the classic way to do this in Python is a bit different (better?)
+    %         (see link_file/3 in library(filesex):
+    %       with tempfile.NamedTemporaryFile(mode='wb') as f:
+    %         write(f, ...)
+    %         os.link(f.name, filename)
+    %       # This depends on NamedTemporaryFile deleting on close
     (   call(WritePred, Stream)
     ->  % atomically rename file -- this prevents a race condition if
         % two pykythe processes are processing the same file at the

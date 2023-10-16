@@ -299,10 +299,10 @@ module_to_module_alone(ModuleAndMaybeToken, ModuleAlone, ModuleFqn) =>
     path_part(ModuleAndMaybeToken, Path).
 
 :- det(split_module_atom/2).
-%! split_module_atom(+ModuleFqn:atom, -ModulePieces:list(atom) is det.
+%! split_module_atom(+ModuleFqn:atom, -ModulePieces:list(atom)) is det.
 % Split module into pieces on '.', with special handling for '<unknown>'
 split_module_atom(ModuleFqn, ModulePiecesFixed) =>
-    (   re_matchsub('<unknown>\\.{([^}]*)}$', ModuleFqn, Sub, [anchored(true)])
+    (   re_matchsub('<unknown>\\.{([^}]*)}$', ModuleFqn, Sub, [anchored(true)])  % TODO: pcre: needed to quiet pldoc
     ->  % filename is in absolute form, so the first part of the result
         % is ''. If we want to get rid of that, then the following
         % should have [''|ModulePieces0] as the last arg:

@@ -912,7 +912,7 @@ upgrade-emacs:
 		git pull --jobs=8 --recurse --rebase=no && \
 		./autogen.sh && \
 		./configure --prefix=$$HOME/.local --with-harfbuzz --with-native-compilation && \
-		make -j $(NPROC_BAZEL) bootstrap && \
+		make NATIVE_FULL_AOT=1 -j $(NPROC_BAZEL) bootstrap && \
 		make install
 
 rsync-backup:

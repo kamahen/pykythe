@@ -42,12 +42,20 @@
 :- set_prolog_flag(warn_autoload, true).
 % :- set_prolog_flag(autoload, false). % TODO: enable
 
-:- use_module(library(lists), [append/3, member/2]).
-:- use_module(library(error), [must_be/2, domain_error/2]).
-:- use_module(library(pairs), [group_pairs_by_key/2, pairs_values/2]).
-:- use_module(library(prolog_jiti), [jiti_list/1]).
+:- use_module(library(aggregate)). % TODO: do we use all of these?
 :- use_module(library(apply), [maplist/2, maplist/3, maplist/4, maplist/5, exclude/3]).
+:- use_module(library(debug)).
+:- use_module(library(error), [must_be/2, domain_error/2]).
+:- use_module(library(lists), [append/3, member/2]).
+:- use_module(library(optparse), [opt_arguments/3]).
+:- use_module(library(pairs), [group_pairs_by_key/2, pairs_values/2]).
+:- use_module(library(plunit), [run_tests/0]).
+:- use_module(library(prolog_jiti), [jiti_list/1]).
+:- use_module(library(readutil), [read_file_to_string/3]).
+:- use_module(library(solution_sequences), [distinct/1, distinct/2, order_by/2, group_by/4]). % TODO: do we use all of these?
 :- use_module(library(thread), [concurrent_maplist/2, concurrent_forall/2]).
+:- use_module(library(uri)).
+:- use_module(library(yall)).   % For [S,A]>>atom_string(A,S) etc.
 :- use_module(library(http/http_server), [http_server/1,
                                           http_read_json_dict/3,
                                           reply_json_dict/2, % TODO: Options=[status(201)]
@@ -71,14 +79,6 @@
 % :- set_setting(http:logfile, '/tmp/httpd.log').
 :- use_module(library(http/http_path)).
 :- use_module(library(http/http_error)). % TODO: remove - this decorates uncaught HTTP exceptions with stack-trace
-:- use_module(library(uri)).
-:- use_module(library(debug)).
-:- use_module(library(optparse), [opt_arguments/3]).
-:- use_module(library(readutil), [read_file_to_string/3]).
-:- use_module(library(aggregate)). % TODO: do we use all of these?
-:- use_module(library(solution_sequences), [distinct/1, distinct/2, order_by/2, group_by/4]). % TODO: do we use all of these?
-:- use_module(library(yall)).   % For [S,A]>>atom_string(A,S) etc.
-:- use_module(library(plunit), [run_tests/0]).
 :- use_module('../pykythe/must_once').
 :- use_module('../pykythe/pykythe_utils').
 

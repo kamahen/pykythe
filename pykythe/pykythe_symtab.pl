@@ -172,7 +172,8 @@ read_symtab_from_cache_no_check(PykytheSymtabInputPath, Symtab) =>
     ord_list_to_rbtree(SymtabKVs, Symtab).
 
 :- det(validate_symtab/1).
-%! valid_symtab(+Symtab) is det/error.
+%! valid_symtab(+Symtab) is det.
+% Throws an error on failure.
 validate_symtab(Symtab) :-      % TODO: remove this
     $(symtab_pairs(Symtab, SymtabPairs)),
     maplist(validate_symtab_pair, SymtabPairs).
