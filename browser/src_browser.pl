@@ -43,10 +43,10 @@
 % :- set_prolog_flag(autoload, false). % TODO: enable
 
 :- use_module(library(aggregate)). % TODO: do we use all of these?
-:- use_module(library(apply), [maplist/2, maplist/3, maplist/4, maplist/5, exclude/3]).
+:- use_module(library(apply), [maplist/2, maplist/3, maplist/4, maplist/5, exclude/3, convlist/3]).
 :- use_module(library(debug)).
 :- use_module(library(error), [must_be/2, domain_error/2]).
-:- use_module(library(lists), [append/3, member/2]).
+:- use_module(library(lists), [append/3, append/2, member/2]).
 :- use_module(library(optparse), [opt_arguments/3]).
 :- use_module(library(pairs), [group_pairs_by_key/2, pairs_values/2]).
 :- use_module(library(plunit), [run_tests/0]).
@@ -476,8 +476,13 @@ show_jiti :-
 %      - for debugging, 'moved' can be cleared by chrome://settings/clearBrowserData
 %        (Cached images and files)
 :- http_handler(root(.),
-                http_handler_redirect(
-                    moved_temporary, % or moved - but that makes debugging a bit more difficult
+                http_redirect(
+                    moved, % or moved_temporary for easier debugging
+                    static('src_browser.html')),
+                []).
+:- http_handler(root('index.html'),
+                http_redirect(
+                    moved, % or moved_temporary for easier debugging
                     static('src_browser.html')),
                 []).
 
@@ -509,18 +514,6 @@ pykythe_http_reply_from_files(Dir, Options, Request) :-
     ;  true
     ),
     http_reply_from_files(Dir, Options, Request).
-
-%! http_handler_redirect(+How, +To, +Request) is det.
-% Handle a redirect callback.
-http_handler_redirect(How, To, Request) :-
-    memberchk(path(Base), Request),
-    memberchk(request_uri(RequestURI), Request),
-    http_absolute_location(To, ToURL, [relative_to(Base)]),
-    uri_components(RequestURI, URI),
-    uri_data(path, URI, ToURL, ToURI),
-    uri_components(NewTo, ToURI),
-    debug(redirect_log, 'Redirect: ~q', [[how:How, to:To, toURL:ToURL, requestURI:RequestURI, uri:URI, toURI:ToURI, newTo: NewTo]]),
-    http_redirect(How, NewTo, Request).
 
 %! reply_with_json(+Request) is det.
 % Handle a request from static/src_browser.js in browser.
