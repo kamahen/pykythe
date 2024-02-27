@@ -1305,4 +1305,38 @@ test(f1, [true]) :-
 
 :- endif.
 
--end_of_file.
+end_of_file.
+
+:- use_module(library(dcg/basics)).
+:- use_module(library(dcg/high_order)).
+
+malloc_stats(Stats) :-
+    current_prolog_flag(malloc, tcmalloc),
+    findall(P, malloc_property(P), Ps),
+    maplist(property_to_pair, Ps, Pps),
+    dict_create(Stats, tcmalloc, Pps).
+
+property_to_pair(P, Key-Value) :-
+    P =.. [Key,Value].
+
+% See proc(5) - /proc/pid/statm
+
+statm(statm{size:Size,
+            resident:Resident,
+            shared:Shared,
+            text:Text,
+            data:Data}) :-
+    current_prolog_flag(pid, Pid),
+    atomic_list_concat(["/proc", Pid, "statm"], "/", PathStatm),
+    % _Dirty = 0
+    % _Lib = 0
+    phrase_from_file(statm([Size,Resident,Shared,Text,_Lib,Data,_Dirty]), PathStatm).
+
+statm(List) -->
+    sequence(blanks_integer, List),
+    blanks.
+
+blanks_integer(I) -->
+    blanks,
+    integer(I).
+

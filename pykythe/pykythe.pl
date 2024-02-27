@@ -2005,7 +2005,7 @@ kyanchor_binding(Start, End, AttrName, Fqn, Childof, DebugInfo) ==>>
 %     @foo  defines/binding  $FQN.foo
 %     @zot  defines/binding  $FQN.zot  [$FQN.qqsv]
 % NOTE: there are some weird corner cases ... for example, "import
-%       os.path" gets a name in /usr/lib/python3.9/os.py that happens
+%       os.path" gets a name in /usr/lib/python3.11/os.py that happens
 %       to be a module but alternatively gets
 %       typeshed/stdlib/os/path.pyi ... we therefore have to allow
 %       for module_alone and module_and_token everywhere.
@@ -2598,7 +2598,7 @@ eval_assign_subscr_op_binds_single(RightEval, var_ref(BindsFqn)) ==>>
     %       cycles, e.g. caused by this (from functools._lru_cache_wrapper):
     %       `root = []; root[:] = [root, root]`
     % TODO: Circular list_of_type([list_of_type([]),...) seems to come
-    %       from somewhere else also; see /usr/lib/python3.9/typing.py
+    %       from somewhere else also; see /usr/lib/python3.11/typing.py
     %       and show the Rej in the "Max pass count exceeded" message.
     (   symtab_lookup(BindsFqn, Type), % TODO: remove this hack
         { member(list_of_type(Type2), Type) },

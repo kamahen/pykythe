@@ -3,9 +3,9 @@
 %% Module/path manipulation routines.
 
 %% '.' in a directory name causes problems
-%%    ... e.g. /usr/lib/python3.9/test/support/__init__.py
+%%    ... e.g. /usr/lib/python3.11/test/support/__init__.py
 %%    doesn't roundtrip:
-%%             /usr/lib/python3/9/test/support/__init__.py
+%%             /usr/lib/python3.11/test/support/__init__.py
 %%                             ^ <====
 %%    so change all '.'s to ':' -- this is generally safe
 %%    because --pythonpath uses ':' to separate items.

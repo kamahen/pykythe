@@ -44,10 +44,10 @@
 
 TESTOUTDIR:=$(abspath /tmp/pykythe_test)
 SHELL:=/bin/bash
-# Must be python 3.9.13 - there's a validation test in the ast_raw.parse()
+# Must be python 3.11 - there's a validation test in the ast_raw.parse()
 # Assume that type -p returns an abspath ...
-PYTHON_VERSION=3.9
-PYTHON3_EXE:=$(shell type -p python${PYTHON_VERSION})  # TODO: 3.10 doesn't have lib2to3
+PYTHON_VERSION=3.11
+PYTHON3_EXE:=$(shell type -p python${PYTHON_VERSION})
 # PYTHON3_EXE:=/usr/bin/python${PYTHON_VERSION}
 FIND_EXE:=$(shell type -p find)          # /usr/bin/find The following
 # /usr/bin/swipl:
@@ -907,12 +907,14 @@ upgrade-emacs:
 	@# https://www.emacswiki.org/emacs/EmacsSnapshotAndDebian
 	@# The "git clean -dxf" probably isn't needed, but it's safe
 	@#  ? ./configure --withgnutls=ifavailable -- apt install libgnutls28-dev
+	@# --with-native-compilation
+	@# make NATIVE_FULL_AOT=1 -j ... bootstrap
 	cd ../emacs && \
 		echo MAYBE git clean -dxf && \
 		git pull --jobs=8 --recurse --rebase=no && \
 		./autogen.sh && \
-		./configure --prefix=$$HOME/.local --with-harfbuzz --with-native-compilation && \
-		make NATIVE_FULL_AOT=1 -j $(NPROC_BAZEL) bootstrap && \
+		./configure --prefix=$$HOME/.local --with-harfbuzz && \
+		make -j $(NPROC_BAZEL) bootstrap && \
 		make install
 
 rsync-backup:
