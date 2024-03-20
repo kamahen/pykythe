@@ -161,16 +161,21 @@ const path_type_to_class = {
 // Fetches the file tree from the server and schedules a continuation
 // that displays the file selector dropdown(s).
 async function renderPage() {
-    initDrag('initial');
+    setSplitterDragActions('initial');
     // TODO: figure out new proportional height from resize
-    window.onresize = () => initDrag('resize');
+    window.onresize = () => setSplitterDragActions('resize');
     await fetchFromServer({src_file_tree: ''},
                           file_tree_from_server => setFileTree(
                               file_tree_from_server,
                               SourceItem.newFromSearch()));
 }
 
-function initDrag(debug_reason) {
+// Set the mouse action (down,move,up) callbacks. When the mouse-down
+// happens, record the location (in variable `md`, which becomes the
+// context for the mouse actions; when the mouse-move happens, set the
+// splitter location based on the initial mouse location (`md`) and
+// where the mouse is now.
+function setSplitterDragActions(debug_reason) {
     const src_elem = document.getElementById('src');
     const splitter_elem = document.getElementById('splitter');
     const xref_elem = document.getElementById('xref');
@@ -202,12 +207,7 @@ function initDrag(debug_reason) {
                 });
         }
 
-        document.onmouseup = () => {
-            document.onmousemove = null;
-            document.onmouseup = null;
-        }
-
-        document.onmousemove = (e) => {
+        function adjustSplitterLocation(e) {
             var delta_y = e.clientY - md.e.clientY;
 
             // Prevent negative-sized elements.
@@ -215,6 +215,8 @@ function initDrag(debug_reason) {
             // There doesn't seem to be a general way of converting
             // units such as pt or cm to px, but by experiment, 20
             // seems a reasonable amount to leave.
+
+            const negative_space_buffer = 20;
 
             // TODO: The following isn't quite right at the bottom: if
             //       you move the splitter as far as possible,
@@ -227,17 +229,27 @@ function initDrag(debug_reason) {
             //       const scrollbarWidth = window.innerWidth - document.body.clientWidth
             //       https://destroytoday.com/blog/100vw-and-the-horizontal-overflow-you-probably-didnt-know-about
 
-            if (md.srcHeight + delta_y < 20) {
-                delta_y = md.srcTop - md.splitterTop + 20;
+            if (md.srcHeight + delta_y < negative_space_buffer) {
+                delta_y = md.srcTop - md.splitterTop + negative_space_buffer;
             }
-            if (md.xrefHeight - delta_y < 20) {
-                delta_y = md.splitterHeight + md.xrefHeight - 20;
+            if (md.xrefHeight - delta_y < negative_space_buffer) {
+                delta_y = md.splitterHeight + md.xrefHeight - negative_space_buffer;
             }
 
             src_elem.style.height   = (md.srcHeight   + delta_y) + 'px';
             splitter_elem.style.top = (md.splitterTop + delta_y) + 'px';
             xref_elem.style.height  = (md.xrefHeight  - delta_y) + 'px';
             xref_elem.style.top     = (md.xrefTop     + delta_y) + 'px'; // Not needed for grid layout?
+        }
+
+        document.onmouseup = (e) => {
+            adjustSplitterLocation(e);
+            document.onmousemove = null;
+            document.onmouseup = null;
+        }
+
+        document.onmousemove = (e) => {
+            adjustSplitterLocation(e);
         }
     }
 }
@@ -371,7 +383,7 @@ async function displayNewSrcFile(source_item) {
     if (! isNaN(source_item.src_height)) { // isNan(null) is true
         // const src = document.getElementById('src');
         // const xref = document.getElementById('xref');
-        // TODO: see initDrag for how to set the various heights/tops
+        // TODO: see setSplitterDragActions() for how to set the various heights/tops
     }
     updateBrowserUrl(source_item);
     let progress = document.createElement('span');
