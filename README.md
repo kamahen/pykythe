@@ -153,7 +153,7 @@ impossible and I really don't feel like becoming a git guru.
 
 
 * Install [SWI-Prolog](http://www.swi-prolog.org/Download.html). You
-  need at least version 8.3.24, so as of 2021-05-08, this means
+  need at least version 9.3.5, so as of 2024-04-30, this means
   using the "devel" download or PPA.
   For Ubuntu, Debian, and similar (following the instructions at https://www.swi-prolog.org/build/PPA.html):
   *  `sudo apt install software-properties-common`
@@ -491,6 +491,13 @@ probably aren't worth doing and things are simpler by just assuming
 UTF8 everywhere).
 
 ## Known issues
+
+* You might get a mysterious error message about
+  "builtins_version(...) should be ..."; this typically indicates
+  that the Prolog or Python interpreter has changed since the
+  last processing. The simplest solution is to delete all the output
+  (e.g., `rm -rf /tmp/pykythe`) and re-run.
+
 
 * See also https://github.com/kamahen/pykythe/issues
 

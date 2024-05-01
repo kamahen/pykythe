@@ -913,7 +913,7 @@ upgrade-emacs:
 		echo MAYBE git clean -dxf && \
 		git pull --jobs=8 --recurse --rebase=no && \
 		./autogen.sh && \
-		./configure --prefix=$$HOME/.local --with-harfbuzz && \
+		./configure --prefix=$$HOME/.local --with-harfbuzz --with-native-compilation=no && \
 		make -j $(NPROC_BAZEL) bootstrap && \
 		make install
 
