@@ -182,19 +182,18 @@ function setSplitterDragActions(debug_reason) {
 
     // See diagram https://developer.mozilla.org/en-US/docs/Web/API/CSS_Object_Model/Determining_the_dimensions_of_elements
     // This code derived from https://stackoverflow.com/questions/12194469/best-way-to-do-a-split-pane-in-html/52536726#52536726
-    var md = null; // remember mouse down info - set by onmousedown, used by onmousemove
 
     splitter_elem.onmousedown = (e) => {
-        md = {e,
-              splitterTop:    splitter_elem.offsetTop,
-              splitterHeight: splitter_elem.offsetHeight,
-              srcTop:         src_elem.offsetTop,
-              srcHeight:      src_elem.offsetHeight,
-              xrefTop:        xref_elem.offsetTop,
-              xrefHeight:     xref_elem.offsetHeight,
-             };
-
-
+        // md: "closure" that remembers mousedown info - used by onmousemove, onmouseup
+        var md = {e:              e,
+                  clientY:        e.clientY,
+                  splitterTop:    splitter_elem.offsetTop,
+                  splitterHeight: splitter_elem.offsetHeight,
+                  srcTop:         src_elem.offsetTop,
+                  srcHeight:      src_elem.offsetHeight,
+                  xrefTop:        xref_elem.offsetTop,
+                  xrefHeight:     xref_elem.offsetHeight,
+                 };
         if (false) { // For debugging the various layout variables:
             const nav_elem = document.getElementById('file_nav');
             console.log(
@@ -208,7 +207,7 @@ function setSplitterDragActions(debug_reason) {
         }
 
         function adjustSplitterLocation(e) {
-            var delta_y = e.clientY - md.e.clientY;
+            var delta_y = e.clientY - md.clientY;
 
             // Prevent negative-sized elements.
             // document.querySelectorAll('#src')[0].style.minHeight) doesn't have min-height value!
