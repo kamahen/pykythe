@@ -126,7 +126,7 @@ body { /* <body> */
     user-select: none;
 
     /* See https://stackoverflow.com/questions/12194469/best-way-to-do-a-split-pane-in-html/52536726#52536726
-       TODP: The following is for a left-right split; modify it for top-bottom split
+       TODO: The following is for a left-right split; modify it for top-bottom split
        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='30'><path d='M2 0 v30 M5 0 v30 M8 0 v30' fill='none' stroke='black'/></svg>"); */
     */
 }

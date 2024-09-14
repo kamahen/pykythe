@@ -40,6 +40,7 @@
 :- module(src_browser, [src_browser_main/0, src_browser_main2/0]).
 
 :- set_prolog_flag(warn_autoload, true).
+% :- use_module(library(prolog_debug)).
 % :- set_prolog_flag(autoload, false). % TODO: enable
 
 :- use_module(library(aggregate)). % TODO: do we use all of these?
@@ -549,22 +550,22 @@ reply_with_json(Request) :-
     debug(timing, 'Request-reply: ~q [~3f sec]', [JsonIn, Tdelta3]).
 
 %! json_response(+Request:dict, -Response:dict) is det.
-% Handle a specific request using fetchFromSever() in static/src_browser.js (browser).
+% Handle a specific request using fetchFromServer() in static/src_browser.js (browser).
 json_response(json{anchor_xref: json{signature: Signature,
                                      corpus: Corpus,
                                      root: Root,
                                      path: Path,
                                      language: Language}},
-              json{signature: Signature,
-                   lineno: LineNo,
-                   line: LineChunks,
-                   corpus: Corpus, root: Root,
-                   path: Path, language: Language,
-                   semantics: SemanticVnamesJson,
-                   semantic_node_values: SemanticNodeValuesJson,
-                   semantic_links: SemanticLinksJson,
-                   edge_links: EdgeLinksJson}) :-
-    !,
+              Response) =>
+    Response = json{signature: Signature,
+                    lineno: LineNo,
+                    line: LineChunks,
+                    corpus: Corpus, root: Root,
+                    path: Path, language: Language,
+                    semantics: SemanticVnamesJson,
+                    semantic_node_values: SemanticNodeValuesJson,
+                    semantic_links: SemanticLinksJson,
+                    edge_links: EdgeLinksJson},
     AnchorVname = vname(Signature, Corpus, Root, Path, Language),
     % TODO: probably better to use nested setof/bagof, but with
     %       library(solution_sequences) for ordering, grouping
@@ -585,11 +586,9 @@ json_response(json{anchor_xref: json{signature: Signature,
             EdgeLinks, EdgeLinksJson).
 json_response(json{src_browser_file:
                   json{corpus:Corpus, root:Root, path:Path}},
-              Contents) :-
-    !,
+              Contents) =>
     color_data_one_file(Corpus, Root, Path, Contents).
-json_response(json{src_file_tree: _}, PathTreeJson) :-
-    !,
+json_response(json{src_file_tree: _}, PathTreeJson) =>
     setof(Path, file_path(Path), PathNames),
     files_to_tree(PathNames, PathTree),
     tree_to_json(PathTree, PathTreeJson).
@@ -649,18 +648,18 @@ zip_lines(vname(Signature, Corpus, Root, Path, Language),
                corpus: Corpus, root: Root,
                path: Path, language: Language}).
 
-link_to_dict(vname(Signature, Corpus, Root, Path, Language),
-             json{signature: Signature,
-                  corpus: Corpus, root: Root,
-                  path: Path, language: Language}) :- !.
-link_to_dict(vname_flip(Corpus, Root, Path, Signature, Language),
-             json{signature: Signature,
-                  corpus: Corpus, root: Root,
-                  path: Path, language: Language}) :- !.
-link_to_dict(Json, Json) :-
-    must_be(dict, Json),
-    is_dict(Json, Tag),
-    must_be(oneof([line,path]), Tag).
+link_to_dict(vname(Signature, Corpus, Root, Path, Language), Json) =>
+    Json = json{signature: Signature,
+                corpus: Corpus, root: Root,
+                path: Path, language: Language}.
+link_to_dict(vname_flip(Corpus, Root, Path, Signature, Language), Json) =>
+    Json = json{signature: Signature,
+                corpus: Corpus, root: Root,
+                path: Path, language: Language}.
+link_to_dict(Json, JsonOut), must_be(dict, Json),
+                             is_dict(Json, Tag),
+                             must_be(oneof([line,path]), Tag) =>
+    JsonOut = Json.
 
 % TODO: combine with pykythe_utils:pykythe_json_read_dict?
 http_handler_read_json_dict(Request, JsonIn) :-
