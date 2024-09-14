@@ -18,7 +18,7 @@
 %%
 %% There are 3 accumulators and one passed arg -- look for the
 %% edcg:acc_info and edcg:pass_info facts for more information.  In
-%% particular, `[ Fqn-Type-TypeSymtab ]:symrej` does a lookup into the
+%% particular, `[ Fqn-Type-TypeSymtab ]:symchg` does a lookup into the
 %% symbol table and inserts Fqn-[] (the "Any" type) if it's not there
 %% (if it is there, Type is union-ed with whatever is alrady in the
 %% symtab).
@@ -28,7 +28,7 @@
 %%  'fqn' is fully qualified name
 %%  'ky' as prefix means 'kythe' (e.g. kyfact instead of kythe_fact)
 %%  'symtab' is symbol table
-%%  'symrej' is symbol table (symtab) + rejects (+ modules)
+%%  'symchg' is symbol table (symtab) + changed (+ modules)
 
 %% There are multiple passes over the AST:
 %%
@@ -104,22 +104,22 @@
 %% an infinite loop.
 
 %% Implementation detail: lookup is done using
-%%        [ Fqn-Type-TypeSymtab ]:symrej
-%% which calls symrej_accum/3 and uses the sym_rej/2 functor to record
-%% the symtab, rejected symtab entries. It acts as both lookup and
+%%        [ Fqn-Type-TypeSymtab ]:symchg
+%% which calls symchg_accum/3 and uses the sym_chg/2 functor to record
+%% the symtab, changed symtab entries. It acts as both lookup and
 %% insert - if the Fqn isn't in the symtab, it is added (with the
 %% "Any" type or []); if it is in the symtab, Result is either unified
 %% with the symtab value, or Result is unioned with the symtab value
-%% (and the "rej" list is added to, if needed). TypeSymtab is unified
+%% (and the "chg" list is added to, if needed). TypeSymtab is unified
 %% with what's in Symtab.
 % TODO: using one form for both lookup and insertion was probably a
-%       bad idea. Instead, the "/symrej" operator could be used to
+%       bad idea. Instead, the "/symchg" operator could be used to
 %       get the accumulator and do an appropriate operation. Or the
-%       "[...]:symrej" could have an option in it do specify whether
+%       "[...]:symchg" could have an option in it do specify whether
 %       this is a lookup or insertion/update.
 %%
 %% A symtab lookup can occur either as in a right-hand (evaluation)
-%% context or left-hand (assignment) context (see symrej_accum/3).
+%% context or left-hand (assignment) context (see symchg_accum/3).
 %%
 %%  +---------+--------------+------------------------------+
 %%  | Context | Entry exists |                              |
@@ -128,27 +128,27 @@
 %%  | eval    | no           | add with type=[] ("Any")     |
 %%  +---------+--------------+------------------------------+
 %%  | eval    | yes          | use symtab type              |
-%%  |         |              | add to "reject" list if new  |
+%%  |         |              | add to "changed" list if new |
 %%  |         |              | type info                    |
 %%  +---------+--------------+------------------------------+
 %%  | assign  | no           | add with type of r.h.s.      |
 %%  +---------+--------------+------------------------------+
 %%  | assign  | yes          | unify with type of r.h.s     |
-%%  |         |              | add to "reject" list if new  |
+%%  |         |              | add to "changed" list if new |
 %%  |         |              | type info                    |
 %%  +---------+--------------+------------------------------+
 %%
 %% New type info is determined by union-ing the two types and seeing
 %% if the result is different from what's in the symtab -- if
-%% different, the Fqn-Type is added to the "reject" list and the
+%% different, the Fqn-Type is added to the "changed" list and the
 %% symtab entry is updated with the additional type information.  If
 %% there is new type information, it is because a previous "eval" node
 %% was processed without all available information, so another pass
 %% needs to be done over the "eval" nodes.  The next pass will also
-%% add the new type information from the "reject" list to the symtab
+%% add the new type information from the "changed" list to the symtab
 %% before reprocessing all the "eval" nodes.
 %%
-%% See discussion below about reprocessing of "reject"ed items.
+%% See discussion below about reprocessing of "changed" items.
 
 %% All types are unions (represented as an ordset); [] means that
 %% there's no information and is effectively "Any". Many of the
@@ -169,9 +169,9 @@
 %% prove that). When a FQN is first encountered, it is put into the
 %% symtab with its type (the type is [] if it can't be determined) --
 %% when subsequently encountered, any inconsistency in type is added
-%% to the "reject" list. After a pass is complete, the rejects' types
-%% are union-ed with the corresponding symtab entries' types and if
-%% there were changes, another pass is done. In this way, each
+%% to the "changed" list. After a pass is complete, the changed's
+%% types are union-ed with the corresponding symtab entries' types and
+%% if there were changes, another pass is done. In this way, each
 %% expression is repeatedly reprocessed until no more changes (in
 %% practice, only one or two passes are needed).
 
@@ -193,7 +193,7 @@
 
 :- set_prolog_flag(warn_autoload, true). % TODO: this is an experimental flag
 :- set_prolog_flag(autoload, false).
-% :- use_module(library(apply_macros).  % TODO: for performance (also maplist_kyfact_symrej etc)
+% :- use_module(library(apply_macros).  % TODO: for performance (also maplist_kyfact_symchg etc)
 :- use_module(c3, [mro/2]).
 :- use_module(library(aggregate), [aggregate_all/3, foreach/2]).
 :- use_module(library(apply), [exclude/3, include/3, maplist/2, maplist/3, maplist/4, foldl/4, convlist/3, partition/4]).
@@ -213,7 +213,7 @@
 
 :- use_module(module_path).
 :- use_module(must_once, [must_once/1, must_once_msg/2, must_once_msg/3, fail/1,
-                          must_once/3 as must_once_symrej]).
+                          must_once/3 as must_once_symchg]).
 :- use_module(pykythe_utils).
 :- use_module(pykythe_symtab).
 
@@ -229,11 +229,11 @@
        maplist_kyfact_expr(7, +, +, +, -, +, -, +),
        maplist_kyfact_expr_(+, 6, +, -, +, -, +),
        maplist_kyfact_expr_(+, 7, +, +, -, +, -, +),
-       maplist_kyfact_symrej(6, +, +, -, +, -, +),
-       maplist_kyfact_symrej(7, +, -, +, -, +, -, +),
-       maplist_kyfact_symrej_(+, 6, +, -, +, -, +),
-       maplist_kyfact_symrej_(+, 7, -, +, -, +, -, +),
-       maplist_kyfact_symrej_union(7, +, -, +, -, +, -, +).
+       maplist_kyfact_symchg(6, +, +, -, +, -, +),
+       maplist_kyfact_symchg(7, +, -, +, -, +, -, +),
+       maplist_kyfact_symchg_(+, 6, +, -, +, -, +),
+       maplist_kyfact_symchg_(+, 7, -, +, -, +, -, +),
+       maplist_kyfact_symchg_union(7, +, -, +, -, +, -, +).
 
 :- style_check(+singleton).
 :- style_check(+var_branches).
@@ -268,8 +268,8 @@ edcg:acc_info(kyfact, T, Out, In, Out=[T|In]).
 % "expr" accumulator gets expressions that need interpreting.
 edcg:acc_info(expr, T, Out, In, Out=[T|In]).
 
-% "symrej" accumulator is for symtab + rejected items that need reprocessing.
-edcg:acc_info(symrej, FqnType, In, Out, symrej_accum(FqnType, In, Out)).
+% "symchg" accumulator is for symtab + changed items that need reprocessing.
+edcg:acc_info(symchg, FqnType, In, Out, symchg_accum(FqnType, In, Out)).
 
 % "file_meta" passed arg contains meta-info about the current file.
 edcg:pass_info(file_meta).
@@ -343,40 +343,40 @@ pred_info_(kynode_impl, 2,                         [kyfact,expr,file_meta]).
 pred_info_(maplist_kynode, 2,                      [kyfact,expr,file_meta]).
 pred_info_(process_nodes_impl, 2,                  [kyfact,expr,file_meta]).
 
-pred_info_(maplist_kyfact_symrej, 2,               [kyfact,symrej,file_meta]).
-pred_info_(maplist_kyfact_symrej, 3,               [kyfact,symrej,file_meta]).
-pred_info_(maplist_kyfact_symrej_, 2,              [kyfact,symrej,file_meta]).
-pred_info_(maplist_kyfact_symrej_, 3,              [kyfact,symrej,file_meta]).
-pred_info_(maplist_kyfact_symrej_union, 3,         [kyfact,symrej,file_meta]).
+pred_info_(maplist_kyfact_symchg, 2,               [kyfact,symchg,file_meta]).
+pred_info_(maplist_kyfact_symchg, 3,               [kyfact,symchg,file_meta]).
+pred_info_(maplist_kyfact_symchg_, 2,              [kyfact,symchg,file_meta]).
+pred_info_(maplist_kyfact_symchg_, 3,              [kyfact,symchg,file_meta]).
+pred_info_(maplist_kyfact_symchg_union, 3,         [kyfact,symchg,file_meta]).
 
-pred_info_(eval_assign_dot_op_binds_single2, 4,    [kyfact,symrej,file_meta]).
-pred_info_(eval_assign_dot_op_binds_single, 4,     [kyfact,symrej,file_meta]).
-pred_info_(eval_assign_dot_op_binds_unknown, 4,    [kyfact,symrej,file_meta]).
-pred_info_(eval_assign_expr, 1,                    [kyfact,symrej,file_meta]).
-pred_info_(eval_assign_import, 1,                  [kyfact,symrej,file_meta]).
-pred_info_(eval_assign_single, 3,                  [kyfact,symrej,file_meta]).
-pred_info_(eval_assign_subscr_op_binds_single, 2,  [kyfact,symrej,file_meta]).
-pred_info_(eval_atom_call_single, 3,               [kyfact,symrej,file_meta]).
-pred_info_(eval_atom_dot_single, 3,                [kyfact,symrej,file_meta]).
-pred_info_(eval_atom_subscr_binds_single, 2,       [kyfact,symrej,file_meta]).
-pred_info_(eval_atom_subscr_single, 2,             [kyfact,symrej,file_meta]).
-pred_info_(eval_dot_op_unknown, 3,                 [kyfact,symrej,file_meta]).
-pred_info_(eval_single_type, 2,                    [kyfact,symrej,file_meta]).
-pred_info_(eval_single_type_import, 5,             [kyfact,symrej,file_meta]).
-pred_info_(eval_union_type, 2,                     [kyfact,symrej,file_meta]).
-pred_info_(log_possible_classes_from_attr, 4,      [kyfact,symrej,file_meta]).
-pred_info_(maplist_eval_assign_expr, 1,            [kyfact,symrej,file_meta]).
-pred_info_(maybe_resolve_mro_dot, 3,               [kyfact,symrej,file_meta]).
-pred_info_(resolve_mro_dot, 4,                     [kyfact,symrej,file_meta]).
-pred_info_(subscr_resolve_dot_binds, 3,            [kyfact,symrej,file_meta]).
+pred_info_(eval_assign_dot_op_binds_single2, 4,    [kyfact,symchg,file_meta]).
+pred_info_(eval_assign_dot_op_binds_single, 4,     [kyfact,symchg,file_meta]).
+pred_info_(eval_assign_dot_op_binds_unknown, 4,    [kyfact,symchg,file_meta]).
+pred_info_(eval_assign_expr, 1,                    [kyfact,symchg,file_meta]).
+pred_info_(eval_assign_import, 1,                  [kyfact,symchg,file_meta]).
+pred_info_(eval_assign_single, 3,                  [kyfact,symchg,file_meta]).
+pred_info_(eval_assign_subscr_op_binds_single, 2,  [kyfact,symchg,file_meta]).
+pred_info_(eval_atom_call_single, 3,               [kyfact,symchg,file_meta]).
+pred_info_(eval_atom_dot_single, 3,                [kyfact,symchg,file_meta]).
+pred_info_(eval_atom_subscr_binds_single, 2,       [kyfact,symchg,file_meta]).
+pred_info_(eval_atom_subscr_single, 2,             [kyfact,symchg,file_meta]).
+pred_info_(eval_dot_op_unknown, 3,                 [kyfact,symchg,file_meta]).
+pred_info_(eval_single_type, 2,                    [kyfact,symchg,file_meta]).
+pred_info_(eval_single_type_import, 5,             [kyfact,symchg,file_meta]).
+pred_info_(eval_union_type, 2,                     [kyfact,symchg,file_meta]).
+pred_info_(log_possible_classes_from_attr, 4,      [kyfact,symchg,file_meta]).
+pred_info_(maplist_eval_assign_expr, 1,            [kyfact,symchg,file_meta]).
+pred_info_(maybe_resolve_mro_dot, 3,               [kyfact,symchg,file_meta]).
+pred_info_(resolve_mro_dot, 4,                     [kyfact,symchg,file_meta]).
+pred_info_(subscr_resolve_dot_binds, 3,            [kyfact,symchg,file_meta]).
 
-pred_info_(possible_classes_from_attr, 2,          [symrej,file_meta]).
-pred_info_(resolve_unknown_fqn, 4,                 [symrej,file_meta]).
-pred_info_(symtab_if_file, 1,                      [symrej,file_meta]).
+pred_info_(possible_classes_from_attr, 2,          [symchg,file_meta]).
+pred_info_(resolve_unknown_fqn, 4,                 [symchg,file_meta]).
+pred_info_(symtab_if_file, 1,                      [symchg,file_meta]).
 
-pred_info_(must_once_symrej, 1,                    [symrej]).
-pred_info_(symtab_lookup, 2,                       [symrej]).
-pred_info_(symtab_scope_pairs, 2,                  [symrej]).
+pred_info_(must_once_symchg, 1,                    [symchg]).
+pred_info_(symtab_lookup, 2,                       [symchg]).
+pred_info_(symtab_scope_pairs, 2,                  [symchg]).
 
 pred_info_(diagnostic_source, 2,                   [file_meta]).
 pred_info_(do_if_file, 1,                          [file_meta]).
@@ -427,7 +427,7 @@ pred_info_(exprs, 1,                               [expr]).
 %    put_dict/4           (25%)
 %      - garbage_collect             (13%)
 %      from builtins_symtab_extend/4 (11%)
-%      from symrej_accum/3           (18%)
+%      from symchg_accum/3           (18%)
 %
 % When processing from a cache file (batch), almost all the time
 % is taken by:
@@ -625,7 +625,7 @@ pykythe_opts(SrcPaths, Opts) =>
 %
 % General algorithm for processing modules.
 %
-% Modules are handled by the symrej accumulator and are therefore not
+% Modules are handled by the symchg accumulator and are therefore not
 % processed when they are first imported but instead are processed as
 % part of "pass 2" (assign_exprs/6)
 %
@@ -2440,52 +2440,52 @@ assign_exprs(Opts, Exprs, Meta, Symtab0, Symtab, KytheFacts) :-
 % TODO: Improved output when too many passes are needed.
 % TODO: Parameterize max number of passes.
 assign_exprs_count(Count, Opts, Exprs, Meta, Symtab0, Symtab, KytheFacts) :-
-    assign_exprs_count_impl(Exprs, Meta, Symtab0, Symtab1, Rej, KytheFacts1), % phrase(assign_exprs_count(...))
-    length(Rej, RejLen),
-    log_if(true, % RejLen > 0, % TODO: Output Pass# with RejLen = 0 for performance profiling.
-           'Process exprs: Pass ~q (rej=~q) for ~q', [Count, RejLen, Meta.path]),
+    assign_exprs_count_impl(Exprs, Meta, Symtab0, Symtab1, Chg, KytheFacts1), % phrase(assign_exprs_count(...))
+    length(Chg, ChgLen),
+    log_if(true, % ChgLen > 0, % TODO: Output Pass# with ChgLen = 0 for performance profiling.
+           'Process exprs: Pass ~q (chg=~q) for ~q', [Count, ChgLen, Meta.path]),
     CountIncr is Count + 1,
-    (   (   Rej = [] ; CountIncr > 5) % TODO: parameterize.
+    (   (   Chg = [] ; CountIncr > 5) % TODO: parameterize.
     ->  Symtab = Symtab1,
         KytheFacts = KytheFacts1,
-        pairs_keys(Rej, RejKeys),
-        sort(RejKeys, RejKeysSorted),
+        pairs_keys(Chg, ChgKeys),
+        sort(ChgKeys, ChgKeysSorted),
         % The write_term is to guard against "circular" types, e.g.
         %     list_of_type([list_of_type([]), ...)
         % (These will eventually get fixed, of course.)
         with_output_to(
-            string(RejStr),
-            write_term(current_output, Rej,
+            string(ChgStr),
+            write_term(current_output, Chg,
                        [quoted(true), portray(true), max_depth(10), attributes(portray)])),
-        log_if(Rej \= [], 'Max pass count exceeded: ~d leaving ~d unprocessed: ~q -- ~w',
-                          [CountIncr, RejLen, RejKeysSorted, RejStr])
-        % log_if(Rej \= [], 'Rejected: ~q', [Rej])
-    ;   log_if(trace_file(Meta.path), 'REJ: ~q', [Rej]),
-        pairs_values(Rej, RejTypes0),
+        log_if(Chg \= [], 'Max pass count exceeded: ~d leaving ~d unprocessed: ~q -- ~w',
+                          [CountIncr, ChgLen, ChgKeysSorted, ChgStr])
+        % log_if(Chg \= [], 'Changed: ~q', [Chg])
+    ;   log_if(trace_file(Meta.path), 'CHG: ~q', [Chg]),
+        pairs_values(Chg, ChgTypes0),
         % TODO: DO NOT SUBMIT - use union_type??
-        append(RejTypes0, RejTypes1), % make union of all the included types
-        include(is_module, RejTypes1, RejModules0),
-        sort(RejModules0, RejModules),
-        log_if(trace_file(Meta.path), 'REJ-MODULES: ~q', [RejModules]),
-        foldl_process_module_cached_or_from_src(Opts, 'from src ok', RejModules, Symtab1, Symtab1WithImports),
+        append(ChgTypes0, ChgTypes1), % make union of all the included types
+        include(is_module, ChgTypes1, ChgModules0),
+        sort(ChgModules0, ChgModules),
+        log_if(trace_file(Meta.path), 'CHG-MODULES: ~q', [ChgModules]),
+        foldl_process_module_cached_or_from_src(Opts, 'from src ok', ChgModules, Symtab1, Symtab1WithImports),
         assign_exprs_count(CountIncr, Opts, Exprs, Meta, Symtab1WithImports, Symtab, KytheFacts)
     ).
 
 :- det(assign_exprs_count_impl/6).
-%! assign_exprs_count_impl(+Exprs, +Meta:dict, +Symtab0:dict, -SymtabWithRej:dict, -Rej:dict, -KytheFacts) is det.
+%! assign_exprs_count_impl(+Exprs, +Meta:dict, +Symtab0:dict, -SymtabWithChg:dict, -Chg:dict, -KytheFacts) is det.
 % Helper for assign_exprs_count, which does the actual processing.
-assign_exprs_count_impl(Exprs, Meta, Symtab0, SymtabWithRej, Rej, KytheFacts) :-
+assign_exprs_count_impl(Exprs, Meta, Symtab0, SymtabWithChg, Chg, KytheFacts) :-
     maplist_eval_assign_expr(Exprs, KytheFactsList, [],
-                             sym_rej(Symtab0,[]), sym_rej(SymtabAfterEval,Rej), Meta),
+                             sym_chg(Symtab0,[]), sym_chg(SymtabAfterEval,Chg), Meta),
     list_to_set(KytheFactsList, KytheFacts),
     % TODO: is the following needed? The accumulator should have
     %       already added the types to the symtab.
-    foldl(add_rej_to_symtab, Rej, SymtabAfterEval, SymtabWithRej),
-    assertion(SymtabAfterEval == SymtabWithRej).
+    foldl(add_chg_to_symtab, Chg, SymtabAfterEval, SymtabWithChg),
+    assertion(SymtabAfterEval == SymtabWithChg).
 
 :- det(maplist_eval_assign_expr/6).
 %! maplist_assign_exprs_eval(+Assign:list)// is det.
-% [kyfact,symrej,file_meta]
+% [kyfact,symchg,file_meta]
 % Process a list of assign or eval nodes.
 maplist_eval_assign_expr([]) ==>> [ ].
 maplist_eval_assign_expr([Assign|Assigns]) ==>>
@@ -2497,28 +2497,28 @@ maplist_eval_assign_expr([Assign|Assigns]) ==>>
 
 :- det(eval_assign_expr/6).
 %! eval_assign_expr(+Node)// is det.
-% [kyfact,symrej,file_meta]
+% [kyfact,symchg,file_meta]
 % Process a single assign/2 or expr/1 node.
 eval_assign_expr(assign(BindsLeft, Right)) ==>>
     % TODO: e.g.: _S = TypeVar('_S')
     %             => assign([var_binds('.home.peter.src.typeshed.stdlib.collections._S')], [call([var_ref('.home.peter.src.typeshed.stdlib.collections.TypeVar')],[['.home.peter.src.typeshed.stdlib.builtins.str']])])
     eval_union_type(Right, RightEval),
     eval_union_type(BindsLeft, BindsLeftEval),
-    maplist_kyfact_symrej(eval_assign_single(RightEval, BindsLeft), BindsLeftEval).
+    maplist_kyfact_symchg(eval_assign_single(RightEval, BindsLeft), BindsLeftEval).
 eval_assign_expr(expr(Right)) ==>>
     eval_union_type(Right, _RightEval).
 eval_assign_expr(class_type(BindsFqn, Bases)) ==>>
-    maplist_kyfact_symrej(eval_union_type, Bases, BasesEvals0),
+    maplist_kyfact_symchg(eval_union_type, Bases, BasesEvals0),
     { clean_class(BindsFqn, BasesEvals0, BasesEvals) },
-    [ BindsFqn-[class_type(BindsFqn, BasesEvals)]-_ ]:symrej.
+    [ BindsFqn-[class_type(BindsFqn, BasesEvals)]-_ ]:symchg.
 eval_assign_expr(function_type(BindsFqn,Params,Return)) ==>>  % Similar to method_type(...)
     eval_union_type(Return, ReturnEval),
-    maplist_kyfact_symrej(eval_union_type, Params, ParamsEvals),
-    [ BindsFqn-[function_type(BindsFqn,ParamsEvals,ReturnEval)]-_ ]:symrej.
+    maplist_kyfact_symchg(eval_union_type, Params, ParamsEvals),
+    [ BindsFqn-[function_type(BindsFqn,ParamsEvals,ReturnEval)]-_ ]:symchg.
 eval_assign_expr(method_type(BindsFqn,Params,Return)) ==>>  % Similar to func_type(...)
     eval_union_type(Return, ReturnEval),
-    maplist_kyfact_symrej(eval_union_type, Params, ParamsEvals),
-    [ BindsFqn-[function_type(BindsFqn,ParamsEvals,ReturnEval)]-_ ]:symrej.
+    maplist_kyfact_symchg(eval_union_type, Params, ParamsEvals),
+    [ BindsFqn-[function_type(BindsFqn,ParamsEvals,ReturnEval)]-_ ]:symchg.
 eval_assign_expr(import_ref_type(_Name, _Fqn, Type)) ==>>
     eval_assign_expr(Type).
 eval_assign_expr(stmt(_)) ==>> [ ].
@@ -2530,20 +2530,20 @@ eval_assign_expr(assign_import{binds_fqn: BindsFqn,
                               }) ==>>
     % /kythe/edge/defines/binding has been done in kynode//2
     { full_module_part(ModuleAndMaybeToken, ModuleDotToken) },
-    [ ModuleDotToken-BindsType-_ ]:symrej, % lookup the module(+token)
-    [ BindsFqn-BindsType-_ ]:symrej,
+    [ ModuleDotToken-BindsType-_ ]:symchg, % lookup the module(+token)
+    [ BindsFqn-BindsType-_ ]:symchg,
     % Add the modules to symtab, and the item they bind to. This is
     % so that all the imports will be done (by being extracted by
     % modules_in_symtab/2 and then processed by
     % foldl_process_module_cached_or_from_src/5 in
     % maybe_process_module_cached_impl/7).
-    maplist_kyfact_symrej(eval_assign_import, ModulesAndMaybeToken).
+    maplist_kyfact_symchg(eval_assign_import, ModulesAndMaybeToken).
 eval_assign_expr(assign_import_unknown{fqn_stack: FqnStack,
                                        binds_astn: BindsNameAstn,
                                        module_and_maybe_token: _ModuleAndMaybeToken,
                                        modules_to_import: ModulesAndMaybeToken
                                       }) ==>>
-    maplist_kyfact_symrej(eval_assign_import, ModulesAndMaybeToken),
+    maplist_kyfact_symchg(eval_assign_import, ModulesAndMaybeToken),
     resolve_unknown_fqn(FqnStack, BindsNameAstn, ResolvedBindsFqn, _Type),
     % TODO: childof DO NOT SUBMIT
     kyanchor_node_kyedge_fqn(BindsNameAstn, '/kythe/edge/defines/binding', ResolvedBindsFqn).
@@ -2552,7 +2552,7 @@ eval_assign_expr(Expr) ==>>  % catch-all
 
 :- det(eval_assign_import/6).
 %! eval_assign_import(+ModuleAndMaybeToken)// is det.
-% [kyfact,symrej,file_meta]
+% [kyfact,symchg,file_meta]
 % Puts entries into symtab. Only the first FqnBind is needed, but it doesn't
 % hurt to put unused names; all the modules need to be added to the symtab, for
 % getting picked up modules_in_symtab/2 in maybe_process_module_cached_impl/7.
@@ -2560,25 +2560,25 @@ eval_assign_import(import_ref_type(_Name, _Fqn, ModuleAndMaybeToken)) ==>>
     eval_assign_import(ModuleAndMaybeToken).
 eval_assign_import(ModuleAndMaybeToken) ==>>
     { module_to_module_alone(ModuleAndMaybeToken, ModuleAlone, ModuleFqn) },
-    [ ModuleFqn-[module_type(ModuleAlone)]-_ ]:symrej.
+    [ ModuleFqn-[module_type(ModuleAlone)]-_ ]:symchg.
 
 :- det(eval_assign_single/8).
 %! eval_assign_single(+RightEval, +BindsLeft, +BindsLeftEval)// is det.
-% [kyfact,symrej,file_meta]
+% [kyfact,symchg,file_meta]
 % Helper for a single assignment. The order of args is because of how maplist works.
 eval_assign_single(RightEval, _BindsLeft, var_binds(BindsFqn)) ==>>
     % Anchor and /kythe/edge/defines/binding edge have already been done by kynode//2.
-    [ BindsFqn-RightEval-_ ]:symrej.
+    [ BindsFqn-RightEval-_ ]:symchg.
 eval_assign_single(RightEval, _BindsLeft, var_ref(Fqn)) ==>>
     % Can occur from subscr_op_binds, e.g. foo[i] = bar
     % because foo is not in a binding context (it's a ref)_
     % There should already be a /kythe/edge/ref edge from kynode//2.
-    [ Fqn-RightEval-_ ]:symrej.
+    [ Fqn-RightEval-_ ]:symchg.
 eval_assign_single(RightEval, BindsLeft, dot_op_binds(AtomType, AttrAstn)) ==>>
-    maplist_kyfact_symrej(eval_assign_dot_op_binds_single(RightEval, AttrAstn, BindsLeft), AtomType).
+    maplist_kyfact_symchg(eval_assign_dot_op_binds_single(RightEval, AttrAstn, BindsLeft), AtomType).
 eval_assign_single(RightEval, _BindsLeft, subscr_op_binds(AtomType,SubscriptsTypes)) ==>>
-    maplist_kyfact_symrej(eval_union_type, SubscriptsTypes, _SubscriptsTypesEval),
-    maplist_kyfact_symrej(eval_assign_subscr_op_binds_single(RightEval), AtomType).
+    maplist_kyfact_symchg(eval_union_type, SubscriptsTypes, _SubscriptsTypesEval),
+    maplist_kyfact_symchg(eval_assign_subscr_op_binds_single(RightEval), AtomType).
 eval_assign_single(_RightEval, _BindsLeft, BindsLeftEval) ==>>
     % l.h.s. is of a form that we can't process.
     % TODO: handle list_of_type_binds (struct unpacking)
@@ -2599,38 +2599,38 @@ eval_assign_subscr_op_binds_single(RightEval, var_ref(BindsFqn)) ==>>
     %       `root = []; root[:] = [root, root]`
     % TODO: Circular list_of_type([list_of_type([]),...) seems to come
     %       from somewhere else also; see /usr/lib/python3.11/typing.py
-    %       and show the Rej in the "Max pass count exceeded" message.
+    %       and show the Chg in the "Max pass count exceeded" message.
     (   symtab_lookup(BindsFqn, Type), % TODO: remove this hack
         { member(list_of_type(Type2), Type) },
         { member(list_of_type(_), Type2) }
     ->  [ ]
-    ;   [ BindsFqn-[list_of_type(RightEval)]-_ ]:symrej
+    ;   [ BindsFqn-[list_of_type(RightEval)]-_ ]:symchg
     ).
 eval_assign_subscr_op_binds_single(_RightEval, _) ==>> [ ].
 
 :- det(eval_assign_dot_op_binds_single/9).
 %! eval_assign_dot_op_binds_single(+RightEval, +AttrAstn, +BindsLeft, +AtomType)// is det.
-% [kyfact,symrej,file_meta]
+% [kyfact,symchg,file_meta]
 eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), _BindsLeft, class_type(ClassName,_Bases)) ==>>
     % TODO: should subclasses that don't override this get anything?
     { join_fqn([ClassName, AttrName], BindsFqn) },
-    [ BindsFqn-RightEval-_ ]:symrej,
+    [ BindsFqn-RightEval-_ ]:symchg,
     kyanchor_binding(Start, End, AttrName, BindsFqn, ClassName, 'eval_assign_dot_op_binds_single/class_type').
 eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), _BindsLeft, function_type(FunctionName,Params, Return)) ==>>
     % TODO: use builtins.function's definition, if it exists,
     %       otherwise allow adding a new attr.
     eval_union_type(Return, _),
-    maplist_kyfact_symrej(eval_union_type, Params, _),
+    maplist_kyfact_symchg(eval_union_type, Params, _),
     { join_fqn([FunctionName, AttrName], BindsFqn) },
-    [ BindsFqn-RightEval-_ ]:symrej,
+    [ BindsFqn-RightEval-_ ]:symchg,
     kyanchor_binding(Start,End, AttrName, BindsFqn, FunctionName, 'eval_assign_dot_op_binds_single/function_type').
 eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), _BindsLeft, module_type(module_alone(Module,_Path))) ==>>
     { join_fqn([Module, AttrName], BindsFqn) },
-    [ BindsFqn-RightEval-_ ]:symrej,
+    [ BindsFqn-RightEval-_ ]:symchg,
     kyanchor_binding(Start, End, AttrName, BindsFqn, Module, 'eval_assign_dot_op_binds_single/module_type').
 eval_assign_dot_op_binds_single(RightEval, astn(Start,End,AttrName), _BindsLeft, module_type(module_and_token(Module,_Path,Token))) ==>>
     { join_fqn([Module, Token, AttrName], BindsFqn) },
-    [ BindsFqn-RightEval-_ ]:symrej,
+    [ BindsFqn-RightEval-_ ]:symchg,
     kyanchor_binding(Start, End, AttrName, BindsFqn, Module, 'eval_assign_dot_op_binds_single/module_type'). % TODO: verify this DO NOT SUBMIT
 eval_assign_dot_op_binds_single(RightEval, AttrAstn, BindsLeft, import_ref_type(_Name, _Fqn, AtomType)) ==>>
     eval_assign_dot_op_binds_single(RightEval, AttrAstn, BindsLeft, AtomType).
@@ -2648,7 +2648,7 @@ eval_assign_dot_op_binds_single2(RightEval, AttrAstn, _BindsLeft, Classes),
     ? { Classes \= [] },
     ? { AttrAstn = astn(Start, End, AttrName) } ==>>
     kyanchor(Start, End, AttrName, Source),
-    maplist_kyfact_symrej(eval_assign_dot_op_binds_unknown(Source, AttrName, RightEval), Classes).
+    maplist_kyfact_symchg(eval_assign_dot_op_binds_unknown(Source, AttrName, RightEval), Classes).
 eval_assign_dot_op_binds_single2(RightEval, AttrAstn, BindsLeft, Classes),
     ? { Classes = [] } ==>>
     log_kyfact_msg(AttrAstn,
@@ -2663,14 +2663,14 @@ eval_assign_dot_op_binds_single2(RightEval, AttrAstn, BindsLeft, Classes),
 
 :- det(eval_assign_dot_op_binds_unknown/9).
 %! eval_assign_dot_op_binds_unknown(+Source, +AttrName, +RightEval, +Class)// is det.
-% [kyfact,symrej,file_meta]
+% [kyfact,symchg,file_meta]
 eval_assign_dot_op_binds_unknown(Source, AttrName, RightEval, class_type(ClassName,_)) ==>>
     { join_fqn([ClassName, AttrName], FqnAttr) },
     % DO NOT SUBMIT - make new kyanchor_binding for this:
     log_if_file('EVAL_ASSIGN_DOT_OP_BINDS_UNKNOWN(class_type) ~p ~q ~q', [Source, FqnAttr, ClassName]),
     kyedge_fqn_fqn(FqnAttr, '/kythe/edge/childof', ClassName),
     kyedge_fqn(Source, '/kythe/edge/defines/binding', FqnAttr),
-    [ FqnAttr-RightEval-_ ]:symrej.
+    [ FqnAttr-RightEval-_ ]:symchg.
 eval_assign_dot_op_binds_unknown(Source, AttrName, RightEval, import_ref_type(_Name, _Fqn, AtomType)) ==>>
     eval_assign_dot_op_binds_unknown(Source, AttrName, RightEval, AtomType).
 eval_assign_dot_op_binds_unknown(_Source, _AttrName, _RightEval, module_type(_Module)) ==>> [ ].
@@ -2680,7 +2680,7 @@ eval_assign_dot_op_binds_unknown(Source, AttrName, RightEval, function_type(Fqn,
     log_if_file('EVAL_ASSIGN_DOT_OP_BINDS_UNKNOWN(function_type) ~p ~q ~q', [Source, FqnAttr, Fqn]),
     kyedge_fqn_fqn(FqnAttr, '/kythe/edge/childof', Fqn),
     kyedge_fqn(Source, '/kythe/edge/defines/binding', FqnAttr),
-    [ FqnAttr-RightEval-_ ]:symrej.
+    [ FqnAttr-RightEval-_ ]:symchg.
 eval_assign_dot_op_binds_unknown(_Source, _AttrName, _RightEval, _Class) ==>>
     % A weird case can arrise with @property (which we
     % don't currently process), in which a function is treated as a list/dict.
@@ -2692,12 +2692,12 @@ eval_assign_dot_op_binds_unknown(_Source, _AttrName, _RightEval, _Class) ==>>
 
 :- det(eval_dot_op_unknown/8).
 %! eval_dot_op_unknown(+Source, +AttrName, +Type)// is det.
-% [kyfact,symrej,file_meta]
+% [kyfact,symchg,file_meta]
 % TODO: combine with eval_assign_dot_op_binds_unknown
 eval_dot_op_unknown(Source, AttrName, class_type(ClassName,_)) ==>>
     { join_fqn([ClassName, AttrName], FqnAttr) },
     kyedge_fqn(Source, '/kythe/edge/ref', FqnAttr),
-    [ FqnAttr-[]-_ ]:symrej.
+    [ FqnAttr-[]-_ ]:symchg.
 eval_dot_op_unknown(Source, AttrName, module_type(Module)) ==>>
     { module_part(Module, ModuleName) },
     { join_fqn([ModuleName, AttrName], FqnAttr) },
@@ -2711,7 +2711,7 @@ eval_dot_op_unknown(Source, AttrName, import_ref_type(_Name, _Fqn, AtomType)) ==
 eval_dot_op_unknown(Source, AttrName, function_type(Fqn,_Params,_Return)) ==>>
     { join_fqn([Fqn, AttrName], FqnAttr) },
     kyedge_fqn(Source, '/kythe/edge/ref', FqnAttr),
-    [ FqnAttr-[]-_ ]:symrej.
+    [ FqnAttr-[]-_ ]:symchg.
 eval_dot_op_unknown(_Source, _AttrName, _Class) ==>>
     % A weird case can arrise with @property (which we
     % don't currently process), in which a function is treated as a list/dict.
@@ -2723,20 +2723,20 @@ eval_dot_op_unknown(_Source, _AttrName, _Class) ==>>
 
 :- det(eval_union_type/7).
 %! eval_union_type(+Expr, -UnionEvalType)// is det.
-% [kyfact,symrej,file_meta]
+% [kyfact,symchg,file_meta]
 % Evaluate (union) Expr and look it up in the symtab.
 eval_union_type(Expr, UnionEvalType) ==>>
-    maplist_kyfact_symrej_union(eval_single_type, Expr, UnionEvalType).
+    maplist_kyfact_symchg_union(eval_single_type, Expr, UnionEvalType).
 
 :- det(eval_single_type/7).
 %! eval_single_type(+Expr, -UnionEvalType)// is det.
-% [kyfact,symrej,file_meta]
+% [kyfact,symchg,file_meta]
 % Evaluate (non-union) Expr, including look up in the symtab.
 eval_single_type(var_ref(Fqn), UnionEvalType) ==>>
     % TODO: could call symtab_lookup(Fqn, UnionEvalType)
-    %       to avoid weird code in symrej_accum: ( Type = [] -> true ; true )
+    %       to avoid weird code in symchg_accum: ( Type = [] -> true ; true )
     % /kythe/edge/ref edge was created by kynode//2.
-    [ Fqn-UnionEvalType-_ ]:symrej.
+    [ Fqn-UnionEvalType-_ ]:symchg.
 eval_single_type(var_binds(BindsFqn), UnionEvalType) ==>>
     { UnionEvalType = [var_binds(BindsFqn)] },
     % /kythe/edge/defines/binding edge was created by kynode//2.
@@ -2747,30 +2747,30 @@ eval_single_type(var_binds_lookup(FqnStack, NameAstn), UnionEvalType) ==>>
     % If there is a global binding, the non need for lookup.
     % If there's no global binding, then there will be only var_ref_lookup's.
     resolve_unknown_fqn(FqnStack, NameAstn, ResolvedBindsFqn, UnionEvalType),
-    [ ResolvedBindsFqn-UnionEvalType-_ ]:symrej,
+    [ ResolvedBindsFqn-UnionEvalType-_ ]:symchg,
     % DO NOT SUBMIT -- need test case -- is it the same as VAR_REF_LOOKUP?
     % TODO: childof?
     (   { UnionEvalType = [] }
     ->  eval_single_type_import(NameAstn, ResolvedBindsFqn, '/kythe/edge/defines/binding', '/kythe/edge/childof', [])
-    ;   maplist_kyfact_symrej(eval_single_type_import(NameAstn, ResolvedBindsFqn, '/kythe/edge/defines/binding', '/kythe/edge/childof'), UnionEvalType)
+    ;   maplist_kyfact_symchg(eval_single_type_import(NameAstn, ResolvedBindsFqn, '/kythe/edge/defines/binding', '/kythe/edge/childof'), UnionEvalType)
     ).
 eval_single_type(var_ref_lookup(FqnStack, NameAstn), UnionEvalType) ==>>
     resolve_unknown_fqn(FqnStack, NameAstn, ResolvedRefFqn, UnionEvalType),
-    % We know that there are no entries in symrej from kynode//2
+    % We know that there are no entries in symchg from kynode//2
     % because if a name was resolved by the Python code, it wouldn't
     % generate 'NameRefUnknown' (which creates var_ref_lookup).
-    [ ResolvedRefFqn-UnionEvalType-_ ]:symrej,
+    [ ResolvedRefFqn-UnionEvalType-_ ]:symchg,
     (   { UnionEvalType = [] }
     ->  eval_single_type_import(NameAstn, ResolvedRefFqn, '/kythe/edge/ref', '', [])
-    ;   maplist_kyfact_symrej(eval_single_type_import(NameAstn, ResolvedRefFqn, '/kythe/edge/ref', ''), UnionEvalType)
+    ;   maplist_kyfact_symchg(eval_single_type_import(NameAstn, ResolvedRefFqn, '/kythe/edge/ref', ''), UnionEvalType)
     ).
 eval_single_type(class_type(ClassName, Bases0), UnionEvalType) ==>>
     { UnionEvalType = [class_type(ClassName, Bases)] },
-    maplist_kyfact_symrej(eval_union_type, Bases0, Bases1),
+    maplist_kyfact_symchg(eval_union_type, Bases0, Bases1),
     { clean_class(ClassName, Bases1, Bases) }.
 eval_single_type(function_type(FuncName,Params,Return), UnionEvalType) ==>>
     { UnionEvalType = [function_type(FuncName,ParamsTypes,ReturnType)] },
-    maplist_kyfact_symrej(eval_union_type, Params, ParamsTypes),
+    maplist_kyfact_symchg(eval_union_type, Params, ParamsTypes),
     eval_union_type(Return, ReturnType).
 eval_single_type(module_type(ModuleAndMaybeToken), UnionEvalType) ==>>
     { UnionEvalType = [module_type(ModuleAndMaybeToken)] }.
@@ -2791,18 +2791,18 @@ eval_single_type(dot_op(Atom, AttrAstn), UnionEvalType) ==>>
         possible_classes_from_attr(AttrName, Classes),
         log_possible_classes_from_attr('ref', AttrAstn, Classes, AtomEval0),
         kyanchor(Start, End, AttrName, Source),
-        maplist_kyfact_symrej(eval_dot_op_unknown(Source, AttrName), Classes),
+        maplist_kyfact_symchg(eval_dot_op_unknown(Source, AttrName), Classes),
         { AtomEval = AtomEval0 } % TODO: - use maplist(Classes)
     ;   { AtomEval = AtomEval0 }
     ),
-    maplist_kyfact_symrej_union(eval_atom_dot_single(AttrAstn), AtomEval, UnionEvalType).
+    maplist_kyfact_symchg_union(eval_atom_dot_single(AttrAstn), AtomEval, UnionEvalType).
 eval_single_type(if_expr(_CondExpr,ThenExpr,ElseExpr), UnionEvalType) ==>>
     eval_union_type(ThenExpr, ThenEvalType),
     eval_union_type(ElseExpr, ElseEvalType),
     { combine_types([ThenEvalType, ElseEvalType], UnionEvalType) }.
 eval_single_type(function_type(Name,Params,Return), UnionEvalType) ==>>
     { UnionEvalType = [function_type(Name,ParamsEvals,ReturnEval)] },
-    maplist_kyfact_symrej(eval_union_type, Params, ParamsEvals),
+    maplist_kyfact_symchg(eval_union_type, Params, ParamsEvals),
     eval_union_type(Return, ReturnEval).
 eval_single_type(dot_op_binds(Atom, AttrAstn), UnionEvalType) ==>>
     { UnionEvalType = [dot_op_binds(AtomEval, AttrAstn)] },
@@ -2810,23 +2810,23 @@ eval_single_type(dot_op_binds(Atom, AttrAstn), UnionEvalType) ==>>
 eval_single_type(subscr_op_binds(Atom,Subscripts), UnionEvalType) ==>>
     { UnionEvalType = [subscr_op_binds(AtomEval,SubscriptsEval)] },
     % This is used by eval_asssign_expr, which further processes it.
-    maplist_kyfact_symrej(eval_union_type, Subscripts, SubscriptsEval),
-    maplist_kyfact_symrej_union(eval_atom_subscr_binds_single, Atom, AtomEval).
+    maplist_kyfact_symchg(eval_union_type, Subscripts, SubscriptsEval),
+    maplist_kyfact_symchg_union(eval_atom_subscr_binds_single, Atom, AtomEval).
 eval_single_type(subscr_op(Atom,Subscripts), UnionEvalType) ==>>
-    maplist_kyfact_symrej(eval_union_type, Subscripts, _),
+    maplist_kyfact_symchg(eval_union_type, Subscripts, _),
     eval_union_type(Atom, AtomEval0),
     (   { AtomEval0 = [] }
     ->  % don't know what the atom is, so the best we can do is 'object':
         { builtins_symtab_primitive(object, AtomEval) } % TODO: Issue #18
     ;   { AtomEval = AtomEval0 }
     ),
-    maplist_kyfact_symrej_union(eval_atom_subscr_single, AtomEval, UnionEvalType).
+    maplist_kyfact_symchg_union(eval_atom_subscr_single, AtomEval, UnionEvalType).
 eval_single_type(call(Atom, Args), UnionEvalType) ==>>
     eval_union_type(Atom, AtomEval),
-    maplist_kyfact_symrej(eval_union_type, Args, ArgsEval),
-    maplist_kyfact_symrej_union(eval_atom_call_single(ArgsEval), AtomEval, UnionEvalType).
+    maplist_kyfact_symchg(eval_union_type, Args, ArgsEval),
+    maplist_kyfact_symchg_union(eval_atom_call_single(ArgsEval), AtomEval, UnionEvalType).
 eval_single_type(call_op(_OpAstns, ArgsTypes), UnionEvalType) ==>>
-    maplist_kyfact_symrej(eval_union_type, ArgsTypes, _ArgsTypesEval),
+    maplist_kyfact_symchg(eval_union_type, ArgsTypes, _ArgsTypesEval),
     % See typeshed/stdlib/operator.pyi
     { UnionEvalType = [] }.
 eval_single_type(ellipsis, UnionEvalType) ==>>
@@ -2850,29 +2850,29 @@ eval_single_type(todo_compifcompiter(ValueExprType, CompIterType), UnionEvalType
     eval_union_type(CompIterType, _).
 eval_single_type(todo_decorated(ItemsTypes), UnionEvalType) ==>>
     { UnionEvalType = [] },
-    maplist_kyfact_symrej(eval_union_type, ItemsTypes, _).
+    maplist_kyfact_symchg(eval_union_type, ItemsTypes, _).
 eval_single_type(todo_decorator_dottedname(ItemsTypes), UnionEvalType) ==>>
     { UnionEvalType = [] },
-    maplist_kyfact_symrej(eval_union_type, ItemsTypes, _).
+    maplist_kyfact_symchg(eval_union_type, ItemsTypes, _).
 eval_single_type(todo_decorators(ItemsTypes), UnionEvalType) ==>>
     { UnionEvalType = [] },
-    maplist_kyfact_symrej(eval_union_type, ItemsTypes, _).
+    maplist_kyfact_symchg(eval_union_type, ItemsTypes, _).
 eval_single_type(todo_dictgen(ValueExprType, CompForType), UnionEvalType) ==>>
     { UnionEvalType = [] },
     eval_union_type(ValueExprType, _),
     eval_union_type(CompForType, _).
 eval_single_type(todo_dictkeyvaluelist(ItemsTypes), UnionEvalType) ==>>
     { UnionEvalType = [] },
-    maplist_kyfact_symrej(eval_union_type, ItemsTypes, _).
+    maplist_kyfact_symchg(eval_union_type, ItemsTypes, _).
 eval_single_type(dictset_make(ItemsTypes), UnionEvalType) ==>>
     { UnionEvalType = [dictset_of_type(Union)] },
-    maplist_kyfact_symrej_union(eval_union_type, ItemsTypes, Union).
+    maplist_kyfact_symchg_union(eval_union_type, ItemsTypes, Union).
 eval_single_type(dictset_of_type(Type), UnionEvalType) ==>>
     { UnionEvalType = [dictset_of_type(EvalType)] },
     eval_union_type(Type, EvalType).
 eval_single_type(todo_dottedname(ItemsTypes), UnionEvalType) ==>>
     { UnionEvalType = [] },
-    maplist_kyfact_symrej(eval_union_type, ItemsTypes, _).
+    maplist_kyfact_symchg(eval_union_type, ItemsTypes, _).
 eval_single_type(subscript(X1,X2,X3), UnionEvalType) ==>>
     { UnionEvalType = [subscript(E1,E2,E3)] },
     eval_union_type(X1, E1),
@@ -2886,7 +2886,7 @@ eval_single_type(todo_arg(_Name, Arg), UnionEvalType) ==>>
     eval_union_type(Arg, _).
 eval_single_type(list_make(ItemsTypes), UnionEvalType) ==>>
     { UnionEvalType = [list_of_type(Union)] },
-    maplist_kyfact_symrej_union(eval_union_type, ItemsTypes, Union).
+    maplist_kyfact_symchg_union(eval_union_type, ItemsTypes, Union).
 eval_single_type(list_of_type(Type), UnionEvalType) ==>>
     { UnionEvalType = [list_of_type(EvalType)] },
     eval_union_type(Type, EvalType).
@@ -2894,16 +2894,16 @@ eval_single_type(list_of_type(Type), UnionEvalType) ==>>
 %       it should only appear on l.h.s. of assignment.
 eval_single_type(list_make_binds(ItemsTypes), UnionEvalType) ==>>
     { UnionEvalType = [list_of_type_binds(Union)] },
-    maplist_kyfact_symrej_union(eval_union_type, ItemsTypes, Union).
+    maplist_kyfact_symchg_union(eval_union_type, ItemsTypes, Union).
 eval_single_type(list_make_binds(ItemsTypes), UnionEvalType) ==>>
     { UnionEvalType = [list_of_type_binds(Union)] },
-    maplist_kyfact_symrej_union(eval_union_type, ItemsTypes, Union).
+    maplist_kyfact_symchg_union(eval_union_type, ItemsTypes, Union).
 eval_single_type(exprlist(ItemsTypes), UnionEvalType) ==>>
     { UnionEvalType = [list_of_type(Union)] },
-    maplist_kyfact_symrej_union(eval_union_type, ItemsTypes, Union).
+    maplist_kyfact_symchg_union(eval_union_type, ItemsTypes, Union).
 eval_single_type(exprlist_binds(ItemsTypes), UnionEvalType) ==>>
     { UnionEvalType = [list_of_type_binds(Union)] },
-    maplist_kyfact_symrej_union(eval_union_type, ItemsTypes, Union).
+    maplist_kyfact_symchg_union(eval_union_type, ItemsTypes, Union).
 eval_single_type(stmt(stmts), UnionEvalType) ==>> % TODO: how can stmt(stmts) get here? DO NOT SUBMIT
     { UnionEvalType = [] } .
 eval_single_type(parse_error(Node), UnionEvalType) ==>>
@@ -2951,7 +2951,7 @@ eval_single_type_import(NameAstn, ResolvedFqn, BindsOrRefEdge, ChildofEdge, []) 
 
 :- det(eval_atom_dot_single/8).
 %! eval_atom_dot_single(+AttrAstn, +AtomSingleType:ordset, -EvalType:ordset)// is det.
-% [kyfact,symrej,file_meta]
+% [kyfact,symchg,file_meta]
 % Helper for single type-dot-attr.
 % See also https://github.com/python/typeshed/issues/2726
 % TODO: list, set, etc. (from builtins)
@@ -2965,43 +2965,43 @@ eval_atom_dot_single(AttrAstn, class_type(ClassName, Bases), EvalType) ==>>
     ),
     { object_fqn(ObjectFqn) },
     { maplist(ensure_class_mro_object(ObjectFqn), Mros0, Mros) },
-    maplist_kyfact_symrej_union(resolve_mro_dot(ClassName, AttrAstn), Mros, EvalType).
+    maplist_kyfact_symchg_union(resolve_mro_dot(ClassName, AttrAstn), Mros, EvalType).
 eval_atom_dot_single(AttrAstn,  module_type(module_alone(Module,_Path)), EvalType) ==>>
     { AttrAstn= astn(_Start,_End,Attr) },
     { join_fqn([Module, Attr], FqnAttr) },
-    [ FqnAttr-EvalType-TypeSymtab ]:symrej,
+    [ FqnAttr-EvalType-TypeSymtab ]:symchg,
     kyfact_attr(FqnAttr, AttrAstn, TypeSymtab).
 eval_atom_dot_single(AttrAstn, module_type(module_and_token(Module,_Path,Token)), EvalType) ==>>
     % TODO: test case -- see i1.py (III().x)
     { AttrAstn= astn(_Start,_End,Attr) },
     { join_fqn([Module, Token, Attr], FqnAttr) },
-    [ FqnAttr-EvalType-TypeSymtab ]:symrej,
+    [ FqnAttr-EvalType-TypeSymtab ]:symchg,
     kyfact_attr(FqnAttr, AttrAstn, TypeSymtab).
 eval_atom_dot_single(AttrAstn, import_ref_type(_Name, _Fqn, AtomSingleType), EvalType) ==>>
     eval_atom_dot_single(AttrAstn, AtomSingleType, EvalType).
 eval_atom_dot_single(AttrAstn, function_type(FunctionName,Params,Return), EvalType) ==>>
-    maplist_kyfact_symrej(eval_union_type, Params, _),
+    maplist_kyfact_symchg(eval_union_type, Params, _),
     eval_union_type(Return, _),
     { AttrAstn= astn(_Start,_End,Attr) },
     { join_fqn([FunctionName, Attr], FqnAttr) },
-    [ FqnAttr-EvalType-TypeSymtab ]:symrej,
+    [ FqnAttr-EvalType-TypeSymtab ]:symchg,
     kyfact_attr(FqnAttr, AttrAstn, TypeSymtab).
 eval_atom_dot_single(AttrAstn, AtomSingleType, EvalType) ==>>
     (   { atom(AtomSingleType) }
     ->  { AttrAstn= astn(_Start,_End,Attr) },
         { join_fqn([AtomSingleType, Attr], FqnAttr) },
-        [ FqnAttr-EvalType-TypeSymtab ]:symrej,
+        [ FqnAttr-EvalType-TypeSymtab ]:symchg,
         % TODO: if AtomSingleType = function_type(Name,Params,Return)
         %          builtins_symtab_primitive(function, FunctionType)
         %          apply dot operator
         kyfact_attr(FqnAttr, AttrAstn, TypeSymtab)
     ;   { EvalType = [] }  % TODO - is this correct? DO NOT SUBMIT - note that
-             % it's called in the context of maplist_kyfact_symrej_union(eval_atom_dot_single(AttrAstn), AtomEval, EvalType).
+             % it's called in the context of maplist_kyfact_symchg_union(eval_atom_dot_single(AttrAstn), AtomEval, EvalType).
     ).
 
 :- det(eval_atom_subscr_single/7).
 %! eval_atom_subscr_single(+Expr, -EvalType)// is det.
-% [kyfact,symrej,file_meta]
+% [kyfact,symchg,file_meta]
 % Get the type of applying a subscript operator to a type.
 eval_atom_subscr_single(list_of_type(Class), EvalType) ==>>
     { EvalType = Class }.
@@ -3014,7 +3014,7 @@ eval_atom_subscr_single(_, EvalType) ==>>
 
 :- det(eval_atom_subscr_binds_single/7).
 %! eval_atom_subscr_binds_single(+Expr, -EvalType)// is det.
-% [kyfact,symrej,file_meta]
+% [kyfact,symchg,file_meta]
 % eval_single_type, for binding context of subscr_op_binds
 % This special-cases for a var_ref or '.' and doesn't evaluate it further
 % (eval_single_type does a lookup).
@@ -3022,7 +3022,7 @@ eval_atom_subscr_binds_single(var_ref(Name), EvalType) ==>>
     { EvalType = [var_ref(Name)] }.
 eval_atom_subscr_binds_single(dot_op(Atom,AttrAstn), DotEvals) ==>>
     eval_union_type(Atom, AtomEval),
-    maplist_kyfact_symrej_union(subscr_resolve_dot_binds(AttrAstn), AtomEval, DotEvals).
+    maplist_kyfact_symchg_union(subscr_resolve_dot_binds(AttrAstn), AtomEval, DotEvals).
 eval_atom_subscr_binds_single(Expr, ExprEval) ==>>
     eval_single_type(Expr, ExprEval).
 
@@ -3047,7 +3047,7 @@ ensure_class_mro_object(ObjectFqn, Mro0, Mro) :-
     ).
 
 %! resolve_mro_dot(+ClassName:atom, +AttrAstn, +Mro:list(atom), -EvalType:ordset(atom))// is det.
-% [kyfact,symrej,file_meta]
+% [kyfact,symchg,file_meta]
 % Using MRO, resolve Attr and add /kythe/edge/ref edge. If it couldn't
 % be resolved, do best guess using ClassName.  EvalType is the
 % resulting type. This never adds to symtab, so symtab lookup can be
@@ -3063,7 +3063,7 @@ resolve_mro_dot(ClassName, AttrAstn, Mro, EvalType) ==>>
     ).
 
 %! maybe_resolve_mro_dot(+Mro:list(atom), +AttrAstn, -EvalType:ordset(atom))// is semidet.
-% [kyfact,symrej,file_meta]
+% [kyfact,symchg,file_meta]
 % Using MRO, resolve Attr and add /kythe/edge/ref edge, setting
 % EvalType as the symtab entry. Fail if Attr can't be resolved. We're
 % guaranteed that dot-resolution won't put an entry into symtab, so
@@ -3079,7 +3079,7 @@ maybe_resolve_mro_dot([MroBaseName|Mros], AttrAstn, EvalType) -->>
 
 :- det(eval_atom_call_single/8).
 %! eval_atom_call_single(+Args, +AtomSingleType, -UnionEvalType:ordset)// is det.
-% [kyfact,symrej,file_meta]
+% [kyfact,symchg,file_meta]
 % Helper for eval_single_type.
 % See also single_type_fqn/2, class_no_base/2, normalize_type2/2.
 eval_atom_call_single(_Args, class_type(Fqn,Bases), UnionEvalType) ==>>
@@ -3088,7 +3088,7 @@ eval_atom_call_single(_Args, class_type(Fqn,Bases), UnionEvalType) ==>>
 eval_atom_call_single(Args, import_ref_type(_Name,_Fqn,Type), UnionEvalType) ==>>
     eval_atom_call_single(Args, Type, UnionEvalType).
 eval_atom_call_single(_Args, function_type(_,Params,Return), ReturnType) ==>>
-    maplist_kyfact_symrej(eval_union_type, Params, _),
+    maplist_kyfact_symchg(eval_union_type, Params, _),
     eval_union_type(Return, ReturnType).
 % TODO: look for a __call__ method
 eval_atom_call_single(_Args, _AtomSingleType, UnionEvalType) ==>>  % Don't know how to call anything else.
@@ -3096,14 +3096,14 @@ eval_atom_call_single(_Args, _AtomSingleType, UnionEvalType) ==>>  % Don't know 
 
 :- det(resolve_unknown_fqn/7).
 %! resolve_unknown_fqn(+FqnStack:list(atom), +NameAstn, -ResolvedFqn, -Type)// is det.
-% [symrej,file_meta]
+% [symchg,file_meta]
 % Dynamic lookup of a name, given its "scope" (see
 % NameBindsGlobalUnknown in ast_cooked.py)
 resolve_unknown_fqn([], NameAstn, ResolvedFqn, Type) ==>>
     Meta/file_meta,
     { node_astn(NameAstn, _, _, Name) },
     { join_fqn([Meta.src_fqn, Name], ResolvedFqn) },
-    [ ResolvedFqn-Type-_ ]: symrej. % Not found, so add it at module scope
+    [ ResolvedFqn-Type-_ ]: symchg. % Not found, so add it at module scope
 resolve_unknown_fqn([Fqn|Fqns], NameAstn, ResolvedFqn, Type) ==>>
     { node_astn(NameAstn, _, _, Name) },
     { join_fqn([Fqn, Name], MaybeResolvedFqn) },
@@ -3173,86 +3173,86 @@ key_in_dict(Key, Dict) :- get_dict(Key, Dict, _).
 %%%%%% Accumulators %%%%%%%
 %%%%%%              %%%%%%%
 
-:- det(add_rej_to_symtab/3).
-%! add_rej_to_symtab(+FqnRejType:pair, +Symtab0, -Symtab) is det.
-% For Fqn-RejType pairs in FqnRejTypes, add to symtab.
-add_rej_to_symtab(Fqn-RejType, Symtab0, Symtab) =>
+:- det(add_chg_to_symtab/3).
+%! add_chg_to_symtab(+FqnChgType:pair, +Symtab0, -Symtab) is det.
+% For Fqn-ChgType pairs in FqnChgTypes, add to symtab.
+add_chg_to_symtab(Fqn-ChgType, Symtab0, Symtab) =>
     symtab_lookup(Fqn, Symtab0, FqnType),
-    type_union(FqnType, RejType, UnionType),
+    type_union(FqnType, ChgType, UnionType),
     symtab_insert(Fqn, Symtab0, UnionType, Symtab).
 
-:- det(symrej_accum/3).
-%! symrej_accum(+FqnType:triple, +Symtab0Rej0Mod0, -SymtabRejMod) is det.
-% The accumulator for 'symrej'.
+:- det(symchg_accum/3).
+%! symchg_accum(+FqnType:triple, +Symtab0Chg0Mod0, -SymtabChgMod) is det.
+% The accumulator for 'symchg'.
 % FqnType = Key-Type-TypeSymtab.
 % Tries to unify Key-Type with what's already in symtab; if that
 % fails because it's not in the symtab, adds it to symtab; otherwise
-% unions it with what's in symtab and adds it to Rej. TypeSymtab is
+% unions it with what's in symtab and adds it to Chg. TypeSymtab is
 % unified with the result.
 % See table of actions in the top-level documentation.
 % (This means that the first time a symbol is added to the symtab, it
-% doesn't go into Rej; but if a subsequent lookup gives additional
-% type information, then it goes into Rej. This is a small
+% doesn't go into Chg; but if a subsequent lookup gives additional
+% type information, then it goes into Chg. This is a small
 % optimization that can sometimes avoid one pass over the source.)
-% Symtab0Rej0Mod0 and SymtabRejMod are sym_rej/2 functors.
+% Symtab0Chg0Mod0 and SymtabChgMod are sym_chg/2 functors.
 % If Type is uninstantiated it gets set to []
 % TODO: can we eliminate the "(Type=[]->true;true)" ?
 %       One way would be to do an initial pass that
 %       enters all the identifiers into symtab (with type=[]).
-symrej_accum(Fqn-Type-TypeSymtab, sym_rej(Symtab0,Rej0), SymtabRejMod) =>
-    SymtabRejMod = sym_rej(Symtab,Rej),
+symchg_accum(Fqn-Type-TypeSymtab, sym_chg(Symtab0,Chg0), SymtabChgMod) =>
+    SymtabChgMod = sym_chg(Symtab,Chg),
     (   symtab_lookup(Fqn, Symtab0, TypeSymtab)
-    ->  symrej_accum_found(Fqn, Type, TypeSymtab, Symtab0, Symtab, Rej0, Rej)
+    ->  symchg_accum_found(Fqn, Type, TypeSymtab, Symtab0, Symtab, Chg0, Chg)
     ;   % ensure Type is instantiated (defaults to []), if this is a lookup
         % see comment in eval_single_type//1
         (   Type = []       % Either a lookup that failed or "any" type
-        ->  Rej = Rej0
-        ;   Rej = [Fqn-Type|Rej0] % new information is a "rej"  DO NOT SUBMIT - add explanation for module_type
+        ->  Chg = Chg0
+        ;   Chg = [Fqn-Type|Chg0] % new information is a "chg"  DO NOT SUBMIT - add explanation for module_type
         ),
         TypeSymtab = Type,
         symtab_insert(Fqn, Symtab0, Type, Symtab)
     ).
 
 %! symtab_lookup(+Fqn, ?Type)// is semidet.
-% [symrej]
+% [symchg]
 % Succeeds if Fqn is in Symtab with Type.
-% TODO: use this to make symrej_accum/3 more logical (see comments
+% TODO: use this to make symchg_accum/3 more logical (see comments
 %       there and eval_single_type//1).
 symtab_lookup(Fqn, Type) ==>>
-    sym_rej(Symtab,_)/symrej,
+    sym_chg(Symtab,_)/symchg,
     { symtab_lookup(Fqn, Symtab, Type) }.
 
 %! symtab_scope_pairs(+FqnStack, -SymtabPairsScope) is det.
 symtab_scope_pairs(FqnStack, SymtabPairsScope) ==>>
-    sym_rej(Symtab,_)/symrej,
+    sym_chg(Symtab,_)/symchg,
     { symtab_scope_pairs(FqnStack, Symtab, SymtabPairsScope) }.
 
-:- det(symrej_accum_found/7).
-%! symrej_accum_found(+Fqn, +Type, +TypeSymtab, +Symtab0, -Symtab, +Rej0, -Rej) is det.
-% Helper for symrej_accum/3 for when Fqn is in Symtab with value
+:- det(symchg_accum_found/7).
+%! symchg_accum_found(+Fqn, +Type, +TypeSymtab, +Symtab0, -Symtab, +Chg0, -Chg) is det.
+% Helper for symchg_accum/3 for when Fqn is in Symtab with value
 % TypeSymtab (Type is the new type).
-% Symtab gets updated type information for Fqn, and Rej is added to
+% Symtab gets updated type information for Fqn, and Chg is added to
 % if there was any change to the entry in Symtab.
-symrej_accum_found(Fqn, Type, TypeSymtab, Symtab0, Symtab, Rej0, Rej) :-
+symchg_accum_found(Fqn, Type, TypeSymtab, Symtab0, Symtab, Chg0, Chg) :-
     (   Type = TypeSymtab % also handles Type is uninstantiated (i.e., a lookup)
     ->  Symtab = Symtab0,
-        Rej = Rej0
+        Chg = Chg0
     ;   type_union(TypeSymtab, Type, TypeComb),
         (   TypeComb = TypeSymtab
         ->  Symtab = Symtab0,
-            Rej = Rej0
+            Chg = Chg0
         ;   symtab_insert(Fqn, Symtab0, TypeComb, Symtab),
-            Rej = [Fqn-Type|Rej0]
+            Chg = [Fqn-Type|Chg0]
         )
     ).
 
 :- det(possible_classes_from_attr/5).
 %! possible_classes_from_attr(+AttrName:atom, -ClassFqn:atom)// is det.
-% [symrej,file_meta]
+% [symchg,file_meta]
 % Compute a set of possible classes, given an attribute. This looks
 % at all the classes in the symtab and finds those that have AttrName.
 possible_classes_from_attr(AttrName, Classes) ==>>
-    sym_rej(Symtab,_)/symrej,
+    sym_chg(Symtab,_)/symchg,
     { classes_from_attr_(Symtab, AttrName, Classes0) },
     { combine_types(Classes0, Classes) }.
 
@@ -3286,7 +3286,7 @@ attr_candidate(Symtab, DotAttrName, Fqn-_, ClassFqnClass) =>
 
 :- det(log_possible_classes_from_attr/9).
 %! log_possible_classes_from_attr(+BindsOrRef:atom, +AttrAstn, +Classes, +AtomType)// is nondet.
-% [kyfact,symrej,file_meta]
+% [kyfact,symchg,file_meta]
 log_possible_classes_from_attr(BindsOrRef, astn(Start,End,AttrName), Classes, AtomType) ==>>
     Meta/file_meta,
     { maplist(class_no_base, Classes, ClassesNoBase) },
@@ -3364,12 +3364,12 @@ list_to_union_type(List, Type) :-
     list_to_ord_set(List, Type0),
     normalize_type(Type0, Type).
 
-:- det(maplist_kyfact_symrej_union/8).
-%! maplist_kyfact_symrej_union(:Pred, L:list, EvalType:ordset)// is det.
-% [kyfact,symrej,file_meta]
-% maplist/3 for EDCG [kyfact,symrej,file_meta] + combine_types
-maplist_kyfact_symrej_union(Pred, L, EvalType) ==>>
-    maplist_kyfact_symrej(Pred, L, EvalType0),
+:- det(maplist_kyfact_symchg_union/8).
+%! maplist_kyfact_symchg_union(:Pred, L:list, EvalType:ordset)// is det.
+% [kyfact,symchg,file_meta]
+% maplist/3 for EDCG [kyfact,symchg,file_meta] + combine_types
+maplist_kyfact_symchg_union(Pred, L, EvalType) ==>>
+    maplist_kyfact_symchg(Pred, L, EvalType0),
     { combine_types(EvalType0, EvalType) }.
 
 :- det(combine_types/2).
@@ -3571,31 +3571,31 @@ maplist_kyfact_([X|Xs], Pred, Out) ==>>
     call(Pred, X, Y):[kyfact,file_meta],
     maplist_kyfact_(Xs, Pred, Ys).
 
-:- det(maplist_kyfact_symrej/7).
-%! maplist_kyfact_symrej(:Pred, +L:list)// is det.
-% [kyfact,symrej,file_meta]
-% maplist/2 for EDCG [kyfact,symrej,file_meta]
-maplist_kyfact_symrej(Pred, L) ==>> maplist_kyfact_symrej_(L, Pred).
+:- det(maplist_kyfact_symchg/7).
+%! maplist_kyfact_symchg(:Pred, +L:list)// is det.
+% [kyfact,symchg,file_meta]
+% maplist/2 for EDCG [kyfact,symchg,file_meta]
+maplist_kyfact_symchg(Pred, L) ==>> maplist_kyfact_symchg_(L, Pred).
 
-:- det(maplist_kyfact_symrej_/7).
-maplist_kyfact_symrej_([], _Pred) ==>> [ ].
-maplist_kyfact_symrej_([X|Xs], Pred) ==>>
-    call(Pred, X):[kyfact,symrej,file_meta],
-    maplist_kyfact_symrej_(Xs, Pred).
+:- det(maplist_kyfact_symchg_/7).
+maplist_kyfact_symchg_([], _Pred) ==>> [ ].
+maplist_kyfact_symchg_([X|Xs], Pred) ==>>
+    call(Pred, X):[kyfact,symchg,file_meta],
+    maplist_kyfact_symchg_(Xs, Pred).
 
-:- det(maplist_kyfact_symrej/8).
-%! maplist_kyfact_symrej(:Pred, +L0:list, -L:list)// is det.
-% [kyfact,symrej,file_meta]
-% maplist/3 for EDCG [kyfact,symrej,file_meta]
-maplist_kyfact_symrej(Pred, L0, L) ==>> maplist_kyfact_symrej_(L0, Pred, L).
+:- det(maplist_kyfact_symchg/8).
+%! maplist_kyfact_symchg(:Pred, +L0:list, -L:list)// is det.
+% [kyfact,symchg,file_meta]
+% maplist/3 for EDCG [kyfact,symchg,file_meta]
+maplist_kyfact_symchg(Pred, L0, L) ==>> maplist_kyfact_symchg_(L0, Pred, L).
 
-:- det(maplist_kyfact_symrej_/8).
-maplist_kyfact_symrej_([], _Pred, Out) ==>>
+:- det(maplist_kyfact_symchg_/8).
+maplist_kyfact_symchg_([], _Pred, Out) ==>>
     { Out = [] }.
-maplist_kyfact_symrej_([X|Xs], Pred, Out) ==>>
+maplist_kyfact_symchg_([X|Xs], Pred, Out) ==>>
     { Out = [Y|Ys] },
-    call(Pred, X, Y):[kyfact,symrej,file_meta],
-    maplist_kyfact_symrej_(Xs, Pred, Ys).
+    call(Pred, X, Y):[kyfact,symchg,file_meta],
+    maplist_kyfact_symchg_(Xs, Pred, Ys).
 
 :- det(maplist_kyfact_expr/7).
 %! maplist_kyfact_expr(:Pred, +L0:list)// is det.
@@ -3648,7 +3648,7 @@ do_if_file(Goal) ==>>
 % Dump the symtab if trace_file/1 matches Meta.path. (for debugging)
 symtab_if_file(Msg) ==>>    % DO NOT SUBMIT - replace this with something that uses pykythe_symtab predicates.
     Meta/file_meta,
-    sym_rej(Symtab,_)/symrej,
+    sym_chg(Symtab,_)/symchg,
     (   { trace_file(Meta.path) }
     ->  { append_fqn_dot(Meta.src_fqn, SrcFqnDot) },
         { dict_pairs(Symtab, SymtabTag, SymtabPairs) },

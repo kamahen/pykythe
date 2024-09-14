@@ -148,10 +148,10 @@ test(kyImportDottedAsNamesFqn_top, nondet) :- % TODO: why nondet?
                                    ModuleModule_os_path-[module_type(Module_os_path)],
                                    ModuleModule_os_path_sep-[module_type(Module_os_path_sep)]],
                                   Symtab0),
-    pykythe:assign_exprs_count_impl(Exprs, Meta, Symtab0, SymtabWithRej, Rej, KytheFacts),
+    pykythe:assign_exprs_count_impl(Exprs, Meta, Symtab0, SymtabWithChg, Chg, KytheFacts),
 
-    symtab_subtract(SymtabWithRej, Symtab0, SymtabAddedPairs),
-    assertion(Rej == SymtabAddedPairs),
+    symtab_subtract(SymtabWithChg, Symtab0, SymtabAddedPairs),
+    assertion(Chg == SymtabAddedPairs),
     must_once:must_once(SymtabAddedPairs = [OsVar - [ module_type(Module_os) ]]),
     %% The following ("dummy_dir.dummy") depends on the source file
     %% specified when running the tests.
@@ -210,10 +210,10 @@ test(kyImportDottedAsNamesFqn_as, nondet) :- % TODO: why nondet?
     pykythe_symtab:list_to_symtab([ModuleModule_os-[module_type(Module_os)],
                                    ModuleModule_os_path-[module_type(Module_os_path)]],
                                   Symtab0),
-    pykythe:assign_exprs_count_impl(Exprs, Meta, Symtab0, SymtabWithRej, Rej, KytheFacts),
+    pykythe:assign_exprs_count_impl(Exprs, Meta, Symtab0, SymtabWithChg, Chg, KytheFacts),
 
-    symtab_subtract(SymtabWithRej, Symtab0, SymtabAddedPairs),
-    assertion(Rej == SymtabAddedPairs),
+    symtab_subtract(SymtabWithChg, Symtab0, SymtabAddedPairs),
+    assertion(Chg == SymtabAddedPairs),
     must_once:must_once(SymtabAddedPairs = [OsPathVar - [ module_type(Module_os_path) ]]),
     %% The following ("dummy_dir.dummy_file.os_path") depends on the
     %% source file specified when running the tests.
