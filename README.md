@@ -22,7 +22,8 @@ Sometimes pykythe.qlf can output an "unexpectedly failed" error
 message without enough context to figure out where the failure
 happened. To track this down, run the command again, but with the
 `/tmp/pykythe_test/pykythe.qlf` replaced by `swipl -l
-pykythe/pykythe.pl`; the run two commands:
+pykythe/pykythe.pl` (including the additional command line
+parameters); then run two commands:
 ```
 debug.
 pykythe:pykythe_main2.
@@ -49,15 +50,16 @@ You can process the test files and run the browser by
 
 Pykythe works with [underhood](https://github.com/TreeTide/underhood)
 to allow source code browsing. A rough outline of how to set up the
-servers in the Makefile rule `run-underhood-all` (after
-running `add-index-pykythe` or `make-tables` to set up the serving tables).
+servers in the Makefile rule `run-underhood-all` (after running
+`add-index-pykythe` or `make-tables` to set up the serving tables).
 
 ### Browsing with the Kythe browser
 
 The Kythe browser is obsolete and unsupported by the Kythe team.
-The "underhood" browser uses the Kyth server (which is still supported)
+The "underhood" browser uses the Kythe server (which is still supported)
 with a new front-end.
-Alternatively, an experimental source browser is included in `pykythe`.
+Alternatively, an experimental source browser is included in `pykythe`
+(see above: "Experimental source browser").
 
 ## Competition
 
@@ -260,7 +262,7 @@ and `pylint`. It is intended to also be processed by `pytype`.
 
 ## Implementation notes
 
-## Grammar
+### Python Grammar
 
 Pykythe depends on the deprecated `lib2to3` parser, and the details of
 the `Grammar.txt` file.
@@ -279,7 +281,7 @@ make install
 ```
 
 
-### Processing a single source file
+### How a single file is processed
 
 A source file is processed in the following steps:
 
@@ -294,9 +296,10 @@ A source file is processed in the following steps:
     convenient "cooked" form.
 
   * `ast_cooked.Base.add_fqns` traverses the "cooked" AST to fill in
-    as many FQNs as possible (most names can be resolved, but those
-    from builtins or `from … import *` cannot be known at this
-    point (builtins are in effect `from builtins import *`).
+    as many fully qualified names (FQNs) as possible (most names can
+    be resolved, but those from builtins or `from … import *` cannot
+    be known at this point (builtins are in effect `from builtins
+    import *`).
 
   * The resulting AST (with FQNs) is serialized and passed back to
     `pykythe.pl`.
@@ -307,22 +310,24 @@ A source file is processed in the following steps:
 * Each "import" is recursively processed (if there is a circular import,
   this is detected and the recursive import is treated as a no-op).
   * This includes outputting the `.kythe.json`, `.kythe.entries`, and
-    `.pykythe.symtab` files.  (The `.pykythe.symtab` file can be
-    reused as a "cache" to avoid reprocessing the source file.)
+    `.pykythe.symtab` files.
+  * The `.pykythe.symtab` files are reused as a "cache" to avoid
+    reprocessing a source file.
+    * There is no "lock" on these files (except for outputting the
+      completed `.pykythe.symtab` file); this means that an imported
+      file may be processed multiple times but once it is available,
+      it won't be reprocessed.
 
 * The expressions are symbolically evaluated to fill in the
-  symtab. This is, in effect, simple type inferencing or abstract
+  symtab. This is, in effect, a simple type inferencer / abstract
   interpretation (for example, resolving a function call to a class
   constructor, then applying the "dot" operator to determine the
   attribute's type).
-
   * When a symtab entry is updated with additional information, it is
-    recorded in the "rejected" list.
-
-  * If the "rejected" list is non-empty after symbolically evaluating
+    recorded in the "changed" list (`symchg`).
+  * If the "changed" list is non-empty after symbolically evaluating
     the expressions, the process is repeated. Generally, no more than
     3 passes are needed to incorporate all the information.
-
   * While symbolically evaluating the expressions, additional Kythe
     facts can be generated; for example, attributes (after a `.`
     operator) can be resolved to the appropriate class
@@ -332,11 +337,10 @@ A source file is processed in the following steps:
   `.kythe.json` file, and `.kythe.entries` files.  The test cases can
   be checked with `kythe/cxx/verifier/verifier`.
 
+### <a name="symtab">Symbol table (symtab) of fully qualifed names (FQNs)</a>
 
-### <a name="symtab">Symtab</a>
-
-A fully qualified name is the absolute path to an abstract entity,
-using '.'s to separate the path items.
+A fully qualified name (FQN) is the absolute path to an abstract
+entity, using '.'s to separate the path items.
 
 The symbol table ("symtab") is a mapping of fully qualified names
 (FQNs) to their "types". (The word "type" is used a bit loosely;

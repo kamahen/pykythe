@@ -8,7 +8,7 @@ names (including handling of names that were marked "global" or
 
 ast_cooked defines an add_fqns() method for all the nodes, which
 resolves most names to fully qualified names (FQNs). Some nodes, when
-processesd by add_fqns, produce a slightly different form containing
+processesd by add_fqns(), produce a slightly different form containing
 the FQN.
 
 The basic usage is (assuming cooked_nodes was created by
@@ -54,16 +54,11 @@ we can therefore deduce that `c` is also of type `class(C)`.
 """
 
 # TODO: change to using asttokens -- see the "#-#" comments
+#       https://github.com/gristlabs/asttokens
+#       https://docs.python.org/3/library/ast.html
+#       src/cpython/Parser/Python.asdl
 
-# from __future__ import annotations  # TODO: this upsets pytype, which can't handle Python 3.9
-#       we can't make this conditional on sys.version_info > (3,9):
-#       SyntaxError: from __future__ imports must occur at the beginning of the file
-# The following needed to be quoted:
-#    'Base'
-#    'NameBindsNode'
-#    'NameBindsFqn'
-#    'NameBareNode'
-#    'TypedArgNode'
+from __future__ import annotations
 
 import collections
 import dataclasses
@@ -80,7 +75,7 @@ from .typing_debug import cast as xcast
 # pylint: disable=too-many-lines
 
 
-def add_fqns(cooked_nodes: 'Base', module: str, python_version: int) -> 'Base':
+def add_fqns(cooked_nodes: Base, module: str, python_version: int) -> Base:
     """Top-level wrapper for adding FQNs to the cooked AST."""
     return cooked_nodes.add_fqns(
             FqnCtx(fqn=module,
@@ -132,7 +127,7 @@ class FqnCtx(pod.PlainOldData):
     def __post_init__(self) -> None:
         assert self.python_version in (3, )  # TODO: make this a triple: see fakesys.FAKE_SYS
 
-    def replace(self, **kwargs: Any) -> 'FqnCtx':
+    def replace(self, **kwargs: Any) -> FqnCtx:
         return dataclasses.replace(self, **kwargs)
 
 
@@ -157,7 +152,7 @@ class Base(pod.PlainOldDataExtended):
         for attr, value in kwargs.items():
             setattr(self, attr, value)  # pragma: no cover
 
-    def add_fqns(self, ctx: FqnCtx) -> 'Base':
+    def add_fqns(self, ctx: FqnCtx) -> Base:
         """Generate a new tree with FQNs filled in.
 
         This code defines the generic form of the `add_fqns` method,
@@ -198,7 +193,7 @@ class Base(pod.PlainOldDataExtended):
         #       and then use self.__class__(**attr_values)
         return type(self)(**attr_values)
 
-    def _attr_add_fqns(self, attr: str, ctx: FqnCtx) -> 'Base':
+    def _attr_add_fqns(self, attr: str, ctx: FqnCtx) -> Base:
         # TODO: inline this when fully debugged
         try:
             return xcast(Base, getattr(self, attr).add_fqns(ctx))
@@ -404,8 +399,8 @@ class ArgumentNode(Base):
 class AsNameNode(Base):
     """Corresponds to `import_as_name`."""
 
-    name: 'NameBareNode'
-    as_name: Union['NameBindsNode', 'NameBindsFqn', 'NameBindsGlobalNode', 'NameBindsUnknown']
+    name: NameBareNode
+    as_name: Union[NameBindsNode, NameBindsFqn, NameBindsGlobalNode, NameBindsUnknown]
     __slots__ = ['name', 'as_name']
 
     def __post_init__(self) -> None:  # DO NOT SUBMIT - remove this validation
@@ -619,7 +614,7 @@ class ClassDefStmt(Base):  #-# ClassDef(identifier name,
                            #-#          expr* decorator_list)
     """Corresponds to `classdef`."""
 
-    name: Union['NameBindsNode', 'NameBindsGlobalNode']
+    name: Union[NameBindsNode, NameBindsGlobalNode]
     bases: Sequence[Base]
     suite: Base
     scope_bindings: Mapping[str, None]  # Set[str] (OrderedSet[str])
@@ -761,7 +756,7 @@ class DecoratorDottedNameNode(ListBase):
     # TODO: the following should be NameRefNode for the first item and
     #       NameBareNode for the rest (in other words,
     #       DecoratorDottedNameNode shouldn't be a ListBase).
-    items: List[Union['NameRefNode', 'NameBareNode']]
+    items: List[Union[NameRefNode, NameBareNode]]
 
     def __post_init__(self) -> None:
         # self.items = typing.cast(Sequence[NameBareNode], items)
@@ -846,7 +841,7 @@ class DictGenListSetMakerCompForNode(Base):
 class DottedNameNode(ListBase):
     """Corresponds to `dotted_name`."""
 
-    items: List['NameBareNode']
+    items: List[NameBareNode]
 
     def __post_init__(self) -> None:
         # self.items = typing.cast(Sequence[NameBareNode], items)
@@ -1002,7 +997,7 @@ class FuncDefStmt(Base):  #-# FunctionDef(identifier name, arguments args,
     subclass of Base and not of Base.
     """
 
-    name: Union['NameBindsNode', 'NameBindsGlobalNode']
+    name: Union[NameBindsNode, NameBindsGlobalNode]
     parameters: Sequence[Base]
     return_type: Base
     suite: Base
@@ -1165,7 +1160,7 @@ class ImportDottedAsNameFqn(Base):
     """
 
     dotted_name: DottedNameNode
-    as_name: Union['NameBindsFqn', 'NameBindsUnknown']
+    as_name: Union[NameBindsFqn, NameBindsUnknown]
     __slots__ = ['dotted_name', 'as_name']
 
     def __post_init__(self) -> None:  # DO NOT SUBMIT - remove this validation
@@ -1187,7 +1182,7 @@ class ImportDottedAsNameNode(Base):
     # TODO: new ast_cooked class ImportDottedNode for as_name=None
 
     dotted_name: DottedNameNode
-    as_name: Optional[Union['NameBindsNode', 'NameBindsGlobalNode']]
+    as_name: Optional[Union[NameBindsNode, NameBindsGlobalNode]]
     __slots__ = ['dotted_name', 'as_name']
 
     def add_fqns(self, ctx: FqnCtx) -> Base:
@@ -1214,7 +1209,7 @@ class ImportDottedAsNameNode(Base):
 class ImportDottedAsNamesFqn(ListBase):
     """Corresponds to `dotted_as_names`."""
 
-    items: Sequence[Union[ImportDottedAsNameFqn, 'ImportDottedFqn']]
+    items: Sequence[Union[ImportDottedAsNameFqn, ImportDottedFqn]]
 
     def __post_init__(self) -> None:
         # self.items = typing.cast(Sequence[ImportDottedAsNameFqn], items)
@@ -1249,7 +1244,7 @@ class ImportDottedFqn(Base):
     """
 
     dotted_name: DottedNameNode
-    top_name: 'NameBindsFqn'
+    top_name: NameBindsFqn
     __slots__ = ['dotted_name', 'top_name']
 
     def __post_init__(self) -> None:  # DO NOT SUBMIT - remove this validation
@@ -1269,7 +1264,7 @@ class ImportFromStmt(BaseNoFqnProcessing):
 
     from_dots: Sequence[ImportDotNode]
     from_name: Optional[DottedNameNode]
-    import_part: Union[ImportAsNamesNode, 'StarFqn', 'StarNode']
+    import_part: Union[ImportAsNamesNode, StarFqn, StarNode]
     childof: str
     __slots__ = ['from_dots', 'from_name', 'import_part', 'childof']
 
@@ -1287,7 +1282,7 @@ class ImportFromStmtNode(Base):
 
     from_dots: Sequence[ImportDotNode]
     from_name: Optional[DottedNameNode]
-    import_part: Union[ImportAsNamesNode, 'StarFqn', 'StarNode']
+    import_part: Union[ImportAsNamesNode, StarFqn, StarNode]
     __slots__ = ['from_dots', 'from_name', 'import_part']
 
     def __post_init__(self) -> None:
@@ -1833,7 +1828,7 @@ class BareTypedArgsListNode(BaseNoFqnProcessingNoOutput):
     directly to FuncDefStmt.
     """
 
-    args: Sequence['TypedArgNode']
+    args: Sequence[TypedArgNode]
     __slots__ = ['args']
 
     def name_astns(self) -> Iterable[Tuple[ast_node.Astn, str]]:

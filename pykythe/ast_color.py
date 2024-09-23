@@ -1,4 +1,18 @@
-"""Generate colorization information from  lib2to3's AST."""
+"""Generate colorization information from  lib2to3's AST.
+
+To use: ColorFile(...).color()
+returns a list of "Color" facts, e.g. (from bootstrap_builtins.py):
+    Color(astn=Astn(value='# ...',    start=0,   end=58),  lineno=1, column=0,  token_color='<COMMENT>')
+    Color(astn=Astn(value='\n',       start=58,  end=59),  lineno=1, column=58, token_color='<NEWLINE>')
+    Color(astn=Astn(value='\n',       start=59,  end=60),  lineno=2, column=0,  token_color='<NEWLINE>')
+    Color(astn=Astn(value='from',     start=60,  end=64),  lineno=3, column=0,  token_color='<KEYWORD>')
+    Color(astn=Astn(value=' ',        start=64,  end=65),  lineno=3, column=4,  token_color='<WHITESPACE>')
+    Color(astn=Astn(value='builtins', start=65,  end=73),  lineno=3, column=5,  token_color='<BARE>')
+        ...
+    Color(astn=Astn(value='*',        start=160, end=161), lineno=4, column=19, token_color='<PUNCTUATION>')
+"""
+
+from __future__ import annotations
 
 from dataclasses import dataclass
 from lib2to3 import pytree, pygram
@@ -18,12 +32,13 @@ class Color(pod.PlainOldDataExtended):
     astn: ast_node.Astn
     lineno: int
     column: int
-    token_color: str
+    token_color: str  # See browser/static/src_browser.js and browser/src_browser.pl for values
+                      # (also ast_cooked.py)
 
     __slots__ = ['astn', 'lineno', 'column', 'token_color']
 
 
-def colored_list_as_prolog_str(colored: List[Color]) -> str:
+def colored_list_as_prolog_str(colored: Iterable[Color]) -> str:
     return '[' + ','.join(c.as_prolog_str() for c in colored) + ']'
 
 
@@ -36,10 +51,12 @@ class ColorFile:
     # name_astns from ast_cooked.add_fqns(...).name_astns() - maps name to '<VAR_REF>' etc.
     name_astns: Dict[ast_node.Astn, str]
 
-    def color(self) -> List[Color]:
+    def color(self) -> Iterable[Color]:
         """Traverse parse tree, outputting Color nodes."""
-        color_list = list(self._color()) if self.src_file and self.parse_tree else []
-        # DO NOT SUBMIT - remove this validation:
+        return self._color() if self.src_file and self.parse_tree else []
+
+    def color_and_validate(self) -> List[Color]:
+        color_list = list(self.color())
         assert not color_list or color_list[0].astn.start == 0, [color_list[0]]
         for i in range(1, len(color_list)):
             assert color_list[i - 1].astn.end == color_list[i].astn.start, (i, color_list[:i + 1])

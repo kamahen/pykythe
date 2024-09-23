@@ -1,5 +1,7 @@
 """AST node operations."""
 
+from __future__ import annotations
+
 import bisect
 import codecs
 from dataclasses import dataclass

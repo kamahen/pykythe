@@ -9,7 +9,7 @@
 %% - in future, things like function call references
 
 %% See the README.md file for an over-all explanation of the system
-%% design,particularly in how caches are used to improve performance.
+%% design, particularly in how caches are used to improve performance.
 
 %% This code heavily uses the EDCG notation (-->> and its extension
 %% ==>>), which might be unfamiliar to you -- I suggest reading Peter

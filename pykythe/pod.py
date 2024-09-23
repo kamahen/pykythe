@@ -6,6 +6,8 @@ mixin class for adding a few common methods for dealing with
 serialization to Prolog terms.
 """
 
+from __future__ import annotations
+
 # TODO: rename this module and its classes.
 
 # pylint: disable=too-few-public-methods

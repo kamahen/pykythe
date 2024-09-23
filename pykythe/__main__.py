@@ -4,6 +4,8 @@
 This is called by pykythe.pl, which further processes the AST.
 """
 
+from __future__ import annotations
+
 import argparse
 import base64
 from dataclasses import dataclass
@@ -27,9 +29,9 @@ RawBaseType = Union[ast_raw.Node, ast_raw.Leaf]
 def main() -> int:
     """Main (uses sys.argv)."""
     src_file: Optional[ast_node.File]
-    parse_error: Optional['CompilationError']
+    parse_error: Optional[CompilationError]
     parse_tree: Optional[RawBaseType]
-    with_fqns: Union['CompilationError', ast_cooked.Base]
+    with_fqns: Union[CompilationError, ast_cooked.Base]
     pykythe_logger = logging.getLogger('pykythe')
     pykythe_logger_hdlr = logging.StreamHandler()
     pykythe_logger_hdlr.setFormatter(  # TODO: use something emacs *compilation* recognizes
@@ -84,7 +86,8 @@ def main() -> int:
                 sha1=hashlib.sha1(b'').hexdigest(),
                 encoding='ascii')
 
-    colored = ast_color.ColorFile(src_file, parse_tree, dict(with_fqns.name_astns())).color()
+    # TODO: change color_and_validate() to color():
+    colored = ast_color.ColorFile(src_file, parse_tree, dict(with_fqns.name_astns())).color_and_validate()
 
     meta_str = meta.as_prolog_str() + '.'
     with_fqns_str = with_fqns.as_prolog_str() + '.'
@@ -126,8 +129,8 @@ def _get_args() -> argparse.Namespace:
 
 
 def _make_file(
-        args: argparse.Namespace) -> Tuple[Optional[ast_node.File], Optional['CompilationError']]:
-    parse_error: Optional['CompilationError']
+        args: argparse.Namespace) -> Tuple[Optional[ast_node.File], Optional[CompilationError]]:
+    parse_error: Optional[CompilationError]
     src_file: Optional[ast_node.File] = None
     try:
         src_file = ast_node.make_file(path=args.srcpath)
@@ -154,8 +157,8 @@ def _make_file(
 
 
 def _parse_file(src_file: ast_node.File,
-                args: argparse.Namespace) -> Tuple[RawBaseType, Optional['CompilationError']]:
-    parse_error: Optional['CompilationError'] = None
+                args: argparse.Namespace) -> Tuple[RawBaseType, Optional[CompilationError]]:
+    parse_error: Optional[CompilationError] = None
     parse_tree: Optional[RawBaseType] = None
     try:
         parse_tree = ast_raw.parse(src_file, args.python_version)
@@ -188,12 +191,12 @@ def _parse_file(src_file: ast_node.File,
 
 def _process_ast(
         src_file: ast_node.File, parse_tree: RawBaseType, args: argparse.Namespace
-) -> Tuple[Optional[RawBaseType], Union['Crash', 'ParseError', ast_cooked.Base],
-           Optional['ParseError']]:
+) -> Tuple[Optional[RawBaseType], Union[Crash, ParseError, ast_cooked.Base],
+           Optional[ParseError]]:
     logging.getLogger('pykythe').debug('RAW= %r', parse_tree)
     new_parse_tree: Optional[RawBaseType]
-    with_fqns: Union[ast_cooked.Base, 'ParseError', 'Crash']
-    parse_error: Optional[Union['ParseError', Exception]]
+    with_fqns: Union[ast_cooked.Base, ParseError, Crash]
+    parse_error: Optional[Union[ParseError, Exception]]
     try:
         cooked_nodes = ast_raw.cvt_parse_tree(parse_tree, args.python_version, src_file)
         with_fqns = ast_cooked.add_fqns(cooked_nodes, args.module, args.python_version)
